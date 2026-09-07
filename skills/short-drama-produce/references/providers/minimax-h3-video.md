@@ -31,6 +31,12 @@ required and are only accepted when the runtime profile above permits their valu
 optional for reference-conditioned jobs and **required** for text-to-video, where `adaptive` is
 refused because there is no reference frame to adapt to.
 
+The adapter validates and forwards `duration`; it does not estimate speech length or retime dialogue.
+Before preparing a speaking shot, compare the accepted shot duration, the prompt's spoken timeline,
+and the job's `duration`. Resolve insufficient speaking time in the storyboard and regenerate the
+dependent prompt before preparing the job. Prompt timestamps alone do not change the request duration.
+The official video API has no separate speech-rate parameter.
+
 The prompt is compiled into one `text` item of the multimodal `content` array and is refused above
 7000 characters. Each declared reference becomes one further `content` item carrying an explicit
 `role`: `first_frame`, `last_frame`, `reference_image`, `reference_video`, or `reference_audio`.
