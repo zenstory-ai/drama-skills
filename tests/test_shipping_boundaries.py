@@ -36,6 +36,21 @@ ALLOWED_PROVIDER_URLS = {
         "https://api.minimax.io/v2",
         "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
     },
+    "skills/short-drama-video-prompts/references/minimax-h3.md": {
+        "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt",
+        "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt",
+        "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "https://github.com/MiniMax-AI/cli/blob/main/skill/h3-video/references/h3-video.md",
+        "https://platform.minimax.io/docs/api-reference/video-generation-v2-h3-context-ir",
+    },
+    "skills/short-drama-video-prompts/references/seedance-2.0.md": {
+        "https://docs.volcengine.com/docs/82379/1520757",
+        "https://docs.volcengine.com/docs/82379/2607689",
+    },
+    "skills/short-drama-video-prompts/references/seedance-2.5.md": {
+        "https://docs.volcengine.com/docs/82379/1520757",
+        "https://docs.volcengine.com/docs/82379/2607689",
+    },
 }
 RELEASE_TEXT_SUFFIXES = {
     ".ass",

@@ -29,8 +29,10 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-- 画面段按 `[Shot 1]`、`[Shot 2]` 写动作和镜头；单镜也保留 `[Shot 1]`。
-- 声音段闭合所有对白、环境声与音效。无配乐时写 `non_diegetic_music: N/A`，不要留空让模型补乐。
+- `integrated_multimodal_description` 按 `[Shot 1]`、`[Shot 2]` 写画面、动作、说话人、逐字对白和同步声音；
+  单镜也保留 `[Shot 1]`。第一镜不加切镜时间戳，后续切镜用 `[Shot 2] At 00:03.500, ...`，时间递增且落在本次生成时长内。
+- `overall_soundscape` 汇总环境声、物理音效和非语言人声，不重复对白；对白事件留在上面的主时间线。
+  无非画内配乐时写 `non_diegetic_music: N/A`，不要留空让模型补乐。
 - 首帧模式从输入帧的可见姿态开始；首尾帧模式只能到达上游已接受终点，不发明过渡后的新状态。
 
 ## 选哪一种模式
@@ -113,6 +115,7 @@ REF-STUDY-PLATE（顺序：3；用途：地理）    -> <Picture 3>
 
 角色始终使用同一个说话人 ID；中文对白只出现在 `<d>[Chinese] ...</d>` 内。禁字幕写进可见文字约束，
 与获准的画内文字分开。
+Full-reference 的逐字对白与同步声音放在 `detailed_description` 的对应事件里，`overall_soundscape` 仍只汇总底声与音效。
 不要为了“多模态”把所有资产图都带上；每镜只绑定它真正可见且需要保持的起始帧、人物、地点或关键道具图。
 
 ### 一个完整例子
@@ -164,7 +167,55 @@ full-reference：
 
 ## 时长
 
-MiniMax-H3 的整数时长是 4–15 秒，`MiniMax-H3-Max` 是 5–15 秒（不支持 4 秒）。短动作在至少 4 秒的镜头内完成并 hold 已接受终点；超过 15 秒的
-镜头在分镜阶段按闭合状态拆开。本阶段不偷改镜头秒数。
+**`structural_invariant`（执行端契约）**：MiniMax-H3 的 `duration` 必填，为 4–15 的任一整数秒，
+并非只有 5/10/15 三档。网页界面或 job 的时长设置要与分镜时长和正文终点一致；写在提示词里的秒数
+不能替代生成设置。短动作在合法镜长内完成并保持已接受终点；超过 15 秒的镜头回分镜按闭合状态拆开。
+本阶段不偷改镜头秒数。
 
-依据：MiniMax-H3 官方 base/ref prompt writing guides 与 MiniMax v2 video generation API。
+`MiniMax-H3-Max` 是另一型号：5–15 秒、480P/768P，仅支持文生和首/尾帧，不支持 full-reference。
+不能把本页 H3 的参考音频路径或 4 秒下限套到 Max。
+
+### 对白容量与自然语速
+
+**`craft_default`**：按 [对白预算](performance-action-timing.md#对白预算) 先核对完整发声需要多久，
+再给主时间线安排开口、停顿与落点。分镜镜长够长但开口太晚，一样会赶词。
+口语语言、声线与语速描述放在 `<d>` 外；`<d>` 内只放语言标签和逐字台词，不放秒数或表演指令。
+稳定说话人用 `(S1)`、`(S2)`；full-reference 中说话人物同时写 `<Subject N> (Sx)`。
+
+无参考音频时，以自然语言交代说话方式、开口 cue、句间停顿和说完后的动作；文本估时区间只留在镜头说明中，
+不把每个词硬塞进小数秒槽。实际有音频对齐依据或已接受的精确时点时，才据此细化声音时序。
+H3 官方接口未提供独立 `speech_rate` 参数，也没有公布「中文每秒固定几字」的可靠公式；
+提示词中的语速与时机是生成指导，不能当作秒级执行保证。仅追加“自然语速”无法补上缺失的发声时间。
+
+同一次生成内，已接受的对白跨切镜时可以用 `<scenetrans>` 并声明声音连续；它不会增加总时长，也不能
+保证两个独立 job 的音频无缝衔接。`<cutoff>` 表示视频结束时有意截断发声，只用于剧本已要求的截断，
+不用于处理装不下的完整台词。
+
+### 有配音或参考音频时
+
+**`craft_default`**：已有同句同表演音频时，先测实际发声与停顿，再确定镜长。没有现成音频仍可按文本估计
+写提示词，不为完成本阶段自动调用 TTS 或生成服务。
+
+- 只参照音色、情绪或说话方式：使用 `reference`；它会重新表演本镜台词，不能拿参考音频的文件长度
+  当作新台词时长，也不携带参考音频里无关的原话。
+- 已接受完整声音轨原样复用：`fully_copy` 表示整条最终音轨；只用对白层或片段并另加环境声时使用
+  `partially_copy`，写清源片段与目标时间的对应。复用用到的发声区间要完整容纳，不为适配镜长压缩语速。
+- 参考音频走 full-reference，配合至少一张参考图或一段参考视频；每段音频 2–15 秒，最多三段、合计
+  不超过 15 秒。图片改用 `reference_image`，不能与 `first_frame`/`last_frame` 混用。
+
+`fully_copy` 等是官方提示词的复用意图，不是逐样本一致的验收证明。生成后核听逐字内容、语速、停顿、
+尾音完整性与口型；项目需要精确锁定已有音轨时，以后期保留该音轨并核对画面同步作为最终依据。
+
+### Context-IR 的作用
+
+H3-Context-IR 把多模态输入增强成结构化提示词，本身不生成视频，且仍要求调用方先给出 4–15 秒的
+`duration`。它不能代替对白预算。若执行端使用该服务，检查增强后的逐字台词、声音时间线与原时长一致，
+不因使用官方增强就跳过容量检查。
+
+官方依据（2026-09-07 核对）：
+
+- [Base 提示词指南](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt)：对白位置、说话人、语速描述、切镜时间戳与跨镜发声。
+- [Full-reference 指南](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt)：六段结构、音频引用与复用语义。
+- [视频生成 API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create)：必填时长、型号差异和输入模式互斥。
+- [官方 CLI 的 H3 指南](https://github.com/MiniMax-AI/cli/blob/main/skill/h3-video/references/h3-video.md)：音频配合视觉参考，声音对齐与生成后检查。
+- [Context-IR API](https://platform.minimax.io/docs/api-reference/video-generation-v2-h3-context-ir)：提示词增强和独立的时长输入。

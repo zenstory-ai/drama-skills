@@ -29,6 +29,13 @@ profile above explicitly permits their values, then sent as the API's top-level 
 `generate_audio` is a boolean. The broad compiler envelope remains configurable rather than proving
 that every Seedance release supports every value.
 
+The compiler also forwards `duration: -1` without applying the positive-integer range. For ordinary
+Seedance 2.0/2.5 generation this asks the model to choose within its native range; for 2.5 `edit` it
+preserves the source video's duration instead. The adapter does not estimate spoken dialogue or
+lengthen a short job. Fixed-duration delivery needs an explicit accepted duration; auto-duration
+output needs its actual media length and speech checked before timing is accepted. The API response's
+integer `duration` rounds down the frame-based duration, so it is not a precise media measurement.
+
 `compile_seedance_payload` accepts explicit `reference_image`, `reference_video`, and
 `reference_audio` roles with matching HTTPS, `asset://` or base64 data URI values. It emits the matching multimodal
 content type and uses `@图片N`、`@视频N`、`@音频N` in its appended reference contract. The bundled
