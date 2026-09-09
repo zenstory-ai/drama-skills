@@ -90,8 +90,10 @@ show up as production defects rather than as API errors:
 - readable on-screen text was **not** produced unmasked in those probes either: across 44 sampled
   frames from 11 clips — including dialogue clips carrying no exclusion sentence, on H3 and on
   Seedance 2.0/2.5 — no burned-in subtitle or caption appeared. The exclusion sentence this suite
-  mandates is therefore precautionary **for video**, not evidence-driven; do not defend it as a
-  fix for an observed defect. Note the asymmetry before carrying this reasoning anywhere else:
+  mandates is therefore precautionary **for video** rather than evidence-driven. Keep writing it:
+  a one-line exclusion costs nothing, these probes are small enough that they only show the failure
+  was not produced here, and generator behaviour changes between versions. What should change is the
+  justification — do not defend it as a fix for an observed defect. Note the asymmetry before carrying this reasoning anywhere else:
   the same probe run against `gpt-image-2` found the opposite — an unconstrained still came back
   covered in invented readable text, and the exclusion sentence cleaned it up. The image stages
   keep their text policy on evidence; only the video stage's copy of it is precautionary.
