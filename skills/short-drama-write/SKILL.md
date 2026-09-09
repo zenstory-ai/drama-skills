@@ -67,14 +67,25 @@ license: MIT
 
 用户问时长时才把索引写入系统临时目录。先用 Python 查询跨平台临时目录，把第一条命令打印的完整
 路径原样替换进后两条命令的引号内。以下每条都是一行完整命令，不依赖 shell 变量或续行符；Windows
-没有 `python3` 命令时使用 `py -3`。`--speaker` 的示例值必须替换为本集实际说话者；只有存在项目
-配置时才添加 `--project short-drama.json`：
+没有 `python3` 命令时使用 `py -3`。`--speaker` 的示例值必须替换为本集实际说话者。
+`--project short-drama.json` **只加在第三条命令上**（`duration_estimate.py` 才接受它，
+`screenplay_index.py` 没有这个参数，加上去会直接报 `unrecognized arguments`），且只在项目
+配置确实存在时加：
 
 ```text
 python3 -c "from pathlib import Path; import tempfile, uuid; print(Path(tempfile.gettempdir()) / ('short-drama-' + uuid.uuid4().hex + '.jsonl'))"
 python3 "{技能目录}/scripts/screenplay_index.py" "剧集/EP001/剧本.md" --output "粘贴第一条命令输出的完整路径" --speaker "本集角色一" --speaker "本集角色二"
 python3 "{技能目录}/scripts/duration_estimate.py" "剧集/EP001/剧本.md" --index "粘贴第一条命令输出的完整路径"
 ```
+
+**改稿后重跑**：第二条命令写过一次的输出路径不能直接再写一次，会以 `already holds an index` 失败。
+要保留原有块 ID 就加 `--previous-index <同一路径>`，要从头重编号就加 `--no-previous`；
+或者干脆回到第一条命令另取一个临时路径。
+
+**字数单位不要混用**：`duration_estimate.py` 报的 `dialogue_characters` **把标点计入**
+（`关窗，水进来了！` 记 8 而不是 6，这是它的既定口径，有测试固定）。而视频提示词阶段
+「对白预算」给出的那个「约 4.1 字/秒」是按**可发声字**（不含标点）实测的。两个数直接相乘
+会高估两成左右——要按秒核对容量时，用可发声字数自己数一遍，别拿 `dialogue_characters` 去乘。
 
 估算是参考，不是门禁；没有语速或动作段速率时只报告可数事实，不猜秒数。但任务已给目标时长时，
 写作者仍须用真实朗读和动作通读判断能否容纳，并直接压缩重复节拍；“不能精确估秒”不是忽略目标的理由。
