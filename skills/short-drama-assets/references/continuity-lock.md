@@ -40,7 +40,11 @@
 
 `锁面` 是**要被逐字带进提示词正文的那一小段字**，不是描述，也不是给人读的说明：
 
-- 用项目的提示词语言写（`short-drama.json#/format/prompt_language`，没有配置时是 `en`），
+- 用**可复制正文实际使用的语言**写，取值顺序与 `creator_markdown_check.py` 一致：
+  已接受的 `short-drama.json#/creator_authority/production_profile/choices/video_prompt_language`
+  优先，其次 `short-drama.json#/format/prompt_language`，都没有时是 `en`。**两者可能不同**——
+  创作者说明用中文、而目标模型方言要求正文用英文时，锁面必须跟正文走英文，跟着
+  `format/prompt_language` 写中文会让锁面在英文正文里永远匹配不上。
   因为它要落进可复制正文，不是落进创作者说明；
 - 只保留最小可辨识名词短语，通常是「颜色 + 材质/形制 + 物体」，例如
   `pale blue chunky knit wool sweater`；
