@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path, PurePosixPath
 from collections.abc import Iterable
+from decimal import Decimal
 from typing import NamedTuple, Optional
 
 
@@ -183,6 +184,47 @@ def _fields(section: str, *, owner: str, errors: list[str]) -> dict[str, str]:
 
 def _plain(value: str) -> str:
     return value.strip().rstrip("。")
+
+
+def _editorial_selection(
+    body: str, owner: str, errors: list[str]
+) -> Optional[tuple[Decimal, Decimal, Decimal]]:
+    # Include empty declarations: they are invalid, not legacy absence.
+    selections = re.findall(r"^- 入剪区间：([^\n]*)$", body, re.MULTILINE)
+    if not selections:
+        return None
+    durations = re.findall(r"^- 时长：([^\n]*)$", body, re.MULTILINE)
+    if len(selections) != 1 or len(durations) != 1:
+        errors.append(f"{owner}: 入剪区间需要唯一的入剪区间和时长字段")
+        return None
+    number = r"[0-9]+(?:\.[0-9]+)?"
+    selection = re.fullmatch(rf"({number})-({number})s", selections[0].strip())
+    duration = re.fullmatch(rf"({number})s", durations[0].strip())
+    if selection is None or duration is None:
+        errors.append(f"{owner}: 入剪区间须为起秒-止秒s，时长须为正数秒s（普通十进制）")
+        return None
+    start, end = (Decimal(value) for value in selection.groups())
+    source = Decimal(duration.group(1))
+    if source <= 0 or not (0 <= start < end <= source):
+        errors.append(f"{owner}: 入剪区间必须满足 0 ≤ 起点 < 终点 ≤ 时长，时长须为正数")
+        return None
+    return start, end, source
+
+
+def _check_editorial_pair(
+    shot_body: str, shot_id: str, motion_body: str, motion_id: str,
+    errors: list[str],
+) -> None:
+    shot = _editorial_selection(shot_body, shot_id, errors)
+    motion = _editorial_selection(motion_body, motion_id, errors)
+    declared = [
+        bool(re.search(r"^- 入剪区间：", body, re.MULTILINE))
+        for body in (shot_body, motion_body)
+    ]
+    if declared[0] != declared[1]:
+        errors.append(f"{motion_id}: 入剪区间必须与 {shot_id} 成对声明")
+    if shot is not None and motion is not None and shot != motion:
+        errors.append(f"{motion_id}: 入剪区间及素材时长必须与 {shot_id} 数值一致")
 
 
 def _contains_ref_token(value: str) -> bool:
@@ -1188,6 +1230,7 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         if not motion:
             continue
         motion_id, motion_body, copyable_prompt = motion
+        _check_editorial_pair(shot_body, shot_id, motion_body, motion_id, errors)
         motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
         if copyable_prompt is not None:
             _check_spoken_lines(

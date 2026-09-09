@@ -17,7 +17,7 @@
 
 | ID | Class | Knowledge |
 |---|---|---|
-| VID-01 | structural_invariant | Motion reads but cannot rewrite shot start/end/duration/dialogue and next-shot state. |
+| VID-01 | structural_invariant | Motion reads but cannot rewrite shot start/end/source duration/dialogue and next-shot state. Optional creator-first 入剪区间 is copied as metadata from SHOT, never substituted for source or container duration or included in the generation prompt. |
 | VID-02 | craft_default | Write start anchor, ordered subject motion, camera behavior, timing, and end report; add performance change and environment/audio only when this shot actually carries them. |
 | VID-03 | structural_invariant | Choose image-to-video only when the matching storyboard's reference set is complete, declares readable REF inputs, and is copied unchanged. No REF is not by itself consent to text-to-video: first discover and bind matching real project images; preserve any verified partial bindings, but if required images remain missing, report them and stop before the final motion document. Choose text-to-video only after the creator explicitly selects it, and carry a non-empty static visual anchor in the copyable text. Only image-to-video may omit appearance/composition already carried by its real reference frame. |
 | VID-04 | structural_invariant | Explicit segment timing sums exactly to its shot's accepted duration—neither exceeding it nor leaving an unallocated remainder. |
@@ -53,7 +53,7 @@
 | CON-04 | structural_invariant | A continuity change states before, after, cause/source scene, effective range, and affected visible IDs. |
 | CON-05 | taste_option | Declared montage, ellipsis, dream, or subjective imagery may intentionally break ordinary continuity. |
 | CON-06 | structural_invariant | A continuity change names every existing downstream document it affects; future work is described, not pre-created. |
-| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one verbatim surface plus its shot and image scope; every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
+| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one persistent verbatim surface plus its shot and image scope; it excludes mutable story state, and every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、

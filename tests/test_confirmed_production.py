@@ -265,6 +265,25 @@ class ConfirmedProductionTests(unittest.TestCase):
                 ],
             )
 
+    def test_editorial_selection_does_not_change_generation_request(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job_path = self.write_creator_video_job(root)
+            job = json.loads(job_path.read_text(encoding="utf-8"))
+            job["parameters"] = {"duration": 4}
+            job_path.write_text(json.dumps(job), encoding="utf-8")
+            before = production_tool.prepare_job(root, job_path)
+            source = root / job["source"]
+            document = source.read_text(encoding="utf-8")
+            source.write_text(document.replace(
+                "- 分镜：SHOT-EP001-001\n",
+                "- 分镜：SHOT-EP001-001\n- 时长：4s\n- 入剪区间：0.5-2s\n",
+            ), encoding="utf-8")
+            after = production_tool.prepare_job(root, job_path)
+            self.assertEqual(after["parameters"], {"duration": 4})
+            self.assertEqual(after["prompt"], before["prompt"])
+            self.assertEqual(after["reference_bindings"], before["reference_bindings"])
+
     def test_creator_image_source_entry_supports_no_ref_and_real_ref(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)

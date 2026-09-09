@@ -1,7 +1,8 @@
 # 分镜阶段契约
 
 本阶段只拥有 `剧集/<EP>/分镜.md` 中的 `SHOT-...`、镜头职责、来源、时长、起止边界、声音、视觉依据和
-冻结关键帧。它继承剧本事实与视觉设定，不改写剧情或资产身份。
+冻结关键帧。它继承剧本事实与视觉设定，不改写剧情或资产身份。creator-first 的可选「入剪区间」也由
+本阶段拥有，视频提示词原样携带；「时长」仍是素材时长，不改写供应商请求或结构化容器账目。
 
 覆盖比较、场次视觉计划和调度推演都留在上下文；只有最终镜头与关键决定进入 `分镜.md`。来源使用
 场景 ID。已存在的图片提示词条目可用 `IMG-...` 可见标题引用；它不是已生成图片的证明，也不是分镜的前置门禁。没有条目时直接引用《视觉设定.md》，不建立 coverage、shots、keyframes、audition 或接受记录。
@@ -27,7 +28,7 @@
 | SHT-13 | reviewed_invariant | Multi-character blocking projects sourced, directed relationships into compatible positions, gaze, distance, and action lines for the current boundary. |
 | SHT-14 | reviewed_invariant | A contested moving object preserves ownership, trajectory, direction, time/round state, and end location across cuts unless an authorized ellipsis says otherwise. |
 | SHT-15 | reviewed_invariant | When the creator has declared delivery-surface overlay regions with their permanence and source, what a shot must be read for—face and gaze, readable evidence text, the decisive hand action—does not sit only inside those regions, and shots bind the declared version. An undeclared surface leaves the rule inactive: record it as unresolved and do not restage against a guessed region. |
-| SHT-16 | structural_invariant | The episode duration is the arithmetic sum of visible shot durations; an unresolved duration stays visibly unresolved, and a target delta is reported rather than used as a universal quality gate. |
+| SHT-16 | structural_invariant | Source durations retain their existing arithmetic. Creator-first optional 入剪区间 is paired numerically with MOTION, with 0 ≤ start < end ≤ positive source 时长; absence selects the whole source. Report source and selected totals separately, keep unresolved values visible, and compare the editorial target without a universal quality gate. |
 | SHT-17 | structural_invariant | A keyframe declares which boundary it freezes and binds that shot's matching boundary field. An end keyframe is a projection of `end_boundary`, never a second end-state authority, and per-shot keyframe count stays open: one start frame by default, an end frame only when the delivery workflow consumes it. Handing over a start/end pair delegates the motion between them to interpolation, so an action the shot exists for cannot rest on that gap alone. |
 | SHT-18 | craft_default | For a scene where directing choice materially changes audience knowledge, alignment, spatial pressure, performance ownership, or the landing, an accepted scene visual plan may bridge project direction and shots; it binds exact screenplay blocks, direction/profile, Location/View and relevant asset states, ordinary scenes skip it, and it never owns screenplay facts or shot boundaries. |
 | SHT-19 | reviewed_invariant | When a coverage audition is used, its approaches genuinely differ by knowledge timing, alignment, performance space, strongest image, landing, losses, or production fit; it uses no fixed option, grid, framing, or shot-count formula, and the selected approach is stated before formal shots are written. |
@@ -48,7 +49,7 @@
 | CON-04 | structural_invariant | A continuity change states before, after, cause/source scene, effective range, and affected visible IDs. |
 | CON-05 | taste_option | Declared montage, ellipsis, dream, or subjective imagery may intentionally break ordinary continuity. |
 | CON-06 | structural_invariant | A continuity change names every existing downstream document it affects; future work is described, not pre-created. |
-| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one verbatim surface plus its shot and image scope; every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
+| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one persistent verbatim surface plus its shot and image scope; it excludes mutable story state, and every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
