@@ -19,3 +19,6 @@ maintainers/evals/
 
 # 项目锁是运行时产物，不随参考运行分发。
 **/.short-drama/project.lock
+
+# 本地实测记录，不入库
+evaluations/model-behavior-probes.md
