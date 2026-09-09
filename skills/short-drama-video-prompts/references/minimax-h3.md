@@ -32,8 +32,41 @@ non_diegetic_music: ...
 - `integrated_multimodal_description` 按 `[Shot 1]`、`[Shot 2]` 写画面、动作、说话人、逐字对白和同步声音；
   单镜也保留 `[Shot 1]`。第一镜不加切镜时间戳，后续切镜用 `[Shot 2] At 00:03.500, ...`，时间递增且落在本次生成时长内。
 - `overall_soundscape` 汇总环境声、物理音效和非语言人声，不重复对白；对白事件留在上面的主时间线。
-  无非画内配乐时写 `non_diegetic_music: N/A`，不要留空让模型补乐。
+  无非画内配乐时写 `non_diegetic_music: N/A`，不要留空让模型补乐——这一条有实测支撑，见
+  [无对白镜](#无对白镜)。
 - 首帧模式从输入帧的可见姿态开始；首尾帧模式只能到达上游已接受终点，不发明过渡后的新状态。
+
+## 无对白镜
+
+H3 画音同轨。实测下来两个通道的表现并不一样：**配乐通道不写就会被模型填上**，语音通道在本套件
+的样本里没有出现过这种情况。下面两节按这个差别分开写，别把配乐那条的力度套到语音上。
+三段结构和六段结构同此处理。
+
+**`craft_default`**：无对白镜的声音段正面写，不用 `no dialogue`、`无对白`、`不说话` 这类排除句
+关闭语音通道。这条是写法约定，不是已验证的因果：本套件用 H3 实测过含 `No dialogue` 排除句的正文
+（文生 5 次、多槽参考 3 次，共 8 次），没有一次生成出台词，所以**不能说**排除句会招来对白。
+选正面写法的理由是它同时交代了这一镜该有什么声音，排除句只说了不要什么。
+
+正面写法有两处，缺一处都不算写满：
+
+- `overall_soundscape` 写这条声轨**由什么组成、覆盖多长**，只列已声明的 ambience 与音效。例如
+  `overall_soundscape: A faint wind outside the window is the only sound present, continuous from the first frame to the last.`
+- 主时间线（`integrated_multimodal_description` 或 `detailed_description`）把「不说话」写成**可见状态**，
+  绑到本镜真正在场的人身上。它是表演描述，说的是画面里看得见的事。例如
+  `Both keep their lips closed and their mouths still for the full shot.`
+
+### 配乐通道必须显式关掉
+
+这一条有实测支撑，且比上面一条重要得多：正文写了 `non_diegetic_music: N/A` 的 14 次生成没有一次
+自带配乐；完全不提配乐的 3 次里有 2 次返回了自造的背景音乐（持续谐波音床，随镜头变化换和弦）。
+**所以 `non_diegetic_music` 这一行不能省。** 语音通道目前没有观察到同样的现象，配乐通道有。
+
+### 时间线完整声明
+
+主时间线闭合时只声明**本镜实际有的**声音层：无对白镜写
+`The audio timeline is complete after the listed ambience and effects.`，
+把 `timed dialogue` 加进这句是有对白时才成立的写法。无对白镜枚举 `timed dialogue` 是一句与本镜事实
+不符的话；实测未观察到它单独导致生成台词，但正文不该写与本镜不符的内容。
 
 ## 选哪一种模式
 
