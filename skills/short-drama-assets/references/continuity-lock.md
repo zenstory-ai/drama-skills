@@ -40,11 +40,16 @@
 
 `锁面` 是**要被逐字带进提示词正文的那一小段字**，不是描述，也不是给人读的说明：
 
-- 用**可复制正文实际使用的语言**写，取值顺序与 `creator_markdown_check.py` 一致：
-  已接受的 `short-drama.json#/creator_authority/production_profile/choices/video_prompt_language`
-  优先，其次 `short-drama.json#/format/prompt_language`，都没有时是 `en`。**两者可能不同**——
-  创作者说明用中文、而目标模型方言要求正文用英文时，锁面必须跟正文走英文，跟着
-  `format/prompt_language` 写中文会让锁面在英文正文里永远匹配不上。
+- 锁面必须**逐字出现在它管到的每一份可复制正文里**。校验器会在三处查同一个字符串：
+  图片提示词正文、冻结关键帧提示词、视频提示词正文。
+- 这三处的语言不一定相同：图片提示词与冻结关键帧跟 `short-drama.json#/format/prompt_language`，
+  视频提示词优先跟已接受的 `production_profile.choices.video_prompt_language`。
+  **两者不同时（例如创作者说明 zh、H3 方言要求正文 en），一个字符串无法同时出现在三处**——
+  这是已知冲突，不是可以靠选对语言绕开的。两条出路：
+  - 优先把锁面写成**跨语言同形**的事实：色值（`#2F3A2C`）、编号、型号、专名、数字状态。
+    这类锁面在中英正文里都是同一串字符，三处都能原样命中；
+  - 确实需要自然语言描述时，把锁的 `镜头：` / `图片：` 范围收窄到语言一致的那些正文，
+    另一侧的同一事实另立一条锁，不要用一条锁去跨语言。
   因为它要落进可复制正文，不是落进创作者说明；
 - 只保留最小可辨识名词短语，通常是「颜色 + 材质/形制 + 物体」，例如
   `pale blue chunky knit wool sweater`；
