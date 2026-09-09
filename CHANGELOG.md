@@ -13,11 +13,27 @@
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-09-08
+
+本版第一次用真实生成去核对套件里「模型会怎样」这一类说法：四条没有复现，几条被确认并给出了数字。
+最直接可用的一条是对白容量——H3 中文约 4.1 字/秒，5 秒镜约 20 字，超出太多会静默截断。
+
 ### Added
 
 **对白先估时再定镜长。** 分镜在「声音」中简写录音实测或文本估计的依据，区分对白、停顿、并行动作与
 收尾反应；视频提示词按实际可用发声窗口复核。文本估计采用区间，按较慢一端选容得下的合法镜长，
 放不下回分镜延长或拆镜。这是可覆盖的 `craft_default`，不新增固定每秒字数的机械门槛（#106）。
+
+### Changed
+
+**全量复审现在会对无对白镜的声音段提出修订。** 审查表新增了画音同轨的核对项（`VID-22`、`VID-23`）：
+用 `No dialogue`、`无对白` 这类排除句代替正面声景、完整性声明枚举本镜并没有的层、以及非画内配乐层
+整个缺席，现在都会被报成 finding。
+
+*升级*：**既有《视频提示词.md》里用这类写法的镜头，本版之后复审会给 `REVISE`**，按下面 Fixed 里的
+正面写法改写即可——写出声轨的构成与覆盖区间、把「不说话」写成在场人物的可见状态、完整性声明只列
+本镜实际有的层、非画内配乐层显式写空（H3 为 `non_diegetic_music: N/A`）。本条只改变审查结论，
+不改目录、字段名或文档结构，也不要求重跑任何已生成的媒体。
 
 ### Fixed
 
@@ -1565,7 +1581,10 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.5...v0.6.6
+[0.6.5]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.4...v0.6.5
+[0.6.4]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.0...v0.6.1
