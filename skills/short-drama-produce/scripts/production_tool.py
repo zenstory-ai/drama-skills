@@ -1674,6 +1674,13 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                             "sha256": digest,
                         }
                     )
+                if _run_status(root, job_id, run_id) == "succeeded":
+                    # `collect` reached the same provider task first and its
+                    # outputs are already in the project. Leave that record
+                    # alone rather than replacing a collected attempt.
+                    raise RuntimeError(
+                        "这次尝试已经被 collect 取回并标为成功；本次运行不覆盖它"
+                    )
                 run["status"] = "succeeded"
                 run["finished_at"] = utc_now()
                 run["outputs"] = written
@@ -1703,6 +1710,16 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
         "state": "succeeded",
         "outputs": run["outputs"],
     }
+
+
+def _run_status(root: Path, job_id: str, run_id: str) -> str | None:
+    """The status one attempt currently has on disk, re-read rather than cached."""
+
+    for run in _read_run_history(root, job_id):
+        if str(run.get("run_id")) == run_id:
+            status = run.get("status")
+            return status if isinstance(status, str) else None
+    return None
 
 
 def collect_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
@@ -1751,6 +1768,18 @@ def collect_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, A
         adapter_outputs = _validate_adapter_outputs(job, response, output_root)
         written: list[dict[str, Any]] = []
         with _project_lock(root):
+            # The adapter call happens outside the lock, and `run_job` may have
+            # been polling the very same provider task the whole time — an
+            # attempt whose adapter is still alive looks exactly like one whose
+            # adapter died, because both sit at status `running`. Re-read the
+            # record before writing: if that attempt finished on its own, its
+            # outputs are already in the project and overwriting them here would
+            # race two writers onto the same bytes and drop its record.
+            if _run_status(root, job_id, str(run["run_id"])) == "succeeded":
+                raise RuntimeError(
+                    "这次尝试在取回期间已经自己完成了，产物已经落进项目；"
+                    "没有覆盖它——先看 status，确认无误就不需要再做别的"
+                )
             for target_name, source in adapter_outputs:
                 target = _project_file(root, target_name, create_parent=True)
                 digest, size = _copy_output(
@@ -1950,6 +1979,11 @@ def audit_project(root: Path) -> dict[str, Any]:
                     "run_id": run["run_id"],
                     "provider_job_id": handle,
                     "action": "collect_before_retry",
+                    # A live attempt and a dead one both sit at `running`, so
+                    # this finding cannot tell them apart. Collecting is still
+                    # the right first move — it is the only one that costs
+                    # nothing — and it refuses safely if the attempt finished.
+                    "note": "status 为 running 时它可能仍在正常轮询；collect 会先确认再写",
                 }
             )
         if running:

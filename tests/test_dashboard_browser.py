@@ -37,6 +37,9 @@ class DashboardBrowserTests(unittest.TestCase):
             "第二段正文 <!-- 行内备注 --> 后半句。\n\n"
             "```md\n<!-- 代码块里的注释要保留 -->\n```\n\n"
             "嵌套 <!<!-- 内层 -->-- 外层 --> 之后。\n\n"
+            "<!-- 跨行备注\n     第二行 --> 终止符后面的正文。\n\n"
+            "<!-- 注释里的围栏\n```md\n围栏里的内容不该出现\n```\n-->\n\n"
+            "围栏之后的正文。\n\n"
             "<!-- 这条没有闭合\n还有一行\n",
             encoding="utf-8",
         )
@@ -132,9 +135,20 @@ class DashboardBrowserTests(unittest.TestCase):
         self.assertNotIn("外层", body)
         # A fenced block is copied verbatim, comments included.
         self.assertIn("代码块里的注释要保留", body)
+        # Text after the terminator on a closing line is body text.
+        self.assertIn("终止符后面的正文。", body)
+        self.assertNotIn("跨行备注", body)
+        self.assertNotIn("第二行", body)
+        # A fence inside a comment is commented out, not a code block.
+        self.assertNotIn("围栏里的内容不该出现", body)
+        self.assertNotIn("注释里的围栏", body)
+        self.assertIn("围栏之后的正文。", body)
         # Unterminated: preserved, not swallowed along with the rest.
         self.assertIn("这条没有闭合", body)
         self.assertIn("还有一行", body)
+        # ...and preserved once. A line that closes one comment and opens an
+        # unterminated one must not render its prefix twice.
+        self.assertEqual(body.count("嵌套"), 1)
 
     def test_long_project_title_never_creates_horizontal_page_scroll(self) -> None:
         for width in (861, 860, 620, 390, 360):
