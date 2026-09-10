@@ -36,9 +36,9 @@ MOTION = """# EP001 视频提示词
 
 SCREENPLAY = """# EP001
 
-## EP001-SC003 内 · 剪辑室 · 夜
+## EP001-SC003 内 · 房间 · 夜
 
-江尘：诸君，且听龙吟。
+角色甲：这条路我自己走。
 """
 
 CUT_LIST = """# EP001 剪辑单
@@ -65,7 +65,7 @@ CUT_LIST = """# EP001 剪辑单
 - 时长：2.00
 - 取舍：入点=文件起点；出点=句尾收音后
 - 声音：保留原声
-- 字幕：诸君，且听龙吟
+- 字幕：这条路我自己走
 """
 
 
@@ -97,7 +97,7 @@ def check_subtitle_geometry() -> None:
     """
 
     width, height = 768, 1344
-    ass = _build_ass([(1.0, 2.0, "诸君，且听龙吟")], width, height)
+    ass = _build_ass([(1.0, 2.0, "这条路我自己走")], width, height)
     require(f"PlayResX: {width}" in ass, "PlayResX 必须等于画面宽")
     require(f"PlayResY: {height}" in ass, "PlayResY 必须等于画面高")
     style = next(line for line in ass.splitlines() if line.startswith("Style:"))
@@ -111,7 +111,7 @@ def check_subtitle_geometry() -> None:
     require(margin_v < height * 0.2, f"底边距 {margin_v} 会把字幕推离安全区")
     margin_h = float(fields[19])
     require(margin_h > 0, "左右边距为 0 时长句会顶到画面边缘")
-    require("诸君，且听龙吟" in ass, "台词原文必须原样进 ASS")
+    require("这条路我自己走" in ass, "台词原文必须原样进 ASS")
 
 
 def check_subtitle_timing() -> None:
@@ -214,11 +214,11 @@ def check_multi_subtitle() -> None:
         root = Path(scratch)
         episode = build(root, CUT_LIST)
         (episode / "剧本.md").write_text(
-            SCREENPLAY + "\n江晨：就是什么。\n江晨：就是少了点东西。\n江晨：少了什么。\n",
+            SCREENPLAY + "\n角色甲：就是什么。\n角色甲：就是少了点东西。\n角色甲：少了什么。\n",
             encoding="utf-8",
         )
         multi = CUT_LIST.replace(
-            "- 字幕：诸君，且听龙吟",
+            "- 字幕：这条路我自己走",
             "- 字幕 1：0.10-0.60 就是什么\n"
             "- 字幕 2：0.80-1.40 就是少了点东西\n"
             "- 字幕 3：1.50-1.90 少了什么",
@@ -233,7 +233,7 @@ def check_multi_subtitle() -> None:
 
         # 编号必须连续：跳号意味着有一句被漏掉了。
         gap = CUT_LIST.replace(
-            "- 字幕：诸君，且听龙吟",
+            "- 字幕：这条路我自己走",
             "- 字幕 1：0.10-0.60 就是什么\n- 字幕 3：1.50-1.90 少了什么",
         )
         (episode / "剪辑单.md").write_text(gap, encoding="utf-8")
@@ -246,7 +246,7 @@ def check_multi_subtitle() -> None:
 
         # 两句不能同时在屏上。
         overlap = CUT_LIST.replace(
-            "- 字幕：诸君，且听龙吟",
+            "- 字幕：这条路我自己走",
             "- 字幕 1：0.10-1.00 就是什么\n- 字幕 2：0.80-1.40 就是少了点东西",
         )
         (episode / "剪辑单.md").write_text(overlap, encoding="utf-8")
@@ -259,7 +259,7 @@ def check_multi_subtitle() -> None:
 
         # 多句时每句必须自带时间，否则无从摆放。
         untimed = CUT_LIST.replace(
-            "- 字幕：诸君，且听龙吟",
+            "- 字幕：这条路我自己走",
             "- 字幕 1：就是什么\n- 字幕 2：0.80-1.40 就是少了点东西",
         )
         (episode / "剪辑单.md").write_text(untimed, encoding="utf-8")
@@ -302,7 +302,7 @@ def main() -> int:
         require(delivery.loudness_lufs == -16.0, "交付响度没有解析出来")
         require(len(cuts) == 2, f"应解析出 2 段，实际 {len(cuts)}")
         require(len(unused) == 1, "未采用镜头没有解析出来")
-        require(cuts[1].subtitles[0][2] == "诸君，且听龙吟", "字幕文字没有解析出来")
+        require(cuts[1].subtitles[0][2] == "这条路我自己走", "字幕文字没有解析出来")
 
         clean = check_cuts(episode, cuts, root, probe=False)
         require(not clean, f"完好的剪辑单不该有 findings: {clean}")
@@ -315,7 +315,7 @@ def main() -> int:
         require(any("与「时长" in item for item in findings), f"时长漂移没抓到: {findings}")
 
         # 字幕必须能在剧本里找到原文；转写猜出来的字不行。
-        invented = CUT_LIST.replace("字幕：诸君，且听龙吟", "字幕：朱军且听龙银")
+        invented = CUT_LIST.replace("字幕：这条路我自己走", "字幕：这条陆我自己走")
         (episode / "剪辑单.md").write_text(invented, encoding="utf-8")
         _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
         findings = check_cuts(episode, cuts, root, probe=False)
