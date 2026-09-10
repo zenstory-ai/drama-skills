@@ -423,6 +423,93 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertIn("不写最终《视频提示词.md》", video_skill)
         self.assertIn("该字段只写这两个精确值", video_skill)
 
+    def test_a_stray_line_in_a_prompt_block_is_named_rather_than_hinted_at(self) -> None:
+        """One non-`>` line voids the whole block, and the block still looks right.
+
+        A separator, an HTML comment or a note between the heading and the
+        quote is invisible as a defect: the prompt is sitting there in full, so
+        "缺少唯一且非空的可复制提示词" reads as the checker being wrong and the
+        author goes looking anywhere but at that line. Three separate runs lost
+        time to exactly this, so the error has to quote the line.
+        """
+
+        for intruder in ("---", "<!-- 待确认 -->"):
+            with self.subTest(intruder=intruder), tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                episode = project / "剧集/EP001"
+                shutil.copytree(EPISODE, episode)
+                path = episode / "图片提示词.md"
+                document = path.read_text(encoding="utf-8")
+                marker = "### 可复制提示词\n"
+                self.assertIn(marker, document)
+                path.write_text(
+                    document.replace(marker, f"### 可复制提示词\n\n{intruder}\n", 1),
+                    encoding="utf-8",
+                )
+                errors = creator_markdown_check.validate_episode(episode, project)
+                reported = [
+                    error
+                    for error in errors
+                    if "缺少唯一且非空的可复制提示词" in error
+                ]
+                self.assertEqual(len(reported), 1, errors)
+                self.assertIn(intruder, reported[0])
+                self.assertIn("不以 `>` 开头", reported[0])
+
+    def test_a_bold_field_name_is_the_same_field(self) -> None:
+        """`- **参考**：…` is ordinary Markdown, not a different field.
+
+        Reading the emphasis as part of the key produced 缺少参考字段 while the
+        author was looking straight at a 参考 line, which is the least
+        actionable form the message could take.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            path = episode / "图片提示词.md"
+            document = path.read_text(encoding="utf-8")
+            self.assertIn("\n- 参考：", document)
+            path.write_text(
+                document.replace("\n- 参考：", "\n- **参考**："), encoding="utf-8"
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertEqual(
+                [error for error in errors if "缺少参考字段" in error], [], errors
+            )
+
+    def test_a_bare_category_heading_groups_entries_instead_of_failing(self) -> None:
+        """`## 人物` is a section divider, not an entry someone wrote wrong.
+
+        A malformed entry always tries to name something. Rejecting the bare
+        category word left 视觉设定.md with no way to group its entries at all.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            path = episode / "视觉设定.md"
+            document = path.read_text(encoding="utf-8")
+            first = document.index("\n## 人物 · ")
+            path.write_text(
+                document[:first] + "\n## 人物\n" + document[first:], encoding="utf-8"
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertEqual(
+                [error for error in errors if "条目标题必须写成" in error], [], errors
+            )
+            # A heading that does try to name something is still rejected.
+            path.write_text(
+                document[:first] + "\n## 人物·江晨\n" + document[first:],
+                encoding="utf-8",
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertTrue(
+                [error for error in errors if "条目标题必须写成" in error], errors
+            )
+
     def test_validator_catches_a_motion_duration_that_drifts_from_its_shot(self) -> None:
         """时长 is what reaches the generator; a stale copy must not pass silently.
 
@@ -622,10 +709,17 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            self.assertIn(
-                "SHOT-EP001-001: 缺少唯一且非空的冻结关键帧提示词",
-                creator_markdown_check.validate_episode(episode, project),
-            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            # The message now carries why, so match the claim and read the cause.
+            reported = [
+                error
+                for error in errors
+                if error.startswith(
+                    "SHOT-EP001-001: 缺少唯一且非空的冻结关键帧提示词"
+                )
+            ]
+            self.assertEqual(len(reported), 1, errors)
+            self.assertIn("冻结关键帧提示词", reported[0])
 
     def test_screen_name_makes_a_foreign_language_keyframe_checkable(self) -> None:
         """The prompt body is English while 视觉设定.md is Chinese.

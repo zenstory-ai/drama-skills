@@ -4,6 +4,9 @@
 只复制引用块内的自然语言提示词；本文件不触发图片或媒体服务，实际生产交
 `$short-drama-produce` 并单独确认。
 
+**这是项目级文件，不是某一集的创作文档。** 它不参与 `creator_markdown_check.py` 的
+五文档校验；某一集要用的资产提示词写进该集的《图片提示词.md》，骨架以 `SKILL.md` 为准。
+
 ```markdown
 # 项目 Look Development 提示词
 
