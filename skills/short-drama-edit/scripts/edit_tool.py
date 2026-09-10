@@ -1,0 +1,638 @@
+#!/usr/bin/env python3
+"""Assemble a short-drama episode from its cut list.
+
+Three subcommands, deliberately separated so a report can never borrow one's
+evidence for another's claim:
+
+``check``   parse and cross-check ``剪辑单.md`` against the project. No rendering.
+``render``  cut, join, burn subtitles and normalize loudness into 制作成果/成片/.
+``verify``  measure an already-rendered film and print the numbers.
+
+``verify`` prints measurements, never verdicts. Whether the film is any good is
+a question for review or for the creator, and no number here answers it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any, NamedTuple, Optional, Sequence
+
+MINIMUM_PYTHON = (3, 9)
+if sys.version_info < MINIMUM_PYTHON:
+    raise SystemExit(
+        "short-drama-edit needs Python {}.{} or newer; this interpreter is {}.{}".format(
+            *MINIMUM_PYTHON, sys.version_info.major, sys.version_info.minor
+        )
+    )
+
+CUT_LIST_NAME = "剪辑单.md"
+MOTION_DOCUMENT = "视频提示词.md"
+SCREENPLAY_DOCUMENT = "剧本.md"
+OUTPUT_DIRECTORY = Path("制作成果") / "成片"
+SEGMENT_DIRECTORY = "分段"
+
+CUT_HEADING = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
+MOTION_HEADING = re.compile(r"^##\s+(MOTION-[^\s·]+)")
+FIELD = re.compile(r"^-\s*([^：]+)：\s*(.*)$")
+UNUSED_LINE = re.compile(r"^-\s*未采用镜头：\s*(.*)$")
+# A source line is "MOTION-... · relative/path". The separator is the same
+# middle dot the storyboard uses for reference slots, so the two documents read
+# alike; a plain slash would collide with the path itself.
+SOURCE = re.compile(r"^(MOTION-\S+)\s*·\s*(.+?)\s*$")
+SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
+TOLERANCE = 0.005
+
+
+class EditError(Exception):
+    """A defect in the cut list or its inputs, reported rather than raised through."""
+
+
+class Cut(NamedTuple):
+    cut_id: str
+    title: str
+    motion: str
+    media: str
+    start: float
+    end: float
+    declared: float
+    subtitle: str
+    subtitle_window: Optional[tuple[float, float]]
+    line_number: int
+
+
+class Delivery(NamedTuple):
+    target_seconds: Optional[float]
+    loudness_lufs: Optional[float]
+    burn_subtitles: bool
+    frame_size: Optional[tuple[int, int]]
+    fps: Optional[float]
+
+
+def _seconds(raw: str, *, field: str, line: int) -> float:
+    try:
+        return float(raw.strip())
+    except ValueError as error:
+        raise EditError(f"{CUT_LIST_NAME}:{line}: {field} 不是秒数: {raw!r}") from error
+
+
+def _parse_delivery(lines: Sequence[str]) -> Delivery:
+    target = None
+    loudness = None
+    burn = True
+    frame_size: Optional[tuple[int, int]] = None
+    fps: Optional[float] = None
+    for raw in lines:
+        match = FIELD.match(raw)
+        if not match:
+            continue
+        name, value = match.group(1).strip(), match.group(2).strip()
+        if name == "成片目标时长":
+            found = re.search(r"[0-9]+(?:\.[0-9]+)?", value)
+            if found:
+                target = float(found.group(0))
+        elif name == "交付响度":
+            found = re.search(r"-?[0-9]+(?:\.[0-9]+)?", value)
+            if found:
+                loudness = float(found.group(0))
+        elif name == "字幕":
+            burn = "无" != value.strip() and "不烧" not in value
+        elif name == "画幅与帧率":
+            size = re.search(r"([0-9]{2,5})\s*[×x*]\s*([0-9]{2,5})", value)
+            if size:
+                frame_size = (int(size.group(1)), int(size.group(2)))
+            rate = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*fps", value, re.I)
+            if rate:
+                fps = float(rate.group(1))
+    return Delivery(target, loudness, burn, frame_size, fps)
+
+
+def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
+    """Read 剪辑单.md into a delivery spec, ordered cuts, and unused-material notes."""
+
+    if not path.is_file():
+        raise EditError(f"没有 {path}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    preamble: list[str] = []
+    unused: list[str] = []
+    cuts: list[Cut] = []
+    current: Optional[dict[str, Any]] = None
+
+    def close(pending: Optional[dict[str, Any]]) -> None:
+        if pending is None:
+            return
+        cuts.append(_finish_cut(pending))
+
+    for number, raw in enumerate(lines, start=1):
+        heading = CUT_HEADING.match(raw)
+        if heading:
+            close(current)
+            current = {
+                "cut_id": heading.group(1),
+                "title": (heading.group(2) or "").strip(),
+                "line": number,
+                "fields": {},
+            }
+            continue
+        if raw.startswith("## "):
+            close(current)
+            current = None
+            continue
+        if current is None:
+            unused_match = UNUSED_LINE.match(raw)
+            if unused_match:
+                unused.extend(
+                    item.strip() for item in unused_match.group(1).split("；") if item.strip()
+                )
+            preamble.append(raw)
+            continue
+        field = FIELD.match(raw)
+        if field:
+            current["fields"][field.group(1).strip()] = (field.group(2).strip(), number)
+    close(current)
+    return _parse_delivery(preamble), cuts, unused
+
+
+def _finish_cut(pending: dict[str, Any]) -> Cut:
+    fields: dict[str, tuple[str, int]] = pending["fields"]
+    cut_id: str = pending["cut_id"]
+    line: int = pending["line"]
+
+    def required(name: str) -> tuple[str, int]:
+        if name not in fields:
+            raise EditError(f"{CUT_LIST_NAME}:{line}: {cut_id} 缺少「{name}」")
+        return fields[name]
+
+    source_raw, source_line = required("来源")
+    source = SOURCE.match(source_raw)
+    if not source:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{source_line}: {cut_id} 的来源要写成 "
+            f"「MOTION-... · 项目相对路径」，当前是 {source_raw!r}"
+        )
+    start_raw, start_line = required("入点")
+    end_raw, end_line = required("出点")
+    declared_raw, declared_line = required("时长")
+    subtitle_raw = fields.get("字幕", ("无", line))[0]
+    window_raw = fields.get("字幕时间")
+    window = None
+    if window_raw is not None:
+        found = SUBTITLE_WINDOW.match(window_raw[0])
+        if not found:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 的字幕时间要写成「起-止」秒数"
+            )
+        window = (float(found.group(1)), float(found.group(2)))
+    return Cut(
+        cut_id=cut_id,
+        title=pending["title"],
+        motion=source.group(1),
+        media=source.group(2),
+        start=_seconds(start_raw, field="入点", line=start_line),
+        end=_seconds(end_raw, field="出点", line=end_line),
+        declared=_seconds(declared_raw, field="时长", line=declared_line),
+        subtitle="" if subtitle_raw.strip() == "无" else subtitle_raw.strip(),
+        subtitle_window=window,
+        line_number=line,
+    )
+
+
+def _which(name: str) -> Optional[str]:
+    return shutil.which(name)
+
+
+def _require(name: str) -> str:
+    found = _which(name)
+    if found is None:
+        raise EditError(
+            f"PATH 上没有 {name}。本阶段要渲染和测量真实媒体，没有它就没有可报告的事实；"
+            "先安装 ffmpeg，不用别的手段近似。"
+        )
+    return found
+
+
+def probe_duration(media: Path) -> float:
+    probe = _require("ffprobe")
+    result = subprocess.run(
+        [probe, "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=nw=1:nk=1", str(media)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise EditError(f"ffprobe 读不出时长: {media} ({result.stderr.strip()})")
+    return float(result.stdout.strip())
+
+
+def probe_stream(media: Path) -> dict[str, Any]:
+    probe = _require("ffprobe")
+    result = subprocess.run(
+        [probe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=width,height,r_frame_rate", "-show_entries", "format=duration",
+         "-of", "json", str(media)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise EditError(f"ffprobe 读不出流信息: {media} ({result.stderr.strip()})")
+    document = json.loads(result.stdout)
+    stream = (document.get("streams") or [{}])[0]
+    rate = stream.get("r_frame_rate", "0/1")
+    numerator, _, denominator = rate.partition("/")
+    fps = float(numerator) / float(denominator) if float(denominator or 0) else 0.0
+    return {
+        "width": stream.get("width"),
+        "height": stream.get("height"),
+        "fps": round(fps, 3),
+        "duration": float(document.get("format", {}).get("duration", 0.0)),
+    }
+
+
+def check_cuts(
+    episode: Path, cuts: Sequence[Cut], project_root: Path, *, probe: bool
+) -> list[str]:
+    """Every mechanical cross-check the cut list can be held to. Returns findings."""
+
+    findings: list[str] = []
+    if not cuts:
+        findings.append(f"{CUT_LIST_NAME}: 没有 CUT 条目")
+        return findings
+
+    seen: set[str] = set()
+    for cut in cuts:
+        if cut.cut_id in seen:
+            findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: CUT ID 重复: {cut.cut_id}")
+        seen.add(cut.cut_id)
+
+    motion_path = episode / MOTION_DOCUMENT
+    if motion_path.is_file():
+        known = {
+            match.group(1)
+            for match in (
+                MOTION_HEADING.match(line)
+                for line in motion_path.read_text(encoding="utf-8").splitlines()
+            )
+            if match
+        }
+        for cut in cuts:
+            if cut.motion not in known:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
+                    f"{cut.motion} 不在《{MOTION_DOCUMENT}》中"
+                )
+    else:
+        findings.append(f"没有 {motion_path}，来源 MOTION 无法核对")
+
+    screenplay = ""
+    screenplay_path = episode / SCREENPLAY_DOCUMENT
+    if screenplay_path.is_file():
+        screenplay = screenplay_path.read_text(encoding="utf-8")
+
+    for cut in cuts:
+        span = cut.end - cut.start
+        if cut.start < 0:
+            findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 入点为负")
+        if span <= 0:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点不晚于入点"
+            )
+        elif abs(span - cut.declared) > TOLERANCE:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 - 入点 = "
+                f"{span:.2f}，与「时长：{cut.declared:.2f}」不符"
+            )
+        media = _resolve_media(episode, project_root, cut.media)
+        if media is None:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
+            )
+        elif probe:
+            available = probe_duration(media)
+            if cut.end > available + TOLERANCE:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
+                    f"超过素材实际时长 {available:.2f}"
+                )
+        if cut.subtitle and screenplay and _normalize(cut.subtitle) not in _normalize(screenplay):
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕在《"
+                f"{SCREENPLAY_DOCUMENT}》里找不到原文: {cut.subtitle}"
+            )
+        if cut.subtitle_window is not None:
+            window_start, window_end = cut.subtitle_window
+            if not 0 <= window_start < window_end <= span + TOLERANCE:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕时间超出本段区间"
+                )
+
+    findings.extend(_overlap_findings(cuts))
+    return findings
+
+
+def _overlap_findings(cuts: Sequence[Cut]) -> list[str]:
+    """Two cuts drawn from one file must not reuse the same frames (EDT-06)."""
+
+    findings: list[str] = []
+    by_media: dict[str, list[Cut]] = {}
+    for cut in cuts:
+        by_media.setdefault(cut.media, []).append(cut)
+    for media, group in by_media.items():
+        ordered = sorted(group, key=lambda item: item.start)
+        for earlier, later in zip(ordered, ordered[1:]):
+            if later.start < earlier.end - TOLERANCE:
+                findings.append(
+                    f"{CUT_LIST_NAME}: {earlier.cut_id} 与 {later.cut_id} 在同一素材 "
+                    f"{media} 上区间重叠（{later.start:.2f} < {earlier.end:.2f}）"
+                )
+    return findings
+
+
+def _normalize(text: str) -> str:
+    """Compare dialogue ignoring punctuation and whitespace, never ignoring characters."""
+
+    return re.sub(r"[\s，。！？、；：…—·\-“”‘’\"'()（）]", "", text)
+
+
+def _resolve_media(episode: Path, project_root: Path, relative: str) -> Optional[Path]:
+    for base in (episode, project_root):
+        candidate = (base / relative).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def render(
+    episode: Path,
+    project_root: Path,
+    cuts: Sequence[Cut],
+    delivery: Delivery,
+    *,
+    burn_subtitles: bool,
+) -> dict[str, Any]:
+    ffmpeg = _require("ffmpeg")
+    _require("ffprobe")
+    output_root = episode / OUTPUT_DIRECTORY
+    segments_root = output_root / SEGMENT_DIRECTORY
+    segments_root.mkdir(parents=True, exist_ok=True)
+
+    segments: list[Path] = []
+    for cut in cuts:
+        media = _resolve_media(episode, project_root, cut.media)
+        if media is None:
+            raise EditError(f"{cut.cut_id} 的素材不存在: {cut.media}")
+        segment = segments_root / f"{cut.cut_id}.mp4"
+        _run([
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", str(segment),
+        ])
+        segments.append(segment)
+
+    with tempfile.TemporaryDirectory() as scratch:
+        listing = Path(scratch) / "segments.txt"
+        listing.write_text(
+            "".join(f"file '{segment.as_posix()}'\n" for segment in segments), encoding="utf-8"
+        )
+        joined = output_root / "成片-未混音.mp4"
+        _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+              "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
+
+        filters: list[str] = []
+        subtitle_path = None
+        if burn_subtitles and any(cut.subtitle for cut in cuts):
+            subtitle_path = output_root / "字幕.srt"
+            subtitle_path.write_text(_build_srt(cuts), encoding="utf-8")
+            escaped = str(subtitle_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+            # libass reads an SRT against a 384-high canvas unless told otherwise,
+            # so a fixed FontSize would shrink as the delivery gets taller. Scale
+            # the style with the real frame instead.
+            height = probe_stream(segments[0])["height"] or 1920
+            style = (
+                f"FontSize={max(16, round(height * 0.034))},"
+                f"Outline={max(1, round(height * 0.0018))},Shadow=1,"
+                f"MarginV={max(24, round(height * 0.055))},"
+                "BorderStyle=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Alignment=2"
+            )
+            filters.append(
+                f"subtitles='{escaped}':original_size={_frame_geometry(segments[0])}"
+                f":force_style='{style}'"
+            )
+
+        final = output_root / "成片.mp4"
+        command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
+        if filters:
+            command += ["-vf", ",".join(filters), "-c:v", "libx264",
+                        "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
+        else:
+            command += ["-c:v", "copy"]
+        if delivery.loudness_lufs is not None:
+            command += ["-af", _loudnorm_filter(ffmpeg, joined, delivery.loudness_lufs)]
+            command += ["-c:a", "aac", "-b:a", "192k"]
+        else:
+            command += ["-c:a", "copy"]
+        command.append(str(final))
+        _run(command)
+
+    return {
+        "成片": str(final),
+        "分段": [str(segment) for segment in segments],
+        "字幕": str(subtitle_path) if subtitle_path else None,
+        "段数": len(segments),
+        "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
+    }
+
+
+def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
+    """Two-pass EBU R128.
+
+    One pass is a dynamic normalizer that lands several dB from the target; the
+    delivered loudness would then be a number nobody chose. Measure first, feed
+    the measurement back, and the second pass is linear.
+    """
+
+    common = f"I={target}:TP=-1.5:LRA=11"
+    result = subprocess.run(
+        [ffmpeg, "-hide_banner", "-nostats", "-i", str(media),
+         "-af", f"loudnorm={common}:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True, check=False,
+    )
+    measured = _last_json_object(result.stderr)
+    required = ("input_i", "input_tp", "input_lra", "input_thresh", "target_offset")
+    if not measured or not all(key in measured for key in required):
+        # Say so rather than silently delivering a single-pass approximation.
+        raise EditError(
+            "loudnorm 第一遍没有返回可用的测量结果，无法做两遍响度标准化；"
+            "检查成片音轨是否为空"
+        )
+    return (
+        f"loudnorm={common}:measured_I={measured['input_i']}"
+        f":measured_TP={measured['input_tp']}:measured_LRA={measured['input_lra']}"
+        f":measured_thresh={measured['input_thresh']}"
+        f":offset={measured['target_offset']}:linear=true:print_format=summary"
+    )
+
+
+def _frame_geometry(media: Path) -> str:
+    stream = probe_stream(media)
+    return f"{stream['width']}x{stream['height']}"
+
+
+def _build_srt(cuts: Sequence[Cut]) -> str:
+    """Subtitle timing lives in output time; the text is the screenplay's, verbatim."""
+
+    blocks: list[str] = []
+    cursor = 0.0
+    index = 0
+    for cut in cuts:
+        span = cut.end - cut.start
+        if cut.subtitle:
+            window = cut.subtitle_window or (0.0, span)
+            index += 1
+            blocks.append(
+                f"{index}\n{_timecode(cursor + window[0])} --> "
+                f"{_timecode(cursor + window[1])}\n{cut.subtitle}\n"
+            )
+        cursor += span
+    return "\n".join(blocks)
+
+
+def _timecode(seconds: float) -> str:
+    milliseconds = int(round(seconds * 1000))
+    hours, milliseconds = divmod(milliseconds, 3_600_000)
+    minutes, milliseconds = divmod(milliseconds, 60_000)
+    whole, milliseconds = divmod(milliseconds, 1000)
+    return f"{hours:02d}:{minutes:02d}:{whole:02d},{milliseconds:03d}"
+
+
+def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
+    """Measure the rendered film. Every entry is a number or an honest 未测."""
+
+    ffmpeg = _require("ffmpeg")
+    final = episode / OUTPUT_DIRECTORY / "成片.mp4"
+    if not final.is_file():
+        raise EditError(f"没有 {final}；先运行 render")
+    stream = probe_stream(final)
+    expected = sum(cut.end - cut.start for cut in cuts)
+    measurements: dict[str, Any] = {
+        "成片": str(final),
+        "实测时长": round(stream["duration"], 2),
+        "各段时长之和": round(expected, 2),
+        "时长差": round(stream["duration"] - expected, 2),
+        "画幅": f"{stream['width']}×{stream['height']}",
+        "画幅是否等于交付规格": _matches_frame_size(delivery, stream),
+        "帧率": stream["fps"],
+        "帧率是否等于交付规格": _matches_fps(delivery, stream),
+        "目标时长": delivery.target_seconds,
+        "与目标时长的差": (
+            round(stream["duration"] - delivery.target_seconds, 2)
+            if delivery.target_seconds is not None
+            else "未测（剪辑单没有声明目标时长）"
+        ),
+    }
+    result = subprocess.run(
+        [ffmpeg, "-hide_banner", "-nostats", "-i", str(final),
+         "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True, check=False,
+    )
+    measured = _last_json_object(result.stderr)
+    if measured and "input_i" in measured:
+        measurements["实测响度 LUFS"] = float(measured["input_i"])
+        measurements["实测真峰 dBTP"] = float(measured["input_tp"])
+    else:
+        measurements["实测响度 LUFS"] = "未测（loudnorm 没有返回可解析的测量结果）"
+    measurements["交付响度目标"] = delivery.loudness_lufs
+    measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
+    measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
+    return measurements
+
+
+def _matches_frame_size(delivery: Delivery, stream: dict[str, Any]) -> Any:
+    if delivery.frame_size is None:
+        return "未测（剪辑单没有声明画幅）"
+    return (stream["width"], stream["height"]) == delivery.frame_size
+
+
+def _matches_fps(delivery: Delivery, stream: dict[str, Any]) -> Any:
+    if delivery.fps is None:
+        return "未测（剪辑单没有声明帧率）"
+    return abs(stream["fps"] - delivery.fps) < 0.05
+
+
+def _last_json_object(text: str) -> Optional[dict[str, Any]]:
+    """ffmpeg prints its own tail after the loudnorm block, so decode a prefix."""
+
+    decoder = json.JSONDecoder()
+    start = text.rfind("{")
+    while start != -1:
+        try:
+            document, _ = decoder.raw_decode(text[start:].lstrip())
+        except json.JSONDecodeError:
+            start = text.rfind("{", 0, start)
+            continue
+        if isinstance(document, dict):
+            return document
+        start = text.rfind("{", 0, start)
+    return None
+
+
+def _run(command: Sequence[str]) -> None:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise EditError(f"命令失败: {' '.join(command[:6])}…\n{result.stderr.strip()}")
+
+
+def _emit(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False))
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="短剧剪辑：核对剪辑单、渲染成片、测量成片")
+    parser.add_argument("command", choices=("check", "render", "verify"))
+    parser.add_argument("episode", help="剧集/<EP> 目录")
+    parser.add_argument("--project-root", default=".", help="项目根目录（解析素材相对路径）")
+    parser.add_argument("--no-subtitles", action="store_true", help="render 时不烧字幕")
+    arguments = parser.parse_args(argv)
+
+    episode = Path(arguments.episode).resolve()
+    project_root = Path(arguments.project_root).resolve()
+    try:
+        delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
+        if arguments.command == "check":
+            findings = check_cuts(
+                episode, cuts, project_root, probe=_which("ffprobe") is not None
+            )
+            payload: dict[str, Any] = {
+                "段数": len(cuts),
+                "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
+                "目标时长": delivery.target_seconds,
+                "未采用镜头": unused,
+                "findings": findings,
+            }
+            if _which("ffprobe") is None:
+                payload["未测"] = ["区间是否超过素材实际时长（PATH 上没有 ffprobe）"]
+            _emit(payload)
+            return 1 if findings else 0
+        if arguments.command == "render":
+            findings = check_cuts(episode, cuts, project_root, probe=True)
+            if findings:
+                _emit({"findings": findings, "已渲染": False})
+                return 1
+            _emit(render(
+                episode, project_root, cuts, delivery,
+                burn_subtitles=delivery.burn_subtitles and not arguments.no_subtitles,
+            ))
+            return 0
+        _emit(verify(episode, cuts, delivery))
+        return 0
+    except EditError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

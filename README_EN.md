@@ -111,7 +111,10 @@ Use $short-drama-video-prompts to write EP001's video prompts for MiniMax H3; I 
 # 4. Produce after explicit confirmation
 Use $short-drama-produce to preview EP001's accepted image, video, TTS, or timeline-music job; execute only after I confirm
 
-# 5. Review when needed
+# 5. Cut the generated material into a film
+Use $short-drama-edit to cut EP001's produced shots into a film, stating the reason behind every in and out point
+
+# 6. Review when needed
 Use $short-drama-review to review EP001's script and prompts
 ```
 
@@ -149,6 +152,7 @@ flowchart LR
     sb["Storyboard/keyframes<br/>$short-drama-storyboard"]:::phase
     vid["Video prompts<br/>$short-drama-video-prompts"]:::phase
     prod["Confirmed production<br/>$short-drama-produce"]:::phase
+    cut["Editing<br/>$short-drama-edit"]:::phase
     rev["Review<br/>$short-drama-review"]:::final
     pkg["Text delivery package"]:::final
 
@@ -158,7 +162,7 @@ flowchart LR
     assets --> sb --> vid
     img --> prod
     vid --> prod
-    prod --> rev --> pkg
+    prod --> cut --> rev --> pkg
 ```
 
 | Skill | Responsibility |
@@ -172,11 +176,14 @@ flowchart LR
 | `short-drama-storyboard` | Optional scene visual plans and Coverage Auditions, source coverage, shots, boundaries, and frozen keyframes |
 | `short-drama-video-prompts` | Ordered action, multi-actor performance and attention handoffs, camera/audio intent, timing, exact boundaries, and cross-shot timeline-music specs |
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, MiniMax H3 video, and MiniMax Music profiles are included |
+| `short-drama-edit` | Usable band per generated clip, in/out points and shot order, dialogue integrity, subtitles and loudness; written as a cut list and rendered into a film |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
 `$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard.
 Delivery selects the requested Markdown and media directly instead of creating lifecycle
-records just for packaging. An existing single-episode
+records just for packaging. The five Markdown documents are the creative truth; the
+post-production cut list only records which frames of the existing material reach the film,
+and changes none of them. An existing single-episode
 screenplay can enter normalization or asset extraction directly. When a complete
 multi-episode script needs an episode map, development indexes its actual structure once,
 reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form
