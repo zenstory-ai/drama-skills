@@ -27,8 +27,22 @@ PNG = base64.b64decode(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail", action="store_true")
+    # A real video provider bills at submission and can be interrupted at any
+    # point afterwards. `--submit-then-fail` reproduces exactly that: record the
+    # handle the way a live adapter does, then die before returning anything.
+    parser.add_argument("--submit-then-fail", action="store_true")
     args = parser.parse_args()
     job = json.load(sys.stdin.buffer)
+    collecting = job.get("collect_provider_job_id")
+    if args.submit_then_fail and not collecting:
+        destination = job.get("handle_path")
+        if isinstance(destination, str) and destination:
+            path = Path(destination)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps({"provider_job_id": "fixture-task-1"}), encoding="utf-8"
+            )
+        return 7
     if args.fail:
         return 7
     directory_raw = job.get("output_root")
@@ -52,7 +66,10 @@ def main() -> int:
                 handle.setframerate(8000)
                 handle.writeframes(struct.pack("<h", 0) * 80)
         outputs.append({"target": target, "source": str(path)})
-    json.dump({"outputs": outputs, "provider_job_id": "fixture-local"}, sys.stdout)
+    response = {"outputs": outputs, "provider_job_id": "fixture-local"}
+    if isinstance(collecting, str) and collecting:
+        response["provider_job_id"] = collecting
+    json.dump(response, sys.stdout)
     return 0
 
 
