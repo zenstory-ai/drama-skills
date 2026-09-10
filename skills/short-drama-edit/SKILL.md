@@ -101,7 +101,7 @@ license: MIT
 
 ```text
 python3 <本技能目录>/scripts/edit_tool.py check <剧集/EP001> --project-root <project>
-python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--no-subtitles] [--subtitles ffmpeg|remotion]
+python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--no-subtitles] [--subtitles ffmpeg|remotion] [--remotion-concurrency N]
 python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
@@ -111,9 +111,11 @@ python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-r
 输出 `剧集/<EP>/制作成果/成片/`。`verify` 只测量已经渲染出来的成片并回报数字，不改文件、
 不给质量结论。
 
-字幕默认由 ffmpeg 烧录，不需要任何外部依赖。`--subtitles remotion` 换成一条排版可调的路线：
-它渲染一段透明字幕层再合成到未改动的画面上，装一次 Node 依赖，工作区在项目之外。
-两条路线的取舍见 [声音、字幕与音乐](references/sound-and-subtitles.md)，装法见
+字幕默认由 ffmpeg 烧录，不需要任何外部依赖，长片也是秒级。`--subtitles remotion` 换成一条
+排版可调的路线：它渲染一段透明字幕层再合成到未改动的画面上，装一次 Node 依赖，工作区在
+项目之外。这条路的叠层是**逐帧过无头浏览器**渲的，长度等于整部成片，慢且吃内存，
+只在片子不长且排版确实有要求时用；并发默认压在 2，要提高先量再改（`--remotion-concurrency`）。
+两条路线的取舍见 [声音、字幕与音乐](references/sound-and-subtitles.md)，装法与代价见
 [Remotion 字幕叠层](assets/remotion/README.md)。
 
 `render` 会保留每段切好的中间文件。它们是下一轮微调的输入，也是「这一刀到底切在哪」的证据；

@@ -54,9 +54,16 @@ REMOTION_SOURCE_FILES = (
     "src/schema.ts",
     "src/Root.tsx",
     "src/Subtitles.tsx",
+    "src/font.ts",
 )
 DEFAULT_REMOTION_WORKSPACE = Path.home() / ".cache" / "short-drama-edit" / "remotion"
 REMOTION_COMPOSITION = "Subtitles"
+# Remotion composites every frame in a headless browser and defaults its worker
+# count to the machine's core count. On a 10-core / 8 GB laptop that is ten
+# browsers each holding a full 1080x1920 frame, and a 48-second overlay took the
+# machine down. Two workers finish the same job without competing for memory;
+# raise it only on a machine with headroom to spare.
+DEFAULT_REMOTION_CONCURRENCY = 2
 SUBTITLE_RENDERERS = ("ffmpeg", "remotion")
 
 CUT_HEADING = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
@@ -529,6 +536,7 @@ def render(
     burn_subtitles: bool,
     renderer: str = "ffmpeg",
     remotion_workspace: Path = DEFAULT_REMOTION_WORKSPACE,
+    remotion_concurrency: int = DEFAULT_REMOTION_CONCURRENCY,
 ) -> dict[str, Any]:
     ffmpeg = _require("ffmpeg")
     _require("ffprobe")
@@ -578,7 +586,8 @@ def render(
             subtitle_path.write_text(_build_srt(cues), encoding="utf-8")
             if renderer == "remotion":
                 overlay_path = _render_remotion_overlay(
-                    output_root, cues, canvas, sum(spans), remotion_workspace
+                    output_root, cues, canvas, sum(spans), remotion_workspace,
+                    concurrency=remotion_concurrency,
                 )
             else:
                 styled = styled_path = output_root / "字幕.ass"
@@ -709,6 +718,7 @@ def _render_remotion_overlay(
     canvas: dict[str, Any],
     duration: float,
     workspace_root: Path,
+    concurrency: int = DEFAULT_REMOTION_CONCURRENCY,
 ) -> Path:
     """Render the subtitle layer as a transparent video with Remotion.
 
@@ -764,7 +774,8 @@ def _render_remotion_overlay(
     overlay = output_root / "字幕叠层.webm"
     result = subprocess.run(
         [npx, "remotion", "render", REMOTION_COMPOSITION, str(overlay),
-         f"--props={props}", "--log=error"],
+         f"--props={props}", "--log=error",
+         f"--concurrency={max(1, concurrency)}"],
         cwd=str(workspace), capture_output=True, text=True, check=False,
     )
     if result.returncode != 0 or not overlay.is_file():
@@ -980,6 +991,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--remotion-workspace", type=Path, default=DEFAULT_REMOTION_WORKSPACE,
         help=f"Remotion 运行工作区（默认 {DEFAULT_REMOTION_WORKSPACE}），必须在项目之外",
     )
+    parser.add_argument(
+        "--remotion-concurrency", type=int, default=DEFAULT_REMOTION_CONCURRENCY,
+        help=(
+            f"Remotion 的并发无头浏览器数（默认 {DEFAULT_REMOTION_CONCURRENCY}）。"
+            "每个都持有一整帧，调高很容易把内存吃满"
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     episode = Path(arguments.episode).resolve()
@@ -1011,6 +1029,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 burn_subtitles=delivery.burn_subtitles and not arguments.no_subtitles,
                 renderer=arguments.subtitles,
                 remotion_workspace=arguments.remotion_workspace,
+                remotion_concurrency=arguments.remotion_concurrency,
             ))
             return 0
         _emit(verify(episode, cuts, delivery))
