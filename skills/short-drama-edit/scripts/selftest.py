@@ -189,6 +189,75 @@ def check_shot_match() -> None:
             raise AssertionError("「调暖一点」应当被拒绝")
 
 
+def check_multi_subtitle() -> None:
+    """A shot can carry several lines, and all of them must reach the screen.
+
+    The exchange "就是什么 / 就是少了点东西 / 少了什么" is one over-shoulder shot.
+    A cut list that holds only one subtitle per cut silently drops the other
+    two: the film plays lines that never appear, and nothing reports it.
+    """
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        (episode / "剧本.md").write_text(
+            SCREENPLAY + "\n江晨：就是什么。\n江晨：就是少了点东西。\n江晨：少了什么。\n",
+            encoding="utf-8",
+        )
+        multi = CUT_LIST.replace(
+            "- 字幕：诸君，且听龙吟",
+            "- 字幕 1：0.10-0.60 就是什么\n"
+            "- 字幕 2：0.80-1.40 就是少了点东西\n"
+            "- 字幕 3：1.50-1.90 少了什么",
+        )
+        (episode / "剪辑单.md").write_text(multi, encoding="utf-8")
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        require(len(cuts[1].subtitles) == 3, f"三句应全部解析，实际 {len(cuts[1].subtitles)}")
+        require(cuts[1].subtitles[2][2] == "少了什么", "字幕顺序错了")
+        require(not check_cuts(episode, cuts, root, probe=False), "三句合法字幕不该报错")
+        cues = _subtitle_cues(cuts, [cut.end - cut.start for cut in cuts])
+        require(len(cues) == 3, f"三句应各自成为一条 cue，实际 {len(cues)}")
+
+        # 编号必须连续：跳号意味着有一句被漏掉了。
+        gap = CUT_LIST.replace(
+            "- 字幕：诸君，且听龙吟",
+            "- 字幕 1：0.10-0.60 就是什么\n- 字幕 3：1.50-1.90 少了什么",
+        )
+        (episode / "剪辑单.md").write_text(gap, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("连续" in str(error), f"跳号报错不对: {error}")
+        else:
+            raise AssertionError("字幕编号跳号应当被拒绝")
+
+        # 两句不能同时在屏上。
+        overlap = CUT_LIST.replace(
+            "- 字幕：诸君，且听龙吟",
+            "- 字幕 1：0.10-1.00 就是什么\n- 字幕 2：0.80-1.40 就是少了点东西",
+        )
+        (episode / "剪辑单.md").write_text(overlap, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("重叠" in str(error), f"重叠报错不对: {error}")
+        else:
+            raise AssertionError("字幕时间重叠应当被拒绝")
+
+        # 多句时每句必须自带时间，否则无从摆放。
+        untimed = CUT_LIST.replace(
+            "- 字幕：诸君，且听龙吟",
+            "- 字幕 1：就是什么\n- 字幕 2：0.80-1.40 就是少了点东西",
+        )
+        (episode / "剪辑单.md").write_text(untimed, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("各自带时间" in str(error), f"缺时间报错不对: {error}")
+        else:
+            raise AssertionError("多句字幕缺时间应当被拒绝")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -198,7 +267,7 @@ def main() -> int:
         require(delivery.loudness_lufs == -16.0, "交付响度没有解析出来")
         require(len(cuts) == 2, f"应解析出 2 段，实际 {len(cuts)}")
         require(len(unused) == 1, "未采用镜头没有解析出来")
-        require(cuts[1].subtitle == "诸君，且听龙吟", "字幕文字没有解析出来")
+        require(cuts[1].subtitles[0][2] == "诸君，且听龙吟", "字幕文字没有解析出来")
 
         clean = check_cuts(episode, cuts, root, probe=False)
         require(not clean, f"完好的剪辑单不该有 findings: {clean}")
@@ -255,6 +324,7 @@ def main() -> int:
     check_subtitle_geometry()
     check_subtitle_timing()
     check_shot_match()
+    check_multi_subtitle()
     print("short-drama-edit self-tests passed")
     return 0
 
