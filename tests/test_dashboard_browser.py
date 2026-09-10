@@ -30,6 +30,19 @@ class DashboardBrowserTests(unittest.TestCase):
         )
         (cls.project / "剧本.md").write_text(long_text, encoding="utf-8")
         (cls.project / "短文.md").write_text("# 短文\n\n只有一段。", encoding="utf-8")
+        (cls.project / "带注释.md").write_text(
+            "# 带注释\n\n"
+            "<!-- 改编取舍：\n     番号一律虚构。 -->\n\n"
+            "第一段正文。\n\n"
+            "第二段正文 <!-- 行内备注 --> 后半句。\n\n"
+            "```md\n<!-- 代码块里的注释要保留 -->\n```\n\n"
+            "嵌套 <!<!-- 内层 -->-- 外层 --> 之后。\n\n"
+            "<!-- 跨行备注\n     第二行 --> 终止符后面的正文。\n\n"
+            "<!-- 注释里的围栏\n```md\n围栏里的内容不该出现\n```\n-->\n\n"
+            "围栏之后的正文。\n\n"
+            "<!-- 这条没有闭合\n还有一行\n",
+            encoding="utf-8",
+        )
         empty = cls.workspace / "empty"
         make_project(empty, "空项目")
 
@@ -92,6 +105,50 @@ class DashboardBrowserTests(unittest.TestCase):
         expect(self.page.locator("#message")).to_contain_text("已载入")
 
         self.assertEqual(stage.evaluate("node => node.scrollTop"), 0)
+
+    def test_creator_notes_in_markdown_comments_stay_out_of_the_reading_pane(
+        self,
+    ) -> None:
+        """剧本 format sanctions comments for creator notes; the pane showed them.
+
+        A screenplay legitimately opens with several lines of adaptation notes,
+        and they were rendered as body text — so the first thing the creator read
+        in the one pane meant for reading the screenplay was their own scratch
+        notes. The same rule says unrecognised Markdown is preserved rather than
+        quietly "fixed", so an unterminated comment must still render.
+        """
+
+        self.content_button("带注释").evaluate("node => node.click()")
+        expect(self.page.locator("#filename")).to_have_text("带注释")
+        body = self.page.locator(".content-stage").inner_text()
+
+        self.assertIn("第一段正文。", body)
+        self.assertNotIn("改编取舍", body)
+        self.assertNotIn("番号一律虚构", body)
+        # An inline comment loses only itself, not the sentence around it.
+        self.assertIn("第二段正文", body)
+        self.assertIn("后半句", body)
+        self.assertNotIn("行内备注", body)
+        # Removing the inner comment must not leave a fresh `<!--` behind.
+        self.assertIn("嵌套", body)
+        self.assertIn("之后。", body)
+        self.assertNotIn("外层", body)
+        # A fenced block is copied verbatim, comments included.
+        self.assertIn("代码块里的注释要保留", body)
+        # Text after the terminator on a closing line is body text.
+        self.assertIn("终止符后面的正文。", body)
+        self.assertNotIn("跨行备注", body)
+        self.assertNotIn("第二行", body)
+        # A fence inside a comment is commented out, not a code block.
+        self.assertNotIn("围栏里的内容不该出现", body)
+        self.assertNotIn("注释里的围栏", body)
+        self.assertIn("围栏之后的正文。", body)
+        # Unterminated: preserved, not swallowed along with the rest.
+        self.assertIn("这条没有闭合", body)
+        self.assertIn("还有一行", body)
+        # ...and preserved once. A line that closes one comment and opens an
+        # unterminated one must not render its prefix twice.
+        self.assertEqual(body.count("嵌套"), 1)
 
     def test_long_project_title_never_creates_horizontal_page_scroll(self) -> None:
         for width in (861, 860, 620, 390, 360):

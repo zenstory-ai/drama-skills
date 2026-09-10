@@ -22,6 +22,7 @@ EXPECTED_SKILLS = {
     "short-drama-storyboard",
     "short-drama-video-prompts",
     "short-drama-produce",
+    "short-drama-edit",
     "short-drama-review",
 }
 

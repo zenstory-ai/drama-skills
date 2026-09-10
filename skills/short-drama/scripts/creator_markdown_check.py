@@ -39,6 +39,18 @@ REF_RE = re.compile(
     r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
     re.IGNORECASE,
 )
+# The same slot grammar, but the locator is a document entry instead of a file.
+# A creator who generates in an external tool never has the file inside the
+# project, and the copyable body only ever needed 顺序 and 用途 -- the path is a
+# production input, not a prompt input. PLAN says "this picture does not exist
+# here; attach it yourself in this order", which is a different claim from
+# 「已有图片」 and from 「待补」.
+PLAN_RE = re.compile(
+    r"(PLAN-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
+    r"((?:IMG|SHOT)-[A-Z0-9-]+)《([^》\n]+)》"
+    r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
+    re.IGNORECASE,
+)
 # One picture answers one question. 「同一张图承担两个作用时分开说明」 in
 # references/reference-roles.md is what makes a slot translatable into a
 # provider role, so the vocabulary is closed rather than free prose.
@@ -53,11 +65,43 @@ REF_PURPOSES = (
     "结束帧",
     "风格",
 )
+# `EP001-SC001` is the documented shape, but a project that scopes ids by season
+# writes `S01-EP001-SC001`. Both are one stable scene id, so the pattern takes
+# any hyphenated prefix rather than exactly one segment.
+SLOT_HEAD_RE = re.compile(
+    r"(?:REF|PLAN)-[A-Za-z0-9][A-Za-z0-9-]*（顺序：", re.IGNORECASE
+)
+SCENE_ID_PATTERN = r"(?:[A-Za-z0-9]+-)+SC[0-9]+"
+SCENE_HEADING_RE = re.compile(
+    r"^## (" + SCENE_ID_PATTERN + r")\b", re.MULTILINE
+)
+SCENE_ID_RE = re.compile(SCENE_ID_PATTERN)
+# A scene the storyboard decided not to film. SHT-01 has always allowed the
+# omission and always required a reason; without a place to write it the
+# omission and an oversight look identical in the finished document.
+UNFILMED_LINE_RE = re.compile(
+    r"^[ \t\u3000]*[-*+][ \t\u3000]*未拍场次[：:](.*)$", re.MULTILINE
+)
+UNFILMED_ENTRY_RE = re.compile(
+    r"(" + SCENE_ID_PATTERN + r")（理由：([^）\n]+)）"
+)
+# Dialogue reaches the model as a quoted run, either inside the H3 `<d>` tag or
+# inside quotation marks. Runs shorter than four Han characters are in-frame
+# labels and interjections far more often than they are lines, so the check
+# stays off them rather than inventing an escape hatch for signage.
+SPOKEN_SPAN_RE = re.compile(r"<d>([^<]*)</d>|[\"“]([^\"”]*)[\"”]|「([^」]*)」")
+SPOKEN_RUN_RE = re.compile(r"[\u3400-\u9fff]{4,}")
 EXPLICIT_TEXT_TO_VIDEO = "无（创作者已明确选择文生视频）"
 PENDING_REFERENCE_SUFFIX_RE = re.compile(r"；待补参考图：[^；。\n]+。?$")
 VISUAL_CATEGORIES = ("人物", "造型", "地点", "道具")
+# A malformed entry always tries to name something; a heading that is only the
+# category word is a section divider ("## 人物"), and rejecting it left the
+# document with no way to group entries at all.
 VISUAL_SETTING_LINE_RE = re.compile(
-    r"^#{2,4}[ \t　]*(?:" + "|".join(VISUAL_CATEGORIES) + r")[^\n]*$", re.MULTILINE
+    r"^#{2,4}[ \t　]*(?:"
+    + "|".join(VISUAL_CATEGORIES)
+    + r")(?![ \t　]*$)[^\n]*$",
+    re.MULTILINE,
 )
 VISUAL_SETTING_HEADING_RE = re.compile(
     r"^## (" + "|".join(VISUAL_CATEGORIES) + r") · (.+?)[ \t　]*$", re.MULTILINE
@@ -137,6 +181,10 @@ def _fields(section: str, *, owner: str, errors: list[str]) -> dict[str, str]:
     pairs = re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE)
     fields: dict[str, str] = {}
     for key, value in pairs:
+        # `- **参考**：…` is ordinary Markdown and reads as the same field to a
+        # human. Taking the emphasis literally turned it into a different key,
+        # so the author got "缺少参考字段" while looking straight at 参考.
+        key = re.sub(r"^(?:\*\*|__|\*|_)(.+?)(?:\*\*|__|\*|_)$", r"\1", key.strip())
         if key in fields:
             errors.append(f"{owner}: 字段重复: {key}")
         fields[key] = value
@@ -151,9 +199,22 @@ def _contains_ref_token(value: str) -> bool:
     return "ref-" in value.casefold()
 
 
+def _contains_plan_token(value: str) -> bool:
+    return "plan-" in value.casefold()
+
+
+def _contains_slot_token(value: str) -> bool:
+    return _contains_ref_token(value) or _contains_plan_token(value)
+
+
 def _is_none(value: str) -> bool:
-    return not _contains_ref_token(value) and bool(
-        re.fullmatch(r"无(?:（[^）]+）)?", _plain(value))
+    # `[^）]+` would stop at the first closing bracket, so a gap list that names
+    # an entry in brackets -- 「江晨人物图（IMG-...）」 -- fell through to the REF
+    # syntax error, whose obvious repair is deleting the gap record. That is the
+    # silent downgrade this contract exists to prevent, so the note takes any
+    # content as long as it is bracketed.
+    return not _contains_slot_token(value) and bool(
+        re.fullmatch(r"无(?:（.+）)?", _plain(value), re.DOTALL)
     )
 
 
@@ -169,7 +230,7 @@ def _has_pending_references(value: str) -> bool:
 
 
 def _is_no_external_reference(value: str) -> bool:
-    return not _contains_ref_token(value) and bool(
+    return not _contains_slot_token(value) and bool(
         re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", value.strip())
     )
 
@@ -191,6 +252,43 @@ def _copyable_prompt(
     return prompt or None
 
 
+def _copyable_prompt_cause(
+    section: str, heading: str = r"可复制(?:通用)?提示词"
+) -> str:
+    """Why `_copyable_prompt` returned None, as a suffix for the error.
+
+    "缺少唯一且非空的可复制提示词" is true of four different documents and tells
+    the author nothing about which one they wrote. The expensive case is a
+    single stray line -- a separator, an HTML comment, a note -- inside an
+    otherwise complete block: the prompt is visibly right there, so the message
+    reads as a checker bug and the real line goes unlooked at.
+    """
+
+    # Name the heading the author actually has to write, not this one's default:
+    # the keyframe caller passes a different one, and pointing at the wrong
+    # heading is worse than saying nothing.
+    label = "### " + re.sub(r"\(\?:([^)]*)\)\?", "", heading).replace("\\", "")
+    markers = list(re.finditer(rf"^### {heading}\s*$", section, re.MULTILINE))
+    if not markers:
+        return f"：没有 `{label}` 小节标题"
+    if len(markers) > 1:
+        return f"：`{label}` 出现了 {len(markers)} 次，只能有一个"
+    body = section[markers[0].end() :]
+    following = re.search(r"^###\s+|^##\s+", body, re.MULTILINE)
+    if following is not None:
+        body = body[: following.start()]
+    lines = [line for line in body.splitlines() if line.strip()]
+    if not lines:
+        return f"：`{label}` 下面是空的"
+    intruders = [line for line in lines if not line.startswith(">")]
+    if intruders:
+        return (
+            "：小节内有不以 `>` 开头的行，整块因此不算引用块——"
+            f"把它移到小节外，或删掉：{_excerpt(intruders[0])}"
+        )
+    return "：引用块里只有空白"
+
+
 def _portable_path(value: str) -> bool:
     if not value or "\\" in value or re.match(r"^[A-Za-z]:", value):
         return False
@@ -205,20 +303,53 @@ def _inside(path: Path, root: Path) -> bool:
     return resolved == root or root in resolved.parents
 
 
-def _references(value: str, owner: str, project_root: Path, errors: list[str]) -> None:
+class EntryIndex(NamedTuple):
+    """The document entries a `PLAN-...` locator is allowed to name."""
+
+    images: dict[str, str]
+    shots: frozenset
+
+
+def _slot_matches(value: str) -> list:
+    """Every `REF-...` and `PLAN-...` slot in `value`, in written order.
+
+    The two patterns cannot match the same span: a REF locator has to be an
+    image path and a PLAN locator has to be an `IMG-`/`SHOT-` id.
+    """
+    found = []
+    for kind, pattern in (("REF", REF_RE), ("PLAN", PLAN_RE)):
+        for match in pattern.finditer(value):
+            found.append((match.start(), match.end(), kind, match.groups()))
+    found.sort(key=lambda item: item[0])
+    return found
+
+
+def _references(
+    value: str,
+    owner: str,
+    project_root: Path,
+    errors: list[str],
+    entries: Optional[EntryIndex] = None,
+) -> frozenset:
+    """Validate one 输入参考图/参考 declaration; return the slot kinds it uses."""
     if _is_none(value):
-        return
+        return frozenset()
     reference_value = PENDING_REFERENCE_SUFFIX_RE.sub("", value.strip())
-    matches = list(REF_RE.finditer(value))
+    matches = _slot_matches(reference_value)
     cursor = 0
     separators_are_valid = True
-    for index, match in enumerate(matches):
-        if reference_value[cursor : match.start()] != ("" if index == 0 else "；"):
+    for index, (start, end, _kind, _groups) in enumerate(matches):
+        if reference_value[cursor:start] != ("" if index == 0 else "；"):
             separators_are_valid = False
-        cursor = match.end()
+        cursor = end
     trailing = reference_value[cursor:]
+    # Counted as slot heads on the same text the slots were matched in. A bare
+    # token count would read the `ref-` in a real path like
+    # `输入/参考图/ref-江晨.png` as a second slot and reject a correct declaration.
+    declared = len(SLOT_HEAD_RE.findall(reference_value))
+    kinds = frozenset(item[2] for item in matches)
     if (
-        len(matches) != len(re.findall(r"\bREF-[A-Z0-9-]+\b", value))
+        len(matches) != declared
         or not matches
         or not separators_are_valid
         or trailing not in {"", "。"}
@@ -231,34 +362,38 @@ def _references(value: str, owner: str, project_root: Path, errors: list[str]) -
                 f"{owner}: 待补参考图必须写在最后一个 REF 槽位之后，"
                 "缺口之间只用、分隔"
             )
+        elif _contains_plan_token(value) and not _contains_ref_token(value):
+            errors.append(f"{owner}: 输入参考图必须使用完整 PLAN 语法")
         else:
             errors.append(f"{owner}: 输入参考图必须使用完整 REF 语法")
-        return
-    refs = [(match.group(1), int(match.group(2)), match.group(3)) for match in matches]
-    slots = [item[0] for item in refs]
-    orders = [item[1] for item in refs]
-    paths = [item[2] for item in refs]
+        return kinds
+    groups = [item[3] for item in matches]
+    slot_kinds = [item[2] for item in matches]
+    slots = [group[0] for group in groups]
+    orders = [int(group[1]) for group in groups]
+    locators = [group[2] for group in groups]
+    purposes = [(group[4] or "").strip() for group in groups]
+    # A declaration made only of PLAN slots is not a REF declaration, so its
+    # diagnostics must not send the creator looking for a REF line.
+    noun = "PLAN" if kinds == frozenset({"PLAN"}) else "REF"
     if len(slots) != len(set(slots)):
-        errors.append(f"{owner}: REF 槽位重复")
+        errors.append(f"{owner}: {noun} 槽位重复")
     if len(orders) != len(set(orders)) or sorted(orders) != list(
         range(1, len(orders) + 1)
     ):
-        errors.append(f"{owner}: REF 顺序必须唯一且从 1 连续编号")
-    purposes = [
-        match.group(5).strip() if match.group(5) else "" for match in matches
-    ]
-    path_purposes = list(zip(paths, purposes))
-    if len(path_purposes) != len(set(path_purposes)):
-        errors.append(f"{owner}: REF 路径与用途完全重复")
+        errors.append(f"{owner}: {noun} 顺序必须唯一且从 1 连续编号")
+    locator_purposes = list(zip(locators, purposes))
+    if len(locator_purposes) != len(set(locator_purposes)):
+        errors.append(f"{owner}: {noun} 路径与用途完全重复")
     for slot, purpose in zip(slots, purposes):
         if not purpose:
             errors.append(
-                f"{owner}: REF 缺少用途: {slot}；用途只能是"
+                f"{owner}: {noun} 缺少用途: {slot}；用途只能是"
                 f"{'、'.join(REF_PURPOSES)}其中一个"
             )
         elif purpose not in REF_PURPOSES:
             errors.append(
-                f"{owner}: REF 用途不在允许集合内: {slot}（{purpose}）；"
+                f"{owner}: {noun} 用途不在允许集合内: {slot}（{purpose}）；"
                 f"只能是{'、'.join(REF_PURPOSES)}"
             )
     for role in ("起始帧", "结束帧"):
@@ -266,28 +401,72 @@ def _references(value: str, owner: str, project_root: Path, errors: list[str]) -
             errors.append(f"{owner}: 同一条目只能有一张{role}参考图")
     if "结束帧" in purposes and "起始帧" not in purposes:
         errors.append(f"{owner}: 绑定结束帧参考图时必须同时绑定起始帧")
-    for match, (_, _, raw_path) in zip(matches, refs):
-        label, may_control, must_not_control = (
-            match.group(4),
-            match.group(6),
-            match.group(7),
-        )
-        if not _portable_path(raw_path):
-            errors.append(f"{owner}: REF 路径不是安全的项目相对路径: {raw_path}")
+    for index, (kind, group) in enumerate(zip(slot_kinds, groups)):
+        slot, raw_locator, label = group[0], group[2], group[3]
+        may_control, must_not_control = group[5], group[6]
+        if kind == "REF":
+            if not _portable_path(raw_locator):
+                errors.append(
+                    f"{owner}: REF 路径不是安全的项目相对路径: {raw_locator}"
+                )
+            else:
+                reference_path = project_root / raw_locator
+                if not _inside(reference_path, project_root):
+                    errors.append(f"{owner}: REF 路径越出项目根目录: {raw_locator}")
+                elif not reference_path.is_file():
+                    errors.append(f"{owner}: REF 文件不存在: {raw_locator}")
         else:
-            reference_path = project_root / raw_path
-            if not _inside(reference_path, project_root):
-                errors.append(f"{owner}: REF 路径越出项目根目录: {raw_path}")
-            elif not reference_path.is_file():
-                errors.append(f"{owner}: REF 文件不存在: {raw_path}")
+            _plan_locator(
+                raw_locator, label, owner, slot, purposes[index], entries, errors
+            )
         if not re.search(r"[\u4e00-\u9fff]", label):
-            errors.append(f"{owner}: REF 缺少中文名称: {match.group(1)}")
+            errors.append(f"{owner}: {kind} 缺少中文名称: {slot}")
         if not may_control.strip() or not must_not_control.strip():
-            errors.append(f"{owner}: REF 必须同时声明控制与不得控制: {match.group(1)}")
+            errors.append(f"{owner}: {kind} 必须同时声明控制与不得控制: {slot}")
         allowed = {item.strip() for item in re.split(r"[、,，]", may_control)}
         prohibited = {item.strip() for item in re.split(r"[、,，]", must_not_control)}
         if "" in allowed or "" in prohibited or allowed & prohibited:
-            errors.append(f"{owner}: REF 控制与不得控制范围冲突: {match.group(1)}")
+            errors.append(f"{owner}: {kind} 控制与不得控制范围冲突: {slot}")
+    return kinds
+
+
+def _plan_locator(
+    locator: str,
+    label: str,
+    owner: str,
+    slot: str,
+    purpose: str,
+    entries: Optional[EntryIndex],
+    errors: list[str],
+) -> None:
+    """A planned picture still has to name an entry that exists today.
+
+    The picture itself is the creator's to supply, but what it depicts is
+    already decided by an `IMG-...` board or a `SHOT-...` frozen keyframe. A
+    locator that resolves to neither is a reference nobody can act on.
+    """
+    if entries is None:
+        return
+    if locator.startswith("IMG-"):
+        if locator not in entries.images:
+            errors.append(f"{owner}: PLAN 指向不存在的 IMG 条目: {locator}")
+        elif label != entries.images[locator]:
+            errors.append(f"{owner}: PLAN 中文名称与 IMG 标题不一致: {slot}")
+    elif locator.startswith("SHOT-"):
+        if locator not in entries.shots:
+            errors.append(f"{owner}: PLAN 指向不存在的 SHOT 条目: {locator}")
+        elif purpose == "起始帧":
+            # The picture that opens this shot is this shot's own frozen
+            # keyframe. Another shot's keyframe opens a different moment.
+            own = re.sub(r"^(?:SHOT|MOTION)-", "SHOT-", owner)
+            if own.startswith("SHOT-") and locator != own:
+                errors.append(
+                    f"{owner}: 起始帧 PLAN 必须指向本镜的冻结关键帧: {locator}"
+                )
+    else:
+        errors.append(
+            f"{owner}: PLAN 定位符只能是 IMG-... 或 SHOT-...: {locator}"
+        )
 
 
 def _excerpt(value: str, limit: int = 60) -> str:
@@ -434,7 +613,11 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
 
 
 def _named_entries(
-    prompt: str, entries: list[VisualEntry], *, fold_case: bool = False
+    prompt: str,
+    entries: list[VisualEntry],
+    *,
+    fold_case: bool = False,
+    by_entry_name: bool = False,
 ) -> set[tuple[str, str]]:
     """Which declared entries does this frozen keyframe actually call by name?
 
@@ -446,7 +629,16 @@ def _named_entries(
         haystack = haystack.casefold()
     owners: dict[str, list[VisualEntry]] = {}
     for entry in entries:
-        for designator in entry.designators:
+        # 来源 quotes 剧本.md, which is written in the project's own language and
+        # calls people by their entry names — not by the 画面代称 a prompt body
+        # uses. Matching a Chinese screenplay quote against an English designator
+        # would never fire, so that text is matched by entry name instead. An
+        # entry that opted out with `画面代称：无` opted out of being found by
+        # name at all, and stays out of both.
+        needles = (
+            [entry.name] if by_entry_name and entry.designators else entry.designators
+        )
+        for designator in needles:
             needle = re.sub(r"\s+", " ", designator).strip()
             if fold_case:
                 needle = needle.casefold()
@@ -533,13 +725,17 @@ def _check_named_coverage(
     basis: "VisualBasis",
     entries: list[VisualEntry],
     errors: list[str],
+    *,
+    by_entry_name: bool = False,
 ) -> None:
     """Every entry this text calls by name is either in frame or declared 画外."""
     # Matching is case-sensitive so an ordinary English word never impersonates a
     # character called May or Will. A body that writes the name in another case
     # would otherwise fall out of the check silently, so it is reported here.
-    named = _named_entries(prompt, entries)
-    folded = _named_entries(prompt, entries, fold_case=True)
+    named = _named_entries(prompt, entries, by_entry_name=by_entry_name)
+    folded = _named_entries(
+        prompt, entries, fold_case=True, by_entry_name=by_entry_name
+    )
     for category, name in sorted(folded - named):
         errors.append(
             f"{owner}: {where}里的名字与画面代称大小写不一致: {category}「{name}」；"
@@ -738,6 +934,17 @@ def _check_language_designators(
             )
 
 
+def _declared_seconds(value: str) -> Optional[float]:
+    """The number of seconds a 时长 field declares, however it is spelled.
+
+    `4s`, `4 秒` and `4秒` are the same duration. Returning None for anything
+    else keeps an unparseable value out of the comparison instead of turning a
+    formatting difference into a false duration conflict.
+    """
+    match = re.search(r"(\d+(?:\.\d+)?)", value or "")
+    return float(match.group(1)) if match else None
+
+
 def _check_continuity_locks(
     locks: list[ContinuityLock],
     *,
@@ -777,6 +984,112 @@ def _check_continuity_locks(
                 errors.append(f"{lock_id}: {image_id} 可复制提示词缺少锁面")
 
 
+def _storyboard_head(storyboard: str) -> str:
+    """The part of 分镜.md that belongs to the episode rather than to a shot."""
+    match = re.search(r"^## SHOT-", storyboard, re.MULTILINE)
+    return storyboard if match is None else storyboard[: match.start()]
+
+
+def _shot_sources(
+    value: str, owner: str, scenes: "frozenset", errors: list[str]
+) -> list:
+    """Resolve one shot's 来源 against the scene ids that exist in 剧本.md."""
+    plain = _plain(value)
+    if not plain:
+        errors.append(f"{owner}: 缺少来源字段")
+        return []
+    # 《镜头手艺》 asks for the scene id plus a short quote of the source line,
+    # and a quote contains commas of its own. So the ids are read out of the
+    # field rather than by cutting it into pieces on punctuation.
+    if SCENE_ID_RE.match(plain) is None:
+        errors.append(
+            f"{owner}: 来源必须以《剧本.md》的场景 ID 开头: {_excerpt(plain, 24)}"
+        )
+        return []
+    resolved = []
+    for scene_id in _unique(SCENE_ID_RE.findall(plain)):
+        if scene_id not in scenes:
+            errors.append(f"{owner}: 来源场景不在《剧本.md》中: {scene_id}")
+        else:
+            resolved.append(scene_id)
+    return resolved
+
+
+def _unfilmed_scenes(
+    storyboard: str, scenes: "frozenset", errors: list[str]
+) -> dict:
+    """Scenes 分镜.md declares it deliberately does not film, with reasons."""
+    head = _storyboard_head(storyboard)
+    declared: dict = {}
+    # The line belongs to the episode, not to a shot. Placed inside a SHOT
+    # section it would be read as that shot's field and quietly do nothing,
+    # which looks exactly like forgetting to write it.
+    if len(UNFILMED_LINE_RE.findall(storyboard)) != len(
+        UNFILMED_LINE_RE.findall(head)
+    ):
+        errors.append("分镜.md: 未拍场次要写在第一个 SHOT 之前的正文开头")
+    for value in UNFILMED_LINE_RE.findall(head):
+        value = value.strip()
+        entries = UNFILMED_ENTRY_RE.findall(value)
+        remainder = UNFILMED_ENTRY_RE.sub("", value).strip("；;。 ")
+        if not entries or remainder:
+            errors.append(
+                "分镜.md: 未拍场次必须写成 <场景 ID>（理由：……），多项用；分隔"
+            )
+            continue
+        for scene_id, reason in entries:
+            if not reason.strip():
+                errors.append(f"分镜.md: 未拍场次缺少理由: {scene_id}")
+            elif scene_id not in scenes:
+                errors.append(f"分镜.md: 未拍场次不在《剧本.md》中: {scene_id}")
+            else:
+                declared[scene_id] = reason.strip()
+    return declared
+
+
+def _spoken_key(value: str) -> str:
+    """Drop punctuation and spacing so quoting choices do not decide identity."""
+    return re.sub(r"[^\u3400-\u9fff0-9A-Za-z]", "", value)
+
+
+def _quoted_speech(prompt: str) -> list:
+    # The body is one prompt; a quote that happens to wrap across lines is the
+    # same quote. Chinese does not separate words with spaces, so rejoining the
+    # lines reconstructs the run exactly.
+    joined = prompt.replace("\n", "")
+    runs: list = []
+    for match in SPOKEN_SPAN_RE.finditer(joined):
+        span = next((group for group in match.groups() if group), "")
+        # An unpaired quotation mark can pair with one much later and swallow
+        # the narration between them. That span is not a quotation, so it is
+        # not evidence of an invented line either.
+        if len(span) > 200:
+            continue
+        runs.extend(SPOKEN_RUN_RE.findall(span))
+    return runs
+
+
+def _check_spoken_lines(
+    prompt: str, owner: str, sources: "tuple", errors: list[str]
+) -> None:
+    """Quoted Chinese in a copyable body has to come from an upstream document.
+
+    The video stage already owes the screenplay verbatim dialogue. Checking it
+    here is what stops a prompt from writing the line the shot wishes the
+    character had said. 视觉设定.md and 分镜.md count as sources too: a location
+    or prop entry carries the exact text on a sign, and a shot's own fields
+    carry the on-screen text and sound this shot was designed around. What no
+    upstream document contains is a line the prompt made up.
+    """
+    for run in _quoted_speech(prompt):
+        key = _spoken_key(run)
+        if key and not any(key in source for source in sources):
+            errors.append(
+                f"{owner}: 可复制提示词的引文在《剧本.md》《视觉设定.md》《分镜.md》里都找不到: "
+                f"{_excerpt(run, 24)}"
+            )
+
+
 def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list[str]:
     """Return all deterministic contract errors for ``episode``."""
     episode = episode.resolve()
@@ -790,6 +1103,22 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
     storyboard = (episode / "分镜.md").read_text(encoding="utf-8")
     video = (episode / "视频提示词.md").read_text(encoding="utf-8")
     visual = (episode / "视觉设定.md").read_text(encoding="utf-8")
+    screenplay = (episode / "剧本.md").read_text(encoding="utf-8")
+    scene_headings = SCENE_HEADING_RE.findall(screenplay)
+    scenes = frozenset(scene_headings)
+    if not scenes:
+        errors.append(
+            "剧本.md: 没有可解析的场景标题；场景标题写成 ## <场景 ID> 内|外 · 地点 · 时间"
+        )
+    if len(scene_headings) != len(scenes):
+        errors.append("剧本.md: 场景 ID 重复")
+    spoken_sources = (
+        _spoken_key(screenplay),
+        _spoken_key(visual),
+        _spoken_key(storyboard),
+    )
+    unfilmed = _unfilmed_scenes(storyboard, scenes, errors)
+    claimed_scenes: set = set()
     locks = _continuity_locks(visual, errors)
     visual_entries = _visual_entries(visual, errors)
     other_headings = {
@@ -797,8 +1126,12 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         for match in OTHER_SETTING_HEADING_RE.finditer(visual)
         if match.group(1).strip() not in VISUAL_CATEGORIES
     }
+    shots = _sections(storyboard, "SHOT")
     image_pairs = re.findall(r"^## (IMG-[A-Z0-9-]+) · (.+)$", images, re.MULTILINE)
     image_headings = dict(image_pairs)
+    # A planned picture names the board or keyframe that already decides what it
+    # depicts, so both indexes have to exist before any declaration is read.
+    entries = EntryIndex(images=image_headings, shots=frozenset(shots))
     all_image_headings = re.findall(r"^## (IMG-[A-Z0-9-]+)\b", images, re.MULTILINE)
     if len(image_pairs) != len(all_image_headings):
         errors.append("图片提示词.md: IMG 标题必须包含中文名称")
@@ -823,7 +1156,9 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         elif _is_no_external_reference(reference_value):
             pass
         elif "REF-" in reference_value:
-            _references(reference_value, match.group(1), project_root, errors)
+            _references(
+                reference_value, match.group(1), project_root, errors, entries
+            )
         else:
             errors.append(
                 f"{match.group(1)}: 参考必须声明无外部参考或使用完整 REF 语法"
@@ -831,9 +1166,11 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         image_prompt = _copyable_prompt(body)
         image_prompts[match.group(1)] = image_prompt
         if image_prompt is None:
-            errors.append(f"{match.group(1)}: 缺少唯一且非空的可复制提示词")
+            errors.append(
+                f"{match.group(1)}: 缺少唯一且非空的可复制提示词"
+                + _copyable_prompt_cause(body)
+            )
 
-    shots = _sections(storyboard, "SHOT")
     motions = _sections(video, "MOTION")
     shot_ids = re.findall(r"^## (SHOT-[A-Z0-9-]+)\b", storyboard, re.MULTILINE)
     motion_ids = re.findall(r"^## (MOTION-[A-Z0-9-]+)\b", video, re.MULTILINE)
@@ -863,9 +1200,11 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         errors.append("视频提示词.md: 没有 MOTION 条目")
 
     motion_by_shot: dict[str, tuple[str, str, Optional[str]]] = {}
+    motion_duration: dict[str, str] = {}
     for motion_id, body in motions.items():
         fields = _fields(body, owner=motion_id, errors=errors)
         shot_id = _plain(fields.get("分镜", ""))
+        motion_duration[shot_id] = _plain(fields.get("时长", ""))
         copyable_prompt = _copyable_prompt(body)
         if not shot_id:
             errors.append(f"{motion_id}: 缺少分镜字段")
@@ -876,13 +1215,34 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         if motion_id.removeprefix("MOTION-") != shot_id.removeprefix("SHOT-"):
             errors.append(f"{motion_id}: ID 必须与分镜 {shot_id} 一一对应")
         if copyable_prompt is None:
-            errors.append(f"{motion_id}: 缺少唯一且非空的可复制提示词")
+            errors.append(
+                f"{motion_id}: 缺少唯一且非空的可复制提示词"
+                + _copyable_prompt_cause(body)
+            )
 
     if set(motion_by_shot) != set(shots):
         errors.append("分镜.md/视频提示词.md: SHOT 与 MOTION 未一一对应")
 
     for shot_id, shot_body in shots.items():
         fields = _fields(shot_body, owner=shot_id, errors=errors)
+        source_value = fields.get("来源", "")
+        claimed_scenes.update(
+            _shot_sources(source_value, shot_id, scenes, errors)
+        )
+        shot_seconds = _declared_seconds(_plain(fields.get("时长", "")))
+        motion_seconds = _declared_seconds(motion_duration.get(shot_id, ""))
+        if (
+            shot_seconds is not None
+            and motion_seconds is not None
+            and shot_seconds != motion_seconds
+        ):
+            # 时长 is the value actually sent to the execution end and the term
+            # VID-04/VID-13 arithmetic is built on. A downstream copy that drifts
+            # from its accepted upstream is invisible in every other check.
+            errors.append(
+                f"{shot_id}: 分镜时长 {shot_seconds:g} 秒与视频提示词 "
+                f"{motion_seconds:g} 秒不一致；视频提示词只能原样照抄已接受的镜头时长"
+            )
         image_value = fields.get("图片提示词项", "")
         if not image_value:
             errors.append(f"{shot_id}: 缺少图片提示词项字段")
@@ -902,7 +1262,7 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         shot_input = fields.get("输入参考图", "")
         if not shot_input:
             errors.append(f"{shot_id}: 缺少输入参考图字段")
-        _references(shot_input, shot_id, project_root, errors)
+        _references(shot_input, shot_id, project_root, errors, entries)
 
         basis_value = fields.get("视觉依据", "")
         if not basis_value:
@@ -916,10 +1276,29 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         # shot without one would make the coverage check below vacuous.
         keyframe = _copyable_prompt(shot_body, heading=r"冻结关键帧提示词")
         if keyframe is None:
-            errors.append(f"{shot_id}: 缺少唯一且非空的冻结关键帧提示词")
+            errors.append(
+                f"{shot_id}: 缺少唯一且非空的冻结关键帧提示词"
+                + _copyable_prompt_cause(shot_body, heading=r"冻结关键帧提示词")
+            )
         elif basis.parsed:
             _check_named_coverage(
                 keyframe, shot_id, "冻结关键帧提示词", basis, visual_entries, errors
+            )
+        if basis.parsed and source_value:
+            # A shot's 来源 is its claim on the screenplay: whatever it quotes,
+            # this shot is the one that films it. Quoting an action performed by
+            # someone the frame never shows takes that action off everyone's
+            # list — no other shot claims it, and nothing reports it missing, so
+            # it simply never gets filmed. Same rule as the keyframe: in frame,
+            # or declared 画外.
+            _check_named_coverage(
+                source_value,
+                shot_id,
+                "来源引文",
+                basis,
+                visual_entries,
+                errors,
+                by_entry_name=True,
             )
 
         motion = motion_by_shot.get(shot_id)
@@ -927,19 +1306,27 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
             continue
         motion_id, motion_body, copyable_prompt = motion
         motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
+        if copyable_prompt is not None:
+            _check_spoken_lines(
+                copyable_prompt, motion_id, spoken_sources, errors
+            )
         motion_input = motion_fields.get("输入参考图", "")
-        _references(motion_input, motion_id, project_root, errors)
+        _references(motion_input, motion_id, project_root, errors, entries)
         if _plain(motion_input) != _plain(shot_input):
             errors.append(f"{motion_id}: 输入参考图与 {shot_id} 不一致")
 
         if _has_pending_references(shot_input):
             errors.append(f"{motion_id}: 仍有待补参考图，不能生成最终视频提示词")
 
-        has_real_image = not _is_none(shot_input)
-        expected_mode = "图生视频" if has_real_image else "文生视频"
+        # A `PLAN-...` slot is not a file, but the prompt is still written for
+        # image-conditioned generation: the creator attaches those pictures at
+        # generation time. What decides 生成方式 is whether the shot sends
+        # pictures at all, not whether this suite can read them.
+        sends_pictures = not _is_none(shot_input)
+        expected_mode = "图生视频" if sends_pictures else "文生视频"
         if _plain(motion_fields.get("生成方式", "")) != expected_mode:
             errors.append(f"{motion_id}: 生成方式应为{expected_mode}")
-        if not has_real_image:
+        if not sends_pictures:
             if not _is_explicit_text_to_video(shot_input):
                 errors.append(
                     f"{motion_id}: 无真实输入参考图时不能静默降级为文生视频；"
@@ -964,6 +1351,16 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
                 _check_named_coverage(
                     anchor, motion_id, "静态视觉锚点", basis, visual_entries, errors
                 )
+
+    for scene_id in scene_headings:
+        if scene_id in claimed_scenes or scene_id in unfilmed:
+            continue
+        errors.append(
+            f"分镜.md: 没有镜头承载场景 {scene_id}；"
+            "拍它就写进某一镜的来源，不拍就写进未拍场次并给出理由"
+        )
+    for scene_id in sorted(set(unfilmed) & claimed_scenes):
+        errors.append(f"分镜.md: 场景 {scene_id} 既被镜头承载又记为未拍")
 
     _check_language_designators(
         project_root, entries=visual_entries, errors=errors

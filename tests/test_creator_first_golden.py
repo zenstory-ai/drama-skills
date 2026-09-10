@@ -423,6 +423,175 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertIn("不写最终《视频提示词.md》", video_skill)
         self.assertIn("该字段只写这两个精确值", video_skill)
 
+    def test_a_source_quote_cannot_claim_an_action_the_shot_never_shows(self) -> None:
+        """A shot's 来源 is its claim on the screenplay.
+
+        Quote an action performed by someone this frame never shows and that
+        action leaves everyone's list: no other shot claims it, nothing reports
+        it missing, and it simply never gets filmed. The defect only surfaces
+        when a human watches the finished film and asks where the reaction went.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            self.assertEqual(
+                [
+                    error
+                    for error in creator_markdown_check.validate_episode(episode, project)
+                    if "来源引文" in error
+                ],
+                [],
+                "现有样例不该被这条检查误伤",
+            )
+
+            path = episode / "分镜.md"
+            document = path.read_text(encoding="utf-8")
+            visual = (episode / "视觉设定.md").read_text(encoding="utf-8")
+            people = re.findall(r"^## 人物 · (.+?)\s*$", visual, re.M)
+            self.assertTrue(len(people) >= 2, people)
+
+            first = re.search(r"^- 来源：(.+)$", document, re.M)
+            self.assertIsNotNone(first)
+            basis = re.search(r"^- 视觉依据：(.+)$", document, re.M)
+            self.assertIsNotNone(basis)
+            outsider = next(p for p in people if p not in basis.group(1))
+            path.write_text(
+                document.replace(
+                    first.group(0),
+                    f"{first.group(0)}「{outsider}低头去翻自己的稿子。」",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            reported = [
+                error
+                for error in creator_markdown_check.validate_episode(episode, project)
+                if "来源引文" in error and outsider in error
+            ]
+            self.assertEqual(len(reported), 1, reported)
+            self.assertIn("视觉依据没有覆盖", reported[0])
+
+    def test_a_stray_line_in_a_prompt_block_is_named_rather_than_hinted_at(self) -> None:
+        """One non-`>` line voids the whole block, and the block still looks right.
+
+        A separator, an HTML comment or a note between the heading and the
+        quote is invisible as a defect: the prompt is sitting there in full, so
+        "缺少唯一且非空的可复制提示词" reads as the checker being wrong and the
+        author goes looking anywhere but at that line. Three separate runs lost
+        time to exactly this, so the error has to quote the line.
+        """
+
+        for intruder in ("---", "<!-- 待确认 -->"):
+            with self.subTest(intruder=intruder), tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                episode = project / "剧集/EP001"
+                shutil.copytree(EPISODE, episode)
+                path = episode / "图片提示词.md"
+                document = path.read_text(encoding="utf-8")
+                marker = "### 可复制提示词\n"
+                self.assertIn(marker, document)
+                path.write_text(
+                    document.replace(marker, f"### 可复制提示词\n\n{intruder}\n", 1),
+                    encoding="utf-8",
+                )
+                errors = creator_markdown_check.validate_episode(episode, project)
+                reported = [
+                    error
+                    for error in errors
+                    if "缺少唯一且非空的可复制提示词" in error
+                ]
+                self.assertEqual(len(reported), 1, errors)
+                self.assertIn(intruder, reported[0])
+                self.assertIn("不以 `>` 开头", reported[0])
+
+    def test_a_bold_field_name_is_the_same_field(self) -> None:
+        """`- **参考**：…` is ordinary Markdown, not a different field.
+
+        Reading the emphasis as part of the key produced 缺少参考字段 while the
+        author was looking straight at a 参考 line, which is the least
+        actionable form the message could take.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            path = episode / "图片提示词.md"
+            document = path.read_text(encoding="utf-8")
+            self.assertIn("\n- 参考：", document)
+            path.write_text(
+                document.replace("\n- 参考：", "\n- **参考**："), encoding="utf-8"
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertEqual(
+                [error for error in errors if "缺少参考字段" in error], [], errors
+            )
+
+    def test_a_bare_category_heading_groups_entries_instead_of_failing(self) -> None:
+        """`## 人物` is a section divider, not an entry someone wrote wrong.
+
+        A malformed entry always tries to name something. Rejecting the bare
+        category word left 视觉设定.md with no way to group its entries at all.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            path = episode / "视觉设定.md"
+            document = path.read_text(encoding="utf-8")
+            first = document.index("\n## 人物 · ")
+            path.write_text(
+                document[:first] + "\n## 人物\n" + document[first:], encoding="utf-8"
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertEqual(
+                [error for error in errors if "条目标题必须写成" in error], [], errors
+            )
+            # A heading that does try to name something is still rejected.
+            path.write_text(
+                document[:first] + "\n## 人物·江晨\n" + document[first:],
+                encoding="utf-8",
+            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertTrue(
+                [error for error in errors if "条目标题必须写成" in error], errors
+            )
+
+    def test_validator_catches_a_motion_duration_that_drifts_from_its_shot(self) -> None:
+        """时长 is what reaches the generator; a stale copy must not pass silently.
+
+        Every other cross-document check compares text. Duration is a number the
+        execution end acts on and VID-04/VID-13 arithmetic is built from, so a
+        视频提示词 that still carries a superseded shot length is a real defect
+        even though the document parses and every string still matches.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            self.assertEqual(
+                creator_markdown_check.validate_episode(episode, project),
+                [],
+                "fixture must start clean",
+            )
+            video = episode / "视频提示词.md"
+            document = video.read_text(encoding="utf-8")
+            original = re.search(r"- 时长：(\S+)", document)
+            self.assertIsNotNone(original, "视频提示词 must declare a duration")
+            video.write_text(
+                document.replace(original.group(0), "- 时长：99 秒", 1),
+                encoding="utf-8",
+            )
+
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertTrue(
+                any("与视频提示词" in error and "不一致" in error for error in errors),
+                errors,
+            )
+
     def test_validator_blocks_pending_or_implicit_text_fallback(self) -> None:
         for label, replacement in {
             "pending references": "无（待补参考图：江晨身份、办公室地理）。",
@@ -590,10 +759,17 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            self.assertIn(
-                "SHOT-EP001-001: 缺少唯一且非空的冻结关键帧提示词",
-                creator_markdown_check.validate_episode(episode, project),
-            )
+            errors = creator_markdown_check.validate_episode(episode, project)
+            # The message now carries why, so match the claim and read the cause.
+            reported = [
+                error
+                for error in errors
+                if error.startswith(
+                    "SHOT-EP001-001: 缺少唯一且非空的冻结关键帧提示词"
+                )
+            ]
+            self.assertEqual(len(reported), 1, errors)
+            self.assertIn("冻结关键帧提示词", reported[0])
 
     def test_screen_name_makes_a_foreign_language_keyframe_checkable(self) -> None:
         """The prompt body is English while 视觉设定.md is Chinese.
@@ -1541,7 +1717,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
 
     def test_creator_rule_catalogs_keep_every_craft_rule(self) -> None:
         expected = {
-            "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 18))},
+            "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 19))},
             "short-drama-assets": {
                 *(f"AST-{number:02d}" for number in range(1, 14)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
@@ -1550,11 +1726,11 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 *(f"IMG-{number:02d}" for number in range(1, 15))
             },
             "short-drama-storyboard": {
-                *(f"SHT-{number:02d}" for number in range(1, 26)),
+                *(f"SHT-{number:02d}" for number in range(1, 28)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-video-prompts": {
-                *(f"VID-{number:02d}" for number in range(1, 25)),
+                *(f"VID-{number:02d}" for number in range(1, 26)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-review": {*(f"REV-{number:02d}" for number in range(1, 12))},

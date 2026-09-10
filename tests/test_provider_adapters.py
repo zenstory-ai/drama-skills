@@ -878,6 +878,99 @@ class ProviderRuntimeTests(unittest.TestCase):
                 call["headers"], {"User-Agent": provider_adapters.ATLAS_USER_AGENT}
             )
 
+    def test_atlas_records_the_handle_before_polling(self) -> None:
+        """A submitted Atlas prediction is already billed, so its id must be durable."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            handle = root / "handle.json"
+            env = {
+                "ATLASCLOUD_API_KEY": "atlas-secret",
+                "ATLASCLOUD_MODEL": "bytedance/seedance-2.0/text-to-video",
+            }
+            seen: list[str] = []
+
+            def fake_request_json(url, **kwargs):
+                seen.append(url)
+                if url.endswith("/generateVideo"):
+                    return {"data": {"id": "atlas-prediction", "status": "processing"}}, {}
+                # The handle must already be on disk by the first poll.
+                self.assertTrue(handle.exists())
+                return (
+                    {
+                        "data": {
+                            "status": "completed",
+                            "outputs": ["https://cdn.example/shot.mp4"],
+                        }
+                    },
+                    {},
+                )
+
+            with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(
+                provider_adapters, "_request_json", side_effect=fake_request_json
+            ), mock.patch.object(
+                provider_adapters, "_download", return_value=root / "shot.mp4"
+            ), mock.patch.object(provider_adapters.time, "sleep", return_value=None):
+                provider_adapters._run_atlas(
+                    {
+                        "modality": "video",
+                        "prompt": "camera holds",
+                        "references": [],
+                        "outputs": ["制作成果/shot.mp4"],
+                        "parameters": {"size": "1080*1920", "shot_type": "single"},
+                        "project_root": str(root),
+                        "output_root": str(root),
+                        "handle_path": str(handle),
+                    }
+                )
+            recorded = json.loads(handle.read_text(encoding="utf-8"))
+        self.assertEqual(recorded, {"provider_job_id": "atlas-prediction"})
+
+    def test_atlas_collect_polls_without_submitting_again(self) -> None:
+        """A collect call must never re-submit: the existing task is already paid for."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = {
+                "ATLASCLOUD_API_KEY": "atlas-secret",
+                "ATLASCLOUD_MODEL": "bytedance/seedance-2.0/text-to-video",
+            }
+            calls: list[dict[str, object]] = []
+
+            def fake_request_json(url, **kwargs):
+                calls.append({"url": url, **kwargs})
+                return (
+                    {
+                        "data": {
+                            "status": "completed",
+                            "outputs": ["https://cdn.example/shot.mp4"],
+                        }
+                    },
+                    {},
+                )
+
+            with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(
+                provider_adapters, "_request_json", side_effect=fake_request_json
+            ), mock.patch.object(
+                provider_adapters, "_download", return_value=root / "shot.mp4"
+            ), mock.patch.object(provider_adapters.time, "sleep", return_value=None):
+                path, prediction_id = provider_adapters._run_atlas(
+                    {
+                        "modality": "video",
+                        "prompt": "camera holds",
+                        "references": [],
+                        "outputs": ["制作成果/shot.mp4"],
+                        "parameters": {"size": "1080*1920", "shot_type": "single"},
+                        "project_root": str(root),
+                        "output_root": str(root),
+                        "collect_provider_job_id": "atlas-existing",
+                    }
+                )
+        self.assertEqual(path, root / "shot.mp4")
+        self.assertEqual(prediction_id, "atlas-existing")
+        # Every call is a GET on the existing prediction; nothing was submitted.
+        for call in calls:
+            self.assertEqual(call["method"], "GET")
+            self.assertIn("/prediction/atlas-existing", call["url"])
+
     def test_atlas_runtime_fails_closed_on_an_unknown_status(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

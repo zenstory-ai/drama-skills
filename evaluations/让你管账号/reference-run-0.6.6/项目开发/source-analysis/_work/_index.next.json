@@ -1,0 +1,219 @@
+{
+  "chapter_count": 20,
+  "chapter_unit": "\u7ae0",
+  "chapters": [
+    {
+      "char_count": 2659,
+      "heading": "\u7b2c1\u7ae0 \u519b\u5ba3\u65b0\u661f",
+      "line_end": 213,
+      "line_start": 1,
+      "sequence": 1,
+      "source_number": 1,
+      "title": "\u519b\u5ba3\u65b0\u661f",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2520,
+      "heading": "\u7b2c2\u7ae0 \u300a\u8bf8\u541b\uff0c\u4e14\u542c\u9f99\u541f\u300b",
+      "line_end": 402,
+      "line_start": 214,
+      "sequence": 2,
+      "source_number": 2,
+      "title": "\u300a\u8bf8\u541b\uff0c\u4e14\u542c\u9f99\u541f\u300b",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2820,
+      "heading": "\u7b2c3\u7ae0 \u8fd9\u4e2a\u62cd MV \u7684\u4eba\uff0c\u7b80\u76f4\u592a\u61c2\uff01",
+      "line_end": 663,
+      "line_start": 403,
+      "sequence": 3,
+      "source_number": 3,
+      "title": "\u8fd9\u4e2a\u62cd MV \u7684\u4eba\uff0c\u7b80\u76f4\u592a\u61c2\uff01",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2570,
+      "heading": "\u7b2c4\u7ae0 \u5411\u524d\u8fdb\uff01 \u5411\u524d\u8fdb\uff01",
+      "line_end": 870,
+      "line_start": 664,
+      "sequence": 4,
+      "source_number": 4,
+      "title": "\u5411\u524d\u8fdb\uff01 \u5411\u524d\u8fdb\uff01",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 3026,
+      "heading": "\u7b2c5\u7ae0 \u7cfb\u7edf\u4f60\u771f\u201c\u8d34\u5fc3\u201d",
+      "line_end": 1093,
+      "line_start": 871,
+      "sequence": 5,
+      "source_number": 5,
+      "title": "\u7cfb\u7edf\u4f60\u771f\u201c\u8d34\u5fc3\u201d",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2505,
+      "heading": "\u7b2c6\u7ae0 \u519b\u62a5\u8bb0\u8005\u6765\u91c7\u8bbf\u4e86\uff01",
+      "line_end": 1256,
+      "line_start": 1094,
+      "sequence": 6,
+      "source_number": 6,
+      "title": "\u519b\u62a5\u8bb0\u8005\u6765\u91c7\u8bbf\u4e86\uff01",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2181,
+      "heading": "\u7b2c7\u7ae0 \u548c\u949f\u8bb0\u8005\u591a\u8054\u7cfb\u5c31\u662f\u5de5\u4f5c",
+      "line_end": 1411,
+      "line_start": 1257,
+      "sequence": 7,
+      "source_number": 7,
+      "title": "\u548c\u949f\u8bb0\u8005\u591a\u8054\u7cfb\u5c31\u662f\u5de5\u4f5c",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2063,
+      "heading": "\u7b2c8\u7ae0 \u949f\u5609\u5609\u7684\u8bf7\u6c42",
+      "line_end": 1572,
+      "line_start": 1412,
+      "sequence": 8,
+      "source_number": 8,
+      "title": "\u949f\u5609\u5609\u7684\u8bf7\u6c42",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2760,
+      "heading": "\u7b2c9\u7ae0 \u5f15\u53d1\u70ed\u6f6e",
+      "line_end": 1751,
+      "line_start": 1573,
+      "sequence": 9,
+      "source_number": 9,
+      "title": "\u5f15\u53d1\u70ed\u6f6e",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2636,
+      "heading": "\u7b2c10\u7ae0 \u4e13\u4e1a\u56e2\u961f\u62cd\u5f97\u8fd8\u4e0d\u5982\u4ed6\u62cd\u7684\u597d\uff1f",
+      "line_end": 1962,
+      "line_start": 1752,
+      "sequence": 10,
+      "source_number": 10,
+      "title": "\u4e13\u4e1a\u56e2\u961f\u62cd\u5f97\u8fd8\u4e0d\u5982\u4ed6\u62cd\u7684\u597d\uff1f",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2523,
+      "heading": "\u7b2c11\u7ae0 \u65b0\u4efb\u52a1\uff1a\u8001\u5175\u7684\u613f\u671b",
+      "line_end": 2141,
+      "line_start": 1963,
+      "sequence": 11,
+      "source_number": 11,
+      "title": "\u65b0\u4efb\u52a1\uff1a\u8001\u5175\u7684\u613f\u671b",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2403,
+      "heading": "\u7b2c12\u7ae0 \u4ed6\u4eec\u624d\u662f\u771f\u6b63\u7684\u5076\u50cf\u554a",
+      "line_end": 2310,
+      "line_start": 2142,
+      "sequence": 12,
+      "source_number": 12,
+      "title": "\u4ed6\u4eec\u624d\u662f\u771f\u6b63\u7684\u5076\u50cf\u554a",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2179,
+      "heading": "\u7b2c13\u7ae0 \u4e89\u8bae",
+      "line_end": 2449,
+      "line_start": 2311,
+      "sequence": 13,
+      "source_number": 13,
+      "title": "\u4e89\u8bae",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2639,
+      "heading": "\u7b2c14\u7ae0 \u201c\u6c5f\u6668\uff0c\u8fd9\u6b21\u4f60\u5b8c\u4e86\uff01\u201d",
+      "line_end": 2622,
+      "line_start": 2450,
+      "sequence": 14,
+      "source_number": 14,
+      "title": "\u201c\u6c5f\u6668\uff0c\u8fd9\u6b21\u4f60\u5b8c\u4e86\uff01\u201d",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2693,
+      "heading": "\u7b2c15\u7ae0 \u300a\u8fd9\u76db\u4e16\uff0c\u5982\u60a8\u6240\u613f\uff01\u300b",
+      "line_end": 2797,
+      "line_start": 2623,
+      "sequence": 15,
+      "source_number": 15,
+      "title": "\u300a\u8fd9\u76db\u4e16\uff0c\u5982\u60a8\u6240\u613f\uff01\u300b",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 4055,
+      "heading": "\u7b2c16\u7ae0 \u5982\u613f",
+      "line_end": 3132,
+      "line_start": 2798,
+      "sequence": 16,
+      "source_number": 16,
+      "title": "\u5982\u613f",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2002,
+      "heading": "\u7b2c17\u7ae0 \u8206\u8bba\u53cd\u8f6c",
+      "line_end": 3259,
+      "line_start": 3133,
+      "sequence": 17,
+      "source_number": 17,
+      "title": "\u8206\u8bba\u53cd\u8f6c",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2592,
+      "heading": "\u7b2c18\u7ae0 \u5168\u6c11\u70ed\u8bae",
+      "line_end": 3434,
+      "line_start": 3260,
+      "sequence": 18,
+      "source_number": 18,
+      "title": "\u5168\u6c11\u70ed\u8bae",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 3021,
+      "heading": "\u7b2c19\u7ae0 '\u6c38\u4e0d\u5012\u7fc1'\uff01",
+      "line_end": 3657,
+      "line_start": 3435,
+      "sequence": 19,
+      "source_number": 19,
+      "title": "'\u6c38\u4e0d\u5012\u7fc1'\uff01",
+      "unit": "\u7ae0"
+    },
+    {
+      "char_count": 2705,
+      "heading": "\u7b2c20\u7ae0 \u8001\u5175\u7684\u793c\u7269",
+      "line_end": 3855,
+      "line_start": 3658,
+      "sequence": 20,
+      "source_number": 20,
+      "title": "\u8001\u5175\u7684\u793c\u7269",
+      "unit": "\u7ae0"
+    }
+  ],
+  "contents_entries_dropped": 0,
+  "ignored_heading_units": {},
+  "long_heading_lines_skipped": 0,
+  "problems": [],
+  "record_type": "novel_chapter_index",
+  "schema_version": "1.0.0-draft",
+  "source": {
+    "artifact": "\u957f\u7bc7-\u8ba9\u4f60\u7ba1\u8d26\u53f7\uff0c\u4f60\u9ad8\u71c3\u6df7\u526a\u70b8\u5168\u7f51.txt",
+    "char_count": 52552,
+    "line_count": 3855
+  },
+  "volume_count": 1,
+  "volume_numbering_restarts": false
+}

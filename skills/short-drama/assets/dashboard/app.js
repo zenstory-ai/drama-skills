@@ -195,6 +195,7 @@ const OWNER_SECTIONS = {
   "short-drama-storyboard": "storyboard",
   "short-drama-video-prompts": "prompts",
   "short-drama-produce": "production",
+  "short-drama-edit": "production",
 };
 
 function ownerSection(path) {
@@ -702,9 +703,21 @@ function renderMarkdown(content) {
   // that go into one request. Rendering each line as its own bordered box made
   // one prompt look like six separate ones, and creators asked which to copy.
   let quoteNode = null;
+  // 剧本 format sanctions Markdown comments for creator notes, so a document
+  // legitimately opens with several lines of them. Rendering those as body text
+  // put the author's private notes at the top of the one pane where they read
+  // the screenplay. `comment` holds the lines of an open block: closed, they are
+  // dropped; unterminated, they are rendered verbatim, because the same rule
+  // says unrecognised Markdown is preserved rather than quietly "fixed".
+  let comment = null;
   const closeList = () => { list = null; listKind = null; };
   const closeQuote = () => { quoteNode = null; };
-  for (const line of content.split("\n")) {
+  const paragraph = (text) => {
+    const node = element("p");
+    appendInlineText(node, text);
+    fragment.append(node);
+  };
+  for (let line of content.split("\n")) {
     if (fence !== null) {
       if (/^\s*```/.test(line)) {
         const pre = element("pre", "code-block");
@@ -716,7 +729,41 @@ function renderMarkdown(content) {
       }
       continue;
     }
+    // Before the fence test: a ``` line inside a comment is commented out, and
+    // letting it open a fence would render the hidden sample as a code block.
+    if (comment !== null) {
+      const closeAt = line.indexOf("-->");
+      if (closeAt === -1) { comment.push(line); continue; }
+      comment = null;
+      // Text after the terminator is body text in both Markdown and HTML.
+      line = line.slice(closeAt + 3);
+      if (!line.trim()) { closeQuote(); continue; }
+    }
     if (/^\s*```/.test(line)) { closeList(); closeQuote(); fence = []; continue; }
+    // Strip closed comments where they sit, so `正文 <!-- 注 -->` keeps its text.
+    // One pass is not enough: removing the inner comment of `<!<!-- x -->-- y -->`
+    // joins its neighbours back into a new `<!--`, so repeat until stable.
+    let stripped = line;
+    for (let previous = null; previous !== stripped; ) {
+      previous = stripped;
+      stripped = stripped.replace(/<!--[\s\S]*?-->/g, "");
+    }
+    const openAt = stripped.indexOf("<!--");
+    if (openAt !== -1) {
+      closeList();
+      closeQuote();
+      const before = stripped.slice(0, openAt);
+      if (before.trim()) paragraph(before);
+      // Only the part that is actually still open — keeping the whole original
+      // line would re-emit the prefix already rendered above if the block never
+      // closes.
+      comment = [stripped.slice(openAt)];
+      continue;
+    }
+    if (stripped !== line) {
+      if (!stripped.trim()) { closeQuote(); continue; }
+      line = stripped;
+    }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     if (heading) {
       closeList();
@@ -751,6 +798,8 @@ function renderMarkdown(content) {
     appendInlineText(node, line);
     fragment.append(node);
   }
+  // An unterminated comment renders verbatim rather than eating the document.
+  if (comment !== null) for (const line of comment) paragraph(line);
   // An unterminated fence still renders as a block rather than vanishing.
   if (fence !== null && fence.length) {
     const pre = element("pre", "code-block");

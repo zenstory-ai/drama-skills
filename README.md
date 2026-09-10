@@ -13,8 +13,7 @@
 支持 Agent Skill 规范的运行环境。
 
 新项目每集默认只维护五份 Markdown：`剧本.md`、`视觉设定.md`、`分镜.md`、
-`图片提示词.md` 和 `视频提示词.md`。提示词预览并经用户明确确认后，也可通过
-项目外配置的 adapter 执行图片、视频、TTS 和时间线音乐生产。
+`图片提示词.md` 和 `视频提示词.md`。
 
 ## 由来
 
@@ -27,9 +26,8 @@
 现在留在自建工具里的，只剩排队抽卡。
 
 **刻意把确认放在生产之前**：提示词先落进文件，生产 skill 展示本次准确数量、内容、参考、
-参数、输出和 adapter；用户看到预览并明确确认后才执行。任何内容或直接输入变化都会让确认
-失效，已启动的失败任务也不能无确认重试。供应商凭据不进入项目；生产 Skill 自带
-Seedance、GPT Image 2、MiniMax H3 视频与 MiniMax Music 的可选 adapter，但项目文件和其他 Skill 不绑定供应商。
+参数、输出和 adapter；用户看到预览并明确确认后才执行。供应商凭据不进入项目，
+项目文件和其他 Skill 都不绑定供应商。
 
 ## 安装
 
@@ -90,20 +88,18 @@ done
 用 $short-drama-video-prompts 把分镜逐镜翻译成视频提示词
 # 指定目标视频模型、并且要人物/场景/道具跨镜一致时，把参考图的事也说清楚：
 用 $short-drama-video-prompts 按 MiniMax H3 写第 1 集视频提示词；先在项目里找已有的角色图、场景图、道具图和本镜起始帧绑成参考，缺哪张就列出来，不要改成文生视频
+# 参考图在自己的界面里出、不进项目时，让技能写出逐镜挂图计划，视频提示词照常产出：
+用 $short-drama-video-prompts 按 MiniMax H3 写第 1 集视频提示词；参考图我自己挂，逐镜告诉我挂哪几张、什么顺序、每张管什么
 
 # 4. 明确确认后投产
 用 $short-drama-produce 预览第 1 集已接受的图片、视频、TTS 或时间线音乐任务；等我确认后再执行
 
-# 5. 需要时再审查
+# 5. 把生产出来的素材剪成成片
+用 $short-drama-edit 把第 1 集已生产的镜头剪成成片，逐段写清入出点理由
+
+# 6. 需要时再审查
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
-
-一句请求值得交代四件事：做哪一集的哪一阶段、目标视频模型、参考图在哪里或还没有、以及没有图时
-是等图还是明确走文生视频。更多写法见
-[creator-first 工作流 · 一句话把范围说清楚](skills/short-drama/references/creator-workflow.md)。
-
-普通创作不运行安装 selftest，不为阶段批次生成 JSON/JSONL、指纹、QA 或覆盖表，也不在每个
-场次/资产组/镜头组后停下来等“继续”。用户点名审查时，结论写入创作者可读的 Markdown。
 
 示例都在 [examples/](examples/)。creator-first 的公开完整样例是
 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
@@ -125,6 +121,7 @@ flowchart LR
     sb["分镜/关键帧<br/>$short-drama-storyboard"]:::phase
     vid["视频提示词<br/>$short-drama-video-prompts"]:::phase
     prod["确认后生产<br/>$short-drama-produce"]:::phase
+    cut["剪辑成片<br/>$short-drama-edit"]:::phase
     rev["审查<br/>$short-drama-review"]:::final
     pkg["文本交付包"]:::final
 
@@ -134,7 +131,7 @@ flowchart LR
     assets --> sb --> vid
     img --> prod
     vid --> prod
-    prod --> rev --> pkg
+    prod --> cut --> rev --> pkg
 ```
 
 | 技能 | 职责 |
@@ -148,29 +145,16 @@ flowchart LR
 | `short-drama-storyboard` | 可选场次视觉计划与 Coverage Audition、原文落实、镜头、边界和冻结关键帧 |
 | `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态、补拍说明，以及跨镜时间线音乐规格 |
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2、MiniMax H3 视频与 MiniMax Music |
+| `short-drama-edit` | 逐镜素材的可用带、入出点取舍、镜序、台词完整性、字幕与响度，写成剪辑单并渲染成片 |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
-
-`$short-drama` 是入口路由，负责初始化、继续和 Dashboard，把具体工作转给对应技能。交付直接选择
-五份 Markdown 与成品，不为打包补建生命周期记录。
-现成单集剧本可以直接进入规范化或资产拆解；多集整稿需要生成分集地图时，由开发技能按
-文件实际结构建立一次索引、逐集切片并断点续跑；点子从故事开发进入。手上是一部长篇原著时，
-先走 `$short-drama-novel-analyze` 抽样快评，值得拆再拆出分析层与分集候选，
-再由故事开发把它立成改编契约。
-
-三条单帧提示词路径职责不同：项目级 `lookdev_frame` 检验已接受视觉方向；资产提示词固定人物、
-地点、道具的可复用事实；`storyboard` 的关键帧只投影本镜 start（执行方式需要时可增加只投影
-`end_boundary` 的 end 帧）。三者都只负责文本规格；实际生成统一交给 `$short-drama-produce`
-在展示准确任务并取得本次确认后执行。
-
-关键场次可以在正式 shots 前增加一层稀疏导演决策：先比较真正不同的信息时机、观看位置与
-表演空间，再接受场次视觉计划，让构图、空间、摄影和声音共同完成一个转向。普通场景跳过，
-不规定宫格、方案数或镜头数。
 
 ## 演示
 
-《孤身入魔》演示含项目设定、两集剧本和十二板分镜；下方 15 秒宣传样片为临时展示，非默认产物。
+下面这段 24 秒样片是一次完整实跑的末端产物：从一部 20 章的原著开始，经原著分析、剧本、
+视觉设定、图片提示词、分镜（21 镜）、视频提示词，再逐镜生成 SC003 一场的八段素材，
+按剪辑单剪成成片。
 
-https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
+https://github.com/user-attachments/assets/0809876a-2a23-4723-a809-45c57988939f
 
 ## 本地短剧创作台
 

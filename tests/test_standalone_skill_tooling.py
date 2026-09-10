@@ -17,6 +17,7 @@ class StandaloneSkillToolingTests(unittest.TestCase):
         "short-drama",
         "short-drama-assets",
         "short-drama-develop",
+        "short-drama-edit",
         "short-drama-image-prompts",
         "short-drama-novel-analyze",
         "short-drama-produce",
