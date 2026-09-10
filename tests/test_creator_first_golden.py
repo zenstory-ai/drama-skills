@@ -1726,7 +1726,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 *(f"IMG-{number:02d}" for number in range(1, 15))
             },
             "short-drama-storyboard": {
-                *(f"SHT-{number:02d}" for number in range(1, 27)),
+                *(f"SHT-{number:02d}" for number in range(1, 28)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-video-prompts": {
