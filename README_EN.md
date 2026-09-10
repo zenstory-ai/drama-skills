@@ -15,9 +15,7 @@ continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
 For a new project, each episode defaults to five Markdown files: `剧本.md`,
-`视觉设定.md`, `分镜.md`, `图片提示词.md`, and `视频提示词.md`. After an
-exact preview and explicit user confirmation, an external adapter can also execute
-image, video, TTS, and timeline-level music production.
+`视觉设定.md`, `分镜.md`, `图片提示词.md`, and `视频提示词.md`.
 
 ## Where this came from
 
@@ -35,11 +33,9 @@ noticeably better. What is left of the in-house tooling is the generation queue.
 
 **Confirmation deliberately comes before production:** prompts land in files first.
 The production skill shows the exact count, content, references, parameters, outputs,
-and adapter; it executes only after the user sees and confirms that preview. Any job
-or direct-input change invalidates the confirmation, and a started failure cannot be
-retried without a new confirmation. Credentials stay outside the project. The production
-skill includes optional Seedance, GPT Image 2, MiniMax H3 video, and MiniMax Music adapters, while project
-files and the other skills remain provider-neutral.
+and adapter; it executes only after the user sees and confirms that preview.
+Credentials stay outside the project, and project files and the other skills remain
+provider-neutral.
 
 ## Install
 
@@ -118,16 +114,6 @@ Use $short-drama-edit to cut EP001's produced shots into a film, stating the rea
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-A request is worth stating four things: which episode and stage, the target video model,
-where the reference images are or that there are none yet, and — when there are none —
-what to do about it: wait for them, make them yourself and attach them at generation time,
-or deliberately go text-to-video. More phrasings are in
-[the creator-first workflow](skills/short-drama/references/creator-workflow.md).
-
-Normal creative work does not run installation self-tests or create JSON/JSONL,
-fingerprints, QA reports, or coverage sheets for every stage batch. Scene/asset/shot
-batches continue automatically within the requested scope. When review is requested,
-its result is written as creator-readable Markdown.
 
 Samples live in [examples/](examples/). The public creator-first sample is
 [*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
@@ -179,46 +165,15 @@ flowchart LR
 | `short-drama-edit` | Usable band per generated clip, in/out points and shot order, dialogue integrity, subtitles and loudness; written as a cut list and rendered into a film |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
-`$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard.
-Delivery selects the requested Markdown and media directly instead of creating lifecycle
-records just for packaging. The five Markdown documents are the creative truth; the
-post-production cut list only records which frames of the existing material reach the film,
-and changes none of them. An existing single-episode
-screenplay can enter normalization or asset extraction directly. When a complete
-multi-episode script needs an episode map, development indexes its actual structure once,
-reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form
-source enters through story development.
-
-The three single-frame prompt paths have distinct ownership: project-level
-`lookdev_frame` prompts test an accepted visual direction; asset prompts preserve
-reusable character/location/prop facts; and `storyboard` keyframes project a shot's
-start state (plus an end-boundary frame only when the external workflow requires it).
-All three own text specifications only. Actual generation routes to
-`$short-drama-produce`, which displays the exact job and executes it only after
-explicit confirmation.
-
-Key scenes may add a sparse directing layer before formal shots: compare genuinely
-different information timing, audience position, and performance ownership, then
-accept a scene visual plan that aligns composition, space, camera, and sound around
-one dramatic turn. Ordinary scenes skip it; there is no fixed grid, option count, or
-shot-count formula.
 
 ## Demo
 
 The 24-second sample below is the far end of one complete run: a 20-chapter source through
 analysis, screenplay, visual design, image prompts, a 21-shot storyboard and video prompts,
 then eight generated clips for scene SC003, cut into a film against a cut list.
-**That one scene is what was actually produced, not the whole episode.**
 
 https://github.com/user-attachments/assets/0809876a-2a23-4723-a809-45c57988939f
 
-The documents, material, cut list and run log all live in
-[evaluations/让你管账号/reference-run-0.6.6/](evaluations/让你管账号/reference-run-0.6.6/).
-[RUN-LOG.md](evaluations/让你管账号/reference-run-0.6.6/RUN-LOG.md) records what this run hit,
-one line at a time — including what was left unfixed, what was rejected, and the mistakes I made.
-
-For the default artifacts alone, read [examples/creator-first/](examples/creator-first/):
-one episode, five Markdown documents, zero JSON.
 
 ## Local creator workspace
 
