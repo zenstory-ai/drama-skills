@@ -1768,13 +1768,9 @@ def collect_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, A
         adapter_outputs = _validate_adapter_outputs(job, response, output_root)
         written: list[dict[str, Any]] = []
         with _project_lock(root):
-            # The adapter call happens outside the lock, and `run_job` may have
-            # been polling the very same provider task the whole time — an
-            # attempt whose adapter is still alive looks exactly like one whose
-            # adapter died, because both sit at status `running`. Re-read the
-            # record before writing: if that attempt finished on its own, its
-            # outputs are already in the project and overwriting them here would
-            # race two writers onto the same bytes and drop its record.
+            # A live `run_job` on the same provider task is indistinguishable
+            # from a dead one — both sit at `running`. Re-read before writing,
+            # or two writers race onto the same bytes and one record is lost.
             if _run_status(root, job_id, str(run["run_id"])) == "succeeded":
                 raise RuntimeError(
                     "这次尝试在取回期间已经自己完成了，产物已经落进项目；"
