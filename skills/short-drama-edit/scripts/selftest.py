@@ -13,7 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from edit_tool import EditError, check_cuts, parse_cut_list  # noqa: E402
+from edit_tool import (  # noqa: E402
+    EditError,
+    _build_ass,
+    _subtitle_cues,
+    check_cuts,
+    parse_cut_list,
+)
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -75,6 +81,63 @@ def build(root: Path, cut_list: str) -> Path:
     for name in ("010.mp4", "011.mp4"):
         (episode / "media" / name).write_bytes(b"")
     return episode
+
+
+def check_subtitle_geometry() -> None:
+    """FontSize is already in PlayRes units; scaling it by the frame twice ruins it.
+
+    Letting ffmpeg convert an SRT hands libass a 384-high canvas and every size
+    is then multiplied by height/384 on the way to the frame. Computing the size
+    from the real height on top of that produced type a third of the frame wide,
+    sitting in the middle of the picture with both ends of the line cut off — and
+    it shipped, because the render after the style change was checked with
+    numbers instead of a frame.
+    """
+
+    width, height = 768, 1344
+    ass = _build_ass([(1.0, 2.0, "诸君，且听龙吟")], width, height)
+    require(f"PlayResX: {width}" in ass, "PlayResX 必须等于画面宽")
+    require(f"PlayResY: {height}" in ass, "PlayResY 必须等于画面高")
+    style = next(line for line in ass.splitlines() if line.startswith("Style:"))
+    fields = style.split(":", 1)[1].split(",")
+    font_size = float(fields[2])
+    require(
+        height * 0.02 <= font_size <= height * 0.06,
+        f"字号 {font_size} 不在画面高度的 2%–6% 之间",
+    )
+    margin_v = float(fields[21])
+    require(margin_v < height * 0.2, f"底边距 {margin_v} 会把字幕推离安全区")
+    margin_h = float(fields[19])
+    require(margin_h > 0, "左右边距为 0 时长句会顶到画面边缘")
+    require("诸君，且听龙吟" in ass, "台词原文必须原样进 ASS")
+
+
+def check_subtitle_timing() -> None:
+    """Cues follow the segments that were written, not the numbers in the document.
+
+    Each segment lands on a frame boundary, so it runs a few milliseconds past
+    its declared length. Accumulating the declared numbers drifts, and the
+    subtitle leaves before the actor stops speaking.
+    """
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        declared = [cut.end - cut.start for cut in cuts]
+        measured = [span + 0.04 for span in declared]
+
+        drifting = _subtitle_cues(cuts, declared)
+        真实 = _subtitle_cues(cuts, measured)
+        require(len(真实) == 1, f"应有一条字幕，实际 {len(真实)}")
+        require(
+            真实[0][0] > drifting[0][0],
+            "分段比声明更长时，后面的字幕必须相应后移",
+        )
+        require(
+            abs(真实[0][0] - (drifting[0][0] + 0.04)) < 1e-6,
+            "位移必须等于前面各段的实测差之和",
+        )
 
 
 def main() -> int:
@@ -140,6 +203,8 @@ def main() -> int:
         else:
             raise AssertionError("缺「出点」应当报错")
 
+    check_subtitle_geometry()
+    check_subtitle_timing()
     print("short-drama-edit self-tests passed")
     return 0
 
