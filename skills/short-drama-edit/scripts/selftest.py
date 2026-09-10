@@ -15,6 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from edit_tool import (  # noqa: E402
+    DEFAULT_REMOTION_CONCURRENCY,
+    REMOTION_SOURCE,
+    REMOTION_SOURCE_FILES,
     EditError,
     _ass_text,
     _build_ass,
@@ -346,6 +349,34 @@ def check_ass_escaping() -> None:
     )
 
 
+def check_remotion_sources_all_shipped() -> None:
+    """The sync list is a whitelist; a file left out of it is missing at render.
+
+    Nothing else notices until someone has already paid for that render.
+    """
+
+    # `as_posix`, because the whitelist is written with forward slashes and
+    # `relative_to` yields backslashes on Windows.
+    on_disk = {
+        path.relative_to(REMOTION_SOURCE).as_posix()
+        for path in REMOTION_SOURCE.rglob("*")
+        if path.is_file()
+        and path.suffix in {".ts", ".tsx", ".json"}
+        and "node_modules" not in path.parts
+    }
+    listed = set(REMOTION_SOURCE_FILES)
+    require(not (on_disk - listed), f"Remotion 源文件没进同步清单: {sorted(on_disk - listed)}")
+    require(not (listed - on_disk), f"同步清单里有不存在的文件: {sorted(listed - on_disk)}")
+
+
+def check_remotion_concurrency_is_capped() -> None:
+    """Remotion defaults to one browser per core, each holding a full frame."""
+
+    require(DEFAULT_REMOTION_CONCURRENCY >= 1, "并发上限必须是正数")
+    source = Path(__file__).resolve().with_name("edit_tool.py").read_text(encoding="utf-8")
+    require("--concurrency=" in source, "render 必须显式传 --concurrency，不能用 Remotion 的默认值")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -415,6 +446,8 @@ def main() -> int:
     check_ass_escaping()
     check_multi_subtitle()
     check_stale_window()
+    check_remotion_sources_all_shipped()
+    check_remotion_concurrency_is_capped()
     print("short-drama-edit self-tests passed")
     return 0
 

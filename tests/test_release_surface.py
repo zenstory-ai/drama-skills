@@ -27,6 +27,26 @@ SHIPPED = {
         "skills/short-drama-video-prompts/references/seedance-2.5.md",
         "不构成时间控制",
     ),
+    "Remotion 叠层不使用默认并发": (
+        "skills/short-drama-edit/scripts/edit_tool.py",
+        "DEFAULT_REMOTION_CONCURRENCY",
+    ),
+    "Remotion 并发可调": (
+        "skills/short-drama-edit/scripts/edit_tool.py",
+        "--remotion-concurrency",
+    ),
+    "Remotion 渲染前等字体就绪": (
+        "skills/short-drama-edit/assets/remotion/src/font.ts",
+        "document.fonts.ready",
+    ),
+    "字体族没装上要报错而不是换一款": (
+        "skills/short-drama-edit/assets/remotion/src/font.ts",
+        "assertFamilyResolves",
+    ),
+    "Remotion 路线的开销写在明面上": (
+        "skills/short-drama-edit/references/sound-and-subtitles.md",
+        "每一帧都过一遍无头浏览器",
+    ),
     "produce 记录供应商任务句柄": (
         "skills/short-drama-produce/scripts/production_tool.py",
         "_read_provider_handle",

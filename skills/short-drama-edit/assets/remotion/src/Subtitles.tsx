@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { Cue, SubtitleProps } from "./schema";
+import { assertFamilyResolves, waitForFonts } from "./font";
+
+waitForFonts();
 
 /**
  * A transparent subtitle layer, composited onto untouched picture.
@@ -21,19 +24,27 @@ export const Subtitles: React.FC<SubtitleProps> = ({
   const { fps, height, width } = useVideoConfig();
   const now = frame / fps;
   const active = cues.find((cue: Cue) => now >= cue.start && now < cue.end);
-  if (!active) return null;
 
   const fontSize = height * fontScale;
   // A dark rim on every side keeps white type legible over a bright frame
-  // without a caption box, which is what vertical drama expects.
-  const rim = Math.max(2, height * 0.0024);
-  const shadow = [
-    `0 0 ${rim * 3}px rgba(0,0,0,0.85)`,
-    `${rim}px ${rim}px 0 rgba(0,0,0,0.92)`,
-    `-${rim}px ${rim}px 0 rgba(0,0,0,0.92)`,
-    `${rim}px -${rim}px 0 rgba(0,0,0,0.92)`,
-    `-${rim}px -${rim}px 0 rgba(0,0,0,0.92)`,
-  ].join(", ");
+  // without a caption box, which is what vertical drama expects. It depends
+  // only on the frame size, so it is built once — and it stays above the early
+  // return, because a hook may not be skipped on the frames with no line.
+  const shadow = useMemo(() => {
+    const rim = Math.max(2, height * 0.0024);
+    return [
+      `0 0 ${rim * 3}px rgba(0,0,0,0.85)`,
+      `${rim}px ${rim}px 0 rgba(0,0,0,0.92)`,
+      `-${rim}px ${rim}px 0 rgba(0,0,0,0.92)`,
+      `${rim}px -${rim}px 0 rgba(0,0,0,0.92)`,
+      `-${rim}px -${rim}px 0 rgba(0,0,0,0.92)`,
+    ].join(", ");
+  }, [height]);
+
+  // Checked against a line about to be filmed, so a missing font stops the
+  // render on the first subtitle frame rather than after the whole pass.
+  assertFamilyResolves(fontFamily, active?.text ?? "");
+  if (!active) return null;
 
   // A short lift on entry reads as the line arriving with the delivery. It is
   // over well before the first syllable ends, so it never delays reading.
