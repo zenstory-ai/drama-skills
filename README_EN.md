@@ -205,10 +205,20 @@ shot-count formula.
 
 ## Demo
 
-*Lone Fall into Demonhood* includes project settings, two scripts, and twelve storyboard
-panels; the 15-second promo below is a temporary showcase, not a default suite artifact.
+The 24-second sample below is the far end of one complete run: a 20-chapter source through
+analysis, screenplay, visual design, image prompts, a 21-shot storyboard and video prompts,
+then eight generated clips for scene SC003, cut into a film against a cut list.
+**That one scene is what was actually produced, not the whole episode.**
 
-https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
+https://github.com/user-attachments/assets/0809876a-2a23-4723-a809-45c57988939f
+
+The documents, material, cut list and run log all live in
+[evaluations/让你管账号/reference-run-0.6.6/](evaluations/让你管账号/reference-run-0.6.6/).
+[RUN-LOG.md](evaluations/让你管账号/reference-run-0.6.6/RUN-LOG.md) records what this run hit,
+one line at a time — including what was left unfixed, what was rejected, and the mistakes I made.
+
+For the default artifacts alone, read [examples/creator-first/](examples/creator-first/):
+one episode, five Markdown documents, zero JSON.
 
 ## Local creator workspace
 

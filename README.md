@@ -176,9 +176,18 @@ flowchart LR
 
 ## 演示
 
-《孤身入魔》演示含项目设定、两集剧本和十二板分镜；下方 15 秒宣传样片为临时展示，非默认产物。
+下面这段 24 秒样片是一次完整实跑的末端产物：从一部 20 章的原著开始，经原著分析、剧本、
+视觉设定、图片提示词、分镜（21 镜）、视频提示词，再逐镜生成 SC003 一场的八段素材，
+按剪辑单剪成成片。**这一场是实际生产的范围，不是整集。**
 
-https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
+https://github.com/user-attachments/assets/0809876a-2a23-4723-a809-45c57988939f
+
+整趟的文档、素材、剪辑单与实跑记录都在
+[evaluations/让你管账号/reference-run-0.6.6/](evaluations/让你管账号/reference-run-0.6.6/)；
+其中 [RUN-LOG.md](evaluations/让你管账号/reference-run-0.6.6/RUN-LOG.md) 逐条记着这一趟撞到了什么——
+包括没修的、驳回的，和我自己犯的错。
+
+只想看默认产物长什么样，读 [examples/creator-first/](examples/creator-first/)：一集五份 Markdown，零 JSON。
 
 ## 本地短剧创作台
 
