@@ -68,6 +68,12 @@ UNUSED_LINE = re.compile(r"^-\s*未采用镜头：\s*(.*)$")
 # alike; a plain slash would collide with the path itself.
 SOURCE = re.compile(r"^(MOTION-\S+)\s*·\s*(.+?)\s*$")
 SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
+# A shot-match is three numbers and nothing else. Anything richer belongs in a
+# grading tool, and anything implicit belongs nowhere: a correction the cut list
+# does not state is a correction no reviewer can see.
+PICTURE_KEYS = {"亮度": "brightness", "饱和": "saturation", "色温": "warmth"}
+PICTURE_TERM = re.compile(r"(亮度|饱和|色温)\s*([+-]?[0-9]*\.?[0-9]+)")
+PICTURE_LIMITS = {"brightness": 0.25, "saturation": 2.0, "warmth": 30.0}
 TOLERANCE = 0.005
 
 
@@ -85,6 +91,7 @@ class Cut(NamedTuple):
     declared: float
     subtitle: str
     subtitle_window: Optional[tuple[float, float]]
+    picture: dict[str, float]
     line_number: int
 
 
@@ -210,6 +217,25 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
                 f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 的字幕时间要写成「起-止」秒数"
             )
         window = (float(found.group(1)), float(found.group(2)))
+    picture: dict[str, float] = {}
+    picture_raw = fields.get("画面")
+    if picture_raw is not None:
+        text, where = picture_raw
+        if text.strip() not in {"", "无", "不校"}:
+            for label, value in PICTURE_TERM.findall(text):
+                key = PICTURE_KEYS[label]
+                number = float(value)
+                if abs(number) > PICTURE_LIMITS[key]:
+                    raise EditError(
+                        f"{CUT_LIST_NAME}:{where}: {cut_id} 的画面「{label}」超出允许范围"
+                        f"（±{PICTURE_LIMITS[key]}）：{number}"
+                    )
+                picture[key] = number
+            if not picture:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{where}: {cut_id} 的画面写了内容但没有可执行的项；"
+                    "只认「亮度 <数>」「饱和 <数>」「色温 <数>」，不需要校正时写「无」"
+                )
     return Cut(
         cut_id=cut_id,
         title=pending["title"],
@@ -220,6 +246,7 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         declared=_seconds(declared_raw, field="时长", line=declared_line),
         subtitle="" if subtitle_raw.strip() == "无" else subtitle_raw.strip(),
         subtitle_window=window,
+        picture=picture,
         line_number=line,
     )
 
@@ -409,12 +436,18 @@ def render(
         if media is None:
             raise EditError(f"{cut.cut_id} 的素材不存在: {cut.media}")
         segment = segments_root / f"{cut.cut_id}.mp4"
-        _run([
+        command = [
             ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
             "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
+        ]
+        match = _shot_match_filter(cut)
+        if match:
+            command += ["-vf", match]
+        command += [
             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", str(segment),
-        ])
+        ]
+        _run(command)
         segments.append(segment)
         spans.append(probe_duration(segment))
 
@@ -487,6 +520,32 @@ def render(
         "段数": len(segments),
         "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
     }
+
+
+def _shot_match_filter(cut: Cut) -> str:
+    """Match one cut to its neighbours, using only what the cut list declared.
+
+    Generated shots drift: two takes of the same person at the same table come
+    back a stop apart and half a step of white balance away from each other, and
+    the join reads as a mistake rather than a cut. The correction stays a stated
+    creator decision — the tool never measures a clip and adjusts it on its own,
+    because a correction nobody wrote down is one nobody can review.
+    """
+
+    stages: list[str] = []
+    eq = [
+        f"{name}={cut.picture[key]}"
+        for key, name in (("brightness", "brightness"), ("saturation", "saturation"))
+        if key in cut.picture
+    ]
+    if eq:
+        stages.append("eq=" + ":".join(eq))
+    warmth = cut.picture.get("warmth")
+    if warmth:
+        # Positive is warmer: lift red, drop blue, by the same small amount.
+        amount = warmth / 100.0
+        stages.append(f"colorbalance=rm={amount:.4f}:bm={-amount:.4f}")
+    return ",".join(stages)
 
 
 def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
