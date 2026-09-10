@@ -735,7 +735,13 @@ function renderMarkdown(content) {
       continue;
     }
     // Strip closed comments where they sit, so `正文 <!-- 注 -->` keeps its text.
-    const stripped = line.replace(/<!--[\s\S]*?-->/g, "");
+    // One pass is not enough: removing the inner comment of `<!<!-- x -->-- y -->`
+    // joins its neighbours back into a new `<!--`, so repeat until stable.
+    let stripped = line;
+    for (let previous = null; previous !== stripped; ) {
+      previous = stripped;
+      stripped = stripped.replace(/<!--[\s\S]*?-->/g, "");
+    }
     if (stripped.indexOf("<!--") !== -1) {
       closeList();
       closeQuote();

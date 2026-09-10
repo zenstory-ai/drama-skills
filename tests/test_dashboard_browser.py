@@ -36,6 +36,7 @@ class DashboardBrowserTests(unittest.TestCase):
             "第一段正文。\n\n"
             "第二段正文 <!-- 行内备注 --> 后半句。\n\n"
             "```md\n<!-- 代码块里的注释要保留 -->\n```\n\n"
+            "嵌套 <!<!-- 内层 -->-- 外层 --> 之后。\n\n"
             "<!-- 这条没有闭合\n还有一行\n",
             encoding="utf-8",
         )
@@ -125,6 +126,10 @@ class DashboardBrowserTests(unittest.TestCase):
         self.assertIn("第二段正文", body)
         self.assertIn("后半句", body)
         self.assertNotIn("行内备注", body)
+        # Removing the inner comment must not leave a fresh `<!--` behind.
+        self.assertIn("嵌套", body)
+        self.assertIn("之后。", body)
+        self.assertNotIn("外层", body)
         # A fenced block is copied verbatim, comments included.
         self.assertIn("代码块里的注释要保留", body)
         # Unterminated: preserved, not swallowed along with the rest.
