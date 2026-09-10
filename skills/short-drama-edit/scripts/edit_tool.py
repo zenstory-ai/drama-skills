@@ -68,6 +68,10 @@ UNUSED_LINE = re.compile(r"^-\s*未采用镜头：\s*(.*)$")
 # alike; a plain slash would collide with the path itself.
 SOURCE = re.compile(r"^(MOTION-\S+)\s*·\s*(.+?)\s*$")
 SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
+# One shot can carry several lines: an exchange of three is one shot, not three.
+# Numbered fields keep them ordered and let each one state its own window.
+SUBTITLE_FIELD = re.compile(r"^字幕(?:\s*(\d+))?$")
+SUBTITLE_CUE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
 # A shot-match is three numbers and nothing else. Anything richer belongs in a
 # grading tool, and anything implicit belongs nowhere: a correction the cut list
 # does not state is a correction no reviewer can see.
@@ -89,8 +93,7 @@ class Cut(NamedTuple):
     start: float
     end: float
     declared: float
-    subtitle: str
-    subtitle_window: Optional[tuple[float, float]]
+    subtitles: tuple[tuple[Optional[float], Optional[float], str], ...]
     picture: dict[str, float]
     line_number: int
 
@@ -207,16 +210,7 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
     start_raw, start_line = required("入点")
     end_raw, end_line = required("出点")
     declared_raw, declared_line = required("时长")
-    subtitle_raw = fields.get("字幕", ("无", line))[0]
-    window_raw = fields.get("字幕时间")
-    window = None
-    if window_raw is not None:
-        found = SUBTITLE_WINDOW.match(window_raw[0])
-        if not found:
-            raise EditError(
-                f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 的字幕时间要写成「起-止」秒数"
-            )
-        window = (float(found.group(1)), float(found.group(2)))
+    subtitles = _parse_subtitles(fields, cut_id=cut_id, line=line)
     picture: dict[str, float] = {}
     picture_raw = fields.get("画面")
     if picture_raw is not None:
@@ -244,11 +238,75 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         start=_seconds(start_raw, field="入点", line=start_line),
         end=_seconds(end_raw, field="出点", line=end_line),
         declared=_seconds(declared_raw, field="时长", line=declared_line),
-        subtitle="" if subtitle_raw.strip() == "无" else subtitle_raw.strip(),
-        subtitle_window=window,
+        subtitles=subtitles,
         picture=picture,
         line_number=line,
     )
+
+
+def _parse_subtitles(
+    fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
+) -> tuple[tuple[Optional[float], Optional[float], str], ...]:
+    """Read every subtitle a cut declares, in written order.
+
+    A shot is not one line. The exchange "就是什么 / 就是少了点东西 / 少了什么" is a
+    single over-shoulder shot carrying three, and a cut list that can hold only
+    one of them silently drops the other two — the film then plays lines that
+    never reach the screen, and nothing reports it.
+    """
+
+    numbered: list[tuple[int, str, int]] = []
+    plain: Optional[tuple[str, int]] = None
+    for key, (value, where) in fields.items():
+        match = SUBTITLE_FIELD.match(key.strip())
+        if not match:
+            continue
+        if match.group(1) is None:
+            plain = (value, where)
+        else:
+            numbered.append((int(match.group(1)), value, where))
+
+    if numbered and plain is not None:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{line}: {cut_id} 同时写了「字幕」和「字幕 N」；"
+            "一段用一种写法——一句用「字幕」，多句全部编号"
+        )
+
+    if numbered:
+        numbered.sort()
+        expected = list(range(1, len(numbered) + 1))
+        if [item[0] for item in numbered] != expected:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{line}: {cut_id} 的字幕编号要从 1 连续排到 "
+                f"{len(numbered)}，当前是 {[item[0] for item in numbered]}"
+            )
+        cues: list[tuple[Optional[float], Optional[float], str]] = []
+        for index, value, where in numbered:
+            found = SUBTITLE_CUE.match(value)
+            if not found:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{where}: {cut_id} 的「字幕 {index}」要写成"
+                    "「<起>-<止> <台词>」，多句必须各自带时间"
+                )
+            cues.append((float(found.group(1)), float(found.group(2)), found.group(3)))
+        for earlier, later in zip(cues, cues[1:]):
+            if later[0] is not None and earlier[1] is not None and later[0] < earlier[1]:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{line}: {cut_id} 的字幕时间重叠：两句不能同时在屏上"
+                )
+        return tuple(cues)
+
+    if plain is None or plain[0].strip() == "无":
+        return ()
+    window_raw = fields.get("字幕时间")
+    if window_raw is None:
+        return ((None, None, plain[0].strip()),)
+    found = SUBTITLE_WINDOW.match(window_raw[0])
+    if not found:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 的字幕时间要写成「起-止」秒数"
+        )
+    return ((float(found.group(1)), float(found.group(2)), plain[0].strip()),)
 
 
 def _which(name: str) -> Optional[str]:
@@ -365,16 +423,18 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
                     f"超过素材实际时长 {available:.2f}"
                 )
-        if cut.subtitle and screenplay and _normalize(cut.subtitle) not in _normalize(screenplay):
-            findings.append(
-                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕在《"
-                f"{SCREENPLAY_DOCUMENT}》里找不到原文: {cut.subtitle}"
-            )
-        if cut.subtitle_window is not None:
-            window_start, window_end = cut.subtitle_window
+        for window_start, window_end, text in cut.subtitles:
+            if screenplay and _normalize(text) not in _normalize(screenplay):
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕在《"
+                    f"{SCREENPLAY_DOCUMENT}》里找不到原文: {text}"
+                )
+            if window_start is None or window_end is None:
+                continue
             if not 0 <= window_start < window_end <= span + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕时间超出本段区间"
+                    f": {window_start}-{window_end}"
                 )
 
     findings.extend(_overlap_findings(cuts))
@@ -464,7 +524,7 @@ def render(
         subtitle_path = None
         styled_path = None
         overlay_path = None
-        if burn_subtitles and any(cut.subtitle for cut in cuts):
+        if burn_subtitles and any(cut.subtitles for cut in cuts):
             canvas = probe_stream(segments[0])
             cues = _subtitle_cues(cuts, spans)
             subtitle_path = output_root / "字幕.srt"
@@ -686,15 +746,14 @@ def _subtitle_cues(
     cues: list[tuple[float, float, str]] = []
     cursor = 0.0
     for cut, span in zip(cuts, spans):
-        if cut.subtitle:
-            declared = cut.end - cut.start
-            window = cut.subtitle_window or (0.0, declared)
-            # The window was authored against the declared span; hold it in
-            # place proportionally rather than letting the tail slip out.
-            scale = span / declared if declared > 0 else 1.0
-            cues.append(
-                (cursor + window[0] * scale, cursor + window[1] * scale, cut.subtitle)
-            )
+        declared = cut.end - cut.start
+        # The windows were authored against the declared span; hold them in
+        # place proportionally rather than letting the tail slip out.
+        scale = span / declared if declared > 0 else 1.0
+        for window_start, window_end, text in cut.subtitles:
+            start = 0.0 if window_start is None else window_start
+            end = declared if window_end is None else window_end
+            cues.append((cursor + start * scale, cursor + end * scale, text))
         cursor += span
     return cues
 
