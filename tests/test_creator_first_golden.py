@@ -423,6 +423,38 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertIn("不写最终《视频提示词.md》", video_skill)
         self.assertIn("该字段只写这两个精确值", video_skill)
 
+    def test_validator_catches_a_motion_duration_that_drifts_from_its_shot(self) -> None:
+        """时长 is what reaches the generator; a stale copy must not pass silently.
+
+        Every other cross-document check compares text. Duration is a number the
+        execution end acts on and VID-04/VID-13 arithmetic is built from, so a
+        视频提示词 that still carries a superseded shot length is a real defect
+        even though the document parses and every string still matches.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            self.assertEqual(
+                creator_markdown_check.validate_episode(episode, project),
+                [],
+                "fixture must start clean",
+            )
+            video = episode / "视频提示词.md"
+            document = video.read_text(encoding="utf-8")
+            original = re.search(r"- 时长：(\S+)", document)
+            self.assertIsNotNone(original, "视频提示词 must declare a duration")
+            video.write_text(
+                document.replace(original.group(0), "- 时长：99 秒", 1),
+                encoding="utf-8",
+            )
+
+            errors = creator_markdown_check.validate_episode(episode, project)
+            self.assertTrue(
+                any("与视频提示词" in error and "不一致" in error for error in errors),
+                errors,
+            )
+
     def test_validator_blocks_pending_or_implicit_text_fallback(self) -> None:
         for label, replacement in {
             "pending references": "无（待补参考图：江晨身份、办公室地理）。",
