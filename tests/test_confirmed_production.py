@@ -960,6 +960,52 @@ class ConfirmedProductionTests(unittest.TestCase):
                 [],
             )
 
+    def test_collect_does_not_overwrite_an_attempt_that_finished_on_its_own(self) -> None:
+        """A live attempt and a dead one both sit at `running`.
+
+        `audit` cannot tell them apart, so it reports a healthy in-flight
+        attempt as an orphan too. Following that advice must not let two writers
+        race onto the same output bytes and the same run record — collecting
+        re-reads the record before writing and backs off if the attempt
+        completed while the adapter was being called.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            interrupted = self.adapter_config(directory, submit_then_fail=True)
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-SHOT001", adapter_config=interrupted
+                )
+
+            # The original attempt finishes *while the collect adapter is being
+            # called* — the window `collect_job` leaves open on purpose, because
+            # the adapter must not hold the project lock for minutes.
+            original = production_tool._run_adapter
+
+            def finish_then_answer(command, timeout, payload, adapter_root):
+                history = production_tool._read_run_history(root, "EP001-SHOT001")
+                finished = dict(history[-1])
+                finished["status"] = "succeeded"
+                finished["outputs"] = []
+                production_tool._write_run(root, "EP001-SHOT001", finished)
+                return original(command, timeout, payload, adapter_root)
+
+            production_tool._run_adapter = finish_then_answer
+            self.addCleanup(setattr, production_tool, "_run_adapter", original)
+
+            with self.assertRaisesRegex(RuntimeError, "已经自己完成"):
+                production_tool.collect_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=self.adapter_config(directory),
+                )
+            after = production_tool._read_run_history(root, "EP001-SHOT001")[-1]
+            self.assertEqual(after["status"], "succeeded")
+            self.assertNotIn("collected", after)
+
     def test_collect_refuses_when_no_attempt_carries_a_provider_job(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)

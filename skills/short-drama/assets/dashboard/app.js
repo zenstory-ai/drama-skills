@@ -729,12 +729,17 @@ function renderMarkdown(content) {
       }
       continue;
     }
-    if (/^\s*```/.test(line)) { closeList(); closeQuote(); fence = []; continue; }
+    // Before the fence test: a ``` line inside a comment is commented out, and
+    // letting it open a fence would render the hidden sample as a code block.
     if (comment !== null) {
-      comment.push(line);
-      if (line.includes("-->")) comment = null;
-      continue;
+      const closeAt = line.indexOf("-->");
+      if (closeAt === -1) { comment.push(line); continue; }
+      comment = null;
+      // Text after the terminator is body text in both Markdown and HTML.
+      line = line.slice(closeAt + 3);
+      if (!line.trim()) { closeQuote(); continue; }
     }
+    if (/^\s*```/.test(line)) { closeList(); closeQuote(); fence = []; continue; }
     // Strip closed comments where they sit, so `正文 <!-- 注 -->` keeps its text.
     // One pass is not enough: removing the inner comment of `<!<!-- x -->-- y -->`
     // joins its neighbours back into a new `<!--`, so repeat until stable.
@@ -743,12 +748,16 @@ function renderMarkdown(content) {
       previous = stripped;
       stripped = stripped.replace(/<!--[\s\S]*?-->/g, "");
     }
-    if (stripped.indexOf("<!--") !== -1) {
+    const openAt = stripped.indexOf("<!--");
+    if (openAt !== -1) {
       closeList();
       closeQuote();
-      const before = stripped.slice(0, stripped.indexOf("<!--"));
+      const before = stripped.slice(0, openAt);
       if (before.trim()) paragraph(before);
-      comment = [line];
+      // Only the part that is actually still open — keeping the whole original
+      // line would re-emit the prefix already rendered above if the block never
+      // closes.
+      comment = [stripped.slice(openAt)];
       continue;
     }
     if (stripped !== line) {

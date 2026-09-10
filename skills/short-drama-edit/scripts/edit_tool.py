@@ -77,7 +77,14 @@ SUBTITLE_CUE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
 # does not state is a correction no reviewer can see.
 PICTURE_KEYS = {"亮度": "brightness", "饱和": "saturation", "色温": "warmth"}
 PICTURE_TERM = re.compile(r"(亮度|饱和|色温)\s*([+-]?[0-9]*\.?[0-9]+)")
-PICTURE_LIMITS = {"brightness": 0.25, "saturation": 2.0, "warmth": 30.0}
+# Each term's real range, not a symmetric magnitude: ffmpeg's `eq` takes
+# saturation in 0..3, so a negative value that passes an abs() bound is accepted
+# by the document and then rejected by the renderer, halfway through a render.
+PICTURE_LIMITS = {
+    "brightness": (-0.25, 0.25),
+    "saturation": (0.0, 2.0),
+    "warmth": (-30.0, 30.0),
+}
 TOLERANCE = 0.005
 
 
@@ -219,10 +226,11 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
             for label, value in PICTURE_TERM.findall(text):
                 key = PICTURE_KEYS[label]
                 number = float(value)
-                if abs(number) > PICTURE_LIMITS[key]:
+                low, high = PICTURE_LIMITS[key]
+                if not low <= number <= high:
                     raise EditError(
                         f"{CUT_LIST_NAME}:{where}: {cut_id} 的画面「{label}」超出允许范围"
-                        f"（±{PICTURE_LIMITS[key]}）：{number}"
+                        f"（{low:g} 到 {high:g}）：{number}"
                     )
                 picture[key] = number
             if not picture:
@@ -804,10 +812,22 @@ def _build_ass(
         "Effect, Text\n"
     )
     lines = [
-        f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},正片,,0,0,0,,{text}"
+        f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},正片,,0,0,0,,{_ass_text(text)}"
         for start, end, text in cues
     ]
     return header + "\n".join(lines) + "\n"
+
+
+def _ass_text(text: str) -> str:
+    """Escape a line so ASS renders its characters instead of reading them.
+
+    `{`…`}` is an override block in ASS and `\` starts an escape, so a quoted
+    line that happens to contain either would lose characters on screen with no
+    error anywhere — and EDT-05 exists precisely to keep the burned text equal
+    to the screenplay's, character for character.
+    """
+
+    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
 
 
 def _ass_time(seconds: float) -> str:

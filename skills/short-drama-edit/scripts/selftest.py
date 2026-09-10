@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from edit_tool import (  # noqa: E402
     EditError,
+    _ass_text,
     _build_ass,
     _shot_match_filter,
     _subtitle_cues,
@@ -164,6 +165,18 @@ def check_shot_match() -> None:
         require("brightness=0.06" in chain, f"亮度没进滤镜链: {chain}")
         require("colorbalance" in chain and "rm=-0.06" in chain, f"色温没进滤镜链: {chain}")
 
+        # ffmpeg 的 eq 只接受 0..3 的饱和度；负数在文档里通过、渲染时才炸。
+        negative = CUT_LIST.replace(
+            "- 声音：保留原声\n- 字幕：无",
+            "- 声音：保留原声\n- 画面：饱和 -1.5\n- 字幕：无", 1)
+        (episode / "剪辑单.md").write_text(negative, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("超出允许范围" in str(error), f"负饱和度报错不对: {error}")
+        else:
+            raise AssertionError("饱和 -1.5 应当被拒绝——ffmpeg 不接受负饱和度")
+
         # 超出范围是重新调色，不是接镜，必须挡住。
         wild = CUT_LIST.replace(
             "- 声音：保留原声\n- 字幕：无",
@@ -258,6 +271,28 @@ def check_multi_subtitle() -> None:
             raise AssertionError("多句字幕缺时间应当被拒绝")
 
 
+def check_ass_escaping() -> None:
+    """A quoted line keeps every character it had in 剧本.md.
+
+    `{`…`}` is an override block in ASS: unescaped, libass drops the braces and
+    everything between them, on screen, with no error anywhere. EDT-05 exists to
+    keep the burned text equal to the screenplay's character for character, so a
+    silent swallow breaks the one rule this stage is a structural invariant about.
+    """
+
+    line = "他念出来：{姓名}，请签字。"
+    escaped = _ass_text(line)
+    require("\\{" in escaped and "\\}" in escaped, f"花括号没有转义: {escaped}")
+    require("姓名" in escaped, "转义把字弄丢了")
+    ass = _build_ass([(1.0, 2.0, line)], 1080, 1920)
+    dialogue = [row for row in ass.splitlines() if row.startswith("Dialogue")][0]
+    require(dialogue.endswith(escaped), f"Dialogue 行没有用转义后的正文: {dialogue}")
+    require(
+        _ass_text("反斜杠 \\N 不是换行").count("\\\\") == 1,
+        "反斜杠没有转义，\\N 会被当成换行",
+    )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -324,6 +359,7 @@ def main() -> int:
     check_subtitle_geometry()
     check_subtitle_timing()
     check_shot_match()
+    check_ass_escaping()
     check_multi_subtitle()
     print("short-drama-edit self-tests passed")
     return 0
