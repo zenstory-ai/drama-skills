@@ -1134,8 +1134,45 @@ def _download(
     return path
 
 
+def _record_handle(job: Mapping[str, Any], provider_job_id: str) -> None:
+    """Write the provider task id where the caller can find it after a crash.
+
+    A video task is billed at submission. Everything after that — polling,
+    downloading — can be interrupted, and without this the caller is left with a
+    live, already-paid task it has no id for. Written before the first poll, and
+    deliberately best-effort: failing to record the handle must not fail a task
+    that was submitted successfully.
+    """
+
+    destination = job.get("handle_path")
+    if not isinstance(destination, str) or not destination:
+        return
+    try:
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        temporary.write_text(
+            json.dumps({"provider_job_id": provider_job_id}, ensure_ascii=True),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    except OSError:
+        return
+
+
+def _collect_target(job: Mapping[str, Any]) -> str | None:
+    value = job.get("collect_provider_job_id")
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
 def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
     token = _credential("ARK_API_KEY")
+    base = _base_url("SEEDANCE_BASE_URL", SEEDANCE_BASE_URL)
+    collecting = _collect_target(job)
+    if collecting is not None:
+        return _poll_seedance(job, base=base, token=token, task_id=collecting)
     model = os.environ.get("SEEDANCE_MODEL", "")
     references = _reference_paths(job)
     reference_roles = (
@@ -1155,7 +1192,6 @@ def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
         allowed_ratios=allowed_ratios,
         duration_range=duration_range,
     )
-    base = _base_url("SEEDANCE_BASE_URL", SEEDANCE_BASE_URL)
     created, _ = _request_json(
         f"{base}/contents/generations/tasks",
         provider="seedance",
@@ -1167,6 +1203,14 @@ def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
         raise AdapterFailure(
             "Seedance did not return a task id", code="missing_task_id"
         )
+    # Billed from here on. Record the id before the first poll.
+    _record_handle(job, task_id)
+    return _poll_seedance(job, base=base, token=token, task_id=task_id)
+
+
+def _poll_seedance(
+    job: Mapping[str, Any], *, base: str, token: str, task_id: str
+) -> tuple[Path, str]:
     try:
         interval = float(os.environ.get("SEEDANCE_POLL_INTERVAL", "5"))
         deadline = time.monotonic() + float(os.environ.get("SEEDANCE_TIMEOUT_SECONDS", "1800"))
@@ -1330,6 +1374,10 @@ def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
 
 def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
     token = _credential("MINIMAX_API_KEY")
+    base = _base_url("MINIMAX_VIDEO_BASE_URL", MINIMAX_VIDEO_BASE_URL)
+    collecting = _collect_target(job)
+    if collecting is not None:
+        return _poll_minimax_video(job, base=base, token=token, task_id=collecting)
     model = os.environ.get("MINIMAX_VIDEO_MODEL", "")
     references = _reference_paths(job)
     reference_roles = (
@@ -1350,7 +1398,6 @@ def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
         allowed_resolutions=resolutions,
         duration_range=duration_range,
     )
-    base = _base_url("MINIMAX_VIDEO_BASE_URL", MINIMAX_VIDEO_BASE_URL)
     created, _ = _request_json(
         f"{base}/video_generation",
         provider="minimax-h3",
@@ -1363,6 +1410,14 @@ def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
             "MiniMax did not return a task id",
             code=_provider_code(created) or "missing_task_id",
         )
+    # Billed from here on. Record the id before the first poll.
+    _record_handle(job, task_id)
+    return _poll_minimax_video(job, base=base, token=token, task_id=task_id)
+
+
+def _poll_minimax_video(
+    job: Mapping[str, Any], *, base: str, token: str, task_id: str
+) -> tuple[Path, str]:
     try:
         interval = float(os.environ.get("MINIMAX_VIDEO_POLL_INTERVAL", "5"))
         deadline = time.monotonic() + float(
