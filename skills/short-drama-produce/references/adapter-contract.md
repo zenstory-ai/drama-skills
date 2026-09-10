@@ -113,6 +113,34 @@ on the machine locale. The document contains the confirmed job plus:
   production tool. Every adapter output source must be a direct regular-file
   child of this directory. The whole directory is deleted after success or
   failure.
+- `handle_path`: absolute path where the adapter records the provider's task id
+  **as soon as it has one, before it starts polling** — write
+  `{"provider_job_id": "<id>"}`, atomically. Unlike `output_root` this path
+  survives the attempt.
+- `collect_provider_job_id`: present only on a collect call. When it is set the
+  adapter must **not submit anything**; it polls and downloads that existing
+  task and returns its outputs as usual.
+
+## Why the handle exists
+
+A video task is billed the moment it is submitted, not when its result is
+collected. Everything after submission — polling for minutes, downloading — can
+be interrupted by a killed process, a dropped connection, or a sleeping laptop.
+Without a durable id the attempt record says `failed` while the provider's task
+is alive and already paid for, and the only way forward is to submit again and
+pay a second time for the same shot.
+
+So: write the handle before the first poll, and treat failing to write it as
+non-fatal — a submitted task must never be failed because its id could not be
+recorded locally. The tool copies the handle onto the attempt record on both the
+success and the failure path, `audit` reports any unfinished attempt that
+carries one as `orphaned_provider_job` with `action: collect_before_retry`, and
+`production_tool.py collect` fetches it.
+
+`collect` deliberately sits outside the confirmation gate. That gate exists to
+prevent an unintended charge; collecting spends nothing because the charge
+already happened. Requiring a fresh confirmation would make paying again the
+cheapest way out of an interruption — the exact outcome the gate is for.
 
 It may translate provider-neutral parameters into its chosen SDK/API. Optional
 provider adapters under `scripts/` document and implement known translations;
