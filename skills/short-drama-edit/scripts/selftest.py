@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edit_tool import (  # noqa: E402
     EditError,
     _build_ass,
+    _shot_match_filter,
     _subtitle_cues,
     check_cuts,
     parse_cut_list,
@@ -140,6 +141,54 @@ def check_subtitle_timing() -> None:
         )
 
 
+def check_shot_match() -> None:
+    """A declared correction is applied; an undeclared one never is.
+
+    Generated shots drift a stop apart, so the join reads as a mistake. The
+    correction has to be visible in the document — a tool that measured clips
+    and adjusted them on its own would be changing pictures nobody could review.
+    """
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        require(_shot_match_filter(cuts[0]) == "", "没写画面的段不得被改动")
+
+        listed = CUT_LIST.replace(
+            "- 声音：保留原声\n- 字幕：无",
+            "- 声音：保留原声\n- 画面：亮度 +0.06；色温 -6\n- 字幕：无", 1)
+        (episode / "剪辑单.md").write_text(listed, encoding="utf-8")
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        chain = _shot_match_filter(cuts[0])
+        require("brightness=0.06" in chain, f"亮度没进滤镜链: {chain}")
+        require("colorbalance" in chain and "rm=-0.06" in chain, f"色温没进滤镜链: {chain}")
+
+        # 超出范围是重新调色，不是接镜，必须挡住。
+        wild = CUT_LIST.replace(
+            "- 声音：保留原声\n- 字幕：无",
+            "- 声音：保留原声\n- 画面：亮度 +0.9\n- 字幕：无", 1)
+        (episode / "剪辑单.md").write_text(wild, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("超出允许范围" in str(error), f"越界报错不对: {error}")
+        else:
+            raise AssertionError("亮度 +0.9 应当被拒绝")
+
+        # 写了内容却没有可执行项，是写错了，不能静默当成不校正。
+        vague = CUT_LIST.replace(
+            "- 声音：保留原声\n- 字幕：无",
+            "- 声音：保留原声\n- 画面：调暖一点\n- 字幕：无", 1)
+        (episode / "剪辑单.md").write_text(vague, encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError as error:
+            require("没有可执行的项" in str(error), f"含混报错不对: {error}")
+        else:
+            raise AssertionError("「调暖一点」应当被拒绝")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -205,6 +254,7 @@ def main() -> int:
 
     check_subtitle_geometry()
     check_subtitle_timing()
+    check_shot_match()
     print("short-drama-edit self-tests passed")
     return 0
 

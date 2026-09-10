@@ -33,6 +33,7 @@
 | EDT-13 | craft_default | Target duration is intent. The report states the gap between target and actual and why, instead of cutting content to reach a round number. |
 | EDT-14 | taste_option | Cut rhythm, whether a beat is held or clipped, and whether a moment repeats are creator choices; the suite records them and does not treat any of them as defects. |
 | EDT-15 | structural_invariant | Rendering, duration match and file existence are technical outcomes. None of them may be reported as a statement about whether the film is good; quality goes to review or to the creator. |
+| EDT-16 | reviewed_invariant | Generated shots drift in exposure and white balance, so adjacent cuts are compared before delivery and a visible mismatch is corrected. The correction is written in the cut list as a stated creator decision with explicit numbers; the tool never measures a clip and adjusts it on its own, because a correction nobody wrote down is one nobody can review. Shot-matching does not rescue a wrong shot — drifted identity, a changed light direction, or a missing secondary source goes back upstream rather than under a colour correction. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
