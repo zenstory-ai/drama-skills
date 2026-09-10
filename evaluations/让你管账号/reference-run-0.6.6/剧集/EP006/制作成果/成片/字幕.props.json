@@ -1,0 +1,36 @@
+{
+  "cues": [
+    {
+      "start": 3.109,
+      "end": 8.575,
+      "text": "拍得比原来干净。灯是灯，人是人。就是……"
+    },
+    {
+      "start": 8.826,
+      "end": 10.133,
+      "text": "就是什么。"
+    },
+    {
+      "start": 16.858,
+      "end": 17.908,
+      "text": "灵魂吧。"
+    },
+    {
+      "start": 20.938,
+      "end": 23.038,
+      "text": "把手机那版调出来。"
+    },
+    {
+      "start": 37.268,
+      "end": 38.468,
+      "text": "就用这版。"
+    }
+  ],
+  "width": 1080,
+  "height": 1920,
+  "fps": 24.0,
+  "durationInSeconds": 40.128,
+  "fontScale": 0.034,
+  "bottomScale": 0.055,
+  "fontFamily": "\"PingFang SC\", \"Noto Sans CJK SC\", \"Source Han Sans SC\", \"Microsoft YaHei\", sans-serif"
+}
