@@ -613,7 +613,11 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
 
 
 def _named_entries(
-    prompt: str, entries: list[VisualEntry], *, fold_case: bool = False
+    prompt: str,
+    entries: list[VisualEntry],
+    *,
+    fold_case: bool = False,
+    by_entry_name: bool = False,
 ) -> set[tuple[str, str]]:
     """Which declared entries does this frozen keyframe actually call by name?
 
@@ -625,7 +629,16 @@ def _named_entries(
         haystack = haystack.casefold()
     owners: dict[str, list[VisualEntry]] = {}
     for entry in entries:
-        for designator in entry.designators:
+        # 来源 quotes 剧本.md, which is written in the project's own language and
+        # calls people by their entry names — not by the 画面代称 a prompt body
+        # uses. Matching a Chinese screenplay quote against an English designator
+        # would never fire, so that text is matched by entry name instead. An
+        # entry that opted out with `画面代称：无` opted out of being found by
+        # name at all, and stays out of both.
+        needles = (
+            [entry.name] if by_entry_name and entry.designators else entry.designators
+        )
+        for designator in needles:
             needle = re.sub(r"\s+", " ", designator).strip()
             if fold_case:
                 needle = needle.casefold()
@@ -712,13 +725,17 @@ def _check_named_coverage(
     basis: "VisualBasis",
     entries: list[VisualEntry],
     errors: list[str],
+    *,
+    by_entry_name: bool = False,
 ) -> None:
     """Every entry this text calls by name is either in frame or declared 画外."""
     # Matching is case-sensitive so an ordinary English word never impersonates a
     # character called May or Will. A body that writes the name in another case
     # would otherwise fall out of the check silently, so it is reported here.
-    named = _named_entries(prompt, entries)
-    folded = _named_entries(prompt, entries, fold_case=True)
+    named = _named_entries(prompt, entries, by_entry_name=by_entry_name)
+    folded = _named_entries(
+        prompt, entries, fold_case=True, by_entry_name=by_entry_name
+    )
     for category, name in sorted(folded - named):
         errors.append(
             f"{owner}: {where}里的名字与画面代称大小写不一致: {category}「{name}」；"
@@ -1208,8 +1225,9 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
 
     for shot_id, shot_body in shots.items():
         fields = _fields(shot_body, owner=shot_id, errors=errors)
+        source_value = fields.get("来源", "")
         claimed_scenes.update(
-            _shot_sources(fields.get("来源", ""), shot_id, scenes, errors)
+            _shot_sources(source_value, shot_id, scenes, errors)
         )
         shot_seconds = _declared_seconds(_plain(fields.get("时长", "")))
         motion_seconds = _declared_seconds(motion_duration.get(shot_id, ""))
@@ -1265,6 +1283,22 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         elif basis.parsed:
             _check_named_coverage(
                 keyframe, shot_id, "冻结关键帧提示词", basis, visual_entries, errors
+            )
+        if basis.parsed and source_value:
+            # A shot's 来源 is its claim on the screenplay: whatever it quotes,
+            # this shot is the one that films it. Quoting an action performed by
+            # someone the frame never shows takes that action off everyone's
+            # list — no other shot claims it, and nothing reports it missing, so
+            # it simply never gets filmed. Same rule as the keyframe: in frame,
+            # or declared 画外.
+            _check_named_coverage(
+                source_value,
+                shot_id,
+                "来源引文",
+                basis,
+                visual_entries,
+                errors,
+                by_entry_name=True,
             )
 
         motion = motion_by_shot.get(shot_id)

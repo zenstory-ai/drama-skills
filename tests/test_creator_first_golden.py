@@ -423,6 +423,56 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertIn("不写最终《视频提示词.md》", video_skill)
         self.assertIn("该字段只写这两个精确值", video_skill)
 
+    def test_a_source_quote_cannot_claim_an_action_the_shot_never_shows(self) -> None:
+        """A shot's 来源 is its claim on the screenplay.
+
+        Quote an action performed by someone this frame never shows and that
+        action leaves everyone's list: no other shot claims it, nothing reports
+        it missing, and it simply never gets filmed. The defect only surfaces
+        when a human watches the finished film and asks where the reaction went.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            self.assertEqual(
+                [
+                    error
+                    for error in creator_markdown_check.validate_episode(episode, project)
+                    if "来源引文" in error
+                ],
+                [],
+                "现有样例不该被这条检查误伤",
+            )
+
+            path = episode / "分镜.md"
+            document = path.read_text(encoding="utf-8")
+            visual = (episode / "视觉设定.md").read_text(encoding="utf-8")
+            people = re.findall(r"^## 人物 · (.+?)\s*$", visual, re.M)
+            self.assertTrue(len(people) >= 2, people)
+
+            first = re.search(r"^- 来源：(.+)$", document, re.M)
+            self.assertIsNotNone(first)
+            basis = re.search(r"^- 视觉依据：(.+)$", document, re.M)
+            self.assertIsNotNone(basis)
+            outsider = next(p for p in people if p not in basis.group(1))
+            path.write_text(
+                document.replace(
+                    first.group(0),
+                    f"{first.group(0)}「{outsider}低头去翻自己的稿子。」",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            reported = [
+                error
+                for error in creator_markdown_check.validate_episode(episode, project)
+                if "来源引文" in error and outsider in error
+            ]
+            self.assertEqual(len(reported), 1, reported)
+            self.assertIn("视觉依据没有覆盖", reported[0])
+
     def test_a_stray_line_in_a_prompt_block_is_named_rather_than_hinted_at(self) -> None:
         """One non-`>` line voids the whole block, and the block still looks right.
 
@@ -1676,7 +1726,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 *(f"IMG-{number:02d}" for number in range(1, 15))
             },
             "short-drama-storyboard": {
-                *(f"SHT-{number:02d}" for number in range(1, 26)),
+                *(f"SHT-{number:02d}" for number in range(1, 27)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-video-prompts": {
