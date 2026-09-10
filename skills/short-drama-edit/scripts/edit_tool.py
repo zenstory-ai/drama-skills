@@ -37,6 +37,10 @@ MOTION_DOCUMENT = "视频提示词.md"
 SCREENPLAY_DOCUMENT = "剧本.md"
 OUTPUT_DIRECTORY = Path("制作成果") / "成片"
 SEGMENT_DIRECTORY = "分段"
+# A CJK subtitle needs a font that actually has the glyphs. libass falls back
+# through fontconfig when this one is absent, which is the right behaviour: a
+# missing font shows as a different typeface, never as empty boxes.
+SUBTITLE_FONT = "Noto Sans CJK SC"
 
 CUT_HEADING = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
 MOTION_HEADING = re.compile(r"^##\s+(MOTION-[^\s·]+)")
@@ -380,6 +384,7 @@ def render(
     segments_root.mkdir(parents=True, exist_ok=True)
 
     segments: list[Path] = []
+    spans: list[float] = []
     for cut in cuts:
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
@@ -392,6 +397,7 @@ def render(
             "-c:a", "aac", "-b:a", "192k", str(segment),
         ])
         segments.append(segment)
+        spans.append(probe_duration(segment))
 
     with tempfile.TemporaryDirectory() as scratch:
         listing = Path(scratch) / "segments.txt"
@@ -404,24 +410,19 @@ def render(
 
         filters: list[str] = []
         subtitle_path = None
+        styled_path = None
         if burn_subtitles and any(cut.subtitle for cut in cuts):
+            canvas = probe_stream(segments[0])
+            cues = _subtitle_cues(cuts, spans)
             subtitle_path = output_root / "字幕.srt"
-            subtitle_path.write_text(_build_srt(cuts), encoding="utf-8")
-            escaped = str(subtitle_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-            # libass reads an SRT against a 384-high canvas unless told otherwise,
-            # so a fixed FontSize would shrink as the delivery gets taller. Scale
-            # the style with the real frame instead.
-            height = probe_stream(segments[0])["height"] or 1920
-            style = (
-                f"FontSize={max(16, round(height * 0.034))},"
-                f"Outline={max(1, round(height * 0.0018))},Shadow=1,"
-                f"MarginV={max(24, round(height * 0.055))},"
-                "BorderStyle=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Alignment=2"
+            subtitle_path.write_text(_build_srt(cues), encoding="utf-8")
+            styled = styled_path = output_root / "字幕.ass"
+            styled.write_text(
+                _build_ass(cues, canvas["width"] or 1080, canvas["height"] or 1920),
+                encoding="utf-8",
             )
-            filters.append(
-                f"subtitles='{escaped}':original_size={_frame_geometry(segments[0])}"
-                f":force_style='{style}'"
-            )
+            escaped = str(styled).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+            filters.append(f"ass='{escaped}'")
 
         final = output_root / "成片.mp4"
         command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
@@ -442,6 +443,7 @@ def render(
         "成片": str(final),
         "分段": [str(segment) for segment in segments],
         "字幕": str(subtitle_path) if subtitle_path else None,
+        "压制字幕": str(styled_path) if styled_path else None,
         "段数": len(segments),
         "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
     }
@@ -482,23 +484,91 @@ def _frame_geometry(media: Path) -> str:
     return f"{stream['width']}x{stream['height']}"
 
 
-def _build_srt(cuts: Sequence[Cut]) -> str:
-    """Subtitle timing lives in output time; the text is the screenplay's, verbatim."""
+def _subtitle_cues(
+    cuts: Sequence[Cut], spans: Sequence[float]
+) -> list[tuple[float, float, str]]:
+    """Place each line in output time, measuring the segments that were written.
 
-    blocks: list[str] = []
+    A segment lands on a frame boundary, so it is a few milliseconds longer than
+    the cut list declares. Accumulating the declared numbers instead drifts —
+    a third of a second by the end of eight cuts here — and the subtitle leaves
+    before the actor stops speaking. The rendered files are the timeline.
+    """
+
+    cues: list[tuple[float, float, str]] = []
     cursor = 0.0
-    index = 0
-    for cut in cuts:
-        span = cut.end - cut.start
+    for cut, span in zip(cuts, spans):
         if cut.subtitle:
-            window = cut.subtitle_window or (0.0, span)
-            index += 1
-            blocks.append(
-                f"{index}\n{_timecode(cursor + window[0])} --> "
-                f"{_timecode(cursor + window[1])}\n{cut.subtitle}\n"
+            declared = cut.end - cut.start
+            window = cut.subtitle_window or (0.0, declared)
+            # The window was authored against the declared span; hold it in
+            # place proportionally rather than letting the tail slip out.
+            scale = span / declared if declared > 0 else 1.0
+            cues.append(
+                (cursor + window[0] * scale, cursor + window[1] * scale, cut.subtitle)
             )
         cursor += span
-    return "\n".join(blocks)
+    return cues
+
+
+def _build_srt(cues: Sequence[tuple[float, float, str]]) -> str:
+    """The text is the screenplay's, verbatim; only the timing is ours."""
+
+    return "\n".join(
+        f"{index}\n{_timecode(start)} --> {_timecode(end)}\n{text}\n"
+        for index, (start, end, text) in enumerate(cues, start=1)
+    )
+
+
+def _build_ass(
+    cues: Sequence[tuple[float, float, str]], width: int, height: int
+) -> str:
+    """Author the ASS directly so the type size is stated in frame pixels.
+
+    Letting ffmpeg convert the SRT hands libass a 384-high canvas, and every
+    size in the style is then scaled by height/384 on the way to the frame.
+    Computing a FontSize from the real height on top of that scales it twice:
+    the first attempt here produced type a third of the frame wide, sitting in
+    the middle of the picture with both ends of the line cut off. Declaring
+    PlayRes as the frame removes the conversion, so one unit is one pixel.
+    """
+
+    font_size = max(18, round(height * 0.034))
+    outline = max(2, round(height * 0.0022))
+    margin_v = max(24, round(height * 0.055))
+    margin_h = max(24, round(width * 0.06))
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "WrapStyle: 2\n"
+        "ScaledBorderAndShadow: yes\n"
+        f"PlayResX: {width}\n"
+        f"PlayResY: {height}\n"
+        "\n[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
+        "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
+        "MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: 正片,{SUBTITLE_FONT},{font_size},&H00FFFFFF,&H00FFFFFF,"
+        f"&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{outline},1,2,"
+        f"{margin_h},{margin_h},{margin_v},1\n"
+        "\n[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
+        "Effect, Text\n"
+    )
+    lines = [
+        f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},正片,,0,0,0,,{text}"
+        for start, end, text in cues
+    ]
+    return header + "\n".join(lines) + "\n"
+
+
+def _ass_time(seconds: float) -> str:
+    hundredths = int(round(seconds * 100))
+    hours, hundredths = divmod(hundredths, 360000)
+    minutes, hundredths = divmod(hundredths, 6000)
+    whole, hundredths = divmod(hundredths, 100)
+    return f"{hours:d}:{minutes:02d}:{whole:02d}.{hundredths:02d}"
 
 
 def _timecode(seconds: float) -> str:
