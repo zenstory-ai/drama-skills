@@ -96,7 +96,10 @@ done
 # 4. 明确确认后投产
 用 $short-drama-produce 预览第 1 集已接受的图片、视频、TTS 或时间线音乐任务；等我确认后再执行
 
-# 5. 需要时再审查
+# 5. 把生产出来的素材剪成成片
+用 $short-drama-edit 把第 1 集已生产的镜头剪成成片，逐段写清入出点理由
+
+# 6. 需要时再审查
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
 
@@ -127,6 +130,7 @@ flowchart LR
     sb["分镜/关键帧<br/>$short-drama-storyboard"]:::phase
     vid["视频提示词<br/>$short-drama-video-prompts"]:::phase
     prod["确认后生产<br/>$short-drama-produce"]:::phase
+    cut["剪辑成片<br/>$short-drama-edit"]:::phase
     rev["审查<br/>$short-drama-review"]:::final
     pkg["文本交付包"]:::final
 
@@ -136,7 +140,7 @@ flowchart LR
     assets --> sb --> vid
     img --> prod
     vid --> prod
-    prod --> rev --> pkg
+    prod --> cut --> rev --> pkg
 ```
 
 | 技能 | 职责 |
@@ -150,10 +154,12 @@ flowchart LR
 | `short-drama-storyboard` | 可选场次视觉计划与 Coverage Audition、原文落实、镜头、边界和冻结关键帧 |
 | `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态、补拍说明，以及跨镜时间线音乐规格 |
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2、MiniMax H3 视频与 MiniMax Music |
+| `short-drama-edit` | 逐镜素材的可用带、入出点取舍、镜序、台词完整性、字幕与响度，写成剪辑单并渲染成片 |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
 `$short-drama` 是入口路由，负责初始化、继续和 Dashboard，把具体工作转给对应技能。交付直接选择
-五份 Markdown 与成品，不为打包补建生命周期记录。
+五份 Markdown 与成品，不为打包补建生命周期记录。五份 Markdown 是创作真相；生产之后的
+`剪辑单.md` 只记录已有素材里哪些帧进成片，不改变其中任何一份。
 现成单集剧本可以直接进入规范化或资产拆解；多集整稿需要生成分集地图时，由开发技能按
 文件实际结构建立一次索引、逐集切片并断点续跑；点子从故事开发进入。手上是一部长篇原著时，
 先走 `$short-drama-novel-analyze` 抽样快评，值得拆再拆出分析层与分集候选，

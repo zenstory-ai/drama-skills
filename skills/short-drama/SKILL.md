@@ -1,6 +1,6 @@
 ---
 name: short-drama
-description: 基于文件系统初始化和继续短剧或漫剧项目，提供 creator-first 五文档路由、本地 Dashboard、制作形态与 Look Development 决策。用户提出“创建/继续短剧项目”“看进度/下一步”“做 Look Development”“打开 dashboard/短剧创作台”“导出制作资料”，或任务跨多个创作阶段时使用；明确的写作、资产、提示词、分镜或审查请求由对应子 skill 直接处理。
+description: 基于文件系统初始化和继续短剧或漫剧项目，提供 creator-first 五文档路由、本地 Dashboard、制作形态与 Look Development 决策。用户提出“创建/继续短剧项目”“看进度/下一步”“做 Look Development”“打开 dashboard/短剧创作台”“导出制作资料”，或任务跨多个创作阶段时使用；明确的写作、资产、提示词、分镜、剪辑或审查请求由对应子 skill 直接处理。
 license: MIT
 ---
 
@@ -27,6 +27,7 @@ license: MIT
 | 做镜头和冻结关键帧 | `$short-drama-storyboard` → `分镜.md` |
 | 写视频/时间线音乐提示词 | `$short-drama-video-prompts` → `视频提示词.md` |
 | 实际生成媒体 | `$short-drama-produce`，先预览，再显式确认，最后运行 |
+| 把已生产的素材剪成成片 | `$short-drama-edit` → `剪辑单.md` 与 `制作成果/成片/` |
 | 审稿或校验 | `$short-drama-review`，仅在用户点名时 |
 | 初始化、Dashboard、归档点名文档 | 本技能 |
 
@@ -35,6 +36,9 @@ license: MIT
 
 现成剧本可直接拆资产；已有视觉事实可直接写图片提示词或分镜；已有分镜可直接写视频提示词。
 不要为补齐名义流水线伪造上游。
+
+五文档是创作真相，剪辑单不是第六份。它写在素材生产之后，只记录「已有的这些素材，哪些帧进成片」，
+不改变任何一集的剧本、镜头职责或时长声明；需要改这些就回到拥有它们的文档。
 
 ## 执行请求
 
