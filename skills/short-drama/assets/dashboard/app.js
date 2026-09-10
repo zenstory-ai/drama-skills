@@ -195,6 +195,7 @@ const OWNER_SECTIONS = {
   "short-drama-storyboard": "storyboard",
   "short-drama-video-prompts": "prompts",
   "short-drama-produce": "production",
+  "short-drama-edit": "production",
 };
 
 function ownerSection(path) {

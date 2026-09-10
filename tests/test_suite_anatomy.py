@@ -17,6 +17,7 @@ EXPECTED_SKILLS = {
     "short-drama-storyboard",
     "short-drama-video-prompts",
     "short-drama-produce",
+    "short-drama-edit",
     "short-drama-review",
 }
 
@@ -228,6 +229,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         expected = {
             "short-drama-novel-analyze": {"scripts/novel_index.py"},
             "short-drama-produce": {"scripts/production_tool.py"},
+            "short-drama-edit": {"scripts/edit_tool.py"},
         }
         for skill, validator_links in expected.items():
             skill_md = SUITE / "skills" / skill / "SKILL.md"

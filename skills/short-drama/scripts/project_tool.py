@@ -48,6 +48,11 @@ CREATOR_DOCUMENTS = (
     "图片提示词.md",
     "视频提示词.md",
 )
+# The cut list is written after the media exists, so an episode that never
+# reached editing is complete without one. It travels with a handover when it is
+# there -- without it the next person has to re-cut the film from scratch -- but
+# it is never reported as a missing creator document.
+POST_PRODUCTION_DOCUMENTS = ("剪辑单.md",)
 EXPORT_MEDIA_DIRECTORY = "制作成果"
 EXPORT_SCHEMA = "1.0"
 EPISODE_ID_RE = re.compile(r"EP(?:[0-9]{3}|[1-9][0-9]{3,})")
@@ -1945,6 +1950,12 @@ def _export_episode(
         source = episode_directory / name
         if not source.exists():
             missing.append(name)
+            continue
+        digest = _export_regular_file(source, target / name)
+        files.append({"path": name, "sha256": digest})
+    for name in POST_PRODUCTION_DOCUMENTS:
+        source = episode_directory / name
+        if not source.exists():
             continue
         digest = _export_regular_file(source, target / name)
         files.append({"path": name, "sha256": digest})
