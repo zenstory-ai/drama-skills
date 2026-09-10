@@ -1,0 +1,65 @@
+{
+  "created_at": "2026-09-09T07:50:09.922719Z",
+  "creator_authority": {
+    "constraints": [],
+    "decisions_artifact": "创作者决策/",
+    "delivery_surface": {
+      "aspect": null,
+      "overlay_regions": [],
+      "source_ref": null,
+      "status": "unset"
+    },
+    "production_profile": {
+      "choices": {
+        "audio_generation": "same_pass",
+        "native_duration_seconds": {
+          "max": 15,
+          "min": 4
+        },
+        "supported_generation_modes": [
+          "text",
+          "first_frame",
+          "first_last_frame",
+          "reference"
+        ],
+        "target_video_model": "minimax-h3",
+        "video_prompt_dialect": "minimax-h3",
+        "video_prompt_language": "en"
+      },
+      "status": "accepted"
+    },
+    "visual_direction": {
+      "choices": {
+        "look_development": {
+          "applies_to": [
+            "EP001-SC003",
+            "EP001-SC004"
+          ],
+          "constraints": [
+            "不新增剧情里不存在的灯具",
+            "不把夜戏拍成开了顶灯的白天",
+            "屏幕仍必须是最亮、最有方向性的那个光源"
+          ],
+          "name": "屏幕主光 + 合理补光",
+          "rationale": "单一硬光源、其余全黑是光学上的简化，不是现实：真实暗房有反弹与实用光源。缺少次级光会让画面读成 CG，且 9:16 手机端白天观看时大面积糊成一片。",
+          "summary": "夜戏保留「屏幕是主光」这条剧情事实，但不把其余光源全部排除。允许并要求真实存在的次级光：屏幕打在桌面与近侧墙面上的反弹、门缝漏进的走廊光、主机与设备的待机指示灯。暗部保留可读细节，人物面部在主光侧之外仍能辨认轮廓与表情。"
+        }
+      },
+      "status": "accepted"
+    }
+  },
+  "format": {
+    "aspect_ratio": "9:16",
+    "episode_count": 1,
+    "pacing": {
+      "seconds_per_action_paragraph": null,
+      "spoken_characters_per_second": null
+    },
+    "prompt_language": "zh",
+    "target_seconds_per_episode": 90.0
+  },
+  "language": "zh",
+  "project_id": "SD-DC40E6A94463",
+  "schema_version": "1.0.0-draft",
+  "title": "让你管账号，你高燃混剪炸全网"
+}
