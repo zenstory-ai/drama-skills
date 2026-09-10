@@ -870,6 +870,17 @@ def _check_language_designators(
             )
 
 
+def _declared_seconds(value: str) -> Optional[float]:
+    """The number of seconds a 时长 field declares, however it is spelled.
+
+    `4s`, `4 秒` and `4秒` are the same duration. Returning None for anything
+    else keeps an unparseable value out of the comparison instead of turning a
+    formatting difference into a false duration conflict.
+    """
+    match = re.search(r"(\d+(?:\.\d+)?)", value or "")
+    return float(match.group(1)) if match else None
+
+
 def _check_continuity_locks(
     locks: list[ContinuityLock],
     *,
@@ -1122,9 +1133,11 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         errors.append("视频提示词.md: 没有 MOTION 条目")
 
     motion_by_shot: dict[str, tuple[str, str, Optional[str]]] = {}
+    motion_duration: dict[str, str] = {}
     for motion_id, body in motions.items():
         fields = _fields(body, owner=motion_id, errors=errors)
         shot_id = _plain(fields.get("分镜", ""))
+        motion_duration[shot_id] = _plain(fields.get("时长", ""))
         copyable_prompt = _copyable_prompt(body)
         if not shot_id:
             errors.append(f"{motion_id}: 缺少分镜字段")
@@ -1145,6 +1158,20 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         claimed_scenes.update(
             _shot_sources(fields.get("来源", ""), shot_id, scenes, errors)
         )
+        shot_seconds = _declared_seconds(_plain(fields.get("时长", "")))
+        motion_seconds = _declared_seconds(motion_duration.get(shot_id, ""))
+        if (
+            shot_seconds is not None
+            and motion_seconds is not None
+            and shot_seconds != motion_seconds
+        ):
+            # 时长 is the value actually sent to the execution end and the term
+            # VID-04/VID-13 arithmetic is built on. A downstream copy that drifts
+            # from its accepted upstream is invisible in every other check.
+            errors.append(
+                f"{shot_id}: 分镜时长 {shot_seconds:g} 秒与视频提示词 "
+                f"{motion_seconds:g} 秒不一致；视频提示词只能原样照抄已接受的镜头时长"
+            )
         image_value = fields.get("图片提示词项", "")
         if not image_value:
             errors.append(f"{shot_id}: 缺少图片提示词项字段")

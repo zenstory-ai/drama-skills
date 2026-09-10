@@ -17,7 +17,7 @@
 
 | ID | Class | Knowledge |
 |---|---|---|
-| VID-01 | structural_invariant | Motion reads but cannot rewrite shot start/end/duration/dialogue and next-shot state. |
+| VID-01 | structural_invariant | Motion reads but cannot rewrite shot start/end/duration/dialogue and next-shot state. The duration a MOTION declares is compared against its SHOT: they must be the same number, because 时长 is what reaches the execution end and what VID-04/VID-13 arithmetic is built on. A downstream copy left behind by an upstream revision is a defect even though every string still parses. |
 | VID-02 | craft_default | Write start anchor, ordered subject motion, camera behavior, timing, and end report; add performance change and environment/audio only when this shot actually carries them. |
 | VID-03 | structural_invariant | Choose image-to-video only when the matching storyboard's reference set is complete, declares readable REF inputs, and is copied unchanged. No REF is not by itself consent to text-to-video: first discover and bind matching real project images; preserve any verified partial bindings, but if required images remain missing, report them and stop before the final motion document. Choose text-to-video only after the creator explicitly selects it, and carry a non-empty static visual anchor in the copyable text. Only image-to-video may omit appearance/composition already carried by its real reference frame. |
 | VID-04 | structural_invariant | Explicit segment timing sums exactly to its shot's accepted duration—neither exceeding it nor leaving an unallocated remainder. |
