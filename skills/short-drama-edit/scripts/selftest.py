@@ -355,8 +355,10 @@ def check_remotion_sources_all_shipped() -> None:
     Nothing else notices until someone has already paid for that render.
     """
 
+    # `as_posix`, because the whitelist is written with forward slashes and
+    # `relative_to` yields backslashes on Windows.
     on_disk = {
-        str(path.relative_to(REMOTION_SOURCE))
+        path.relative_to(REMOTION_SOURCE).as_posix()
         for path in REMOTION_SOURCE.rglob("*")
         if path.is_file()
         and path.suffix in {".ts", ".tsx", ".json"}
