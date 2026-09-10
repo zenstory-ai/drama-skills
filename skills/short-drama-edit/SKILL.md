@@ -105,7 +105,7 @@ python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-r
 python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
-`check` 只核对不渲染：区间自洽、`MOTION-...` 解析、文件存在、区间不越过素材时长、
+`check` 只核对不渲染：素材是否比剪辑单新（重出之后字幕时间必须重测）、区间自洽、`MOTION-...` 解析、文件存在、区间不越过素材时长、
 同源区间不重叠、字幕文字能在 `剧本.md` 里找到。其中「区间不越过素材时长」需要 `ffprobe`，
 没有时这一项报「未测」并说明原因，不静默跳过。`render` 按剪辑单切段、拼接、烧字幕、统一响度，
 输出 `剧集/<EP>/制作成果/成片/`。`verify` 只测量已经渲染出来的成片并回报数字，不改文件、

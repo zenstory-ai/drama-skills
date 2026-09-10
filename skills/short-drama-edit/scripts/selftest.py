@@ -271,13 +271,58 @@ def check_multi_subtitle() -> None:
             raise AssertionError("多句字幕缺时间应当被拒绝")
 
 
+def check_stale_window() -> None:
+    """Regenerating a shot invalidates every subtitle window bound to it.
+
+    The windows were reverse-engineered from the old take's audio. Nothing else
+    notices the change: the numbers stay in range, the render still succeeds,
+    and the subtitle appears at a moment when nobody is speaking.
+    """
+
+    import os
+    import time
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        timed = CUT_LIST.replace(
+            "- 字幕：诸君，且听龙吟",
+            "- 字幕：诸君，且听龙吟\n- 字幕时间：0.30-1.60",
+        )
+        episode = build(root, timed)
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        require(
+            not check_cuts(episode, cuts, root, probe=False),
+            "素材不比剪辑单新时不该报陈旧",
+        )
+
+        media = episode / "media" / "011.mp4"
+        listing = episode / "剪辑单.md"
+        newer = listing.stat().st_mtime + 60
+        os.utime(media, (newer, newer))
+        findings = check_cuts(episode, cuts, root, probe=False)
+        require(
+            any("素材比剪辑单新" in item for item in findings),
+            f"重出后的陈旧字幕时间没抓到: {findings}",
+        )
+
+        # 改过剪辑单之后就不再报——那正是「重测并改」的动作。
+        time.sleep(0.01)
+        listing.write_text(timed, encoding="utf-8")
+        later = newer + 60
+        os.utime(listing, (later, later))
+        _, cuts, _ = parse_cut_list(listing)
+        require(
+            not any("素材比剪辑单新" in item for item in check_cuts(episode, cuts, root, probe=False)),
+            "改过剪辑单之后不该继续报陈旧",
+        )
+
+
 def check_ass_escaping() -> None:
     """A quoted line keeps every character it had in 剧本.md.
 
     `{`…`}` is an override block in ASS: unescaped, libass drops the braces and
     everything between them, on screen, with no error anywhere. EDT-05 exists to
-    keep the burned text equal to the screenplay's character for character, so a
-    silent swallow breaks the one rule this stage is a structural invariant about.
+    keep the burned text equal to the screenplay's character for character.
     """
 
     line = "他念出来：{姓名}，请签字。"
@@ -361,6 +406,7 @@ def main() -> int:
     check_shot_match()
     check_ass_escaping()
     check_multi_subtitle()
+    check_stale_window()
     print("short-drama-edit self-tests passed")
     return 0
 

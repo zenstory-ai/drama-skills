@@ -446,6 +446,45 @@ def check_cuts(
                 )
 
     findings.extend(_overlap_findings(cuts))
+    findings.extend(_stale_window_findings(episode, project_root, cuts))
+    return findings
+
+
+def _stale_window_findings(
+    episode: Path, project_root: Path, cuts: Sequence[Cut]
+) -> list[str]:
+    """Material newer than the cut list means the timings were measured on something else.
+
+    Regenerating one shot is routine — the take was hazy, the action was wrong.
+    What is easy to forget is that every subtitle window bound to it was reverse-
+    engineered from the *old* take's audio. Nothing else notices: the numbers are
+    still in range, the render still succeeds, and the subtitle simply appears at
+    a moment when nobody is speaking. This is the one form of staleness the file
+    system can see, so it is reported rather than trusted to memory.
+    """
+
+    listing = episode / CUT_LIST_NAME
+    try:
+        authored = listing.stat().st_mtime
+    except OSError:
+        return []
+    findings: list[str] = []
+    for cut in cuts:
+        if not any(start is not None for start, _, _ in cut.subtitles):
+            continue
+        media = _resolve_media(episode, project_root, cut.media)
+        if media is None:
+            continue
+        try:
+            changed = media.stat().st_mtime
+        except OSError:
+            continue
+        if changed > authored + 1.0:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材比剪辑单新"
+                f"（{cut.media}）；这一段的字幕时间是按旧素材的发声区间反推的，"
+                "重出之后必须重测再改，不能沿用"
+            )
     return findings
 
 
@@ -821,7 +860,7 @@ def _build_ass(
 def _ass_text(text: str) -> str:
     """Escape a line so ASS renders its characters instead of reading them.
 
-    `{`…`}` is an override block in ASS and `\` starts an escape, so a quoted
+    `{`…`}` is an override block in ASS and `\\` starts an escape, so a quoted
     line that happens to contain either would lose characters on screen with no
     error anywhere — and EDT-05 exists precisely to keep the burned text equal
     to the screenplay's, character for character.
