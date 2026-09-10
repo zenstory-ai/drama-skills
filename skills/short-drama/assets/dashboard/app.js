@@ -702,9 +702,21 @@ function renderMarkdown(content) {
   // that go into one request. Rendering each line as its own bordered box made
   // one prompt look like six separate ones, and creators asked which to copy.
   let quoteNode = null;
+  // 剧本 format sanctions Markdown comments for creator notes, so a document
+  // legitimately opens with several lines of them. Rendering those as body text
+  // put the author's private notes at the top of the one pane where they read
+  // the screenplay. `comment` holds the lines of an open block: closed, they are
+  // dropped; unterminated, they are rendered verbatim, because the same rule
+  // says unrecognised Markdown is preserved rather than quietly "fixed".
+  let comment = null;
   const closeList = () => { list = null; listKind = null; };
   const closeQuote = () => { quoteNode = null; };
-  for (const line of content.split("\n")) {
+  const paragraph = (text) => {
+    const node = element("p");
+    appendInlineText(node, text);
+    fragment.append(node);
+  };
+  for (let line of content.split("\n")) {
     if (fence !== null) {
       if (/^\s*```/.test(line)) {
         const pre = element("pre", "code-block");
@@ -717,6 +729,25 @@ function renderMarkdown(content) {
       continue;
     }
     if (/^\s*```/.test(line)) { closeList(); closeQuote(); fence = []; continue; }
+    if (comment !== null) {
+      comment.push(line);
+      if (line.includes("-->")) comment = null;
+      continue;
+    }
+    // Strip closed comments where they sit, so `正文 <!-- 注 -->` keeps its text.
+    const stripped = line.replace(/<!--[\s\S]*?-->/g, "");
+    if (stripped.indexOf("<!--") !== -1) {
+      closeList();
+      closeQuote();
+      const before = stripped.slice(0, stripped.indexOf("<!--"));
+      if (before.trim()) paragraph(before);
+      comment = [line];
+      continue;
+    }
+    if (stripped !== line) {
+      if (!stripped.trim()) { closeQuote(); continue; }
+      line = stripped;
+    }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     if (heading) {
       closeList();
@@ -751,6 +782,8 @@ function renderMarkdown(content) {
     appendInlineText(node, line);
     fragment.append(node);
   }
+  // An unterminated comment renders verbatim rather than eating the document.
+  if (comment !== null) for (const line of comment) paragraph(line);
   // An unterminated fence still renders as a block rather than vanishing.
   if (fence !== null && fence.length) {
     const pre = element("pre", "code-block");
