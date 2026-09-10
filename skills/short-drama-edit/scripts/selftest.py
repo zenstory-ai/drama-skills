@@ -352,8 +352,7 @@ def check_ass_escaping() -> None:
 def check_remotion_sources_all_shipped() -> None:
     """The sync list is a whitelist; a file left out of it is missing at render.
 
-    Nothing else notices — the workspace builds from whatever arrived, and the
-    failure surfaces only once someone pays for a render.
+    Nothing else notices until someone has already paid for that render.
     """
 
     on_disk = {
@@ -369,10 +368,7 @@ def check_remotion_sources_all_shipped() -> None:
 
 
 def check_remotion_concurrency_is_capped() -> None:
-    """Remotion defaults to one browser per core; each holds a full frame.
-
-    Left uncapped, a vertical film's overlay pass took a whole machine down.
-    """
+    """Remotion defaults to one browser per core, each holding a full frame."""
 
     require(DEFAULT_REMOTION_CONCURRENCY >= 1, "并发上限必须是正数")
     source = Path(__file__).resolve().with_name("edit_tool.py").read_text(encoding="utf-8")

@@ -28,9 +28,8 @@ export const Subtitles: React.FC<SubtitleProps> = ({
   const fontSize = height * fontScale;
   // A dark rim on every side keeps white type legible over a bright frame
   // without a caption box, which is what vertical drama expects. It depends
-  // only on the frame, so it is built once instead of on each of the
-  // film's frames — and it sits above the early return, because a hook may
-  // not be skipped on the frames that carry no line.
+  // only on the frame size, so it is built once — and it stays above the early
+  // return, because a hook may not be skipped on the frames with no line.
   const shadow = useMemo(() => {
     const rim = Math.max(2, height * 0.0024);
     return [
@@ -42,8 +41,8 @@ export const Subtitles: React.FC<SubtitleProps> = ({
     ].join(", ");
   }, [height]);
 
-  // Checked against a line that is actually about to be filmed, so the render
-  // stops on the first subtitle frame rather than after the whole pass.
+  // Checked against a line about to be filmed, so a missing font stops the
+  // render on the first subtitle frame rather than after the whole pass.
   assertFamilyResolves(fontFamily, active?.text ?? "");
   if (!active) return null;
 

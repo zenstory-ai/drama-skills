@@ -1,10 +1,9 @@
 import { continueRender, delayRender } from "remotion";
 
 /**
- * Remotion captures a frame as soon as React has painted. Anything the browser
- * is still fetching — a web font above all — is simply absent from that frame,
- * and nothing downstream reports it: the film measures correct and reads wrong.
- * The documented guard is to hold the render open until the font layer settles.
+ * Remotion captures a frame as soon as React has painted, so a font still being
+ * fetched is simply absent from it. Nothing downstream reports that: the film
+ * measures correct and reads wrong.
  */
 export const waitForFonts = (): void => {
   const handle = delayRender("等待字体就绪");
@@ -15,19 +14,15 @@ export const waitForFonts = (): void => {
 };
 
 /**
- * `document.fonts.ready` only promises that loading has finished, not that the
- * requested family exists. A missing CJK face does not raise anything — the
- * browser silently substitutes, and a whole film ships in the wrong typeface.
- *
- * Measuring is the only reliable test: lay the same characters out in the
- * requested stack and in a family that cannot exist. Identical widths mean
- * nothing in the stack resolved and the substitute is what would be filmed.
+ * `document.fonts.ready` promises that loading finished, not that the requested
+ * family exists — a missing face raises nothing, the browser substitutes, and
+ * the film ships in the wrong typeface. Measuring is the only reliable test:
+ * identical widths against a family that cannot exist mean nothing resolved.
  */
 let familyChecked = "";
 
 export const assertFamilyResolves = (fontFamily: string, sample: string): void => {
-  // The answer cannot change within a render, and this runs on every frame of
-  // the film, so it is measured once per family and then skipped.
+  // Runs on every frame, so measure once per family.
   if (!sample || familyChecked === fontFamily) return;
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");

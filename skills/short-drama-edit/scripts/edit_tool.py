@@ -58,11 +58,9 @@ REMOTION_SOURCE_FILES = (
 )
 DEFAULT_REMOTION_WORKSPACE = Path.home() / ".cache" / "short-drama-edit" / "remotion"
 REMOTION_COMPOSITION = "Subtitles"
-# Remotion composites every frame in a headless browser and defaults its worker
-# count to the machine's core count. On a 10-core / 8 GB laptop that is ten
-# browsers each holding a full 1080x1920 frame, and a 48-second overlay took the
-# machine down. Two workers finish the same job without competing for memory;
-# raise it only on a machine with headroom to spare.
+# Remotion defaults its worker count to the machine's core count, and each worker
+# is a browser holding a full frame. On a 10-core / 8 GB laptop that took the
+# machine down mid-render. Raise this only after measuring the host.
 DEFAULT_REMOTION_CONCURRENCY = 2
 SUBTITLE_RENDERERS = ("ffmpeg", "remotion")
 
