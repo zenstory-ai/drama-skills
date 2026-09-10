@@ -195,10 +195,14 @@ class ConfirmedProductionTests(unittest.TestCase):
         )
         return path
 
-    def adapter_config(self, directory: str, *, fail: bool = False) -> Path:
+    def adapter_config(
+        self, directory: str, *, fail: bool = False, submit_then_fail: bool = False
+    ) -> Path:
         command = [sys.executable, str(FIXTURE_ADAPTER)]
         if fail:
             command.append("--fail")
+        if submit_then_fail:
+            command.append("--submit-then-fail")
         path = Path(directory) / "adapters.json"
         path.write_text(
             json.dumps(
@@ -892,6 +896,85 @@ class ConfirmedProductionTests(unittest.TestCase):
             with self.assertRaises(production_tool.ConfirmationRequiredError):
                 production_tool.run_job(
                     root, job_id="EP001-SHOT001", adapter_config=config
+                )
+
+    def test_an_interrupted_attempt_is_collected_rather_than_paid_for_twice(self) -> None:
+        """A video task is billed at submission, not at collection.
+
+        If the adapter dies after submitting — killed, disconnected, the machine
+        sleeps — the provider's task is alive and already charged. Without a
+        durable handle the only way forward is to submit again, so an
+        interruption costs the creator a second charge for the same shot.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            interrupted = self.adapter_config(directory, submit_then_fail=True)
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-SHOT001", adapter_config=interrupted
+                )
+
+            # The failed record keeps the handle instead of dropping it.
+            failed = production_tool.job_status(root, job_id="EP001-SHOT001")
+            self.assertEqual(failed["state"], "failed")
+            self.assertEqual(failed["latest_run"]["provider_job_id"], "fixture-task-1")
+
+            # audit names it and says what to do about it.
+            report = production_tool.audit_project(root)
+            orphans = [
+                finding
+                for finding in report["problems"]
+                if finding["code"] == "orphaned_provider_job"
+            ]
+            self.assertEqual(len(orphans), 1, report["problems"])
+            self.assertEqual(orphans[0]["provider_job_id"], "fixture-task-1")
+            self.assertEqual(orphans[0]["action"], "collect_before_retry")
+
+            # Collecting needs no new confirmation, because it spends nothing.
+            collected = production_tool.collect_job(
+                root,
+                job_id="EP001-SHOT001",
+                adapter_config=self.adapter_config(directory),
+            )
+            self.assertTrue(collected["collected"])
+            self.assertEqual(collected["provider_job_id"], "fixture-task-1")
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
+                "succeeded",
+            )
+            self.assertEqual(
+                [output["path"] for output in collected["outputs"]],
+                ["剧集/EP001/制作成果/image/EP001-SHOT001.png"],
+            )
+            self.assertTrue(
+                (root / "剧集/EP001/制作成果/image/EP001-SHOT001.png").is_file()
+            )
+            # And the orphan is gone from audit once it has been collected.
+            after = production_tool.audit_project(root)
+            self.assertEqual(
+                [f for f in after["problems"] if f["code"] == "orphaned_provider_job"],
+                [],
+            )
+
+    def test_collect_refuses_when_no_attempt_carries_a_provider_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            config = self.adapter_config(directory, fail=True)
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-SHOT001", adapter_config=config
+                )
+            with self.assertRaisesRegex(RuntimeError, "nothing to collect"):
+                production_tool.collect_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=self.adapter_config(directory),
                 )
 
     def test_structured_provider_failure_is_preserved_without_response_body(self) -> None:

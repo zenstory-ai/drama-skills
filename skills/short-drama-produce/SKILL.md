@@ -75,11 +75,13 @@ python3 <本技能目录>/scripts/production_tool.py prepare <project> --job <jo
 python3 <本技能目录>/scripts/production_tool.py confirm <project> --job-id <id> --confirmation "CONFIRM <id> <code>"
 python3 <本技能目录>/scripts/production_tool.py run <project> --job-id <id> --adapter-config <outside-project-config.json>
 python3 <本技能目录>/scripts/production_tool.py status <project> --job-id <id>
+python3 <本技能目录>/scripts/production_tool.py collect <project> --job-id <id> --adapter-config <outside-project-config.json>
 python3 <本技能目录>/scripts/production_tool.py audit <project>
 ```
 
 `prepare` 只验证并预览，不生产。`confirm` 只保存与当前 job 指纹绑定的一次性确认。
-`run` 才启动 adapter。`audit` 只对账本地任务历史、失败后恢复、重复内容尝试和当前输出字节，
+`run` 才启动 adapter。`collect` 只取回**已经提交过、已经计费**的那次任务的结果，
+不重新提交、也不需要新的确认——见下面「中断不等于要重跑」。`audit` 只对账本地任务历史、失败后恢复、重复内容尝试和当前输出字节，
 不会调用供应商，也不把技术成功、文件存在或哈希一致写成媒体质量结论。同一 job 存在未决
 `running` attempt 时禁止重新 prepare、confirm 或 run；先等待完成或排查遗留 attempt。
 
@@ -132,6 +134,23 @@ adapter 配置必须在项目外，只包含 argv 命令和超时；凭据由 ad
 确认闸门，并由审查 Skill 判断产物质量。
 
 仓库自带 `fixture_adapter.py` 只用于离线测试，不代表真实生成质量或默认生产 adapter。
+
+## 中断不等于要重跑
+
+视频任务在**提交那一刻**就已经计费，不是在拿到结果时。提交之后的一切——轮询几分钟、下载——
+都可能被进程被杀、断网、机器休眠打断。内置 adapter 因此在拿到供应商任务 ID 的第一时间就把它
+写进 `handle_path`（早于第一次轮询），这个路径不随本次尝试一起删除。
+
+于是中断之后有三条确定的动作，不必再花一次钱：
+
+1. `audit` 会把带着任务 ID 的未完成尝试报成 `orphaned_provider_job`，
+   `action` 是 `collect_before_retry`；
+2. `collect` 用那个 ID 取回结果并把这次尝试标成成功；
+3. 只有在 `collect` 也确认那边确实失败之后，才走重新确认与重投的老路。
+
+**不要在 `audit` 报出 `orphaned_provider_job` 时直接重投**——那是在为同一个镜头付第二次钱。
+`collect` 不走确认闸门是有意的：闸门防的是意外花钱，而 collect 不花钱；
+如果它也要求重新确认，那么中断之后最省事的路径就变成再付一次，正好是闸门要防的事。
 
 ## 结果与复核
 

@@ -1547,6 +1547,37 @@ def _active_run(root: Path, job_id: str) -> dict[str, Any] | None:
     return running[-1] if running else None
 
 
+def _read_provider_handle(root: Path, job_id: str, run_id: str) -> str | None:
+    """The provider job id an adapter recorded before it started polling.
+
+    A video task is billed the moment it is submitted, not when it is collected.
+    If the adapter is then interrupted — killed, disconnected, the machine
+    sleeps — the run record would otherwise say `running` with no way back to a
+    task that is alive and already paid for, and the only move left is to submit
+    (and pay) again. The adapter writes the id here as soon as it has one, into
+    project metadata rather than the attempt's temporary directory, so it
+    outlives the process that created it.
+    """
+
+    try:
+        document = _metadata_read_json(
+            root, ("handles", _job_key(job_id)), f"{run_id}.json",
+            maximum=MAX_RUN_RECORD_BYTES,
+        )
+    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, Mapping):
+        return None
+    value = document.get("provider_job_id")
+    if isinstance(value, str) and 0 < len(value) <= 200:
+        return value
+    return None
+
+
+def _handle_metadata_path(root: Path, job_id: str, run_id: str) -> Path:
+    return root / PRODUCTION_ROOT / "handles" / _job_key(job_id) / f"{run_id}.json"
+
+
 def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
     _metadata_atomic_json(
         root,
@@ -1620,6 +1651,9 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 "run_id": run_id,
                 "project_root": str(snapshot_root),
                 "output_root": str(output_root),
+                # Where to record the provider job id the instant it exists, so
+                # an interrupted attempt can be collected instead of re-billed.
+                "handle_path": str(_handle_metadata_path(root, job_id, run_id)),
             }
         )
         try:
@@ -1643,8 +1677,10 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 run["status"] = "succeeded"
                 run["finished_at"] = utc_now()
                 run["outputs"] = written
-                provider_job_id = response.get("provider_job_id")
-                if isinstance(provider_job_id, str) and len(provider_job_id) <= 200:
+                provider_job_id = response.get("provider_job_id") or _read_provider_handle(
+                    root, job_id, run_id
+                )
+                if isinstance(provider_job_id, str) and 0 < len(provider_job_id) <= 200:
                     run["provider_job_id"] = provider_job_id
                 _write_run(root, job_id, run)
         except Exception as exc:
@@ -1653,6 +1689,12 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 run["finished_at"] = utc_now()
                 if isinstance(exc, AdapterError) and exc.public_error is not None:
                     run["error"] = exc.public_error
+                # A timeout or a killed adapter does not cancel the provider's
+                # task. Carry the handle onto the failed record so `audit` can
+                # say "collect this" instead of the creator paying twice.
+                orphan = _read_provider_handle(root, job_id, run_id)
+                if orphan is not None:
+                    run["provider_job_id"] = orphan
                 _write_run(root, job_id, run)
             raise
     return {
@@ -1660,6 +1702,83 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
         "run_id": run_id,
         "state": "succeeded",
         "outputs": run["outputs"],
+    }
+
+
+def collect_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
+    """Collect an already-submitted task's result without submitting a new one.
+
+    This is deliberately outside the confirmation gate. The gate exists to stop
+    an unintended charge; collecting costs nothing, because the charge already
+    happened when the task was submitted. Requiring a fresh confirmation here
+    would mean the cheapest way out of an interrupted attempt is to pay again,
+    which is exactly the outcome the gate is meant to prevent.
+    """
+
+    root = find_project(root)
+    with tempfile.TemporaryDirectory(prefix="short-drama-collect-") as directory:
+        output_root = Path(directory) / "outputs"
+        output_root.mkdir(parents=True)
+        with _project_lock(root):
+            job = _read_job(root, job_id)
+            command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
+            target_run = None
+            for run in reversed(_read_run_history(root, job_id)):
+                if run.get("status") == "succeeded":
+                    continue
+                handle = run.get("provider_job_id") or _read_provider_handle(
+                    root, job_id, str(run["run_id"])
+                )
+                if handle:
+                    target_run = (run, handle)
+                    break
+            if target_run is None:
+                raise RuntimeError(
+                    "no unfinished attempt of this job carries a provider job id; "
+                    "there is nothing to collect"
+                )
+            run, provider_job_id = target_run
+
+        payload = {key: job[key] for key in ALLOWED_JOB_KEYS if key in job}
+        payload.update(
+            {
+                "run_id": str(run["run_id"]),
+                "output_root": str(output_root),
+                "collect_provider_job_id": provider_job_id,
+            }
+        )
+        response = _run_adapter(command, timeout, payload, root)
+        adapter_outputs = _validate_adapter_outputs(job, response, output_root)
+        written: list[dict[str, Any]] = []
+        with _project_lock(root):
+            for target_name, source in adapter_outputs:
+                target = _project_file(root, target_name, create_parent=True)
+                digest, size = _copy_output(
+                    source, target, overwrite=bool(job["overwrite"])
+                )
+                written.append(
+                    {
+                        "path": target_name,
+                        "media_type": MEDIA_TYPES[PurePosixPath(target_name).suffix.casefold()],
+                        "bytes": size,
+                        "sha256": digest,
+                    }
+                )
+            collected = dict(run)
+            collected["status"] = "succeeded"
+            collected["finished_at"] = utc_now()
+            collected["outputs"] = written
+            collected["provider_job_id"] = provider_job_id
+            collected["collected"] = True
+            collected.pop("error", None)
+            _write_run(root, job_id, collected)
+    return {
+        "job_id": job_id,
+        "run_id": str(run["run_id"]),
+        "state": "succeeded",
+        "collected": True,
+        "provider_job_id": provider_job_id,
+        "outputs": written,
     }
 
 
@@ -1816,6 +1935,23 @@ def audit_project(root: Path) -> dict[str, Any]:
         attempts_failed += sum(run["status"] == "failed" for run in completed)
         attempts_running += len(running)
         attempts_superseded += len(history) - len(current)
+        for run in current:
+            if run.get("status") == "succeeded":
+                continue
+            handle = run.get("provider_job_id") or _read_provider_handle(
+                root, job_id, str(run["run_id"])
+            )
+            if not handle:
+                continue
+            problems.append(
+                {
+                    "code": "orphaned_provider_job",
+                    "job_id": job_id,
+                    "run_id": run["run_id"],
+                    "provider_job_id": handle,
+                    "action": "collect_before_retry",
+                }
+            )
         if running:
             running_jobs += 1
             for run in running:
@@ -1986,6 +2122,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("project")
     run.add_argument("--job-id", required=True)
     run.add_argument("--adapter-config", required=True)
+    collect = commands.add_parser(
+        "collect",
+        help="Fetch the result of an already-submitted provider task without paying again.",
+    )
+    collect.add_argument("project")
+    collect.add_argument("--job-id", required=True)
+    collect.add_argument("--adapter-config", required=True)
     status = commands.add_parser("status", help="Show one media job state.")
     status.add_argument("project")
     status.add_argument("--job-id", required=True)
@@ -2007,6 +2150,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "run":
             result = run_job(
+                Path(args.project),
+                job_id=args.job_id,
+                adapter_config=Path(args.adapter_config),
+            )
+        elif args.command == "collect":
+            result = collect_job(
                 Path(args.project),
                 job_id=args.job_id,
                 adapter_config=Path(args.adapter_config),
