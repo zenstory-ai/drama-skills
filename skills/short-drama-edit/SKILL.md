@@ -92,7 +92,7 @@ license: MIT
 
 ```text
 python3 <本技能目录>/scripts/edit_tool.py check <剧集/EP001> --project-root <project>
-python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--no-subtitles]
+python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--no-subtitles] [--subtitles ffmpeg|remotion]
 python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
@@ -101,6 +101,11 @@ python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-r
 没有时这一项报「未测」并说明原因，不静默跳过。`render` 按剪辑单切段、拼接、烧字幕、统一响度，
 输出 `剧集/<EP>/制作成果/成片/`。`verify` 只测量已经渲染出来的成片并回报数字，不改文件、
 不给质量结论。
+
+字幕默认由 ffmpeg 烧录，不需要任何外部依赖。`--subtitles remotion` 换成一条排版可调的路线：
+它渲染一段透明字幕层再合成到未改动的画面上，装一次 Node 依赖，工作区在项目之外。
+两条路线的取舍见 [声音、字幕与音乐](references/sound-and-subtitles.md)，装法见
+[Remotion 字幕叠层](assets/remotion/README.md)。
 
 `render` 会保留每段切好的中间文件。它们是下一轮微调的输入，也是「这一刀到底切在哪」的证据；
 不要在报告里用「重新渲染一次就好」代替给出这些文件。
@@ -115,6 +120,7 @@ python3 <本技能目录>/scripts/edit_tool.py verify <剧集/EP001> --project-r
 - 声音接缝、字幕与音乐落点：[声音、字幕与音乐](references/sound-and-subtitles.md)
 - 成片可测项与验收：[交付与验收](references/delivery-verify.md)
 - 剪辑单成稿样例：[剪辑单样例](assets/剪辑单.md)
+- 可选的 Remotion 字幕排版：[Remotion 字幕叠层](assets/remotion/README.md)
 
 ## 修订
 

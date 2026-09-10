@@ -36,6 +36,12 @@ ALLOWED_PROVIDER_URLS = {
         "https://api.minimax.io/v2",
         "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
     },
+    # The optional Remotion subtitle route names its own project so the licence
+    # question has somewhere to be answered. It is documentation, not an endpoint
+    # this suite calls.
+    "skills/short-drama-edit/assets/remotion/README.md": {
+        "https://www.remotion.dev/",
+    },
     "skills/short-drama-video-prompts/references/minimax-h3.md": {
         "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt",
         "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt",
