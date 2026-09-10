@@ -94,8 +94,14 @@ SPOKEN_RUN_RE = re.compile(r"[\u3400-\u9fff]{4,}")
 EXPLICIT_TEXT_TO_VIDEO = "无（创作者已明确选择文生视频）"
 PENDING_REFERENCE_SUFFIX_RE = re.compile(r"；待补参考图：[^；。\n]+。?$")
 VISUAL_CATEGORIES = ("人物", "造型", "地点", "道具")
+# A malformed entry always tries to name something; a heading that is only the
+# category word is a section divider ("## 人物"), and rejecting it left the
+# document with no way to group entries at all.
 VISUAL_SETTING_LINE_RE = re.compile(
-    r"^#{2,4}[ \t　]*(?:" + "|".join(VISUAL_CATEGORIES) + r")[^\n]*$", re.MULTILINE
+    r"^#{2,4}[ \t　]*(?:"
+    + "|".join(VISUAL_CATEGORIES)
+    + r")(?![ \t　]*$)[^\n]*$",
+    re.MULTILINE,
 )
 VISUAL_SETTING_HEADING_RE = re.compile(
     r"^## (" + "|".join(VISUAL_CATEGORIES) + r") · (.+?)[ \t　]*$", re.MULTILINE
@@ -175,6 +181,10 @@ def _fields(section: str, *, owner: str, errors: list[str]) -> dict[str, str]:
     pairs = re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE)
     fields: dict[str, str] = {}
     for key, value in pairs:
+        # `- **参考**：…` is ordinary Markdown and reads as the same field to a
+        # human. Taking the emphasis literally turned it into a different key,
+        # so the author got "缺少参考字段" while looking straight at 参考.
+        key = re.sub(r"^(?:\*\*|__|\*|_)(.+?)(?:\*\*|__|\*|_)$", r"\1", key.strip())
         if key in fields:
             errors.append(f"{owner}: 字段重复: {key}")
         fields[key] = value
@@ -240,6 +250,43 @@ def _copyable_prompt(
         return None
     prompt = "\n".join(line[1:].lstrip() for line in lines).strip()
     return prompt or None
+
+
+def _copyable_prompt_cause(
+    section: str, heading: str = r"可复制(?:通用)?提示词"
+) -> str:
+    """Why `_copyable_prompt` returned None, as a suffix for the error.
+
+    "缺少唯一且非空的可复制提示词" is true of four different documents and tells
+    the author nothing about which one they wrote. The expensive case is a
+    single stray line -- a separator, an HTML comment, a note -- inside an
+    otherwise complete block: the prompt is visibly right there, so the message
+    reads as a checker bug and the real line goes unlooked at.
+    """
+
+    # Name the heading the author actually has to write, not this one's default:
+    # the keyframe caller passes a different one, and pointing at the wrong
+    # heading is worse than saying nothing.
+    label = "### " + re.sub(r"\(\?:([^)]*)\)\?", "", heading).replace("\\", "")
+    markers = list(re.finditer(rf"^### {heading}\s*$", section, re.MULTILINE))
+    if not markers:
+        return f"：没有 `{label}` 小节标题"
+    if len(markers) > 1:
+        return f"：`{label}` 出现了 {len(markers)} 次，只能有一个"
+    body = section[markers[0].end() :]
+    following = re.search(r"^###\s+|^##\s+", body, re.MULTILINE)
+    if following is not None:
+        body = body[: following.start()]
+    lines = [line for line in body.splitlines() if line.strip()]
+    if not lines:
+        return f"：`{label}` 下面是空的"
+    intruders = [line for line in lines if not line.startswith(">")]
+    if intruders:
+        return (
+            "：小节内有不以 `>` 开头的行，整块因此不算引用块——"
+            f"把它移到小节外，或删掉：{_excerpt(intruders[0])}"
+        )
+    return "：引用块里只有空白"
 
 
 def _portable_path(value: str) -> bool:
@@ -1102,7 +1149,10 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         image_prompt = _copyable_prompt(body)
         image_prompts[match.group(1)] = image_prompt
         if image_prompt is None:
-            errors.append(f"{match.group(1)}: 缺少唯一且非空的可复制提示词")
+            errors.append(
+                f"{match.group(1)}: 缺少唯一且非空的可复制提示词"
+                + _copyable_prompt_cause(body)
+            )
 
     motions = _sections(video, "MOTION")
     shot_ids = re.findall(r"^## (SHOT-[A-Z0-9-]+)\b", storyboard, re.MULTILINE)
@@ -1148,7 +1198,10 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         if motion_id.removeprefix("MOTION-") != shot_id.removeprefix("SHOT-"):
             errors.append(f"{motion_id}: ID 必须与分镜 {shot_id} 一一对应")
         if copyable_prompt is None:
-            errors.append(f"{motion_id}: 缺少唯一且非空的可复制提示词")
+            errors.append(
+                f"{motion_id}: 缺少唯一且非空的可复制提示词"
+                + _copyable_prompt_cause(body)
+            )
 
     if set(motion_by_shot) != set(shots):
         errors.append("分镜.md/视频提示词.md: SHOT 与 MOTION 未一一对应")
@@ -1205,7 +1258,10 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         # shot without one would make the coverage check below vacuous.
         keyframe = _copyable_prompt(shot_body, heading=r"冻结关键帧提示词")
         if keyframe is None:
-            errors.append(f"{shot_id}: 缺少唯一且非空的冻结关键帧提示词")
+            errors.append(
+                f"{shot_id}: 缺少唯一且非空的冻结关键帧提示词"
+                + _copyable_prompt_cause(shot_body, heading=r"冻结关键帧提示词")
+            )
         elif basis.parsed:
             _check_named_coverage(
                 keyframe, shot_id, "冻结关键帧提示词", basis, visual_entries, errors
