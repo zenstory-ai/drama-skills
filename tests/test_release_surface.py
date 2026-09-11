@@ -91,6 +91,14 @@ SHIPPED = {
         "skills/short-drama-edit/scripts/edit_tool.py",
         "allf=t+u",
     ),
+    "容器里参考序号要重新编号": (
+        "skills/short-drama-video-prompts/references/seedance-2.5.md",
+        "必须重新编号到它上面",
+    ),
+    "容器不是提升一致性的手段": (
+        "skills/short-drama-video-prompts/references/seedance-2.5.md",
+        "不是提升跨镜一致性的手段",
+    ),
     "Remotion 叠层不使用默认并发": (
         "skills/short-drama-edit/scripts/edit_tool.py",
         "DEFAULT_REMOTION_CONCURRENCY",
