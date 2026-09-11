@@ -32,6 +32,10 @@ ALLOWED_PROVIDER_URLS = {
         "https://api.minimax.io/v1",
         "https://platform.minimax.io/docs/api-reference/music-generation",
     },
+    "skills/short-drama-produce/references/providers/minimax-speech.md": {
+        "https://api.minimax.io/v1",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+    },
     "skills/short-drama-produce/references/providers/minimax-h3-video.md": {
         "https://api.minimax.io/v2",
         "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",

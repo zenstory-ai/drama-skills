@@ -771,6 +771,46 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             self.assertEqual(len(reported), 1, errors)
             self.assertIn("冻结关键帧提示词", reported[0])
 
+    def test_a_closing_keyframe_is_optional_but_never_half_written(self) -> None:
+        """Most shots end where they began, so absence is not a defect.
+
+        A heading that is present and malformed is, though: it reads as a shot
+        that has a closing anchor while nothing downstream can bind one.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            path = episode / "分镜.md"
+            baseline = path.read_text(encoding="utf-8")
+
+            # Absence is silent.
+            self.assertNotIn("### 收尾关键帧提示词", baseline)
+            self.assertFalse(
+                [
+                    error
+                    for error in creator_markdown_check.validate_episode(episode, project)
+                    if "收尾关键帧提示词" in error
+                ]
+            )
+
+            # An empty one is not.
+            marker = "### 冻结关键帧提示词"
+            self.assertIn(marker, baseline)
+            path.write_text(
+                baseline.replace(
+                    marker, "### 收尾关键帧提示词\n\n" + marker, 1
+                ),
+                encoding="utf-8",
+            )
+            reported = [
+                error
+                for error in creator_markdown_check.validate_episode(episode, project)
+                if "收尾关键帧提示词不是唯一且非空" in error
+            ]
+            self.assertEqual(len(reported), 1, reported)
+
     def test_screen_name_makes_a_foreign_language_keyframe_checkable(self) -> None:
         """The prompt body is English while 视觉设定.md is Chinese.
 

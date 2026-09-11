@@ -1284,6 +1284,20 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
             _check_named_coverage(
                 keyframe, shot_id, "冻结关键帧提示词", basis, visual_entries, errors
             )
+        # The closing keyframe is optional — many shots end where they began —
+        # but a heading that is present and malformed is a defect, not a shot
+        # that quietly has no closing frame.
+        if re.search(r"^### 收尾关键帧提示词\s*$", shot_body, re.MULTILINE):
+            closing = _copyable_prompt(shot_body, heading=r"收尾关键帧提示词")
+            if closing is None:
+                errors.append(
+                    f"{shot_id}: 收尾关键帧提示词不是唯一且非空的可复制正文"
+                    + _copyable_prompt_cause(shot_body, heading=r"收尾关键帧提示词")
+                )
+            elif basis.parsed:
+                _check_named_coverage(
+                    closing, shot_id, "收尾关键帧提示词", basis, visual_entries, errors
+                )
         if basis.parsed and source_value:
             # A shot's 来源 is its claim on the screenplay: whatever it quotes,
             # this shot is the one that films it. Quoting an action performed by

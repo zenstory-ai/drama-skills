@@ -41,13 +41,21 @@ MAX_ERROR_BODY_BYTES = 64 * 1024
 TERMINAL_FAILURES = {"failed", "cancelled", "canceled", "timeout", "expired"}
 SEEDANCE_RATIOS = {"adaptive", "1:1", "3:4", "4:3", "9:16", "16:9", "21:9"}
 SEEDANCE_REFERENCE_ROLES = {
+    "first_frame": "image_url",
+    "last_frame": "image_url",
     "reference_image": "image_url",
     "reference_video": "video_url",
     "reference_audio": "audio_url",
 }
+# One opening frame and one closing frame, because each names a single position
+# in the take. Note what is deliberately absent: the sibling adapter forbids
+# mixing frame conditioning with reference conditioning, and that rule belongs
+# to that provider's reference, not to this one. Do not carry it across.
+SEEDANCE_SINGULAR_ROLES = {"first_frame", "last_frame"}
 MINIMAX_VIDEO_RATIOS = {"adaptive", "1:1", "3:4", "4:3", "9:16", "16:9", "21:9"}
 MINIMAX_VIDEO_RESOLUTIONS = {"480P", "768P", "2K"}
 MINIMAX_VIDEO_PROMPT_LIMIT = 7000
+MINIMAX_SPEECH_TEXT_LIMIT = 5000
 MINIMAX_VIDEO_ROLES = {
     "first_frame": "image_url",
     "last_frame": "image_url",
@@ -369,10 +377,18 @@ def compile_seedance_payload(
     counters = {"image_url": 0, "video_url": 0, "audio_url": 0}
     labels = {"image_url": "图片", "video_url": "视频", "audio_url": "音频"}
     reference_tokens: list[str] = []
+    singular_seen: set[str] = set()
     for role in reference_roles:
         field = SEEDANCE_REFERENCE_ROLES.get(role)
         if field is None:
             raise ValueError(f"unsupported Seedance reference role: {role}")
+        if role in SEEDANCE_SINGULAR_ROLES:
+            if role in singular_seen:
+                raise ValueError(f"Seedance accepts one {role} reference")
+            singular_seen.add(role)
+        # A frame role still occupies a picture slot, so it keeps counting: the
+        # tokens are positional, and skipping one would point every later
+        # `@图片N` in the prose at the wrong picture.
         counters[field] += 1
         reference_tokens.append(f"@{labels[field]}{counters[field]}")
     if task_type in {"edit", "extend"} and "reference_video" not in reference_roles:
@@ -735,6 +751,82 @@ def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
         "n": 1,
         "output_format": formats[suffix],
         **parameters,
+    }
+
+
+MINIMAX_SPEECH_EMOTIONS = {
+    "happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral",
+}
+
+
+def compile_minimax_speech_payload(job: Mapping[str, Any]) -> dict[str, Any]:
+    """Compile a tts job into the official MiniMax speech JSON body.
+
+    The voice catalogue is deliberately not enumerated here. Which preset voices
+    an account can reach depends on the model and the account, no published list
+    is authoritative for both, and a list frozen into this file would either
+    refuse a voice that works or vouch for one that does not. The document owns
+    the value and a reviewer reads it; the adapter only checks its shape.
+    """
+
+    text, parameters = _require_job(job, "tts")
+    parameters = _take(
+        parameters,
+        {"model", "voice_id", "speed", "vol", "pitch", "emotion",
+         "sample_rate", "bitrate", "format"},
+    )
+    model = parameters.pop("model", "")
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("MiniMax speech model must be explicitly configured")
+    voice_id = parameters.pop("voice_id", "")
+    if not isinstance(voice_id, str) or not voice_id.strip() or voice_id != voice_id.strip():
+        raise ValueError("MiniMax speech requires a confirmed voice_id")
+    if len(text) > MINIMAX_SPEECH_TEXT_LIMIT:
+        raise ValueError("MiniMax speech text exceeds the provider limit")
+
+    target_format = Path(job["outputs"][0]).suffix.casefold().lstrip(".")
+    requested_format = parameters.pop("format", target_format)
+    if requested_format != target_format or requested_format not in {"mp3", "wav"}:
+        raise ValueError("MiniMax output format must match a supported target extension")
+    sample_rate = parameters.pop("sample_rate", 32000)
+    bitrate = parameters.pop("bitrate", 128000)
+    if sample_rate not in {16000, 24000, 32000, 44100}:
+        raise ValueError("unsupported MiniMax sample rate")
+    if bitrate not in {32000, 64000, 128000, 256000}:
+        raise ValueError("unsupported MiniMax bitrate")
+
+    voice_setting: dict[str, Any] = {"voice_id": voice_id}
+    emotion = parameters.pop("emotion", None)
+    if emotion is not None:
+        if emotion not in MINIMAX_SPEECH_EMOTIONS:
+            raise ValueError("unsupported MiniMax speech emotion")
+        voice_setting["emotion"] = emotion
+    for name, low, high in (("speed", 0.5, 2.0), ("vol", 0.1, 10.0)):
+        value = parameters.pop(name, None)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"MiniMax speech {name} must be a number")
+        if not low <= float(value) <= high:
+            raise ValueError(f"MiniMax speech {name} is outside the supported range")
+        voice_setting[name] = float(value)
+    pitch = parameters.pop("pitch", None)
+    if pitch is not None:
+        if isinstance(pitch, bool) or not isinstance(pitch, int) or not -12 <= pitch <= 12:
+            raise ValueError("MiniMax speech pitch is outside the supported range")
+        voice_setting["pitch"] = pitch
+
+    return {
+        "model": model.strip(),
+        "text": text,
+        "stream": False,
+        "output_format": "hex",
+        "voice_setting": voice_setting,
+        "audio_setting": {
+            "sample_rate": sample_rate,
+            "bitrate": bitrate,
+            "format": requested_format,
+        },
     }
 
 
@@ -1372,6 +1464,44 @@ def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
     )
 
 
+def _run_minimax_speech(job: Mapping[str, Any]) -> tuple[Path, str | None]:
+    token = _credential("MINIMAX_API_KEY")
+    body = compile_minimax_speech_payload(job)
+    base = _base_url("MINIMAX_BASE_URL", MINIMAX_BASE_URL)
+    result, _ = _request_json(
+        f"{base}/t2a_v2",
+        provider="minimax-speech",
+        body=body,
+        token=token,
+    )
+    base_resp = result.get("base_resp")
+    if not isinstance(base_resp, Mapping) or base_resp.get("status_code") != 0:
+        raise AdapterFailure(
+            "MiniMax speech synthesis failed",
+            code=_provider_code(result) or "generation_failed",
+            request_id=_safe_token(result.get("trace_id")),
+        )
+    data = result.get("data")
+    audio = data.get("audio") if isinstance(data, Mapping) else None
+    if not isinstance(audio, str) or not audio:
+        raise AdapterFailure(
+            "MiniMax did not return audio data",
+            code="missing_audio",
+            request_id=_safe_token(result.get("trace_id")),
+        )
+    try:
+        content = bytes.fromhex(audio)
+    except ValueError as exc:
+        raise AdapterFailure("MiniMax returned invalid audio data") from exc
+    if not content:
+        raise AdapterFailure("MiniMax returned empty audio data")
+    trace_id = result.get("trace_id")
+    return (
+        _temporary_output(job, job["outputs"][0], content),
+        trace_id if isinstance(trace_id, str) else None,
+    )
+
+
 def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
     token = _credential("MINIMAX_API_KEY")
     base = _base_url("MINIMAX_VIDEO_BASE_URL", MINIMAX_VIDEO_BASE_URL)
@@ -1484,8 +1614,15 @@ def _selftest() -> None:
         "modality": "music", "prompt": "cinematic", "references": [],
         "outputs": ["制作成果/a.mp3"], "parameters": {"lyrics": "[Verse]\nHello"},
     }
+    speech = {
+        "modality": "tts", "prompt": "你们做了多久？", "references": [],
+        "outputs": ["制作成果/a.mp3"],
+        "parameters": {"model": "configured-speech-model", "voice_id": "a-preset"},
+    }
     if compile_gpt_image_2_payload(image)["model"] != OPENAI_MODEL:
         raise RuntimeError("GPT Image 2 self-test failed")
+    if compile_minimax_speech_payload(speech)["voice_setting"]["voice_id"] != "a-preset":
+        raise RuntimeError("MiniMax speech self-test failed")
     seedance = compile_seedance_payload(
         video,
         model="configured-model",
@@ -1553,7 +1690,10 @@ def main() -> int:
     parser.add_argument(
         "provider",
         nargs="?",
-        choices=("seedance", "gpt-image-2", "minimax-music", "minimax-h3"),
+        choices=(
+            "seedance", "gpt-image-2", "minimax-music", "minimax-h3",
+            "minimax-speech",
+        ),
     )
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
@@ -1571,6 +1711,7 @@ def main() -> int:
             "gpt-image-2": _run_openai,
             "minimax-music": _run_minimax,
             "minimax-h3": _run_minimax_video,
+            "minimax-speech": _run_minimax_speech,
         }
         path, provider_job_id = runners[args.provider](job)
         response: dict[str, Any] = {
