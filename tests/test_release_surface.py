@@ -39,6 +39,10 @@ SHIPPED = {
         "skills/short-drama-produce/scripts/provider_adapters.py",
         "Do not carry it across",
     ),
+    "只写散文的终点很可能不会发生": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "它很可能不会发生",
+    ),
     "分镜可以写收尾关键帧": (
         "skills/short-drama-storyboard/references/shot-craft.md",
         "首尾成对",
