@@ -458,6 +458,7 @@ def check_cuts(
     if screenplay_path.is_file():
         screenplay = screenplay_path.read_text(encoding="utf-8")
 
+    media_format: Optional[tuple[Any, Any, float]] = None
     for cut in cuts:
         span = cut.end - cut.start
         if cut.start < 0:
@@ -477,7 +478,17 @@ def check_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
             )
         elif probe:
-            available = probe_duration(media)
+            stream = probe_stream(media)
+            available = stream["duration"]
+            current_format = (stream["width"], stream["height"], stream["fps"])
+            if media_format is None:
+                media_format = current_format
+            elif current_format != media_format:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
+                    f"{current_format} 与首段 {media_format} 不一致；"
+                    "先在外部统一素材规格，再更新来源路径与入出点"
+                )
             if cut.end > available + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "

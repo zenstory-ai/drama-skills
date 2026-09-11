@@ -14,6 +14,23 @@ SPEC.loader.exec_module(edit)
 
 
 class EditMeasurementsTests(unittest.TestCase):
+    def test_checks_reject_mixed_dimensions_or_fps_before_rendering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cuts = [edit.Cut(f"CUT-{i}", "shot", f"MOTION-{i}", f"{i}.mp4",
+                             0, 2, 2, (), {}, i) for i in (1, 2)]
+            (root / edit.MOTION_DOCUMENT).write_text("## MOTION-1\n\n## MOTION-2\n")
+            for i in (1, 2):
+                (root / f"{i}.mp4").touch()
+            first = {"width": 1344, "height": 768, "fps": 24, "duration": 5}
+            for changes, expected in (({}, 0), ({"width": 1282, "height": 718}, 1),
+                                      ({"fps": 30}, 1)):
+                with self.subTest(changes=changes), patch.object(
+                    edit, "probe_stream", side_effect=[first, {**first, **changes}]
+                ):
+                    findings = edit.check_cuts(root, cuts, root, probe=True)
+                self.assertEqual(len(findings), expected)
+
     def test_omission_requires_exact_id_and_nonempty_reason(self):
         known = {"MOTION-EP001-001"}
         for note in (

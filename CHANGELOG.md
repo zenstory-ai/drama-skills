@@ -13,7 +13,20 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-11
+
+### Added
+
+- 补充首尾帧、光线、运镜与声音连续性的创作建议，明确适用条件和生成后的验收方法。
+- 剪辑支持可选整片颗粒，验收增加逐段色彩观测与画内文字检查提示。
+
+### Changed
+
+- 剪辑检查双向核对镜头覆盖：视频提示词中的镜头须被采用，或在「未采用镜头」中写明理由。
+
 ### Fixed
+
+- 剪辑前检查各素材的实际画幅与帧率，拒绝直接拼接不一致的分段，避免渲染成功却输出混合尺寸视频。
 
 - 漏镜检查按完整镜号与未采用理由核对；分段色彩观测只读取当前剪辑单，缺失分段明确记为未测，
   不再把不同场景与全片中位数的差当作校正残差。
@@ -1683,7 +1696,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.4...v0.6.5
