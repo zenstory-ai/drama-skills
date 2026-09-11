@@ -135,6 +135,22 @@ SHIPPED = {
         "skills/short-drama-edit/references/generated-footage.md",
         "不要在生成阶段追色彩一致性",
     ),
+    "接镜校正之后要复测残差": (
+        "skills/short-drama-edit/scripts/edit_tool.py",
+        "def _grade_residual",
+    ),
+    "画内可读文字要逐字验收": (
+        "skills/short-drama-edit/references/delivery-verify.md",
+        "画内可读文字",
+    ),
+    "大幅色温校正会过冲": (
+        "skills/short-drama-edit/references/generated-footage.md",
+        "大幅度校正会过冲",
+    ),
+    "剪辑单要对分镜全账": (
+        "skills/short-drama-edit/scripts/edit_tool.py",
+        "_unaccounted_shots",
+    ),
     "颗粒是整片一档": (
         "skills/short-drama-edit/references/stage-contract.md",
         "EDT-18",

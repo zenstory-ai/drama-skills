@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from edit_tool import (  # noqa: E402
+    _unaccounted_shots,
     DEFAULT_REMOTION_CONCURRENCY,
     REMOTION_SOURCE,
     REMOTION_SOURCE_FILES,
@@ -412,6 +413,32 @@ def check_grain_is_a_delivery_wide_decision() -> None:
             raise AssertionError("颗粒 80 应当被拒绝")
 
 
+def check_missing_shots_are_reported() -> None:
+    """A shot absent from the film must be absent on purpose.
+
+    Absence is invisible in a finished film — nobody watching can tell that an
+    episode's opening seven shots were never made. The only place it can be
+    caught is here, against the document that lists them.
+    """
+
+    known = {f"MOTION-EP006-{i:03d}" for i in range(1, 5)}
+
+    class Stub:
+        def __init__(self, motion): self.motion = motion
+
+    used = [Stub("MOTION-EP006-003"), Stub("MOTION-EP006-004")]
+    findings = _unaccounted_shots(known, used, [])
+    require(findings, "少了两镜却没有任何 finding")
+    require("001" in findings[0] and "002" in findings[0], f"没点名缺的镜头: {findings}")
+
+    excused = _unaccounted_shots(
+        known, used, ["MOTION-EP006-001（理由：质量不可用）", "MOTION-EP006-002（理由：文件缺失）"]
+    )
+    require(not excused, f"写进未采用的镜头不该再报: {excused}")
+
+    require(not _unaccounted_shots(known, [Stub(m) for m in known], []), "全采用时不该报")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -481,6 +508,7 @@ def main() -> int:
     check_ass_escaping()
     check_multi_subtitle()
     check_stale_window()
+    check_missing_shots_are_reported()
     check_grain_is_a_delivery_wide_decision()
     check_remotion_sources_all_shipped()
     check_remotion_concurrency_is_capped()
