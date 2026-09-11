@@ -91,6 +91,10 @@ PICTURE_LIMITS = {
     "warmth": (-30.0, 30.0),
 }
 TOLERANCE = 0.005
+# ffmpeg's `noise` strength runs to 100, which is snow, not grain. The useful
+# band for a finished film is single digits; the cap keeps a typo from shipping
+# a broken-signal look that measures perfectly fine.
+GRAIN_LIMIT = 20.0
 
 
 class EditError(Exception):
@@ -116,6 +120,7 @@ class Delivery(NamedTuple):
     burn_subtitles: bool
     frame_size: Optional[tuple[int, int]]
     fps: Optional[float]
+    grain: Optional[float]
 
 
 def _seconds(raw: str, *, field: str, line: int) -> float:
@@ -131,6 +136,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
     burn = True
     frame_size: Optional[tuple[int, int]] = None
     fps: Optional[float] = None
+    grain: Optional[float] = None
     for raw in lines:
         match = FIELD.match(raw)
         if not match:
@@ -146,6 +152,23 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
                 loudness = float(found.group(0))
         elif name == "字幕":
             burn = "无" != value.strip() and "不烧" not in value
+        elif name == "颗粒":
+            # Grain belongs to the delivery spec rather than to a cut, for the
+            # same reason loudness does: applied per cut it would become one
+            # more thing that differs between segments, which is the defect it
+            # is here to cover.
+            if value.strip() in {"无", "不加"}:
+                grain = None
+            else:
+                found = re.search(r"[0-9]+(?:\.[0-9]+)?", value)
+                if found:
+                    amount = float(found.group(0))
+                    if not 0.0 <= amount <= GRAIN_LIMIT:
+                        raise EditError(
+                            f"{CUT_LIST_NAME}: 颗粒 {amount} 超出 0–{GRAIN_LIMIT:g}；"
+                            "这一档以上不再像胶片，像信号故障"
+                        )
+                    grain = amount or None
         elif name == "画幅与帧率":
             size = re.search(r"([0-9]{2,5})\s*[×x*]\s*([0-9]{2,5})", value)
             if size:
@@ -153,7 +176,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
             rate = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*fps", value, re.I)
             if rate:
                 fps = float(rate.group(1))
-    return Delivery(target, loudness, burn, frame_size, fps)
+    return Delivery(target, loudness, burn, frame_size, fps, grain)
 
 
 def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
@@ -598,6 +621,17 @@ def render(
                 )
                 filters.append(f"ass='{escaped}'")
 
+        # Grain goes on last, over the whole assembled film, so one texture sits
+        # across every cut. `t` makes it move frame to frame — static noise reads
+        # as dirt on the lens, not as film.
+        grain = (
+            f"noise=alls={delivery.grain:g}:allf=t+u"
+            if delivery.grain is not None
+            else None
+        )
+        if grain is not None:
+            filters.append(grain)
+
         final = output_root / "成片.mp4"
         command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
         if overlay_path is not None:
@@ -605,9 +639,15 @@ def render(
             # to be named: the default one drops it and the overlay arrives as
             # an opaque black rectangle.
             command += ["-c:v", "libvpx", "-i", str(overlay_path)]
+            # The overlay branch owns its own chain, so grain is spliced in
+            # after the composite rather than left in `filters`, which this
+            # branch never reads.
+            chain = "[0:v][1:v]overlay=0:0:format=auto"
+            if grain is not None:
+                chain += f",{grain}"
             command += [
                 "-filter_complex",
-                "[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]",
+                f"{chain},format=yuv420p[v]",
                 "-map", "[v]", "-map", "0:a",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             ]
