@@ -95,6 +95,10 @@ SHIPPED = {
         "skills/short-drama-video-prompts/references/seedance-2.5.md",
         "必须重新编号到它上面",
     ),
+    "容器不等于一镜到底": (
+        "skills/short-drama-video-prompts/references/seedance-2.5.md",
+        "容器不等于一镜到底",
+    ),
     "容器不是提升一致性的手段": (
         "skills/short-drama-video-prompts/references/seedance-2.5.md",
         "不是提升跨镜一致性的手段",
