@@ -2,6 +2,8 @@
 
 # Drama Skills
 
+> 项目页：<https://zenstory.ai/drama-skills> · ZenStory AI 全部项目：<https://zenstory.ai/projects>
+
 [![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
