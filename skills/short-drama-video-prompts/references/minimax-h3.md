@@ -154,7 +154,7 @@ non_diegetic_music: N/A
 ```
 
 三张图各自只负责一件事：`<Picture 1>` 给构图，`<Picture 2>` 给身份，`<Picture 3>` 给地理。
-把这条差异写进 `retention_analysis`，角色板就不会顺带决定构图，场景板也不会顺带决定长相。
+把这条差异写进 `retention_analysis`，生成后检查身份、构图与地理是否分别保留。
 
 ## 素材数量上限
 
