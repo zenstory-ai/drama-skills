@@ -131,6 +131,10 @@ SHIPPED = {
         "skills/short-drama-image-prompts/references/common-recipe.md",
         "光学口径与真实表面",
     ),
+    "生成阶段不追色彩一致性": (
+        "skills/short-drama-edit/references/generated-footage.md",
+        "不要在生成阶段追色彩一致性",
+    ),
     "颗粒是整片一档": (
         "skills/short-drama-edit/references/stage-contract.md",
         "EDT-18",
