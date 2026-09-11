@@ -394,8 +394,42 @@ def probe_stream(media: Path) -> dict[str, Any]:
     }
 
 
+def _unaccounted_shots(known: set[str], cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
+    """Shots the episode wrote but the film neither uses nor deliberately drops.
+
+    The existing check runs one way: every cut's source must exist. Nothing ran
+    the other way, so a shot could be absent from the film with nothing saying
+    so — and absence is invisible in a finished film. This suite delivered one
+    that way: the cut list covered the back half of an episode, the opening
+    seven shots were never produced, and the first thing an outside reviewer
+    said was that the audience never sees what is being rejected.
+
+    Being dropped is a legitimate decision; being dropped silently is not. So a
+    shot must be used, or named in 未采用镜头 with a reason.
+    """
+
+    used = {cut.motion for cut in cuts}
+    excused = " ".join(unused)
+    missing = sorted(
+        shot for shot in known
+        if shot not in used and shot not in excused
+    )
+    if not missing:
+        return []
+    return [
+        f"{CUT_LIST_NAME}: 这些镜头在《{MOTION_DOCUMENT}》里有，但既没有被采用、"
+        f"也没有写进「未采用镜头」——成片里少了它们而没有任何地方说明："
+        + "、".join(missing)
+    ]
+
+
 def check_cuts(
-    episode: Path, cuts: Sequence[Cut], project_root: Path, *, probe: bool
+    episode: Path,
+    cuts: Sequence[Cut],
+    project_root: Path,
+    *,
+    probe: bool,
+    unused: Sequence[str] = (),
 ) -> list[str]:
     """Every mechanical cross-check the cut list can be held to. Returns findings."""
 
@@ -426,6 +460,7 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
                     f"{cut.motion} 不在《{MOTION_DOCUMENT}》中"
                 )
+        findings.extend(_unaccounted_shots(known, cuts, unused))
     else:
         findings.append(f"没有 {motion_path}，来源 MOTION 无法核对")
 
@@ -934,6 +969,69 @@ def _timecode(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole:02d},{milliseconds:03d}"
 
 
+def _segment_colour(ffmpeg: str, path: Path) -> Optional[tuple[float, float]]:
+    """Mean luma and blue-red difference of one segment, on a 0-255 scale."""
+
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(path), "-vf", "fps=2,scale=96:-1",
+         "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+        capture_output=True,
+    )
+    raw = result.stdout
+    if result.returncode != 0 or len(raw) < 3:
+        return None
+    count = len(raw) // 3
+    red = sum(raw[i * 3] for i in range(count)) / count
+    green = sum(raw[i * 3 + 1] for i in range(count)) / count
+    blue = sum(raw[i * 3 + 2] for i in range(count)) / count
+    return 0.299 * red + 0.587 * green + 0.114 * blue, blue - red
+
+
+def _median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _grade_residual(ffmpeg: str, output_root: Path) -> Any:
+    """How far each rendered segment still sits from the film's own middle.
+
+    The cut list's corrections are chosen by measuring the material; until now
+    nothing measured the result. A correction that overshoots leaves the film's
+    overall range looking fine — one segment swinging from one extreme to the
+    other keeps the minimum and maximum roughly where they were — while that
+    segment now reads on screen as a different grade. Only the per-segment
+    residual shows it, and this suite shipped a film with an 11-point overshoot
+    that every other number called clean.
+    """
+
+    usable: list[tuple[str, float, float]] = []
+    for path in sorted((output_root / "分段").glob("*.mp4")):
+        colour = _segment_colour(ffmpeg, path)
+        if colour is not None:
+            usable.append((path.name, colour[0], colour[1]))
+    if len(usable) < 2:
+        return "未测（没有足够可读的分段）"
+    mid_luma = _median([luma for _, luma, _ in usable])
+    mid_colour = _median([colour for _, _, colour in usable])
+    rows: list[dict[str, Any]] = [
+        {
+            "分段": name,
+            "亮度偏离": round(luma - mid_luma, 1),
+            "蓝红偏离": round(colour - mid_colour, 1),
+        }
+        for name, luma, colour in usable
+    ]
+    worst = max(rows, key=lambda row: abs(float(row["蓝红偏离"])))
+    return {
+        "基准": {"亮度": round(mid_luma, 1), "蓝红": round(mid_colour, 1)},
+        "逐段": rows,
+        "最大蓝红偏离": worst,
+    }
+
+
 def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
     """Measure the rendered film. Every entry is a number or an honest 未测."""
 
@@ -971,6 +1069,10 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     else:
         measurements["实测响度 LUFS"] = "未测（loudnorm 没有返回可解析的测量结果）"
     measurements["交付响度目标"] = delivery.loudness_lufs
+    measurements["接镜校正残差"] = _grade_residual(ffmpeg, episode / OUTPUT_DIRECTORY)
+    measurements["画内可读文字"] = (
+        "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
+    )
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
@@ -1044,7 +1146,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
         if arguments.command == "check":
             findings = check_cuts(
-                episode, cuts, project_root, probe=_which("ffprobe") is not None
+                episode, cuts, project_root,
+                probe=_which("ffprobe") is not None, unused=unused,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -1058,7 +1161,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
-            findings = check_cuts(episode, cuts, project_root, probe=True)
+            findings = check_cuts(
+                episode, cuts, project_root, probe=True, unused=unused
+            )
             if findings:
                 _emit({"findings": findings, "已渲染": False})
                 return 1
