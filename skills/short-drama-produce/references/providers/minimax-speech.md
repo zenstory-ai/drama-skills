@@ -18,26 +18,14 @@ format must match the target extension and be `mp3` or `wav`.
 endpoint, exactly as for the video providers. The voice is a creative decision recorded in
 `视觉设定.md` under the character's 声音方向, and it reaches the adapter through the confirmed job.
 
-## Why the voice catalogue is not listed here
+## Voice selection
 
-Which preset voices an account can reach depends on the model and on the account, and no published
-list is authoritative for both. A catalogue frozen into this suite would eventually refuse a voice
-that works, or vouch for one that does not — and either failure would surface as a wrong voice in a
-finished film rather than as an error. So the adapter validates the shape of `voice_id` and nothing
-more; the value is owned by the document, where a reviewer can see it and a diff can show it
-changing.
+Read the provider's voice listing and confirm availability for the chosen model and account.
+The adapter validates the ID format, not catalogue membership. Record the selected ID in the
+character's 声音方向 and pass it through the confirmed job.
 
-To discover what an account actually has, read the provider's own voice listing. Do not infer the
-catalogue from a console, an aggregator, or any other relay — see the capability-claim rule in
-[Adapter Contract](../adapter-contract.md).
-
-## Cloning is out of scope for this adapter
-
-This adapter synthesises from preset voices only. Cloning a voice from a recording is a question of
-consent, not of capability: reproducing a natural person's voice requires that person's
-authorisation. A creator-authorised reference recording still reaches production the way every other
-creator input does — as a file under `输入/` with its authorisation recorded — and it is bound as a
-reference, never re-derived here.
+This workflow selects preset voices. The adapter does not enrol or clone a voice;
+any supplied recording retains its documented authorization and usage scope.
 
 ## Request shape
 

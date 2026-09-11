@@ -395,30 +395,19 @@ def probe_stream(media: Path) -> dict[str, Any]:
 
 
 def _unaccounted_shots(known: set[str], cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
-    """Shots the episode wrote but the film neither uses nor deliberately drops.
-
-    The existing check runs one way: every cut's source must exist. Nothing ran
-    the other way, so a shot could be absent from the film with nothing saying
-    so — and absence is invisible in a finished film. This suite delivered one
-    that way: the cut list covered the back half of an episode, the opening
-    seven shots were never produced, and the first thing an outside reviewer
-    said was that the audience never sees what is being rejected.
-
-    Being dropped is a legitimate decision; being dropped silently is not. So a
-    shot must be used, or named in 未采用镜头 with a reason.
-    """
+    """Require each source to be used or explicitly omitted with a reason."""
 
     used = {cut.motion for cut in cuts}
-    excused = " ".join(unused)
-    missing = sorted(
-        shot for shot in known
-        if shot not in used and shot not in excused
-    )
+    excused = set()
+    for note in unused:
+        match = re.fullmatch(r"(MOTION-[\w-]+)\s*[（(]理由[：:]\s*(.+?)[）)]", note.strip())
+        if match and match.group(2).strip():
+            excused.add(match.group(1))
+    missing = sorted(known - used - excused)
     if not missing:
         return []
     return [
-        f"{CUT_LIST_NAME}: 这些镜头在《{MOTION_DOCUMENT}》里有，但既没有被采用、"
-        f"也没有写进「未采用镜头」——成片里少了它们而没有任何地方说明："
+        f"{CUT_LIST_NAME}: 以下镜头未采用，且缺少「未采用镜头」及理由："
         + "、".join(missing)
     ]
 
@@ -469,6 +458,7 @@ def check_cuts(
     if screenplay_path.is_file():
         screenplay = screenplay_path.read_text(encoding="utf-8")
 
+    media_format: Optional[tuple[Any, Any, float]] = None
     for cut in cuts:
         span = cut.end - cut.start
         if cut.start < 0:
@@ -488,7 +478,17 @@ def check_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
             )
         elif probe:
-            available = probe_duration(media)
+            stream = probe_stream(media)
+            available = stream["duration"]
+            current_format = (stream["width"], stream["height"], stream["fps"])
+            if media_format is None:
+                media_format = current_format
+            elif current_format != media_format:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
+                    f"{current_format} 与首段 {media_format} 不一致；"
+                    "先在外部统一素材规格，再更新来源路径与入出点"
+                )
             if cut.end > available + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
@@ -693,7 +693,7 @@ def render(
             command += ["-c:v", "copy"]
         if delivery.loudness_lufs is not None:
             command += ["-af", _loudnorm_filter(ffmpeg, joined, delivery.loudness_lufs)]
-            command += ["-c:a", "aac", "-b:a", "192k"]
+            command += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
         else:
             command += ["-c:a", "copy"]
         command.append(str(final))
@@ -738,11 +738,10 @@ def _shot_match_filter(cut: Cut) -> str:
 
 
 def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
-    """Two-pass EBU R128.
+    """Measure EBU R128 before normalization; verify the encoded output afterward.
 
-    One pass is a dynamic normalizer that lands several dB from the target; the
-    delivered loudness would then be a number nobody chose. Measure first, feed
-    the measurement back, and the second pass is linear.
+    FFmpeg can fall back to dynamic processing when linear gain would exceed
+    the peak or loudness-range target. Two passes do not guarantee target LUFS.
     """
 
     common = f"I={target}:TP=-1.5:LRA=11"
@@ -987,49 +986,20 @@ def _segment_colour(ffmpeg: str, path: Path) -> Optional[tuple[float, float]]:
     return 0.299 * red + 0.587 * green + 0.114 * blue, blue - red
 
 
-def _median(values: Sequence[float]) -> float:
-    ordered = sorted(values)
-    middle = len(ordered) // 2
-    if len(ordered) % 2:
-        return ordered[middle]
-    return (ordered[middle - 1] + ordered[middle]) / 2
+def _segment_colours(ffmpeg: str, output_root: Path, cuts: Sequence[Cut]) -> list[dict[str, Any]]:
+    """Report current cut segments individually, without imposing a shared grade."""
 
-
-def _grade_residual(ffmpeg: str, output_root: Path) -> Any:
-    """How far each rendered segment still sits from the film's own middle.
-
-    The cut list's corrections are chosen by measuring the material; until now
-    nothing measured the result. A correction that overshoots leaves the film's
-    overall range looking fine — one segment swinging from one extreme to the
-    other keeps the minimum and maximum roughly where they were — while that
-    segment now reads on screen as a different grade. Only the per-segment
-    residual shows it, and this suite shipped a film with an 11-point overshoot
-    that every other number called clean.
-    """
-
-    usable: list[tuple[str, float, float]] = []
-    for path in sorted((output_root / "分段").glob("*.mp4")):
-        colour = _segment_colour(ffmpeg, path)
-        if colour is not None:
-            usable.append((path.name, colour[0], colour[1]))
-    if len(usable) < 2:
-        return "未测（没有足够可读的分段）"
-    mid_luma = _median([luma for _, luma, _ in usable])
-    mid_colour = _median([colour for _, _, colour in usable])
-    rows: list[dict[str, Any]] = [
-        {
-            "分段": name,
-            "亮度偏离": round(luma - mid_luma, 1),
-            "蓝红偏离": round(colour - mid_colour, 1),
-        }
-        for name, luma, colour in usable
-    ]
-    worst = max(rows, key=lambda row: abs(float(row["蓝红偏离"])))
-    return {
-        "基准": {"亮度": round(mid_luma, 1), "蓝红": round(mid_colour, 1)},
-        "逐段": rows,
-        "最大蓝红偏离": worst,
-    }
+    rows: list[dict[str, Any]] = []
+    for cut in cuts:
+        path = output_root / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4"
+        colour = _segment_colour(ffmpeg, path) if path.is_file() else None
+        row: dict[str, Any] = {"分段": path.name}
+        if colour is None:
+            row["测量"] = "未测（分段缺失或不可读）"
+        else:
+            row.update({"平均亮度": round(colour[0], 1), "蓝减红": round(colour[1], 1)})
+        rows.append(row)
+    return rows
 
 
 def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
@@ -1069,7 +1039,7 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     else:
         measurements["实测响度 LUFS"] = "未测（loudnorm 没有返回可解析的测量结果）"
     measurements["交付响度目标"] = delivery.loudness_lufs
-    measurements["接镜校正残差"] = _grade_residual(ffmpeg, episode / OUTPUT_DIRECTORY)
+    measurements["分段色彩观测"] = _segment_colours(ffmpeg, episode / OUTPUT_DIRECTORY, cuts)
     measurements["画内可读文字"] = (
         "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
     )

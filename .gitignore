@@ -21,7 +21,11 @@ maintainers/evals/
 **/.short-drama/project.lock
 
 # render 的分段中间文件可随时由 剪辑单.md 重跑生成，不入库
-剧集/*/制作成果/成片/分段/
-剧集/*/制作成果/成片/成片-未混音.mp4
-剧集/*/制作成果/成片/字幕叠层.webm
-剧集/*/制作成果/成片/字幕.props.json
+**/剧集/*/制作成果/成片/分段/
+**/剧集/*/制作成果/成片/成片-未混音.mp4
+**/剧集/*/制作成果/成片/字幕叠层.webm
+**/剧集/*/制作成果/成片/字幕.props.json
+
+# Local reruns and provider-generated artifacts; keep curated regression fixtures separate.
+/evaluations/让你管账号/reference-run-0.6.6/
+/evaluations/local-runs/

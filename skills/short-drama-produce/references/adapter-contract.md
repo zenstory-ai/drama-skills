@@ -99,24 +99,11 @@ Keep this file outside the project:
 `command` is an argv array, never a shell string. Timeout is 1–3600 seconds. Do not put credentials in this file;
 let the adapter read its environment or operating-system credential store.
 
-## Where a capability claim may come from
+## Capability sources
 
-The built-in adapters talk to the providers' own endpoints. An adapter of your
-own may sit behind an aggregator, a gateway, or a console — that is allowed, and
-it is exactly why this rule exists:
-
-**A relay's capability listing is not evidence about the provider's API.** Its
-parameter enumerations are often a subset chosen for its own interface, its
-rejections are often its own limits rather than the provider's, and a
-combination it accepts without complaint may be one it silently drops before
-forwarding. All three have already produced wrong entries in this suite's
-dialect documents.
-
-So a capability assertion in a dialect document — a role, a bound, a supported
-combination — is written from the provider's own reference, and a probe run
-through anything else records which execution path produced it, with a note on
-what that path could not decide. A number nobody can source to the provider is
-better left unwritten than written and trusted.
+Use the provider's current API reference for roles, limits and supported combinations.
+A relay can expose a different subset, reject inputs itself or transform requests.
+Record the tested execution path and distinguish its observations from the native API contract.
 
 ## Adapter stdin
 
@@ -140,26 +127,14 @@ on the machine locale. The document contains the confirmed job plus:
   adapter must **not submit anything**; it polls and downloads that existing
   task and returns its outputs as usual.
 
-## Why the handle exists
+## Recovering a submitted task
 
-A video task is billed the moment it is submitted, not when its result is
-collected. Everything after submission — polling for minutes, downloading — can
-be interrupted by a killed process, a dropped connection, or a sleeping laptop.
-Without a durable id the attempt record says `failed` while the provider's task
-is alive and already paid for, and the only way forward is to submit again and
-pay a second time for the same shot.
+Record the provider task ID before polling so an interrupted task can be collected without resubmission.
+A local handle-write failure is non-fatal after submission. The tool copies the handle into the attempt
+record on success or failure; `audit` reports unfinished tasks as `orphaned_provider_job` with
+`action: collect_before_retry`.
 
-So: write the handle before the first poll, and treat failing to write it as
-non-fatal — a submitted task must never be failed because its id could not be
-recorded locally. The tool copies the handle onto the attempt record on both the
-success and the failure path, `audit` reports any unfinished attempt that
-carries one as `orphaned_provider_job` with `action: collect_before_retry`, and
-`production_tool.py collect` fetches it.
-
-`collect` deliberately sits outside the confirmation gate. That gate exists to
-prevent an unintended charge; collecting spends nothing because the charge
-already happened. Requiring a fresh confirmation would make paying again the
-cheapest way out of an interruption — the exact outcome the gate is for.
+`production_tool.py collect` retrieves the existing task without new submission or confirmation.
 
 It may translate provider-neutral parameters into its chosen SDK/API. Optional
 provider adapters under `scripts/` document and implement known translations;
