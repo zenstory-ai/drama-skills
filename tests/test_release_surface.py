@@ -67,6 +67,14 @@ SHIPPED = {
         "skills/short-drama-image-prompts/references/common-recipe.md",
         "光学口径与真实表面",
     ),
+    "颗粒是整片一档": (
+        "skills/short-drama-edit/references/stage-contract.md",
+        "EDT-18",
+    ),
+    "颗粒必须是动态的": (
+        "skills/short-drama-edit/scripts/edit_tool.py",
+        "allf=t+u",
+    ),
     "Remotion 叠层不使用默认并发": (
         "skills/short-drama-edit/scripts/edit_tool.py",
         "DEFAULT_REMOTION_CONCURRENCY",

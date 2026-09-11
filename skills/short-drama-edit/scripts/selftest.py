@@ -377,6 +377,41 @@ def check_remotion_concurrency_is_capped() -> None:
     require("--concurrency=" in source, "render 必须显式传 --concurrency，不能用 Remotion 的默认值")
 
 
+def check_grain_is_a_delivery_wide_decision() -> None:
+    """Grain is declared once for the film, and refused when it is not grain.
+
+    Per cut it would become one more thing that differs between segments, which
+    is the defect it exists to cover.
+    """
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        path = episode / "剪辑单.md"
+        baseline = path.read_text(encoding="utf-8")
+
+        delivery, _, _ = parse_cut_list(path)
+        require(delivery.grain is None, "没声明颗粒时应当是 None")
+
+        anchor = "- 交付响度："
+        require(anchor in baseline, "夹具里应当有交付响度那一行")
+        path.write_text(baseline.replace(anchor, "- 颗粒：6\n" + anchor, 1), encoding="utf-8")
+        delivery, _, _ = parse_cut_list(path)
+        require(delivery.grain == 6.0, f"颗粒没有解析出来: {delivery.grain}")
+
+        path.write_text(baseline.replace(anchor, "- 颗粒：无\n" + anchor, 1), encoding="utf-8")
+        delivery, _, _ = parse_cut_list(path)
+        require(delivery.grain is None, "「无」应当解析成不加颗粒")
+
+        path.write_text(baseline.replace(anchor, "- 颗粒：80\n" + anchor, 1), encoding="utf-8")
+        try:
+            parse_cut_list(path)
+        except EditError as error:
+            require("超出" in str(error), f"越界报错没说清: {error}")
+        else:
+            raise AssertionError("颗粒 80 应当被拒绝")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -446,6 +481,7 @@ def main() -> int:
     check_ass_escaping()
     check_multi_subtitle()
     check_stale_window()
+    check_grain_is_a_delivery_wide_decision()
     check_remotion_sources_all_shipped()
     check_remotion_concurrency_is_capped()
     print("short-drama-edit self-tests passed")
