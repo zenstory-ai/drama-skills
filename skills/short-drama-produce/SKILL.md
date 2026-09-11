@@ -126,6 +126,9 @@ adapter 配置必须在项目外，只包含 argv 命令和超时；凭据由 ad
   固定高保真引用并校验尺寸、格式与透明背景限制。
 - [MiniMax Music](references/providers/minimax-music.md)：使用 `music-3.0` 与 hex 结果，区分主题曲
   和纯配乐，不伪造时长请求字段。
+- [MiniMax 语音](references/providers/minimax-speech.md)：`tts` 模态；模型与 `voice_id` 都必须
+  由账号与文档显式给出，不内置音色清单。只从预置音色合成，不做声音克隆——克隆是授权问题，
+  创作者授权的参考录音按普通创作者输入走 `输入/`。
 - [MiniMax H3 视频](references/providers/minimax-h3-video.md)：模型 ID、分辨率集合与时长区间必须
   由账号显式配置；提示词进 `content` 的 text 项，参考图按显式 role 绑定，本地参考在没有可信上传时
   fail closed。该模型与画面同一次生成声音，写法影响见视频提示词技能的目标模型能力档案。

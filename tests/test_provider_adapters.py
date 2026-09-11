@@ -191,6 +191,141 @@ class ProviderCompilerTests(unittest.TestCase):
         self.assertEqual(payload["content"][1]["type"], "video_url")
         self.assertEqual(payload["content"][2]["type"], "image_url")
 
+    def speech_job(self, **parameters: object) -> dict[str, object]:
+        return {
+            "modality": "tts",
+            "prompt": "你们做了多久？",
+            "references": [],
+            "outputs": ["剧集/EP001/制作成果/voice/line.mp3"],
+            "parameters": parameters,
+        }
+
+    def test_speech_carries_the_confirmed_voice_and_nothing_invented(self) -> None:
+        payload = provider_adapters.compile_minimax_speech_payload(
+            self.speech_job(
+                model="configured-speech-model",
+                voice_id="a-preset-voice",
+                emotion="neutral",
+                speed=0.95,
+            )
+        )
+        self.assertEqual(payload["voice_setting"]["voice_id"], "a-preset-voice")
+        self.assertEqual(payload["voice_setting"]["emotion"], "neutral")
+        self.assertEqual(payload["text"], "你们做了多久？")
+        self.assertEqual(payload["audio_setting"]["format"], "mp3")
+
+    def test_speech_fails_closed_without_a_confirmed_voice_or_model(self) -> None:
+        with self.assertRaisesRegex(ValueError, "explicitly configured"):
+            provider_adapters.compile_minimax_speech_payload(
+                self.speech_job(voice_id="a-preset-voice")
+            )
+        with self.assertRaisesRegex(ValueError, "confirmed voice_id"):
+            provider_adapters.compile_minimax_speech_payload(
+                self.speech_job(model="configured-speech-model")
+            )
+        with self.assertRaisesRegex(ValueError, "unsupported MiniMax speech emotion"):
+            provider_adapters.compile_minimax_speech_payload(
+                self.speech_job(
+                    model="configured-speech-model",
+                    voice_id="a-preset-voice",
+                    emotion="愤怒",
+                )
+            )
+
+    def test_speech_does_not_enumerate_the_voice_catalogue(self) -> None:
+        """Which presets an account reaches depends on model and account.
+
+        A list frozen into the adapter would either refuse a voice that works or
+        vouch for one that does not, so the document owns the value.
+        """
+
+        payload = provider_adapters.compile_minimax_speech_payload(
+            self.speech_job(
+                model="configured-speech-model",
+                voice_id="a-voice-this-file-has-never-heard-of",
+            )
+        )
+        self.assertEqual(
+            payload["voice_setting"]["voice_id"], "a-voice-this-file-has-never-heard-of"
+        )
+
+    def test_seedance_carries_opening_and_closing_frames(self) -> None:
+        """A shot anchors both ends, so both frame roles have to reach the wire.
+
+        The adapter used to accept only the three reference roles, which left the
+        closing state — already written in every storyboard entry — with no way
+        to be bound.
+        """
+
+        video = self.video_job(duration=5, ratio="9:16", prompt_language="zh-CN")
+        video["references"] = ["输入/start.png", "输入/end.png", "输入/look.png"]
+        video["reference_bindings"] = [
+            {**self.reference_binding(), "path": "输入/start.png", "order": 1},
+            {**self.reference_binding(), "path": "输入/end.png", "order": 2},
+            {**self.reference_binding(), "path": "输入/look.png", "order": 3},
+        ]
+        payload = provider_adapters.compile_seedance_payload(
+            video,
+            model="doubao-seedance-2-5-260628",
+            reference_urls=[
+                "https://media.example/start.png",
+                "https://media.example/end.png",
+                "https://media.example/look.png",
+            ],
+            reference_roles=["first_frame", "last_frame", "reference_image"],
+            allowed_ratios={"9:16"},
+            duration_range=(4, 30),
+        )
+        roles = [item.get("role") for item in payload["content"][1:]]
+        self.assertEqual(roles, ["first_frame", "last_frame", "reference_image"])
+        # Frame roles keep counting, so the prose token still names the third
+        # picture rather than the first.
+        self.assertIn("@图片3", payload["content"][0]["text"])
+
+    def test_seedance_takes_one_frame_of_each_end(self) -> None:
+        video = self.video_job(duration=5, ratio="9:16")
+        video["references"] = ["输入/a.png", "输入/b.png"]
+        video["reference_bindings"] = [
+            {**self.reference_binding(), "path": "输入/a.png", "order": 1},
+            {**self.reference_binding(), "path": "输入/b.png", "order": 2},
+        ]
+        with self.assertRaisesRegex(ValueError, "one first_frame"):
+            provider_adapters.compile_seedance_payload(
+                video,
+                model="doubao-seedance-2-5-260628",
+                reference_urls=[
+                    "https://media.example/a.png",
+                    "https://media.example/b.png",
+                ],
+                reference_roles=["first_frame", "first_frame"],
+                allowed_ratios={"9:16"},
+                duration_range=(4, 30),
+            )
+
+    def test_seedance_does_not_inherit_a_sibling_providers_exclusivity(self) -> None:
+        """Frame and reference conditioning together is refused by the other
+        provider, on that provider's own reference. Nothing in this one's says
+        the same, so the adapter must not invent it here."""
+
+        video = self.video_job(duration=5, ratio="9:16")
+        video["references"] = ["输入/start.png", "输入/look.png"]
+        video["reference_bindings"] = [
+            {**self.reference_binding(), "path": "输入/start.png", "order": 1},
+            {**self.reference_binding(), "path": "输入/look.png", "order": 2},
+        ]
+        payload = provider_adapters.compile_seedance_payload(
+            video,
+            model="doubao-seedance-2-5-260628",
+            reference_urls=[
+                "https://media.example/start.png",
+                "https://media.example/look.png",
+            ],
+            reference_roles=["first_frame", "reference_image"],
+            allowed_ratios={"9:16"},
+            duration_range=(4, 30),
+        )
+        self.assertEqual(len(payload["content"]), 3)
+
     def test_seedance_2_5_task_types_compile_their_distinct_contracts(self) -> None:
         video = self.video_job(
             duration=20,

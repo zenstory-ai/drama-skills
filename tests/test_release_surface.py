@@ -27,6 +27,46 @@ SHIPPED = {
         "skills/short-drama-video-prompts/references/seedance-2.5.md",
         "不构成时间控制",
     ),
+    "中转平台的能力清单不作为原生接口的证据": (
+        "skills/short-drama-produce/references/adapter-contract.md",
+        "A relay's capability listing is not evidence",
+    ),
+    "Seedance 能绑首尾帧": (
+        "skills/short-drama-produce/scripts/provider_adapters.py",
+        "SEEDANCE_SINGULAR_ROLES",
+    ),
+    "不把另一供应商的互斥规则搬给 Seedance": (
+        "skills/short-drama-produce/scripts/provider_adapters.py",
+        "Do not carry it across",
+    ),
+    "分镜可以写收尾关键帧": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "首尾成对",
+    ),
+    "收尾关键帧写坏了要报错": (
+        "skills/short-drama/scripts/creator_markdown_check.py",
+        "收尾关键帧提示词不是唯一且非空",
+    ),
+    "语音走预置音色，不做克隆": (
+        "skills/short-drama-produce/references/providers/minimax-speech.md",
+        "Cloning is out of scope",
+    ),
+    "不硬编码音色清单": (
+        "skills/short-drama-produce/scripts/provider_adapters.py",
+        "The voice catalogue is deliberately not enumerated",
+    ),
+    "参考音频可以由预置音色合成": (
+        "skills/short-drama-assets/references/voice-direction.md",
+        "参考可以是合成出来的",
+    ),
+    "瑕疵是抗生成感的材料，不是身份锚点": (
+        "skills/short-drama-assets/references/character-and-look.md",
+        "认不出来和不像真人是两件事",
+    ),
+    "人像要写光学口径与真实表面": (
+        "skills/short-drama-image-prompts/references/common-recipe.md",
+        "光学口径与真实表面",
+    ),
     "Remotion 叠层不使用默认并发": (
         "skills/short-drama-edit/scripts/edit_tool.py",
         "DEFAULT_REMOTION_CONCURRENCY",

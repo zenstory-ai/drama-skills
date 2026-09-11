@@ -99,6 +99,25 @@ Keep this file outside the project:
 `command` is an argv array, never a shell string. Timeout is 1–3600 seconds. Do not put credentials in this file;
 let the adapter read its environment or operating-system credential store.
 
+## Where a capability claim may come from
+
+The built-in adapters talk to the providers' own endpoints. An adapter of your
+own may sit behind an aggregator, a gateway, or a console — that is allowed, and
+it is exactly why this rule exists:
+
+**A relay's capability listing is not evidence about the provider's API.** Its
+parameter enumerations are often a subset chosen for its own interface, its
+rejections are often its own limits rather than the provider's, and a
+combination it accepts without complaint may be one it silently drops before
+forwarding. All three have already produced wrong entries in this suite's
+dialect documents.
+
+So a capability assertion in a dialect document — a role, a bound, a supported
+combination — is written from the provider's own reference, and a probe run
+through anything else records which execution path produced it, with a note on
+what that path could not decide. A number nobody can source to the provider is
+better left unwritten than written and trusted.
+
 ## Adapter stdin
 
 The adapter receives one UTF-8 JSON document as raw stdin bytes. Read the
