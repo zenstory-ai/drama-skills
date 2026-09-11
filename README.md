@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
-面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十个技能把一个点子或一部长篇材料，
+面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十一个技能把一个点子或一部长篇材料，
 一路做成分集剧本、资产设定、图片提示词、分镜关键帧和视频提示词，
 用清晰的所有权与连续性衔接。适配 Claude Code、Codex 和其他
 支持 Agent Skill 规范的运行环境。
@@ -103,10 +103,10 @@ done
 
 示例都在 [examples/](examples/)。creator-first 的公开完整样例是
 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
-想把十个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
+想把十一个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
 [漫剧创作全流程指引](docs/comic-drama-workflow.md)。
 
-## 十个技能
+## 十一个技能
 
 ```mermaid
 flowchart LR
