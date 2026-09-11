@@ -1007,25 +1007,28 @@ def _grade_residual(ffmpeg: str, output_root: Path) -> Any:
     that every other number called clean.
     """
 
-    segments = sorted((output_root / "分段").glob("*.mp4"))
-    usable = [(path.name, _segment_colour(ffmpeg, path)) for path in segments]
-    usable = [(name, value) for name, value in usable if value is not None]
+    usable: list[tuple[str, float, float]] = []
+    for path in sorted((output_root / "分段").glob("*.mp4")):
+        colour = _segment_colour(ffmpeg, path)
+        if colour is not None:
+            usable.append((path.name, colour[0], colour[1]))
     if len(usable) < 2:
         return "未测（没有足够可读的分段）"
-    mid_luma = _median([value[0] for _, value in usable])
-    mid_colour = _median([value[1] for _, value in usable])
-    rows = [
+    mid_luma = _median([luma for _, luma, _ in usable])
+    mid_colour = _median([colour for _, _, colour in usable])
+    rows: list[dict[str, Any]] = [
         {
             "分段": name,
             "亮度偏离": round(luma - mid_luma, 1),
             "蓝红偏离": round(colour - mid_colour, 1),
         }
-        for name, (luma, colour) in usable
+        for name, luma, colour in usable
     ]
+    worst = max(rows, key=lambda row: abs(float(row["蓝红偏离"])))
     return {
         "基准": {"亮度": round(mid_luma, 1), "蓝红": round(mid_colour, 1)},
         "逐段": rows,
-        "最大蓝红偏离": max(rows, key=lambda row: abs(row["蓝红偏离"])),
+        "最大蓝红偏离": worst,
     }
 
 
