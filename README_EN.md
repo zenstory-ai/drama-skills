@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
-directors. Ten skills take an idea or a long-form source all the way to episode
+directors. Eleven skills take an idea or a long-form source all the way to episode
 scripts, asset decisions, image prompts, storyboard keyframes, and video prompts —
 carrying clear ownership and
 continuity through the entire chain. Works with Claude Code, Codex, and other
@@ -119,11 +119,11 @@ Samples live in [examples/](examples/). The public creator-first sample is
 [*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
 directories are repository-maintenance and validator-regression fixtures rather than
 instructions for the current workflow.
-To walk the ten skills as one comic-drama production line, with per-step commands,
+To walk the eleven skills as one comic-drama production line, with per-step commands,
 outputs, and common pitfalls, see the
 [comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
 
-## The ten skills
+## The eleven skills
 
 ```mermaid
 flowchart LR
