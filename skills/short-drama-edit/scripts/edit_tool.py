@@ -394,8 +394,31 @@ def probe_stream(media: Path) -> dict[str, Any]:
     }
 
 
+def _unaccounted_shots(known: set[str], cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
+    """Require each source to be used or explicitly omitted with a reason."""
+
+    used = {cut.motion for cut in cuts}
+    excused = set()
+    for note in unused:
+        match = re.fullmatch(r"(MOTION-[\w-]+)\s*[（(]理由[：:]\s*(.+?)[）)]", note.strip())
+        if match and match.group(2).strip():
+            excused.add(match.group(1))
+    missing = sorted(known - used - excused)
+    if not missing:
+        return []
+    return [
+        f"{CUT_LIST_NAME}: 以下镜头未采用，且缺少「未采用镜头」及理由："
+        + "、".join(missing)
+    ]
+
+
 def check_cuts(
-    episode: Path, cuts: Sequence[Cut], project_root: Path, *, probe: bool
+    episode: Path,
+    cuts: Sequence[Cut],
+    project_root: Path,
+    *,
+    probe: bool,
+    unused: Sequence[str] = (),
 ) -> list[str]:
     """Every mechanical cross-check the cut list can be held to. Returns findings."""
 
@@ -426,6 +449,7 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
                     f"{cut.motion} 不在《{MOTION_DOCUMENT}》中"
                 )
+        findings.extend(_unaccounted_shots(known, cuts, unused))
     else:
         findings.append(f"没有 {motion_path}，来源 MOTION 无法核对")
 
@@ -934,6 +958,40 @@ def _timecode(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole:02d},{milliseconds:03d}"
 
 
+def _segment_colour(ffmpeg: str, path: Path) -> Optional[tuple[float, float]]:
+    """Mean luma and blue-red difference of one segment, on a 0-255 scale."""
+
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(path), "-vf", "fps=2,scale=96:-1",
+         "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+        capture_output=True,
+    )
+    raw = result.stdout
+    if result.returncode != 0 or len(raw) < 3:
+        return None
+    count = len(raw) // 3
+    red = sum(raw[i * 3] for i in range(count)) / count
+    green = sum(raw[i * 3 + 1] for i in range(count)) / count
+    blue = sum(raw[i * 3 + 2] for i in range(count)) / count
+    return 0.299 * red + 0.587 * green + 0.114 * blue, blue - red
+
+
+def _segment_colours(ffmpeg: str, output_root: Path, cuts: Sequence[Cut]) -> list[dict[str, Any]]:
+    """Report current cut segments individually, without imposing a shared grade."""
+
+    rows: list[dict[str, Any]] = []
+    for cut in cuts:
+        path = output_root / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4"
+        colour = _segment_colour(ffmpeg, path) if path.is_file() else None
+        row: dict[str, Any] = {"分段": path.name}
+        if colour is None:
+            row["测量"] = "未测（分段缺失或不可读）"
+        else:
+            row.update({"平均亮度": round(colour[0], 1), "蓝减红": round(colour[1], 1)})
+        rows.append(row)
+    return rows
+
+
 def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
     """Measure the rendered film. Every entry is a number or an honest 未测."""
 
@@ -971,6 +1029,10 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     else:
         measurements["实测响度 LUFS"] = "未测（loudnorm 没有返回可解析的测量结果）"
     measurements["交付响度目标"] = delivery.loudness_lufs
+    measurements["分段色彩观测"] = _segment_colours(ffmpeg, episode / OUTPUT_DIRECTORY, cuts)
+    measurements["画内可读文字"] = (
+        "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
+    )
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
@@ -1044,7 +1106,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
         if arguments.command == "check":
             findings = check_cuts(
-                episode, cuts, project_root, probe=_which("ffprobe") is not None
+                episode, cuts, project_root,
+                probe=_which("ffprobe") is not None, unused=unused,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -1058,7 +1121,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
-            findings = check_cuts(episode, cuts, project_root, probe=True)
+            findings = check_cuts(
+                episode, cuts, project_root, probe=True, unused=unused
+            )
             if findings:
                 _emit({"findings": findings, "已渲染": False})
                 return 1
