@@ -693,7 +693,7 @@ def render(
             command += ["-c:v", "copy"]
         if delivery.loudness_lufs is not None:
             command += ["-af", _loudnorm_filter(ffmpeg, joined, delivery.loudness_lufs)]
-            command += ["-c:a", "aac", "-b:a", "192k"]
+            command += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
         else:
             command += ["-c:a", "copy"]
         command.append(str(final))
@@ -738,11 +738,10 @@ def _shot_match_filter(cut: Cut) -> str:
 
 
 def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
-    """Two-pass EBU R128.
+    """Measure EBU R128 before normalization; verify the encoded output afterward.
 
-    One pass is a dynamic normalizer that lands several dB from the target; the
-    delivered loudness would then be a number nobody chose. Measure first, feed
-    the measurement back, and the second pass is linear.
+    FFmpeg can fall back to dynamic processing when linear gain would exceed
+    the peak or loudness-range target. Two passes do not guarantee target LUFS.
     """
 
     common = f"I={target}:TP=-1.5:LRA=11"
