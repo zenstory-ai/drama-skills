@@ -39,6 +39,26 @@ SHIPPED = {
         "skills/short-drama-produce/scripts/provider_adapters.py",
         "Do not carry it across",
     ),
+    "机位与主体动作打架要用关系动词": (
+        "skills/short-drama-video-prompts/references/camera-audio-continuity.md",
+        "机位与主体动作打架",
+    ),
+    "一次运动只写四件事": (
+        "skills/short-drama-video-prompts/references/camera-audio-continuity.md",
+        "一次运动只写四件事",
+    ),
+    "运镜术语属于方言": (
+        "skills/short-drama-video-prompts/references/camera-audio-continuity.md",
+        "运镜术语属于方言",
+    ),
+    "竖屏收窄了可用景别": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "竖屏把可用的景别收窄了",
+    ),
+    "切开也能造出连续": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "切开可以造出连续",
+    ),
     "一镜到底与切开的判据": (
         "skills/short-drama-storyboard/references/shot-craft.md",
         "一镜到底还是切开",
