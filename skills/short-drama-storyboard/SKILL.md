@@ -149,6 +149,7 @@ license: MIT
 - 关键场次比较导演方案：[场次视觉计划](references/scene-visual-plan.md)
 - 检查原文是否都有画面承载：[Coverage Audition](references/coverage-audition.md)
 - 多人、群体和复杂空间调度：[调度手册](references/blocking-playbooks.md)
+- 谁被照亮、怎么写才执行得出：[光的设计](references/lighting-craft.md)
 - 冻结瞬间、注意中心和可读性：[关键帧手艺](references/keyframe-craft.md)
 - 漫剧/二维漫画形态的共享画风词汇：[漫剧关键帧词表](references/comic-keyframe-lexicon.md)
 - 剧本事实到关键帧的完整示例：[剧本到关键帧](references/screenplay-to-keyframe-example.md)
