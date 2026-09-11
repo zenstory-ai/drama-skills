@@ -39,6 +39,18 @@ SHIPPED = {
         "skills/short-drama-produce/scripts/provider_adapters.py",
         "Do not carry it across",
     ),
+    "一镜到底与切开的判据": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "一镜到底还是切开",
+    ),
+    "长镜头把节奏交给模型": (
+        "skills/short-drama-storyboard/references/shot-craft.md",
+        "卖掉的第二样：节奏",
+    ),
+    "声明的沉默要验收": (
+        "skills/short-drama-edit/references/delivery-verify.md",
+        "声明的沉默",
+    ),
     "只写散文的终点很可能不会发生": (
         "skills/short-drama-storyboard/references/shot-craft.md",
         "它很可能不会发生",
