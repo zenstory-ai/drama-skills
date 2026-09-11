@@ -86,6 +86,7 @@ EXPECTED_KNOWHOW = {
         "comic-keyframe-lexicon.md",
         "coverage-audition.md",
         "keyframe-craft.md",
+        "lighting-craft.md",
         "production-shot-grammar.md",
         "review-and-fixtures.md",
         "scene-visual-plan.md",

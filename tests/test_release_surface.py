@@ -59,6 +59,22 @@ SHIPPED = {
         "skills/short-drama-storyboard/references/shot-craft.md",
         "切开可以造出连续",
     ),
+    "光要写效果不写方向": (
+        "skills/short-drama-storyboard/references/lighting-craft.md",
+        "写效果，不写方向",
+    ),
+    "参考板的打光不能抄进镜头": (
+        "skills/short-drama-storyboard/references/lighting-craft.md",
+        "参考板的打光不能抄进镜头",
+    ),
+    "切点是生成管线最容易露馅的地方": (
+        "skills/short-drama-edit/references/cut-craft.md",
+        "最容易露馅的地方",
+    ),
+    "剧本的转场是叙事要求": (
+        "skills/short-drama-edit/references/cut-craft.md",
+        "是叙事要求，不是效果要求",
+    ),
     "一镜到底与切开的判据": (
         "skills/short-drama-storyboard/references/shot-craft.md",
         "一镜到底还是切开",
