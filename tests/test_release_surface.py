@@ -55,6 +55,10 @@ SHIPPED = {
         "skills/short-drama-produce/scripts/provider_adapters.py",
         "The voice catalogue is deliberately not enumerated",
     ),
+    "选预置音色要量不要读名字": (
+        "skills/short-drama-assets/references/voice-direction.md",
+        "名字不算判据",
+    ),
     "参考音频可以由预置音色合成": (
         "skills/short-drama-assets/references/voice-direction.md",
         "参考可以是合成出来的",
