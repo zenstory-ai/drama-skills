@@ -67,6 +67,14 @@ SHIPPED = {
         "skills/short-drama-assets/references/character-and-look.md",
         "认不出来和不像真人是两件事",
     ),
+    "负面约束不能禁掉真实世界的常态": (
+        "skills/short-drama-image-prompts/references/common-recipe.md",
+        "先确认 X 在真实世界里本来存不存在",
+    ),
+    "写实改动用盲看验证": (
+        "skills/short-drama-image-prompts/references/common-recipe.md",
+        "不要用纹理统计量做闸门",
+    ),
     "人像要写光学口径与真实表面": (
         "skills/short-drama-image-prompts/references/common-recipe.md",
         "光学口径与真实表面",
