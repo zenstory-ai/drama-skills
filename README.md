@@ -189,4 +189,4 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 | [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 把小说改编成可玩游戏的 agent skills |
 | [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | 把任意视频剪成中文解说视频，支持剪映草稿导出 |
 | [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 插件，封装 Oh Story 与 Drama Skills 工作流 |
-| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（zenstory.ai） |
+| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（[app.zenstory.ai](https://app.zenstory.ai)） |
