@@ -115,6 +115,8 @@ done
 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
 想把十一个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
 [漫剧创作全流程指引](docs/comic-drama-workflow.md)。
+跨镜、跨集角色怎么保持一致（三视图之外的三层文件事实）：[跨镜一致性怎么做](docs/character-consistency-across-shots.md)。
+英文读者可看 [an open-source short-drama pipeline](docs/open-source-short-drama-pipeline.md)。
 
 ## 十一个技能
 

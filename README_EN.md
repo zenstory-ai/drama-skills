@@ -132,6 +132,7 @@ instructions for the current workflow.
 To walk the eleven skills as one comic-drama production line, with per-step commands,
 outputs, and common pitfalls, see the
 [comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
+What the pack does, stage by stage, and what it deliberately does not do: [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md). How character consistency is kept across shots and episodes: [跨镜一致性](docs/character-consistency-across-shots.md) (Chinese).
 
 ## The eleven skills
 
