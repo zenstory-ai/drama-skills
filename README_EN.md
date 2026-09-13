@@ -116,6 +116,14 @@ Use $short-drama-edit to cut EP001's produced shots into a film, stating the rea
 Use $short-drama-review to review EP001's script and prompts
 ```
 
+### Start from the creator task
+
+- [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): verify the authorized source facts and allowed changes, select material for the first pass, then hand off episode decisions, one script, and a small set of shots. A chapter is not automatically an episode; label compression, reordering, and additions as adaptation decisions.
+- [Character consistency guide](https://zenstory.ai/drama-skills/character-consistency): separate character identity, the compatible look for this scene, and changing per-shot hands, props, and gaze; do not silently swap clothing or props for a new shot. `IMG-*` names a prompt entry, `PLAN-*` names a reference still to be supplied, and only a real image that has been inspected may be recorded as `REF-*`. Written constraints do not guarantee consistent generated media.
+
+A first request can stop at a text handoff:
+> Use `输入/story.txt`, which I own or am authorized to adapt. First list the facts, character motivations, and unrevealed information that must be preserved, then propose the episode split; do not treat chapter count as episode count. Write only EP001 and hand off three of its shots with start/end action, both hands, held props, and gaze. Distinguish `IMG-*`, pending `PLAN-*`, and actually inspected `REF-*`; stop at text and do not generate images, video, voices, or music.
+
 
 Samples live in [examples/](examples/). The public creator-first sample is
 [*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
