@@ -2,7 +2,7 @@
 
 # Drama Skills
 
-> 项目页：<https://zenstory.ai/drama-skills> · ZenStory AI 全部项目：<https://zenstory.ai/projects>
+> 项目页：<https://zenstory.ai/zh/drama-skills> · ZenStory AI 全部项目：<https://zenstory.ai/zh/projects>
 
 [![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
@@ -105,8 +105,8 @@ done
 
 ### 从创作任务开始
 
-- [小说改短剧指南](https://zenstory.ai/drama-skills/novel-to-short-drama)：先核对有权使用的原著事实与可改范围，再选择适合首轮的材料，形成分集决策、单集剧本与小范围分镜交接。章节不必一章对应一集；压缩、重排和新增都应标成改编决定。
-- [角色跨镜一致性指南](https://zenstory.ai/drama-skills/character-consistency)：分开人物身份、本场相容的造型，与逐镜变化的双手、持物和视线；不要为新镜头暗换服装或道具。`IMG-*` 只是提示词条目，`PLAN-*` 是待提供参考；只有确实存在且已检查的图片才能记作 `REF-*`。文字约束不能保证生成结果一致。
+- [小说改短剧指南](https://zenstory.ai/zh/drama-skills/novel-to-short-drama)：先核对有权使用的原著事实与可改范围，再选择适合首轮的材料，形成分集决策、单集剧本与小范围分镜交接。章节不必一章对应一集；压缩、重排和新增都应标成改编决定。
+- [角色跨镜一致性指南](https://zenstory.ai/zh/drama-skills/character-consistency)：分开人物身份、本场相容的造型，与逐镜变化的双手、持物和视线；不要为新镜头暗换服装或道具。`IMG-*` 只是提示词条目，`PLAN-*` 是待提供参考；只有确实存在且已检查的图片才能记作 `REF-*`。文字约束不能保证生成结果一致。
 
 首次可以只交接文本：
 > 用我拥有或获准改编的 `输入/故事.txt`，先列出必须保留的事实、人物动机与暂不可揭示的信息，再提出分集方案；章节数不要直接当集数。只写第一集，并交接其中三个镜头的起止动作、双手、持物和视线。区分 `IMG-*`、待提供的 `PLAN-*` 与已实际检查的 `REF-*`，止步于文本，不生成图片、视频、配音或音乐。
@@ -190,7 +190,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 
 ## ZenStory AI 项目
 
-本项目由 [ZenStory AI](https://zenstory.ai) 维护——一组开源、面向 agent 的故事创作、改编与生产工具（GitHub 组织：[zenstory-ai](https://github.com/zenstory-ai)）。同组织项目：
+本项目由 [ZenStory AI](https://zenstory.ai/zh) 维护——一组开源、面向 agent 的故事创作、改编与生产工具（GitHub 组织：[zenstory-ai](https://github.com/zenstory-ai)）。同组织项目：
 
 | 项目 | 用途 |
 | --- | --- |
