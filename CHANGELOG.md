@@ -13,6 +13,38 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-11
+
+### Added
+
+- 补充首尾帧、光线、运镜与声音连续性的创作建议，明确适用条件和生成后的验收方法。
+- 剪辑支持可选整片颗粒，验收增加逐段色彩观测与画内文字检查提示。
+
+### Changed
+
+- 剪辑检查双向核对镜头覆盖：视频提示词中的镜头须被采用，或在「未采用镜头」中写明理由。
+
+### Fixed
+
+- 响度处理后的 AAC 显式输出 48 kHz；说明动态回退与编码后复测要求，不再把两遍处理说成目标保证。
+
+- 剪辑前检查各素材的实际画幅与帧率，拒绝直接拼接不一致的分段，避免渲染成功却输出混合尺寸视频。
+
+- 漏镜检查按完整镜号与未采用理由核对；分段色彩观测只读取当前剪辑单，缺失分段明确记为未测，
+  不再把不同场景与全片中位数的差当作校正残差。
+
+- 收紧近期生成经验的适用范围：删除否定句配额、强制单人反应镜和固定截断阈值；
+  灯光、音色、尾帧与长镜头建议按叙事需要和目标模型验证，人物身份特征仍保持连续。
+- 删除跨语言连续性锁的不可执行拆分建议；说明尾帧的独立图片提示词生产入口、音频绑定缺口，
+  以及内置剪辑工具不执行混音、逐镜字幕位置或画幅转换的范围。
+- 剪辑允许连续音轨上的画面切换，保留用户固定时长要求，色彩比较以同场景可比区域为依据。
+
+### Removed
+
+- 移出新增的完整实跑副本及生成媒体、运行状态和临时文件；保留既有回归夹具与公开演示。
+- 删除仅检查文案或源码字符串存在的 release-surface 测试；继续运行实际工具与流程回归测试。
+- 将模型探索记录压缩为去标识观察摘要，删除技能正文里重复的运行事故与未经支持的通用结论。
+
 ## [0.7.0] - 2026-09-10
 
 本版把管线接到了成片：新增 `$short-drama-edit`，逐镜素材到交付文件之间那一段不再需要离开套件。
@@ -1666,7 +1698,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.4...v0.6.5

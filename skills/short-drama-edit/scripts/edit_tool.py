@@ -91,6 +91,10 @@ PICTURE_LIMITS = {
     "warmth": (-30.0, 30.0),
 }
 TOLERANCE = 0.005
+# ffmpeg's `noise` strength runs to 100, which is snow, not grain. The useful
+# band for a finished film is single digits; the cap keeps a typo from shipping
+# a broken-signal look that measures perfectly fine.
+GRAIN_LIMIT = 20.0
 
 
 class EditError(Exception):
@@ -116,6 +120,7 @@ class Delivery(NamedTuple):
     burn_subtitles: bool
     frame_size: Optional[tuple[int, int]]
     fps: Optional[float]
+    grain: Optional[float]
 
 
 def _seconds(raw: str, *, field: str, line: int) -> float:
@@ -131,6 +136,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
     burn = True
     frame_size: Optional[tuple[int, int]] = None
     fps: Optional[float] = None
+    grain: Optional[float] = None
     for raw in lines:
         match = FIELD.match(raw)
         if not match:
@@ -146,6 +152,23 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
                 loudness = float(found.group(0))
         elif name == "字幕":
             burn = "无" != value.strip() and "不烧" not in value
+        elif name == "颗粒":
+            # Grain belongs to the delivery spec rather than to a cut, for the
+            # same reason loudness does: applied per cut it would become one
+            # more thing that differs between segments, which is the defect it
+            # is here to cover.
+            if value.strip() in {"无", "不加"}:
+                grain = None
+            else:
+                found = re.search(r"[0-9]+(?:\.[0-9]+)?", value)
+                if found:
+                    amount = float(found.group(0))
+                    if not 0.0 <= amount <= GRAIN_LIMIT:
+                        raise EditError(
+                            f"{CUT_LIST_NAME}: 颗粒 {amount} 超出 0–{GRAIN_LIMIT:g}；"
+                            "这一档以上不再像胶片，像信号故障"
+                        )
+                    grain = amount or None
         elif name == "画幅与帧率":
             size = re.search(r"([0-9]{2,5})\s*[×x*]\s*([0-9]{2,5})", value)
             if size:
@@ -153,7 +176,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
             rate = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*fps", value, re.I)
             if rate:
                 fps = float(rate.group(1))
-    return Delivery(target, loudness, burn, frame_size, fps)
+    return Delivery(target, loudness, burn, frame_size, fps, grain)
 
 
 def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
@@ -371,8 +394,31 @@ def probe_stream(media: Path) -> dict[str, Any]:
     }
 
 
+def _unaccounted_shots(known: set[str], cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
+    """Require each source to be used or explicitly omitted with a reason."""
+
+    used = {cut.motion for cut in cuts}
+    excused = set()
+    for note in unused:
+        match = re.fullmatch(r"(MOTION-[\w-]+)\s*[（(]理由[：:]\s*(.+?)[）)]", note.strip())
+        if match and match.group(2).strip():
+            excused.add(match.group(1))
+    missing = sorted(known - used - excused)
+    if not missing:
+        return []
+    return [
+        f"{CUT_LIST_NAME}: 以下镜头未采用，且缺少「未采用镜头」及理由："
+        + "、".join(missing)
+    ]
+
+
 def check_cuts(
-    episode: Path, cuts: Sequence[Cut], project_root: Path, *, probe: bool
+    episode: Path,
+    cuts: Sequence[Cut],
+    project_root: Path,
+    *,
+    probe: bool,
+    unused: Sequence[str] = (),
 ) -> list[str]:
     """Every mechanical cross-check the cut list can be held to. Returns findings."""
 
@@ -403,6 +449,7 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
                     f"{cut.motion} 不在《{MOTION_DOCUMENT}》中"
                 )
+        findings.extend(_unaccounted_shots(known, cuts, unused))
     else:
         findings.append(f"没有 {motion_path}，来源 MOTION 无法核对")
 
@@ -411,6 +458,7 @@ def check_cuts(
     if screenplay_path.is_file():
         screenplay = screenplay_path.read_text(encoding="utf-8")
 
+    media_format: Optional[tuple[Any, Any, float]] = None
     for cut in cuts:
         span = cut.end - cut.start
         if cut.start < 0:
@@ -430,7 +478,17 @@ def check_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
             )
         elif probe:
-            available = probe_duration(media)
+            stream = probe_stream(media)
+            available = stream["duration"]
+            current_format = (stream["width"], stream["height"], stream["fps"])
+            if media_format is None:
+                media_format = current_format
+            elif current_format != media_format:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
+                    f"{current_format} 与首段 {media_format} 不一致；"
+                    "先在外部统一素材规格，再更新来源路径与入出点"
+                )
             if cut.end > available + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
@@ -598,6 +656,17 @@ def render(
                 )
                 filters.append(f"ass='{escaped}'")
 
+        # Grain goes on last, over the whole assembled film, so one texture sits
+        # across every cut. `t` makes it move frame to frame — static noise reads
+        # as dirt on the lens, not as film.
+        grain = (
+            f"noise=alls={delivery.grain:g}:allf=t+u"
+            if delivery.grain is not None
+            else None
+        )
+        if grain is not None:
+            filters.append(grain)
+
         final = output_root / "成片.mp4"
         command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
         if overlay_path is not None:
@@ -605,9 +674,15 @@ def render(
             # to be named: the default one drops it and the overlay arrives as
             # an opaque black rectangle.
             command += ["-c:v", "libvpx", "-i", str(overlay_path)]
+            # The overlay branch owns its own chain, so grain is spliced in
+            # after the composite rather than left in `filters`, which this
+            # branch never reads.
+            chain = "[0:v][1:v]overlay=0:0:format=auto"
+            if grain is not None:
+                chain += f",{grain}"
             command += [
                 "-filter_complex",
-                "[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]",
+                f"{chain},format=yuv420p[v]",
                 "-map", "[v]", "-map", "0:a",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             ]
@@ -618,7 +693,7 @@ def render(
             command += ["-c:v", "copy"]
         if delivery.loudness_lufs is not None:
             command += ["-af", _loudnorm_filter(ffmpeg, joined, delivery.loudness_lufs)]
-            command += ["-c:a", "aac", "-b:a", "192k"]
+            command += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
         else:
             command += ["-c:a", "copy"]
         command.append(str(final))
@@ -663,11 +738,10 @@ def _shot_match_filter(cut: Cut) -> str:
 
 
 def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
-    """Two-pass EBU R128.
+    """Measure EBU R128 before normalization; verify the encoded output afterward.
 
-    One pass is a dynamic normalizer that lands several dB from the target; the
-    delivered loudness would then be a number nobody chose. Measure first, feed
-    the measurement back, and the second pass is linear.
+    FFmpeg can fall back to dynamic processing when linear gain would exceed
+    the peak or loudness-range target. Two passes do not guarantee target LUFS.
     """
 
     common = f"I={target}:TP=-1.5:LRA=11"
@@ -894,6 +968,40 @@ def _timecode(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole:02d},{milliseconds:03d}"
 
 
+def _segment_colour(ffmpeg: str, path: Path) -> Optional[tuple[float, float]]:
+    """Mean luma and blue-red difference of one segment, on a 0-255 scale."""
+
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(path), "-vf", "fps=2,scale=96:-1",
+         "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+        capture_output=True,
+    )
+    raw = result.stdout
+    if result.returncode != 0 or len(raw) < 3:
+        return None
+    count = len(raw) // 3
+    red = sum(raw[i * 3] for i in range(count)) / count
+    green = sum(raw[i * 3 + 1] for i in range(count)) / count
+    blue = sum(raw[i * 3 + 2] for i in range(count)) / count
+    return 0.299 * red + 0.587 * green + 0.114 * blue, blue - red
+
+
+def _segment_colours(ffmpeg: str, output_root: Path, cuts: Sequence[Cut]) -> list[dict[str, Any]]:
+    """Report current cut segments individually, without imposing a shared grade."""
+
+    rows: list[dict[str, Any]] = []
+    for cut in cuts:
+        path = output_root / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4"
+        colour = _segment_colour(ffmpeg, path) if path.is_file() else None
+        row: dict[str, Any] = {"分段": path.name}
+        if colour is None:
+            row["测量"] = "未测（分段缺失或不可读）"
+        else:
+            row.update({"平均亮度": round(colour[0], 1), "蓝减红": round(colour[1], 1)})
+        rows.append(row)
+    return rows
+
+
 def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
     """Measure the rendered film. Every entry is a number or an honest 未测."""
 
@@ -931,6 +1039,10 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     else:
         measurements["实测响度 LUFS"] = "未测（loudnorm 没有返回可解析的测量结果）"
     measurements["交付响度目标"] = delivery.loudness_lufs
+    measurements["分段色彩观测"] = _segment_colours(ffmpeg, episode / OUTPUT_DIRECTORY, cuts)
+    measurements["画内可读文字"] = (
+        "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
+    )
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
@@ -1004,7 +1116,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
         if arguments.command == "check":
             findings = check_cuts(
-                episode, cuts, project_root, probe=_which("ffprobe") is not None
+                episode, cuts, project_root,
+                probe=_which("ffprobe") is not None, unused=unused,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -1018,7 +1131,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
-            findings = check_cuts(episode, cuts, project_root, probe=True)
+            findings = check_cuts(
+                episode, cuts, project_root, probe=True, unused=unused
+            )
             if findings:
                 _emit({"findings": findings, "已渲染": False})
                 return 1

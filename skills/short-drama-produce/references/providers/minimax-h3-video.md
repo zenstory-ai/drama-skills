@@ -74,31 +74,13 @@ structured: base/first-frame/first-last-frame tasks use `integrated_multimodal_d
 form. Chinese dialogue remains exact inside `<d>[Chinese] ...</d>`. Full details live in the
 video-prompt skill's `references/minimax-h3.md`.
 
-Audio generation is a **capability**, not a style:
-what changes upstream is only which axes of the target-model profile a project declares — see the
-video-prompt skill's target-model profile. Two consequences are worth stating here because they
-show up as production defects rather than as API errors:
+State the intended sound layers in the prompt. For no non-diegetic music, the
+H3 dialect uses `non_diegetic_music: N/A`; small probes observed unwanted music
+when this layer was omitted. They did not establish that omitted speech or
+negative clauses cause extra dialogue.
 
-- an unstated **music** channel is not a silent one. Probing this suite's own prompts against H3, a
-  body carrying `non_diegetic_music: N/A` came back without a score in 14 of 14 runs, while a body
-  that said nothing about music came back with an invented score in 2 of 3. State the music intent.
-- the **speech** channel did not behave the same way in those probes: no run invented dialogue,
-  including 8 runs whose body carried a contradictory `No dialogue` exclusion. Treat "an unstated
-  vocal channel gets filled" as unverified rather than as a known failure, and write the shot's
-  sound intent because the body should say what this shot sounds like — not on the strength of a
-  mechanism this suite has not observed.
-- readable on-screen text was **not** produced unmasked in those probes either: across 44 sampled
-  frames from 11 clips — including dialogue clips carrying no exclusion sentence, on H3 and on
-  Seedance 2.0/2.5 — no burned-in subtitle or caption appeared. The exclusion sentence this suite
-  mandates is therefore precautionary **for video** rather than evidence-driven. Keep writing it:
-  a one-line exclusion costs nothing, these probes are small enough that they only show the failure
-  was not produced here, and generator behaviour changes between versions. What should change is the
-  justification — do not defend it as a fix for an observed defect. Note the asymmetry before carrying this reasoning anywhere else:
-  the same probe run against `gpt-image-2` found the opposite — an unconstrained still came back
-  covered in invented readable text, and the exclusion sentence cleaned it up. The image stages
-  keep their text policy on evidence; only the video stage's copy of it is precautionary.
-
-Neither is written here as a fixed phrase, and this suite never injects one. The wording belongs to
-the shot and to the project's declared prompt language.
+Follow the project's subtitle and in-scene-text policy. Prompt wording belongs
+to the video-prompt skill and the declared language, not to adapter-generated
+boilerplate.
 
 Protocol reference: [MiniMax video generation API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create).

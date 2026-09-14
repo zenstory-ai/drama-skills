@@ -2,13 +2,15 @@
 
 # Drama Skills
 
+> Project page: <https://zenstory.ai/drama-skills> · All ZenStory AI projects: <https://zenstory.ai/projects>
+
 [![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
-directors. Ten skills take an idea or a long-form source all the way to episode
+directors. Eleven skills take an idea or a long-form source all the way to episode
 scripts, asset decisions, image prompts, storyboard keyframes, and video prompts —
 carrying clear ownership and
 continuity through the entire chain. Works with Claude Code, Codex, and other
@@ -114,16 +116,25 @@ Use $short-drama-edit to cut EP001's produced shots into a film, stating the rea
 Use $short-drama-review to review EP001's script and prompts
 ```
 
+### Start from the creator task
+
+- [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): verify the authorized source facts and allowed changes, select material for the first pass, then hand off episode decisions, one script, and a small set of shots. A chapter is not automatically an episode; label compression, reordering, and additions as adaptation decisions.
+- [Character consistency guide](https://zenstory.ai/drama-skills/character-consistency): separate character identity, the compatible look for this scene, and changing per-shot hands, props, and gaze; do not silently swap clothing or props for a new shot. `IMG-*` names a prompt entry, `PLAN-*` names a reference still to be supplied, and only a real image that has been inspected may be recorded as `REF-*`. Written constraints do not guarantee consistent generated media.
+
+A first request can stop at a text handoff:
+> Use `输入/story.txt`, which I own or am authorized to adapt. First list the facts, character motivations, and unrevealed information that must be preserved, then propose the episode split; do not treat chapter count as episode count. Write only EP001 and hand off three of its shots with start/end action, both hands, held props, and gaze. Distinguish `IMG-*`, pending `PLAN-*`, and actually inspected `REF-*`; stop at text and do not generate images, video, voices, or music.
+
 
 Samples live in [examples/](examples/). The public creator-first sample is
 [*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
 directories are repository-maintenance and validator-regression fixtures rather than
 instructions for the current workflow.
-To walk the ten skills as one comic-drama production line, with per-step commands,
+To walk the eleven skills as one comic-drama production line, with per-step commands,
 outputs, and common pitfalls, see the
 [comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
+What the pack does, stage by stage, and what it deliberately does not do: [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md). How character consistency is kept across shots and episodes: [跨镜一致性](docs/character-consistency-across-shots.md) (Chinese).
 
-## The ten skills
+## The eleven skills
 
 ```mermaid
 flowchart LR
@@ -191,3 +202,16 @@ project>` copies each episode's existing five Markdown documents and `制作成�
 directory with a manifest and checksums.
 
 <img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">
+
+## Part of ZenStory AI
+
+This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source, agent-native tools for creating, adapting and producing stories (GitHub org: [zenstory-ai](https://github.com/zenstory-ai)). Sibling projects:
+
+| Project | What it does |
+| --- | --- |
+| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | Web-fiction writing skill pack: chart scanning, deconstruction, drafting, de-AI-flavor, covers |
+| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI short-drama / motion-comic suite: scripts, assets, storyboards, image & video prompts, review (this repo) |
+| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | Agent skills for source-grounded novel adaptation, target-runtime builds, and evidence-based QA |
+| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | Create Chinese-narration recaps from supported video files, with optional editable JianYing/CapCut draft export |
+| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | Community DeepSeek Harness plugin with novel, short-drama, game and video-recap workbenches |
+| [zenstory](https://github.com/zenstory-ai/zenstory) | Chat-to-create AI novel-writing workbench ([app.zenstory.ai](https://app.zenstory.ai)) |

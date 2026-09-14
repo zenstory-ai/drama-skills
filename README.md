@@ -2,12 +2,14 @@
 
 # Drama Skills
 
+> 项目页：<https://zenstory.ai/zh/drama-skills> · ZenStory AI 全部项目：<https://zenstory.ai/zh/projects>
+
 [![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
-面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十个技能把一个点子或一部长篇材料，
+面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十一个技能把一个点子或一部长篇材料，
 一路做成分集剧本、资产设定、图片提示词、分镜关键帧和视频提示词，
 用清晰的所有权与连续性衔接。适配 Claude Code、Codex 和其他
 支持 Agent Skill 规范的运行环境。
@@ -101,12 +103,22 @@ done
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
 
+### 从创作任务开始
+
+- [小说改短剧指南](https://zenstory.ai/zh/drama-skills/novel-to-short-drama)：先核对有权使用的原著事实与可改范围，再选择适合首轮的材料，形成分集决策、单集剧本与小范围分镜交接。章节不必一章对应一集；压缩、重排和新增都应标成改编决定。
+- [角色跨镜一致性指南](https://zenstory.ai/zh/drama-skills/character-consistency)：分开人物身份、本场相容的造型，与逐镜变化的双手、持物和视线；不要为新镜头暗换服装或道具。`IMG-*` 只是提示词条目，`PLAN-*` 是待提供参考；只有确实存在且已检查的图片才能记作 `REF-*`。文字约束不能保证生成结果一致。
+
+首次可以只交接文本：
+> 用我拥有或获准改编的 `输入/故事.txt`，先列出必须保留的事实、人物动机与暂不可揭示的信息，再提出分集方案；章节数不要直接当集数。只写第一集，并交接其中三个镜头的起止动作、双手、持物和视线。区分 `IMG-*`、待提供的 `PLAN-*` 与已实际检查的 `REF-*`，止步于文本，不生成图片、视频、配音或音乐。
+
 示例都在 [examples/](examples/)。creator-first 的公开完整样例是
 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
-想把十个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
+想把十一个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
 [漫剧创作全流程指引](docs/comic-drama-workflow.md)。
+跨镜、跨集角色怎么保持一致（三视图之外的三层文件事实）：[跨镜一致性怎么做](docs/character-consistency-across-shots.md)。
+英文读者可看 [an open-source short-drama pipeline](docs/open-source-short-drama-pipeline.md)。
 
-## 十个技能
+## 十一个技能
 
 ```mermaid
 flowchart LR
@@ -175,3 +187,16 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 ## 致谢
 
 [LINUX DO - The New Ideal Community](https://linux.do) — 社区支持
+
+## ZenStory AI 项目
+
+本项目由 [ZenStory AI](https://zenstory.ai/zh) 维护——一组开源、面向 agent 的故事创作、改编与生产工具（GitHub 组织：[zenstory-ai](https://github.com/zenstory-ai)）。同组织项目：
+
+| 项目 | 用途 |
+| --- | --- |
+| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | 网文写作 skill 包：扫榜、拆文、写作、去AI味、封面图 |
+| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI 短剧 / 漫剧创作 skill 合集：剧本、资产、分镜、图片/视频提示词、独立审查（本仓库） |
+| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 面向原著改编、指定运行环境构建与运行证据 QA 的 agent skills |
+| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | 将支持的视频文件制作成中文解说，可选导出可编辑的剪映/CapCut 草稿 |
+| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 社区插件，提供小说、短剧、游戏和视频解说工作台 |
+| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（[app.zenstory.ai](https://app.zenstory.ai)） |

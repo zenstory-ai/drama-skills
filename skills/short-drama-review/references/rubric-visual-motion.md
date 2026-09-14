@@ -86,41 +86,15 @@
 - Does each media reference state its exact purpose, what may be copied, and what
   must not be copied, rather than treating all visible pixels as authority?
 
-For a copyable body, ask these separately — they are the two rules a rewrite regresses on
-most often, because a body that reads "complete" can still carry both defects. Findings here
-are about whether the body states this shot's sound and text truthfully and completely; only
-the music-layer item below has a measured generation consequence behind it:
+For a copyable body (`VID-22`, `VID-23`), check that actions and sound match the
+source and that the timeline accounts for the intended ambience or silence.
+A summary must not introduce a layer absent from the shot. H3's
+`non_diegetic_music: N/A` is a valid empty music layer.
 
-- Does the body carry only what will be filmed (`VID-22`)? Negative action intent must
-  already be rewritten as a visible positive state. The one permitted negation is the
-  no-subtitle/caption/dialogue-overlay declaration; a second exclusion clause is a defect,
-  not extra safety. (The often-repeated reason — that a noun inside a negation gets
-  rendered — did not reproduce in this suite's probes, so cite the body's own clarity,
-  not that mechanism, when you raise this.)
-- When the target model generates audio in the same pass (`VID-23`), is the sound written
-  as a closed positive event set — what the track consists of, and across what span —
-  rather than a list of what must not be heard? Check three failures by name:
-  - an exclusion clause (`No dialogue`, `无对白`, `no music`) standing in for a positive
-    soundscape, so the body never says what this shot sounds like;
-  - a completeness declaration that enumerates a layer this shot does not have. "The audio
-    timeline is complete after the listed ambience, effects and timed dialogue" on a shot
-    with no lines states something untrue of this shot. Read the declaration against the
-    shot's actual layers, not against a template;
-  - a shot that leaves the non-diegetic music layer unstated. This is the one sound defect
-    with measured consequences: bodies that omitted the layer came back with an invented
-    score. **The dialect's empty form satisfies this** — for H3 that is the literal line
-    `non_diegetic_music: N/A`, which is a correct statement of "no non-diegetic music",
-    not a placeholder. Raise this only when the layer is missing from the body altogether;
-    never ask an owner to delete a present empty form;
-  - a shot with no lines whose body never says what the track *is* for the full duration,
-    and never gives the on-screen performers a visible non-speaking state.
-  Report a contradictory pair — an exclusion clause plus a declaration that enumerates the
-  excluded layer — as one finding against the body's sound contract, and quote both
-  sentences. Raise it as an internally inconsistent sound contract, which it is; do not
-  assert that it makes the model invent lines, which this suite has probed and not seen.
-
-These two apply to a body the review itself is about to ask an owner to rewrite. A revision
-request that removes a defect by adding `no ...` has moved the defect, not fixed it.
+Report a concrete contradiction, omission or ambiguity. A negative clause is
+not a defect by itself; do not impose a clause count or assume that negation
+causes the model to generate the excluded content. Keep model-specific
+observations scoped to their tested model and execution path.
 
 For a pickup or alternate, ask these separately:
 

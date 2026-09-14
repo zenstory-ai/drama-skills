@@ -53,7 +53,15 @@ The adapter submits `POST /generateImage` or `POST /generateVideo`, polls
 `GET /prediction/{id}` until a terminal state, and downloads `data.outputs[0]` into a private
 temporary directory. Any unknown status fails closed.
 
-Two verified provider behaviours worth planning around:
+## Capability sources
+
+Atlas is a relay: one submit-then-poll shape fronts many vendors' models, so the exposed subset, the
+accepted parameters and the returned containers are Atlas's rather than the model vendor's. Check the
+model catalogue entry for the configured model id, and the vendor's own API reference when a
+storyboard depends on a capability.
+
+Two behaviours observed on this execution path are worth planning around. They describe what Atlas
+returned, not what a native API guarantees:
 
 - `api.atlascloud.ai` answers the Python standard-library default `User-Agent` with
   `403 error code 1010`, so this adapter always sends an explicit agent on its JSON calls. The result
