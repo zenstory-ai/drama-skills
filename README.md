@@ -2,16 +2,19 @@
 
 # Drama Skills
 
-> 项目页：<https://zenstory.ai/zh/drama-skills> · ZenStory AI 全部项目：<https://zenstory.ai/zh/projects>
+**面向编剧、漫剧工作室和编导的 AI 短剧创作工作流：十一个技能，从一个点子或一部原著做到分集剧本、分镜和图片/视频提示词。**
+
+项目主页：https://zenstory.ai/zh/drama-skills
 
 [![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
-面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十一个技能把一个点子或一部长篇材料，
-一路做成分集剧本、资产设定、图片提示词、分镜关键帧和视频提示词，
-用清晰的所有权与连续性衔接。适配 Claude Code、Codex 和其他
+<img src="docs/assets/dashboard-zh.png" alt="短剧创作台：项目概览、分集进度、已有媒体与剧本正文" width="680">
+
+十一个技能把一个点子或一部长篇材料，一路做成分集剧本、资产设定、图片提示词、
+分镜关键帧和视频提示词，用清晰的所有权与连续性衔接。适配 Claude Code、Codex 和其他
 支持 Agent Skill 规范的运行环境。
 
 新项目每集默认只维护五份 Markdown：`剧本.md`、`视觉设定.md`、`分镜.md`、
@@ -59,8 +62,8 @@ for skill in skills/*; do
 done
 ```
 
-每个技能都是独立安装单元；只使用写作、审查或生产等单一能力时，可以只链接对应目录。
-`short-drama` 提供项目初始化、路由与 Dashboard，但不是其他技能的安装门禁。
+每个技能都是独立安装单元；只用写作、审查或生产等单一能力时，只链接对应目录即可。
+`short-drama` 提供项目初始化、路由与 Dashboard。
 
 </details>
 
@@ -68,6 +71,8 @@ done
 也可以不写前缀、直接用自然语言说明要做什么。两种写法在下文示例中可以互换。
 
 ## 快速开始
+
+下面的请求复制改一改就能用：
 
 ```
 # 0. 有原著时（可选）：先抽样快评，再决定要不要全量拆
@@ -103,20 +108,9 @@ done
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
 
-### 从创作任务开始
+从原著出发、第一轮只要文本交接的写法：
 
-- [小说改短剧指南](https://zenstory.ai/zh/drama-skills/novel-to-short-drama)：先核对有权使用的原著事实与可改范围，再选择适合首轮的材料，形成分集决策、单集剧本与小范围分镜交接。章节不必一章对应一集；压缩、重排和新增都应标成改编决定。
-- [角色跨镜一致性指南](https://zenstory.ai/zh/drama-skills/character-consistency)：分开人物身份、本场相容的造型，与逐镜变化的双手、持物和视线；不要为新镜头暗换服装或道具。`IMG-*` 只是提示词条目，`PLAN-*` 是待提供参考；只有确实存在且已检查的图片才能记作 `REF-*`。文字约束不能保证生成结果一致。
-
-首次可以只交接文本：
 > 用我拥有或获准改编的 `输入/故事.txt`，先列出必须保留的事实、人物动机与暂不可揭示的信息，再提出分集方案；章节数不要直接当集数。只写第一集，并交接其中三个镜头的起止动作、双手、持物和视线。区分 `IMG-*`、待提供的 `PLAN-*` 与已实际检查的 `REF-*`，止步于文本，不生成图片、视频、配音或音乐。
-
-示例都在 [examples/](examples/)。creator-first 的公开完整样例是
-[《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
-想把十一个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
-[漫剧创作全流程指引](docs/comic-drama-workflow.md)。
-跨镜、跨集角色怎么保持一致（三视图之外的三层文件事实）：[跨镜一致性怎么做](docs/character-consistency-across-shots.md)。
-英文读者可看 [an open-source short-drama pipeline](docs/open-source-short-drama-pipeline.md)。
 
 ## 十一个技能
 
@@ -170,7 +164,7 @@ https://github.com/user-attachments/assets/0809876a-2a23-4723-a809-45c57988939f
 
 ## 本地短剧创作台
 
-在智能体里一句话启动（Codex 写作 `$short-drama dashboard`）：
+在智能体里一句话启动（Codex 写作 `$short-drama dashboard`），界面见文首截图：
 
 ```
 /short-drama dashboard
@@ -182,7 +176,14 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 全部跑完后导出交付：`$short-drama` 用 `project_tool.py export <project> --out <项目外目录>`
 把每集现有的五份 Markdown 和 `制作成果/` 复制成一份带清单和校验和的交付目录。
 
-<img src="docs/assets/dashboard-zh.png" alt="短剧创作台：项目概览、分集进度、已有媒体与剧本正文" width="680">
+## 延伸阅读
+
+- 示例：[examples/](examples/)，公开完整样例是 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录是仓库校验器的回归夹具。
+- [漫剧创作全流程指引](docs/comic-drama-workflow.md)：把十一个技能按漫剧产线从头串一遍，每步命令、产物与卡点。
+- [跨镜一致性怎么做](docs/character-consistency-across-shots.md)：跨镜、跨集角色一致性，三视图之外的三层文件事实。
+- [小说改短剧指南](https://zenstory.ai/zh/drama-skills/novel-to-short-drama)：从有权改编的原著出发，形成分集决策、单集剧本与小范围分镜交接。
+- [角色跨镜一致性指南](https://zenstory.ai/zh/drama-skills/character-consistency)：分开人物身份、本场造型与逐镜变化的双手、持物、视线；区分 `IMG-*`、`PLAN-*` 与 `REF-*`。
+- [An open-source short-drama pipeline](docs/open-source-short-drama-pipeline.md)：英文读者的分阶段说明。
 
 ## 致谢
 
