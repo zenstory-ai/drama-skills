@@ -1,15 +1,35 @@
-[中文](README.md) | **English**
+<p align="center">
+  <img src="https://zenstory.ai/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
+</p>
 
-# Drama Skills
+<h1 align="center">Drama Skills</h1>
 
-**An AI short-drama creation workflow for screenwriters, motion-comic studios, and directors: eleven skills that take an idea or a source novel to episode scripts, storyboards, and image/video prompts.**
+<p align="center">
+  <b>An AI short-drama creation workflow for screenwriters, motion-comic studios, and directors: eleven skills that take an idea or a source novel to episode scripts, storyboards, and image/video prompts.</b>
+</p>
 
-Project page: https://zenstory.ai/drama-skills
+<p align="center">
+  <a href="https://zenstory.ai/drama-skills"><b>Project page</b></a>
+  &nbsp;·&nbsp;
+  <a href="#install"><b>Install</b></a>
+  &nbsp;·&nbsp;
+  <a href="#the-eleven-skills"><b>The eleven skills</b></a>
+  &nbsp;·&nbsp;
+  <a href="README.md"><b>中文</b></a>
+</p>
 
-[![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
+<p align="center">
+  <a href="https://github.com/zenstory-ai/drama-skills/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/zenstory-ai/drama-skills?style=flat-square&color=22D3EE&logo=github&logoColor=white&label=Stars"></a>
+  <a href="https://github.com/zenstory-ai/drama-skills/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/zenstory-ai/drama-skills?style=flat-square&color=081431&label=Release"></a>
+  <img alt="Skills 11" src="https://img.shields.io/badge/Skills-11-081431?style=flat-square">
+  <a href="https://www.python.org/"><img alt="Python 3.9%2B" src="https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white"></a>
+  <a href="https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zenstory-ai/drama-skills/ci.yml?style=flat-square&label=CI"></a>
+  <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/zenstory-ai/drama-skills/issues"><img alt="GitHub Issues" src="https://img.shields.io/badge/GitHub%20Issues-181717?style=for-the-badge&logo=github&logoColor=white"></a>
+</p>
 
 <img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">
 

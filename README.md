@@ -1,15 +1,35 @@
-**中文** | [English](README_EN.md)
+<p align="center">
+  <img src="https://zenstory.ai/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
+</p>
 
-# Drama Skills
+<h1 align="center">Drama Skills</h1>
 
-**面向编剧、漫剧工作室和编导的 AI 短剧创作工作流：十一个技能，从一个点子或一部原著做到分集剧本、分镜和图片/视频提示词。**
+<p align="center">
+  <b>面向编剧、漫剧工作室和编导的 AI 短剧创作工作流：十一个技能，从一个点子或一部原著做到分集剧本、分镜和图片/视频提示词。</b>
+</p>
 
-项目主页：https://zenstory.ai/zh/drama-skills
+<p align="center">
+  <a href="https://zenstory.ai/zh/drama-skills"><b>项目主页</b></a>
+  &nbsp;·&nbsp;
+  <a href="#安装"><b>安装</b></a>
+  &nbsp;·&nbsp;
+  <a href="#十一个技能"><b>十一个技能</b></a>
+  &nbsp;·&nbsp;
+  <a href="README_EN.md"><b>English</b></a>
+</p>
 
-[![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
+<p align="center">
+  <a href="https://github.com/zenstory-ai/drama-skills/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/zenstory-ai/drama-skills?style=flat-square&color=22D3EE&logo=github&logoColor=white&label=Stars"></a>
+  <a href="https://github.com/zenstory-ai/drama-skills/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/zenstory-ai/drama-skills?style=flat-square&color=081431&label=Release"></a>
+  <img alt="Skills 11" src="https://img.shields.io/badge/Skills-11-081431?style=flat-square">
+  <a href="https://www.python.org/"><img alt="Python 3.9%2B" src="https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white"></a>
+  <a href="https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zenstory-ai/drama-skills/ci.yml?style=flat-square&label=CI"></a>
+  <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/zenstory-ai/drama-skills/issues"><img alt="GitHub Issues" src="https://img.shields.io/badge/GitHub%20Issues-181717?style=for-the-badge&logo=github&logoColor=white"></a>
+</p>
 
 <img src="docs/assets/dashboard-zh.png" alt="短剧创作台：项目概览、分集进度、已有媒体与剧本正文" width="680">
 
