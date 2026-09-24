@@ -152,3 +152,10 @@ scene-plan 文件。
 普通创作只在三处停：用户点名范围完成；缺失事实形成会显著改变结果的真实创作分叉；即将调用
 外部生产。其余批次自动继续。最终回报完成范围、关键创作决定、真实未决项和可选下一步，不汇报
 内部流水线噪音。
+
+## 相关
+
+- 项目主页：https://zenstory.ai/zh/drama-skills
+- 三视图提示词模板：https://zenstory.ai/zh/drama-skills/character-turnaround-prompt
+- Seedance 视频提示词写法：https://zenstory.ai/zh/drama-skills/seedance-prompts
+- 分镜脚本怎么写：https://zenstory.ai/zh/drama-skills/script-to-storyboard
