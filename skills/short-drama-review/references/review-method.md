@@ -71,7 +71,12 @@ Resolve upstream meaning first; do not polish prompt wording when the shot or as
 ## Revision and re-review
 
 Group duplicate findings and route them to the owning skill. A revision request states the target outcome, preserve
-set and review scope to rerun. On a later explicit re-review request, read the current version, confirm the finding is addressed, check the
+set and review scope to rerun.
+
+`REV-14`: a revision request is a patch, not a rewrite. It names the smallest change at a cited location; local
+findings never add up to a request to rewrite the episode. When the review compares a revision with the version before
+it, any strong hook, payoff line, or comic beat that polishing removed is listed under `## 被删的强钩子` with its prior
+location and a short quote, so the owner can restore it. The reviewer lists it; the owner decides. On a later explicit re-review request, read the current version, confirm the finding is addressed, check the
 preserve set and close or retain each affected finding. A different reviewer is useful but not mechanically required.
 
 ## Anti-template review

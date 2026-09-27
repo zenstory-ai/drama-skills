@@ -24,36 +24,27 @@
   </header>
 
   <main id="mainContent" tabindex="-1">
+    <!-- One compact band, so the document below it is on the first screen. -->
     <section id="projectOverview" class="project-overview" aria-labelledby="projectTitle">
-      <div class="overview-lead">
-        <span class="eyebrow">PROJECT OVERVIEW</span>
-        <div class="overview-title-row">
-          <div>
-            <h2 id="projectTitle">正在打开项目…</h2>
-            <p>浏览全剧内容、分集进度与已有媒体。创作和生产仍由 skills 完成。</p>
-          </div>
-          <button id="openScreenplay" class="secondary" disabled>阅读当前剧本</button>
+      <div class="overview-title-row">
+        <div class="overview-heading">
+          <h2 id="projectTitle">正在打开项目…</h2>
+          <p>浏览全剧内容与分集进度。创作和生产仍由 skills 完成。</p>
         </div>
         <div id="overviewStats" class="overview-stats" aria-live="polite"></div>
+        <button id="openScreenplay" class="secondary" disabled>阅读当前剧本</button>
       </div>
       <div class="overview-flow">
         <div class="section-heading">
-          <div><span class="eyebrow">EPISODES</span><h3>分集进度</h3></div>
+          <h3>分集进度</h3>
           <span id="episodeHint" class="section-note"></span>
         </div>
         <div id="episodeStrip" class="episode-strip" aria-label="按分集浏览"></div>
       </div>
-      <div id="mediaShowcase" class="media-showcase" hidden>
-        <div class="section-heading">
-          <div><span class="eyebrow">MEDIA</span><h3>已有制作成果</h3></div>
-          <span class="section-note">仅展示 · 生产需在 skill 中明确确认</span>
-        </div>
-        <div id="mediaGallery" class="media-gallery"></div>
-      </div>
     </section>
 
     <section class="creator-desk" aria-label="创作内容">
-      <aside class="content-nav">
+      <aside id="contentNav" class="content-nav">
         <div class="content-nav-heading">
           <h2>本剧内容</h2>
           <label class="creator-search"><span class="sr-only">搜索内容标题或集数</span><input id="search" type="search" placeholder="搜索标题或集数"></label>
@@ -63,10 +54,15 @@
 
       <section id="documentPane" class="document-pane" aria-labelledby="filename">
         <div class="document-toolbar">
-          <div class="file-identity">
-            <span id="fileKind" class="file-location">创作正文</span>
-            <h2 id="filename">创作内容</h2>
-            <span id="fileMeta" class="file-meta"></span>
+          <!-- On a narrow screen this bar sticks while the page scrolls the
+               document, and 目录 leads back up to the contents. -->
+          <div class="reading-bar">
+            <div class="file-identity">
+              <span id="fileKind" class="file-location">创作正文</span>
+              <h2 id="filename">创作内容</h2>
+              <span id="fileMeta" class="file-meta"></span>
+            </div>
+            <button id="jumpToContents" class="secondary toc-jump" type="button">目录</button>
           </div>
           <div class="toolbar-actions">
             <button id="editMode" class="secondary" aria-pressed="false" disabled>修改正文</button>
@@ -85,6 +81,14 @@
     <section id="assistRow" class="assist-row" aria-label="创作辅助" hidden>
       <article id="taskSummary" class="assist-card" aria-live="polite"></article>
       <article id="exportSummary" class="assist-card" aria-live="polite"></article>
+    </section>
+
+    <section id="mediaShowcase" class="media-showcase" aria-labelledby="mediaTitle" hidden>
+      <div class="section-heading">
+        <div><span class="eyebrow">MEDIA</span><h3 id="mediaTitle">已有制作成果</h3></div>
+        <span class="section-note">仅展示 · 生产需在 skill 中明确确认</span>
+      </div>
+      <div id="mediaGallery" class="media-gallery"></div>
     </section>
   </main>
 

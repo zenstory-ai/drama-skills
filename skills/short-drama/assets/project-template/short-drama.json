@@ -31,6 +31,9 @@
       "aspect": null,
       "overlay_regions": [],
       "source_ref": null
+    },
+    "rhythm_profile": {
+      "status": "unset"
     }
   }
 }

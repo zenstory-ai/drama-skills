@@ -61,6 +61,10 @@ ALLOWED_PROVIDER_URLS = {
         "https://docs.volcengine.com/docs/82379/1520757",
         "https://docs.volcengine.com/docs/82379/2607689",
     },
+    "skills/short-drama-video-prompts/references/wan-3.0.md": {
+        "https://help.aliyun.com/zh/model-studio/wan3-video-generation-api-reference",
+        "https://platform.qianwenai.com/docs/developer-guides/video-generation/wan30-video",
+    },
 }
 RELEASE_TEXT_SUFFIXES = {
     ".ass",

@@ -120,6 +120,8 @@ class DashboardBrowserTests(unittest.TestCase):
 
         self.content_button("带注释").evaluate("node => node.click()")
         expect(self.page.locator("#filename")).to_have_text("带注释")
+        # The filename changes before the fetch; the body only after it.
+        expect(self.page.locator("#message")).to_contain_text("已载入")
         body = self.page.locator(".content-stage").inner_text()
 
         self.assertIn("第一段正文。", body)
@@ -194,6 +196,145 @@ class DashboardBrowserTests(unittest.TestCase):
         context.close()
 
         self.assertNotIn("Cannot read properties", notice)
+
+
+EXAMPLE = Path(__file__).resolve().parents[1] / "examples/creator-first/EP001"
+DOCUMENTS = ["剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md"]
+# A 1×1 PNG: enough for the gallery to have real media to show.
+PIXEL = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+    "0000000c49444154789c63789862030003ab018271b1e22c0000000049454e44ae426082"
+)
+
+
+def make_creator_first_project(root: Path) -> None:
+    """Eight episodes from the creator-first example, with media and a review."""
+
+    make_project(root, "让你管账号")
+    for number in range(1, 9):
+        episode = f"EP{number:03d}"
+        folder = root / "剧集" / episode
+        folder.mkdir(parents=True)
+        for name in DOCUMENTS[: 1 + number % 5]:
+            text = (EXAMPLE / name).read_text(encoding="utf-8")
+            (folder / name).write_text(text.replace("EP001", episode), encoding="utf-8")
+    for name in DOCUMENTS:
+        (root / "剧集/EP001" / name).write_text(
+            (EXAMPLE / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    images = root / "剧集/EP001/制作成果/images"
+    images.mkdir(parents=True)
+    for number in range(1, 4):
+        (images / f"SHOT-EP001-00{number}.png").write_bytes(PIXEL)
+    (root / "审查").mkdir(exist_ok=True)
+    (root / "审查/EP001-审查.md").write_text(
+        "# EP001 审查意见\n\n- 第 3 镜的笑意来得太早。\n", encoding="utf-8"
+    )
+
+
+@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
+class CreatorFirstDashboardBrowserTests(unittest.TestCase):
+    """A real creator-first project: more episodes than fit, media, a review."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        workspace = Path(cls.temporary.name)
+        make_creator_first_project(workspace / "creator")
+        cls.server = create_server(workspace, port=0)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        host, port = cls.server.server_address[:2]
+        cls.origin = f"http://{host}:{port}"
+        cls.url = f"{cls.origin}/#{cls.server.access_token}"
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch(headless=True)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.playwright.stop()
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=3)
+        cls.temporary.cleanup()
+
+    def open(self, width: int, height: int, **options):
+        context = self.browser.new_context(
+            viewport={"width": width, "height": height}, reduced_motion="reduce", **options
+        )
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(self.url)
+        expect(page.locator("#message")).to_contain_text("已载入")
+        return page
+
+    def test_the_current_document_starts_on_the_first_screen(self) -> None:
+        # With media in the project the reading pane began at 995px on a
+        # laptop and 2065px on a phone, below an overview that grew with it.
+        for width, height in ((1440, 900), (375, 812)):
+            with self.subTest(width=width):
+                page = self.open(width, height)
+                top = page.locator("#documentPane").evaluate(
+                    "node => node.getBoundingClientRect().top"
+                )
+                scroll = page.evaluate(
+                    "() => [document.documentElement.scrollWidth, "
+                    "document.documentElement.clientWidth]"
+                )
+                self.assertLess(top, height)
+                self.assertEqual(scroll[0], scroll[1])
+
+    def test_every_episode_is_reachable_from_the_overview(self) -> None:
+        # The strip stopped at six cards under a heading that promised eight.
+        page = self.open(1440, 900)
+        cards = page.locator(".episode-card")
+        self.assertEqual(
+            cards.evaluate_all("nodes => nodes.map(node => node.dataset.episode)"),
+            [f"EP{number:03d}" for number in range(1, 9)],
+        )
+        cards.last.click()
+        expect(page.locator("#fileKind")).to_contain_text("EP008")
+
+    def test_reading_bar_stays_in_view_and_leads_back_to_the_contents(self) -> None:
+        page = self.open(375, 812)
+        page.click("#openScreenplay")
+        expect(page.locator("#message")).to_contain_text("已载入")
+        page.evaluate("() => scrollTo(0, document.body.scrollHeight / 2)")
+        bar = page.locator(".reading-bar")
+        self.assertEqual(bar.evaluate("node => node.getBoundingClientRect().top"), 0)
+        expect(bar.locator("#filename")).to_have_text("剧本")
+
+        page.click("#jumpToContents")
+        nav_top = page.locator("#contentNav").evaluate(
+            "node => node.getBoundingClientRect().top"
+        )
+        self.assertGreaterEqual(nav_top, 0)
+        self.assertLess(nav_top, 812 / 2)
+        self.assertTrue(
+            page.evaluate(
+                "() => document.activeElement.classList.contains('content-link') "
+                "&& document.activeElement.classList.contains('active')"
+            )
+        )
+
+    def test_copy_button_puts_the_prompt_on_the_clipboard(self) -> None:
+        page = self.open(1440, 900)
+        page.context.grant_permissions(
+            ["clipboard-read", "clipboard-write"], origin=self.origin
+        )
+        page.locator(".content-link", has_text="视频提示词").first.click()
+        expect(page.locator("#filename")).to_have_text("视频提示词")
+        source = (EXAMPLE / "视频提示词.md").read_text(encoding="utf-8").split("\n")
+        first_prompt = source[source.index("### 可复制提示词") + 1][2:]
+
+        copy = page.locator(".copy-button").first
+        copy.click()
+        expect(copy).to_have_text("已复制")
+
+        self.assertEqual(
+            page.evaluate("() => navigator.clipboard.readText()"), first_prompt
+        )
 
 
 if __name__ == "__main__":

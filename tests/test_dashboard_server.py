@@ -1773,8 +1773,12 @@ const prompt = [
   "> overall_soundscape: 0-1s black silence, then low war drums.",
   "> non_diegetic_music: N/A",
 ].join("\\n");
+const walk = (node, out = []) => {{
+  for (const kid of node.children || []) {{ out.push(kid); walk(kid, out); }}
+  return out;
+}};
 const one = logic.renderMarkdown(prompt);
-const quotes = one.children.filter((node) => node.tagName === "BLOCKQUOTE");
+const quotes = walk(one).filter((node) => node.tagName === "BLOCKQUOTE");
 const split = logic.renderMarkdown("> first paragraph\\n\\n> second paragraph");
 process.stdout.write(JSON.stringify([
   quotes.length,
@@ -1782,7 +1786,7 @@ process.stdout.write(JSON.stringify([
     && quotes[0].text.includes("non_diegetic_music"),
   quotes.length === 1
     && quotes[0].children.filter((kid) => kid.tagName === "BR").length,
-  split.children.filter((node) => node.tagName === "BLOCKQUOTE").length,
+  walk(split).filter((node) => node.tagName === "BLOCKQUOTE").length,
 ]));
 """
         completed = run_node(script)
@@ -1829,9 +1833,188 @@ process.stdout.write(JSON.stringify({{
                 "视频提示词.md": "prompts",
             },
         )
-        self.assertEqual(result["presentation"]["label"], "提示词就绪")
+        self.assertEqual(result["presentation"]["label"], "5/5")
+        self.assertIsNone(result["presentation"]["next"])
         self.assertEqual(result["reviewSection"], "review")
         self.assertIsNone(result["legacyReviewSection"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_episode_progress_follows_the_five_documents(self) -> None:
+        # Progress was read off the legacy shots/keyframes files, so an episode
+        # with 剧本, 视觉设定 and 分镜 was told to go and make its storyboard, and
+        # one holding only 图片提示词 was called ready for production.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const docs = (episode, names) => names.map((name) => ({{ path: `剧集/${{episode}}/${{name}}`, type: "text" }}));
+const cases = {{
+  three: docs("EP002", ["剧本.md", "视觉设定.md", "分镜.md"]),
+  promptOnly: docs("EP003", ["图片提示词.md"]),
+  gap: docs("EP006", ["剧本.md", "分镜.md", "视频提示词.md"]),
+  // A document nested deeper is not the episode's document.
+  nested: docs("EP007", ["剧本.md", "旧稿/视觉设定.md"]),
+  withMedia: [
+    ...docs("EP001", ["剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md"]),
+    {{ path: "剧集/EP001/制作成果/images/SHOT-EP001-001.png", type: "media" }},
+    {{ path: "剧集/EP001/制作成果/images/SHOT-EP001-002.png", type: "media" }},
+  ],
+  legacy: docs("EP009", ["screenplay.md", "storyboard/shots.jsonl"]),
+}};
+const result = Object.fromEntries(Object.entries(cases).map(([name, files]) => {{
+  const presentation = logic.episodePresentation(files);
+  return [name, {{
+    label: presentation.label,
+    next: presentation.next,
+    done: presentation.steps && presentation.steps.map((step) => step.done),
+    media: presentation.media,
+  }}];
+}}));
+process.stdout.write(JSON.stringify(result));
+"""
+        result = json.loads(run_node(script).stdout)
+
+        self.assertEqual(result["three"]["label"], "3/5")
+        self.assertEqual(result["three"]["next"], "图片提示词")
+        # Starting from a later stage is allowed; the first gap is still 剧本.
+        self.assertEqual(result["promptOnly"]["done"], [False, False, False, True, False])
+        self.assertEqual(result["promptOnly"]["next"], "剧本")
+        self.assertEqual(result["gap"]["next"], "视觉设定")
+        self.assertEqual(result["nested"]["done"], [True, False, False, False, False])
+        self.assertEqual(result["withMedia"]["label"], "5/5")
+        self.assertIsNone(result["withMedia"]["next"])
+        self.assertEqual(result["withMedia"]["media"], 2)
+        # A read-only v0.5 episode is not graded against documents it never had.
+        self.assertIsNone(result["legacy"]["done"])
+        self.assertIsNone(result["legacy"]["next"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_files_an_episode_review_under_its_episode(self) -> None:
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const files = [
+  {{ path: "剧集/EP001/剧本.md", type: "text" }},
+  {{ path: "审查/EP001-审查.md", type: "text" }},
+  {{ path: "审查/人物弧线-审查.md", type: "text" }},
+  {{ path: "剧集/EP002/剧本.md", type: "text" }},
+  {{ path: "reviews/EP002-审查.md", type: "text" }},
+  // The episode was renamed away; its old review must not bring it back.
+  {{ path: "审查/EP009-审查.md", type: "text" }},
+];
+const overview = logic.projectOverviewModel(files, {{}});
+process.stdout.write(JSON.stringify({{
+  episodes: overview.episodes.map((episode) => [episode.id, episode.files.map((file) => file.path)]),
+  reviewed: overview.episodes.map((episode) => logic.episodePresentation(episode.files).review),
+  topic: logic.episodeName("审查/人物弧线-审查.md"),
+}}));
+"""
+        result = json.loads(run_node(script).stdout)
+
+        self.assertEqual(
+            result["episodes"],
+            [
+                ["EP001", ["剧集/EP001/剧本.md", "审查/EP001-审查.md"]],
+                ["EP002", ["剧集/EP002/剧本.md", "reviews/EP002-审查.md"]],
+            ],
+        )
+        self.assertEqual(result["reviewed"], [True, True])
+        # A topic review is about the series, not an episode called 人物弧线.
+        self.assertEqual(result["topic"], "")
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_labels_keep_ids_as_written(self) -> None:
+        # IDs are how the documents cite each other; `shot ep001 001.png` cannot
+        # be searched for in 分镜.md.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        paths = [
+            "剧集/EP001/制作成果/images/SHOT-EP001-001.png",
+            "审查/EP001-审查.md",
+            "剧集/EP001/Scene_Notes.md",
+            "剧集/EP001/分镜.md",
+            "项目开发/story-engine.md",
+        ]
+        script = f"""
+const logic = require({json.dumps(str(app))});
+process.stdout.write(JSON.stringify({json.dumps(paths)}.map(logic.fileLabel)));
+"""
+        self.assertEqual(
+            json.loads(run_node(script).stdout),
+            ["SHOT-EP001-001.png", "EP001-审查", "Scene_Notes", "分镜", "故事引擎"],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_copy_buttons_carry_the_prompt_as_written(self) -> None:
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        example = SUITE / "examples/creator-first/EP001/视频提示词.md"
+        source = example.read_text(encoding="utf-8")
+        h3 = [
+            "subject_definitions: <Picture 1> is the storyboard keyframe.",
+            "summary: Create one shot from the ordered picture references.",
+            "non_diegetic_music: N/A",
+        ]
+        extra = "\n".join(
+            [
+                "## 说明",
+                "> 这段引用只是说明，不是提示词。",
+                "### 可复制提示词",
+                f"> {h3[0]}",
+                "",
+                *[f"> {line}" for line in h3[1:]],
+                "### 冻结关键帧提示词",
+                "```text",
+                "Frozen frame, `raw` **as typed**",
+                "```",
+                "## 下一项",
+                "```text",
+                "not a prompt",
+                "```",
+            ]
+        )
+        script = f"""
+class N {{
+  constructor(tag) {{ this.tagName = (tag || "").toUpperCase(); this.children = []; this.textContent = ""; this.className = ""; this.dataset = {{}}; }}
+  append(...kids) {{ for (const kid of kids) this.children.push(kid); }}
+}}
+const logic = require({json.dumps(str(app))});
+globalThis.document = {{
+  createElement: (tag) => new N(tag),
+  createTextNode: (data) => ({{ data }}),
+  createDocumentFragment: () => new N("#fragment"),
+  getElementById: () => null,
+}};
+const walk = (node, out = []) => {{
+  for (const kid of node.children || []) {{ out.push(kid); walk(kid, out); }}
+  return out;
+}};
+const copies = (text) => walk(logic.renderMarkdown(text))
+  .filter((node) => node.className === "copy-button")
+  .map((node) => node.dataset.copyText);
+process.stdout.write(JSON.stringify({{
+  example: copies({json.dumps(source)}),
+  extra: copies({json.dumps(extra)}),
+}}));
+"""
+        result = json.loads(run_node(script).stdout)
+
+        expected = []
+        lines = source.split("\n")
+        for index, line in enumerate(lines):
+            if line.strip() == "### 可复制提示词":
+                quote = []
+                for following in lines[index + 1 :]:
+                    if not following.startswith(">"):
+                        break
+                    quote.append(following[2:] if following.startswith("> ") else following[1:])
+                expected.append("\n".join(quote))
+        self.assertTrue(expected)
+        self.assertEqual(result["example"], expected)
+        # A multi-line prompt copies as one request, line breaks intact, even
+        # across a blank line; a fence
+        # copies verbatim, Markdown marks and all; neither a plain quote nor a
+        # fence under an ordinary heading gets a button.
+        self.assertEqual(
+            result["extra"], ["\n".join(h3), "Frozen frame, `raw` **as typed**"]
+        )
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_translates_server_protocol_messages(self) -> None:

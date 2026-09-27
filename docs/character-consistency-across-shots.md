@@ -52,7 +52,8 @@
 
 ## 相关
 
-- 站点指南（含一个三镜档案例）：https://zenstory.ai/drama-skills/character-consistency
+- 站点指南（含一个三镜档案例）：https://zenstory.ai/zh/drama-skills/character-consistency
+- 角色三视图提示词模板（附 6 个原创示例）：https://zenstory.ai/zh/drama-skills/character-turnaround-prompt
 - 全流程：[漫剧创作全流程指引](comic-drama-workflow.md)
 - 实现细节：`skills/short-drama-assets/references/continuity-lock.md`、`identity-vs-variant.md`；`skills/short-drama-image-prompts/references/character-and-look.md`
 - 仓库地址：https://github.com/zenstory-ai/drama-skills（原 `worldwonderer/drama-skills`，旧链接自动跳转）

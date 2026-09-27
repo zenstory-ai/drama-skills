@@ -54,6 +54,25 @@ const CONTENT_META = {
   other: { label: "其他内容", description: "放在标准目录之外的创作文件" },
 };
 
+// The five documents an episode may hold, in the order the work usually runs
+// (project_tool.py's CREATOR_DOCUMENTS). An episode's progress is read off which
+// of them exist; there is no lifecycle file to consult.
+const EPISODE_DOCUMENTS = [
+  { file: "剧本.md", label: "剧本" },
+  { file: "视觉设定.md", label: "视觉设定" },
+  { file: "分镜.md", label: "分镜" },
+  { file: "图片提示词.md", label: "图片提示词" },
+  { file: "视频提示词.md", label: "视频提示词" },
+];
+
+// Mirrors project_tool.py's EPISODE_ID_RE. A review named after an episode
+// belongs to it; one named after a topic (`审查/<主题>-审查.md`) stays series-wide.
+const EPISODE_ID = /^EP(?:[0-9]{3}|[1-9][0-9]{3,})$/;
+
+// Only the blocks under these headings are one generation's request, to be
+// copied whole. Everywhere else a quote is just a quote.
+const COPYABLE_PROMPT_HEADINGS = new Set(["可复制提示词", "冻结关键帧提示词"]);
+
 const IMAGE_SUFFIXES = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const VIDEO_SUFFIXES = new Set(["mp4", "webm", "mov"]);
 const AUDIO_SUFFIXES = new Set(["wav", "mp3", "m4a", "aac", "flac", "opus"]);
@@ -324,12 +343,15 @@ function projectRecovery(status) {
 
 function collectEpisodes(files) {
   const episodes = new Map();
+  // A review filed under an episode that no longer has a folder does not make one.
+  const folders = new Set((files || [])
+    .filter((file) => ROOT_ROLES[pathSegments(file.path)[0]] === "episodes")
+    .map((file) => episodeName(file.path)));
   for (const file of files || []) {
-    const parts = pathSegments(file.path);
-    const root = ROOT_ROLES[parts[0]] || ROOT_ROLES[(parts[0] || "").toLowerCase()];
-    if (root !== "episodes" || !parts[1] || !creatorSection(file.path)) continue;
-    if (!episodes.has(parts[1])) episodes.set(parts[1], []);
-    episodes.get(parts[1]).push(file);
+    const id = episodeName(file.path);
+    if (!id || !folders.has(id) || !creatorSection(file.path)) continue;
+    if (!episodes.has(id)) episodes.set(id, []);
+    episodes.get(id).push(file);
   }
   return [...episodes.entries()]
     .map(([id, episodeFiles]) => ({ id, files: episodeFiles }))
@@ -352,14 +374,42 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
+// A creator document counts only where it belongs, directly in 剧集/<EP>/.
+function episodeDocument(path) {
+  const parts = pathSegments(path);
+  const root = ROOT_ROLES[parts[0]] || ROOT_ROLES[(parts[0] || "").toLowerCase()];
+  return root === "episodes" && parts.length === 3 ? parts[2] : "";
+}
+
 function episodePresentation(files) {
-  const names = files.map((file) => String(file.path || "").toLowerCase());
   const media = files.filter((file) => file.type === "media").length;
-  if (media) return { label: "已有媒体", detail: `${media} 项成果` };
-  if (names.some((path) => /(?:video-prompts|视频提示词|图片提示词)\.md$/.test(path))) return { label: "提示词就绪", detail: "可在 skill 中确认投产" };
-  if (names.some((path) => /\/(?:shots|keyframes)\.jsonl$/.test(path))) return { label: "分镜中", detail: "镜头资料已建立" };
-  if (names.some((path) => /(?:screenplay|剧本)\.md$/.test(path))) return { label: "剧本就绪", detail: "可继续做资产与分镜" };
-  return { label: "筹备中", detail: `${files.length} 项内容` };
+  const review = files.some((file) => creatorSection(file.path) === "review");
+  const present = new Set(files.map((file) => episodeDocument(file.path)));
+  const steps = EPISODE_DOCUMENTS.map((doc) => ({ label: doc.label, done: present.has(doc.file) }));
+  const done = steps.filter((step) => step.done).length;
+  // A v0.5 project is read-only history and never holds the five documents
+  // (it is never migrated in place). Grading it against them would tell the
+  // creator to start a screenplay that already exists in the old format.
+  const names = files.map((file) => String(file.path || "").toLowerCase());
+  const legacy = !done && names.some((path) => /(?:\/(?:shots|keyframes)\.jsonl|(?:screenplay|video-prompts|image-prompts|keyframe-prompts)\.md)$/.test(path));
+  if (legacy) {
+    const base = { steps: null, media, review, next: null };
+    if (media) return { ...base, label: "已有媒体", detail: `${media} 项成果` };
+    if (names.some((path) => /(?:video|image|keyframe)-prompts\.md$/.test(path))) return { ...base, label: "提示词就绪", detail: "可在 skill 中确认投产" };
+    if (names.some((path) => /\/(?:shots|keyframes)\.jsonl$/.test(path))) return { ...base, label: "分镜中", detail: "镜头资料已建立" };
+    return { ...base, label: "剧本就绪", detail: "可继续做资产与分镜" };
+  }
+  // Creators may start from any stage, so a later document can exist while an
+  // earlier one is missing; the next step is still the first gap in the order.
+  const next = steps.find((step) => !step.done)?.label || null;
+  return {
+    label: `${done}/${steps.length}`,
+    detail: next ? `下一步：${next}` : "五份文档已齐",
+    steps,
+    media,
+    review,
+    next,
+  };
 }
 
 function projectOverviewModel(files, status) {
@@ -382,15 +432,21 @@ function statusRefreshFailureMessage() {
   return "内容已保存，但状态刷新失败，请稍后重试";
 }
 
+// IDs such as SHOT-EP001-001 are how the documents cite one another, so an
+// unmapped name is shown as written: same case, same hyphens.
 function fileLabel(path) {
-  const name = (pathSegments(path).at(-1) || "内容").toLowerCase();
-  return FILE_LABELS[name] || name.replace(/\.(md|jsonl?|txt)$/i, "").replace(/[-_]/g, " ");
+  const name = pathSegments(path).at(-1) || "内容";
+  return FILE_LABELS[name.toLowerCase()] || name.replace(/\.(md|jsonl?|txt)$/i, "");
 }
 
 function episodeName(path) {
   const parts = pathSegments(path);
   const root = ROOT_ROLES[parts[0]] || ROOT_ROLES[(parts[0] || "").toLowerCase()];
-  return root === "episodes" ? parts[1] : "";
+  if (root === "episodes") return parts[1] || "";
+  // 审查/EP001-审查.md is about EP001 and reads with it, not with the series.
+  if (creatorSection(path) !== "review") return "";
+  const subject = /^(.+)-审查\.md$/i.exec(parts.at(-1))?.[1] || "";
+  return EPISODE_ID.test(subject) ? subject : "";
 }
 
 function contentGroupKey(file) {
@@ -511,6 +567,24 @@ function mediaCard(file) {
   return card;
 }
 
+function episodeProgress(presentation) {
+  const progress = element("span", "episode-progress");
+  if (presentation.steps) {
+    const dots = element("span", "episode-dots");
+    dots.setAttribute("aria-hidden", "true");
+    for (const step of presentation.steps) {
+      const dot = element("span", "episode-dot");
+      dot.dataset.done = String(step.done);
+      dot.title = `${step.label}${step.done ? "：已有" : "：未写"}`;
+      dots.append(dot);
+    }
+    const written = presentation.steps.filter((step) => step.done).map((step) => step.label);
+    progress.append(dots, element("span", "sr-only", written.length ? `已有${written.join("、")}` : "还没有创作文档"));
+  }
+  progress.append(element("span", "episode-state", presentation.label));
+  return progress;
+}
+
 function episodeCard(episode, index) {
   const presentation = episodePresentation(episode.files);
   const card = button("", "episode-card", async () => {
@@ -518,15 +592,19 @@ function episodeCard(episode, index) {
     const first = orderedForReading(episode.files)[0];
     if (first) await openFile(first, true);
   });
+  card.dataset.episode = episode.id;
   card.append(
     element("span", "episode-number", String(index + 1).padStart(2, "0")),
-    (() => {
-      const copy = element("span", "episode-copy");
-      copy.append(element("strong", "", episode.id), element("small", "", presentation.detail));
-      return copy;
-    })(),
-    element("span", "episode-state", presentation.label),
+    element("strong", "episode-id", episode.id),
+    episodeProgress(presentation),
+    element("small", "episode-next", presentation.detail),
   );
+  if (presentation.media || presentation.review) {
+    const extras = element("span", "episode-extras");
+    if (presentation.media) extras.append(element("span", "", `${presentation.media} 项成果`));
+    if (presentation.review) extras.append(element("span", "episode-review", "有审查意见"));
+    card.append(extras);
+  }
   return card;
 }
 
@@ -543,7 +621,7 @@ function renderProjectOverview() {
   $("episodeHint").textContent = model.episodes.length ? `${model.episodes.length} 集可浏览` : "尚未建立分集";
   $("episodeStrip").replaceChildren(
     ...(model.episodes.length
-      ? model.episodes.slice(0, 6).map(episodeCard)
+      ? model.episodes.map(episodeCard)
       : [element("p", "empty-copy", "项目级内容已就绪，分集建立后会显示在这里。")]),
   );
   const media = model.media.slice(0, 6);
@@ -631,6 +709,17 @@ function focusDocument() {
   $("documentPane").scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 }
 
+// On a narrow screen the contents sit above a page-long document. The reading
+// bar's 目录 button is the way back up, landing on the entry being read.
+function jumpToContents() {
+  $("contentNav").scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  const list = $("contentList");
+  const current = list.querySelector(".content-link.active");
+  if (!current || current.offsetParent === null) { $("search").focus({ preventScroll: true }); return; }
+  list.scrollTop += current.getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientHeight / 3;
+  current.focus({ preventScroll: true });
+}
+
 function renderTaskSummary() {
   const host = $("taskSummary");
   const [label] = creatorStatus(state.status?.lifecycle, projectRecovery(state.status));
@@ -689,6 +778,55 @@ function appendInlineText(node, text) {
   }
 }
 
+// Selecting a six-line prompt by hand is where a line gets dropped, so a
+// copyable prompt carries a button. What it copies is the source text of the
+// block -- quote markers removed, lines joined by newlines -- not the rendering.
+function copyablePrompt(block) {
+  const wrapper = element("div", "copy-block");
+  const control = button("复制", "copy-button", () => copyPrompt(control, block));
+  control.type = "button";
+  control.dataset.copyText = "";
+  wrapper.append(block, control);
+  return { wrapper, control };
+}
+
+// The async clipboard needs a secure context and permission; the dashboard is
+// served from loopback, but a locked-down browser can still refuse it.
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_error) {
+    const scratch = element("textarea", "clipboard-scratch");
+    scratch.value = text;
+    scratch.setAttribute("readonly", "");
+    document.body.append(scratch);
+    scratch.select();
+    let copied = false;
+    try { copied = document.execCommand("copy"); } catch (_ignored) { copied = false; }
+    scratch.remove();
+    return copied;
+  }
+}
+
+async function copyPrompt(control, block) {
+  const copied = await writeClipboard(control.dataset.copyText);
+  // The fallback borrows focus for its scratch field; hand it back.
+  control.focus({ preventScroll: true });
+  if (copied) {
+    control.textContent = "已复制";
+    control.dataset.state = "copied";
+    setTimeout(() => { control.textContent = "复制"; delete control.dataset.state; }, 1600);
+    return;
+  }
+  // Leave the creator one keystroke away rather than with nothing.
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  getSelection().removeAllRanges();
+  getSelection().addRange(range);
+  showNotice("无法直接写入剪贴板，已选中这段提示词，请按 ⌘/Ctrl + C 复制。", "warning");
+}
+
 function renderMarkdown(content) {
   const fragment = document.createDocumentFragment();
   // `list` holds the open <ul>/<ol>; `listKind` tracks which, so a bullet block
@@ -703,6 +841,10 @@ function renderMarkdown(content) {
   // that go into one request. Rendering each line as its own bordered box made
   // one prompt look like six separate ones, and creators asked which to copy.
   let quoteNode = null;
+  // Set by the latest heading: whether the blocks under it are a copyable
+  // prompt. `quoteCopy` is the open quote's copy button and source lines.
+  let copyable = false;
+  let quoteCopy = null;
   // 剧本 format sanctions Markdown comments for creator notes, so a document
   // legitimately opens with several lines of them. Rendering those as body text
   // put the author's private notes at the top of the one pane where they read
@@ -711,18 +853,24 @@ function renderMarkdown(content) {
   // says unrecognised Markdown is preserved rather than quietly "fixed".
   let comment = null;
   const closeList = () => { list = null; listKind = null; };
-  const closeQuote = () => { quoteNode = null; };
+  const closeQuote = () => { quoteNode = null; quoteCopy = null; };
   const paragraph = (text) => {
     const node = element("p");
     appendInlineText(node, text);
     fragment.append(node);
   };
+  const codeBlock = (lines) => {
+    const pre = element("pre", "code-block");
+    pre.append(element("code", "", lines.join("\n")));
+    if (!copyable) { fragment.append(pre); return; }
+    const { wrapper, control } = copyablePrompt(pre);
+    control.dataset.copyText = lines.join("\n");
+    fragment.append(wrapper);
+  };
   for (let line of content.split("\n")) {
     if (fence !== null) {
       if (/^\s*```/.test(line)) {
-        const pre = element("pre", "code-block");
-        pre.append(element("code", "", fence.join("\n")));
-        fragment.append(pre);
+        codeBlock(fence);
         fence = null;
       } else {
         fence.push(line);
@@ -761,7 +909,7 @@ function renderMarkdown(content) {
       continue;
     }
     if (stripped !== line) {
-      if (!stripped.trim()) { closeQuote(); continue; }
+      if (!stripped.trim()) { if (!quoteCopy) closeQuote(); continue; }
       line = stripped;
     }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
@@ -771,6 +919,7 @@ function renderMarkdown(content) {
       const node = element(`h${heading[1].length}`);
       appendInlineText(node, heading[2]);
       fragment.append(node);
+      copyable = COPYABLE_PROMPT_HEADINGS.has(heading[2].trim());
       continue;
     }
     const bullet = /^[-*]\s+(.+)$/.exec(line);
@@ -785,12 +934,26 @@ function renderMarkdown(content) {
       continue;
     }
     closeList();
-    if (!line.trim()) { closeQuote(); continue; }
+    // A copyable prompt is one request even across blank lines, as the checker reads it.
+    if (!line.trim()) { if (!quoteCopy) closeQuote(); continue; }
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
       if (quoteNode) quoteNode.append(element("br"));
-      else { quoteNode = element("blockquote"); fragment.append(quoteNode); }
+      else {
+        quoteNode = element("blockquote");
+        if (copyable) {
+          const { wrapper, control } = copyablePrompt(quoteNode);
+          quoteCopy = { control, lines: [] };
+          fragment.append(wrapper);
+        } else {
+          fragment.append(quoteNode);
+        }
+      }
       appendInlineText(quoteNode, quote[1]);
+      if (quoteCopy) {
+        quoteCopy.lines.push(quote[1]);
+        quoteCopy.control.dataset.copyText = quoteCopy.lines.join("\n");
+      }
       continue;
     }
     closeQuote();
@@ -801,11 +964,7 @@ function renderMarkdown(content) {
   // An unterminated comment renders verbatim rather than eating the document.
   if (comment !== null) for (const line of comment) paragraph(line);
   // An unterminated fence still renders as a block rather than vanishing.
-  if (fence !== null && fence.length) {
-    const pre = element("pre", "code-block");
-    pre.append(element("code", "", fence.join("\n")));
-    fragment.append(pre);
-  }
+  if (fence !== null && fence.length) codeBlock(fence);
   return fragment;
 }
 
@@ -1225,6 +1384,7 @@ function start() {
   $("editor").oninput = () => setDirty(true);
   $("save").onclick = save;
   $("editMode").onclick = () => setView(state.view === "edit" ? "preview" : "edit");
+  $("jumpToContents").onclick = jumpToContents;
   document.querySelector(".brand").onclick = (event) => {
     event.preventDefault();
     scrollTo({ top: 0, behavior: scrollBehavior() });
@@ -1247,7 +1407,9 @@ if (typeof module !== "undefined" && module.exports) {
     creatorStatus,
     creatorEditable,
     creatorTitle,
+    episodeName,
     episodePresentation,
+    fileLabel,
     formatBytes,
     friendlyFailure,
     friendlyKey,

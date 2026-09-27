@@ -120,6 +120,23 @@ PACING_POINTER = "/format/pacing"
 # are read by the write stage to turn a screenplay into seconds, so leaving them
 # out of set-authority left hand-editing short-drama.json as the only way in.
 FORMAT_POINTERS = (EPISODE_LENGTH_POINTER, PACING_POINTER)
+RHYTHM_PROFILE_TOKENS = [AUTHORITY_ROOT_TOKEN, "rhythm_profile"]
+# The project rhythm profile: what develop proposes and the creator accepts, so
+# that later stages can do arithmetic on accepted numbers. Only types and ranges
+# are checked here; which values suit a project is the creator's call.
+RHYTHM_PROFILE_FORMS = ("ai_live_action", "motion_comic")
+RHYTHM_PROFILE_FIELDS = {
+    "form": "form",
+    "first_hook_seconds": "seconds",
+    "beat_interval_seconds_max": "seconds",
+    "opposed_reversals_per_episode_min": "count",
+    "end_on_peak": "boolean",
+    "reprise_previous_last_beat": "boolean",
+    "vo_share_max": "share",
+    "target_avg_shot_seconds": "seconds",
+    "close_shot_share_min": "share",
+    "first_major_payoff_by_episode": "episode",
+}
 
 class ProjectConflictError(RuntimeError):
     """A file changed while a guarded operation was in progress."""
@@ -256,6 +273,68 @@ def project_video_model_profile(project: Mapping[str, Any]) -> dict[str, Any]:
         "audio_generation",
     )
     return {field: choices[field] for field in fields if field in choices}
+
+
+def rhythm_profile_problems(profile: Any) -> list[str]:
+    """Type and range problems in a rhythm profile block; empty when usable.
+
+    A profile is complete or it is not a profile: a downstream stage doing
+    arithmetic on it cannot tell a field left out from a field meant as zero.
+    """
+    if not isinstance(profile, Mapping):
+        return ["rhythm_profile must be an object"]
+    problems: list[str] = []
+    for name in sorted(set(profile) - set(RHYTHM_PROFILE_FIELDS) - {"status"}):
+        problems.append(
+            f"rhythm_profile has no field {name}; fields are "
+            f"{', '.join(RHYTHM_PROFILE_FIELDS)}"
+        )
+    for name, kind in RHYTHM_PROFILE_FIELDS.items():
+        if name not in profile:
+            problems.append(f"rhythm_profile.{name} is missing")
+            continue
+        value = profile[name]
+        number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        whole = isinstance(value, int) and not isinstance(value, bool)
+        if kind == "form":
+            ok = value in RHYTHM_PROFILE_FORMS
+            expected = " or ".join(RHYTHM_PROFILE_FORMS)
+        elif kind == "boolean":
+            ok = isinstance(value, bool)
+            expected = "true or false"
+        elif kind == "seconds":
+            ok = number and math.isfinite(value) and value > 0
+            expected = "a positive number of seconds"
+        elif kind == "share":
+            ok = number and 0 <= value <= 1
+            expected = "a share between 0 and 1"
+        elif kind == "count":
+            ok = whole and value >= 0
+            expected = "a whole number of 0 or more"
+        else:
+            ok = whole and value >= 1
+            expected = "an episode number of 1 or more"
+        if not ok:
+            problems.append(f"rhythm_profile.{name} must be {expected}, not {value!r}")
+    return problems
+
+
+def project_rhythm_profile(project: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The accepted rhythm profile values and the problems that void them.
+
+    A missing, unset or merely proposed profile is undeclared: nothing
+    downstream checks against it. An accepted profile that no longer passes
+    validation (a hand edit) is reported with its problems and declares
+    nothing either, since arithmetic on a bad value is a wrong number.
+    """
+    authority = project.get("creator_authority")
+    profile = authority.get("rhythm_profile") if isinstance(authority, Mapping) else None
+    if not isinstance(profile, Mapping) or profile.get("status") != "accepted":
+        return {}, []
+    problems = rhythm_profile_problems(profile)
+    if problems:
+        return {}, problems
+    return {name: profile[name] for name in RHYTHM_PROFILE_FIELDS}, []
 
 
 def initialize_project(
@@ -911,6 +990,7 @@ def _build_status(
                     ownership[output] = owner
     languages = project_languages(project)
     video_model_profile = project_video_model_profile(project)
+    rhythm_profile, rhythm_problems = project_rhythm_profile(project)
     return {
         "project_id": project.get("project_id"),
         "title": project.get("title"),
@@ -918,6 +998,8 @@ def _build_status(
         "prompt_language": languages["prompt_language"],
         "video_prompt_language": languages["video_prompt_language"],
         "video_model_profile": video_model_profile,
+        "rhythm_profile": rhythm_profile,
+        "rhythm_profile_problems": rhythm_problems,
         "project_root": project_root,
         "last_action": state.get("last_action"),
         "layout": dict(layout),
@@ -1548,7 +1630,27 @@ def set_creator_authority(
         project = json.loads(project_path.read_text(encoding="utf-8"))
         if not isinstance(project, dict):
             raise ValueError("project manifest must be an object")
+        rhythm = tokens[:2] == RHYTHM_PROFILE_TOKENS
+        authority = project.get(AUTHORITY_ROOT_TOKEN)
+        if rhythm and len(tokens) > 2:
+            # Writing one field accepts the block it sits in, so a leaf write
+            # into a proposed or unset profile would promote numbers nobody
+            # accepted. A single value can only change an accepted profile.
+            current = authority.get("rhythm_profile") if isinstance(authority, dict) else None
+            if not isinstance(current, Mapping) or current.get("status") != "accepted":
+                raise ValueError(
+                    "rhythm_profile is not accepted; accept the whole profile "
+                    "before changing one of its fields"
+                )
+        if rhythm and isinstance(authority, dict) and "rhythm_profile" not in authority:
+            # The project template declares this slot as unset; a manifest made
+            # from an older template lacks it, so a whole-profile write adds it.
+            authority["rhythm_profile"] = {"status": "unset"}
         written = _write_authority_value(project, tokens, value)
+        if rhythm:
+            problems = rhythm_profile_problems(project[AUTHORITY_ROOT_TOKEN]["rhythm_profile"])
+            if problems:
+                raise ValueError("; ".join(problems))
         if field == PACING_POINTER:
             # Check what the manifest will hold, not what the decision said: an
             # object slot is merged, so a half decision leaves the other rate at

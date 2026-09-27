@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -92,6 +93,7 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
     """Count the timed material, taking every classification from the index."""
     dialogue_lines = 0
     dialogue_characters = 0
+    voiceover_characters = 0
     action_paragraphs = 0
     tag_lines = 0
     unreadable_blocks: list[str] = []
@@ -126,11 +128,15 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
             unreadable_blocks.append(str(block.get("block_id")))
             continue
         dialogue_lines += 1
-        dialogue_characters += _spoken_characters(spoken.group("line"))
+        characters = _spoken_characters(spoken.group("line"))
+        dialogue_characters += characters
+        if block.get("tag") == "VO":
+            voiceover_characters += characters
 
     counts: dict[str, Any] = {
         "dialogue_lines": dialogue_lines,
         "dialogue_characters": dialogue_characters,
+        "voiceover_characters": voiceover_characters,
         "action_paragraphs": action_paragraphs,
         "production_tag_lines": tag_lines,
     }
@@ -185,6 +191,40 @@ def declared_rates(project: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def accepted_vo_share(
+    counts: Mapping[str, Any], project: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The [VO] share of spoken characters against an accepted ceiling.
+
+    [OS] is off-screen dialogue inside the scene, not narration or inner
+    voice, so it counts as spoken but not as voice-over.
+
+    Only a rhythm profile the creator accepted carries a ceiling; a missing or
+    proposed one declares nothing, so nothing is compared. The comparison is
+    reported, never enforced: the creator may keep an episode over its own cap.
+    """
+    authority = (project or {}).get("creator_authority")
+    profile = authority.get("rhythm_profile") if isinstance(authority, dict) else None
+    if not isinstance(profile, dict) or profile.get("status") != "accepted":
+        return None
+    ceiling = profile.get("vo_share_max")
+    if isinstance(ceiling, bool) or not isinstance(ceiling, (int, float)):
+        return None
+    if not (math.isfinite(ceiling) and 0 <= ceiling <= 1):
+        # A hand-edited ceiling outside a share is no ceiling: comparing
+        # against NaN or 5 reports a verdict nobody accepted.
+        return None
+    spoken = counts["dialogue_characters"]
+    if not spoken:
+        return None
+    share = counts["voiceover_characters"] / spoken
+    return {
+        "share": round(share, 3),
+        "vo_share_max": ceiling,
+        "over_max": share > ceiling,
+    }
+
+
 def estimate(
     screenplay: bytes,
     blocks: Iterable[Mapping[str, Any]],
@@ -197,6 +237,9 @@ def estimate(
 
     result: dict[str, Any] = {"counts": counts, "rates": rates, "seconds": None}
     result["target_seconds"] = target if isinstance(target, (int, float)) else None
+    vo_share = accepted_vo_share(counts, project)
+    if vo_share is not None:
+        result["vo_share"] = vo_share
 
     # Material the index could not classify is material this estimate did not
     # time. Reporting the seconds without that fact is how an incomplete number
@@ -276,7 +319,10 @@ def main(argv: list[str] | None = None) -> int:
         "--project",
         type=Path,
         default=None,
-        help="short-drama.json carrying format.pacing and target_seconds_per_episode",
+        help=(
+            "short-drama.json carrying format.pacing, target_seconds_per_episode "
+            "and, when accepted, creator_authority.rhythm_profile.vo_share_max"
+        ),
     )
     args = parser.parse_args(argv)
 

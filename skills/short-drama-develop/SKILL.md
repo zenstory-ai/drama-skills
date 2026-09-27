@@ -86,7 +86,11 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 读取 [episode-design.md](references/episode-design.md)，再复制 [episode-map.jsonl](assets/episode-map.jsonl)。每一集记录进入状态、开场、当集追求、阻力、方向性转折、当集结果、信息释放、出去的压力以及下一集必须继承的事实。
 
 先保证每集产生局部戏剧结果、相邻集能精确交接，再讨论外部压力/情感负荷的双轨
-节奏。集数、钩子类型、是否反转和高潮位置由创作者与项目决定。
+节奏。第 1 集入口先比较收益入口与冷开；改编项目先读原著分析的爽点表，把高光排到观众
+最早能拿到的位置。集数、钩子类型、是否反转和高潮位置由创作者与项目决定。
+
+制作形态一定下，就按分集设计里的默认值提出项目节奏档案，写进创作简报交创作者接受；
+接受后由 `$short-drama` 写入 `creator_authority.rhythm_profile`。
 
 ### 5. 做所有者检查并交接
 
@@ -112,7 +116,8 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 - **`craft_default`**：通常有帮助的做法；创作者说明理由后可覆盖。
 - **`taste_option`**：钩子、弧线、视角、结局气质等选择；不得单独阻断。
 
-不要用固定的情节点、转折时刻、篇幅比例或数量配方替代因果判断。
+不要用固定的情节点、转折时刻、篇幅比例或数量配方替代因果判断；节奏数值只以创作者接受的
+项目节奏档案出现。
 
 ## 产物与边界
 
@@ -133,12 +138,12 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 ## 按需加载
 
 - **承诺、引擎、人物压力、升级与铺垫兑现**：[story-craft.md](references/story-craft.md)
-- **分集契约、因果节拍、集间交接与地图修订**：[episode-design.md](references/episode-design.md)
+- **分集契约、因果节拍、集间交接、首集入口、门槛集与项目节奏档案**：[episode-design.md](references/episode-design.md)
 - **已有多集完整剧本/散稿，要避免整稿进入上下文并可中断续跑**：
   [multi-episode-intake.md](references/multi-episode-intake.md)
 - **人物驱动力、前史与切入、跨集变化、信息权限、双轨节奏与恢复记忆**：
   [serial-character-and-memory.md](references/serial-character-and-memory.md)
-- **有原材料、需要压缩/合并人物场景/把信息视觉化**：
+- **有原材料、需要按爽点压缩、提前或冷开后文、合并人物场景、把信息视觉化**：
   [adaptation-craft.md](references/adaptation-craft.md)
 - **创作者提供对标作品、样例剧本或提示词，希望学习机制而非仿写表达**：
   [creative-reference-intake.md](references/creative-reference-intake.md)
