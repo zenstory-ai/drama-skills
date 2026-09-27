@@ -1759,6 +1759,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
 
     def test_creator_rule_catalogs_keep_every_craft_rule(self) -> None:
         expected = {
+            "short-drama-develop": {*(f"STY-{number:02d}" for number in range(1, 31))},
             "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 23))},
             "short-drama-assets": {
                 *(f"AST-{number:02d}" for number in range(1, 14)),
@@ -1782,7 +1783,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 ROOT / "skills" / skill_name / "references/stage-contract.md"
             ).read_text(encoding="utf-8")
             actual = set(
-                re.findall(r"\b(?:SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract)
+                re.findall(r"\b(?:STY|SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract)
             )
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, rule_ids)

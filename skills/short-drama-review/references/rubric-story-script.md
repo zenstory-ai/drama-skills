@@ -254,7 +254,7 @@ read lets a strong middle excuse a flat opening; a part read cannot.
 1. **Opening hook**: read only the first segment, up to `first_hook_seconds` or, with
    no accepted profile, the first scene. Would a viewer who saw only this stay? Name
    the hook and say whether it is happening or only being set up. Then read the first
-   beat alone, the image of the first three seconds: does it raise a question by itself,
+   beat alone, the opening frame: does it raise a question by itself,
    or does it need on-screen text read, a character recognized, or the next line heard
    first (`SCR-22`)? A still image that poses its own question passes. For a first
    episode, also check that the brief compared the entry candidates on that same image
