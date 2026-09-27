@@ -72,6 +72,18 @@ validity.
 
 Fail when a prop teleports, changes scale/material, or readable evidence is erased.
 
+## Era
+
+The era comes from source facts: devices, platforms, slang, stated years. Fail
+when the era shown in `视觉设定.md`, `图片提示词.md` or `视频提示词.md` contradicts
+them, or when a retro or aged descriptor (旧/老式/复古/褪色/斑驳, old, worn, dusty,
+period, CRT) has neither a source basis nor an explicit creator choice (`AST-14`).
+This is the visual layer of the source-fidelity check (`STY-07`): cite the source
+fact and the conflicting line. Institutional settings—army offices, government,
+schools, hospitals—drift toward old and worn most often. A visual direction with
+no era anchors, or entries that leave the era-specific form unstated, is a craft
+note (`AST-15`).
+
 ## Prompt recipe review
 
 All prompt types need purpose, exact binding, identifying facts, current variant,

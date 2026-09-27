@@ -73,6 +73,7 @@ EXPECTED_KNOWHOW = {
         "character-and-look.md",
         "continuity-delta.md",
         "continuity-lock.md",
+        "era-anchors.md",
         "identity-vs-variant.md",
         "location-and-view.md",
         "occurrence-extraction.md",
@@ -1773,7 +1774,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             "short-drama-develop": {*(f"STY-{number:02d}" for number in range(1, 31))},
             "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 23))},
             "short-drama-assets": {
-                *(f"AST-{number:02d}" for number in range(1, 14)),
+                *(f"AST-{number:02d}" for number in range(1, 16)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-image-prompts": {
