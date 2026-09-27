@@ -298,7 +298,7 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
-<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="Storyboard view of the creator workspace: stage bar, four metrics checked against the rhythm profile, a rhythm strip sized by duration and coloured by shot size, and shot cards" width="680">
 
 Runs on macOS, Linux, WSL, and native Windows. It serves with `--detach`, in its own process, so
 the link stays valid for the whole session; `--status` reprints it and `--stop` shuts it down. It listens on the

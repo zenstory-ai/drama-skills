@@ -265,7 +265,7 @@ flowchart LR
 /short-drama dashboard
 ```
 
-<img src="docs/assets/dashboard-zh.png" alt="短剧创作台：项目概览、分集进度、已有媒体与剧本正文" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="短剧创作台的分镜视图：阶段栏、对照节奏档案的四个指标、按时长与景别着色的节奏条和镜头卡" width="680">
 
 macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独立进程运行，链接在整个创作期间
 保持有效；`--status` 打印当前链接，`--stop` 关闭。服务只监听本机，项目内容不上传。
