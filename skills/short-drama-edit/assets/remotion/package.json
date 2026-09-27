@@ -2,9 +2,9 @@
   "name": "short-drama-subtitles",
   "version": "1.0.0",
   "private": true,
-  "description": "Remotion subtitle layer for short-drama-edit. Renders a transparent overlay from cues.json.",
+  "description": "Remotion overlay for short-drama-edit: subtitles and screen text on transparent frames.",
   "scripts": {
-    "render": "remotion render Subtitles"
+    "render": "remotion render Overlay"
   },
   "dependencies": {
     "@remotion/cli": "4.0.418",

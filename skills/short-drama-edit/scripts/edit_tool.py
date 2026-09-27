@@ -5,7 +5,8 @@ Three subcommands, deliberately separated so a report can never borrow one's
 evidence for another's claim:
 
 ``check``   parse and cross-check ``剪辑单.md`` against the project. No rendering.
-``render``  cut, join, burn subtitles and normalize loudness into 制作成果/成片/.
+``render``  cut, join, mix sound effects, burn subtitles and screen text, and
+            normalize loudness into 制作成果/成片/.
 ``verify``  measure an already-rendered film and print the numbers.
 
 ``verify`` prints measurements, never verdicts. Whether the film is any good is
@@ -53,11 +54,19 @@ REMOTION_SOURCE_FILES = (
     "src/index.ts",
     "src/schema.ts",
     "src/Root.tsx",
+    "src/Overlay.tsx",
     "src/Subtitles.tsx",
     "src/font.ts",
+    "src/rules.mjs",
+    "src/screen/ScreenText.tsx",
+    "src/screen/tokens.ts",
+    "src/screen/Card.tsx",
+    "src/screen/SystemPanel.tsx",
+    "src/screen/TaskPanel.tsx",
+    "src/screen/CornerChip.tsx",
 )
 DEFAULT_REMOTION_WORKSPACE = Path.home() / ".cache" / "short-drama-edit" / "remotion"
-REMOTION_COMPOSITION = "Subtitles"
+REMOTION_COMPOSITION = "Overlay"
 # Remotion defaults its worker count to the machine's core count, and each worker
 # is a browser holding a full frame. On a 10-core / 8 GB laptop that took the
 # machine down mid-render. Raise this only after measuring the host.
@@ -77,6 +86,35 @@ SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 # Numbered fields keep them ordered and let each one state its own window.
 SUBTITLE_FIELD = re.compile(r"^字幕(?:\s*(\d+))?$")
 SUBTITLE_CUE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
+# Short-drama subtitles carry no closing punctuation, and a pause inside a line
+# shows as a space. Only the burned text changes: the cut list keeps the
+# screenplay's punctuation, so the line is still checked against 剧本.md as written.
+# ASCII marks are left alone mid-line: they sit inside numbers such as 1,000.
+SUBTITLE_PAUSE_MARKS = "，、；：。"
+SUBTITLE_KEPT_END_MARKS = ""
+SUBTITLE_END_MARKS = "".join(
+    mark for mark in "，、；：。…—～！？,.;:!?~" if mark not in SUBTITLE_KEPT_END_MARKS
+)
+# Text the picture had to leave blank -- a system panel, a countdown, follower
+# counts on a monitor -- because video models garble it. It is drawn here, over
+# the finished picture, and every item must come from a [画面文字] line.
+SCREEN_TEXT_FIELD = re.compile(r"^画面文字(?:\s*(\d+))?$")
+SCREEN_TEXT_STYLES = {"卡片": "card", "系统面板": "system", "任务面板": "task", "角标": "corner"}
+SCREEN_TEXT = re.compile(
+    r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(" + "|".join(SCREEN_TEXT_STYLES) + r")\s+(.+?)\s*$"
+)
+SCREEN_TEXT_ITEM_SEPARATOR = "｜"
+COUNTDOWN = re.compile(r"[（(]倒计时[：:]\s*([0-9]+(?:\.[0-9]+)?|接续)\s*[）)]\s*$")
+COUNTDOWN_STYLES = {"任务面板", "角标"}
+# The three panels share the top of the frame; the chip has its own corner.
+SCREEN_TEXT_SLOTS = {"卡片": "面板", "系统面板": "面板", "任务面板": "面板", "角标": "角标"}
+SCREENPLAY_SCREEN_TEXT = re.compile(r"^\s*\[画面文字\]\s*(.+?)\s*$", re.MULTILINE)
+# Two pieces of the same screen text that meet at a cut are one piece on
+# screen: a chip that persists across five shots must not re-enter five times.
+SCREEN_TEXT_JOIN_GAP = 0.05
+SOUND_EFFECT_FIELD = re.compile(r"^音效(?:\s*(\d+))?$")
+GAIN = re.compile(r"[（(]增益[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*(?:dB)?\s*[）)]\s*$", re.I)
+GAIN_LIMITS = (-40.0, 6.0)
 # A shot-match is three numbers and nothing else. Anything richer belongs in a
 # grading tool, and anything implicit belongs nowhere: a correction the cut list
 # does not state is a correction no reviewer can see.
@@ -101,6 +139,24 @@ class EditError(Exception):
     """A defect in the cut list or its inputs, reported rather than raised through."""
 
 
+class ScreenText(NamedTuple):
+    start: float
+    end: float
+    style: str
+    items: tuple[str, ...]
+    # Seconds left at `start`; None when nothing counts down.
+    countdown: Optional[float] = None
+    # 「倒计时：接续」 carries on from the latest earlier countdown in the film.
+    resume: bool = False
+
+
+class SoundEffect(NamedTuple):
+    start: float
+    end: float
+    path: str
+    gain_db: float = 0.0
+
+
 class Cut(NamedTuple):
     cut_id: str
     title: str
@@ -112,6 +168,8 @@ class Cut(NamedTuple):
     subtitles: tuple[tuple[Optional[float], Optional[float], str], ...]
     picture: dict[str, float]
     line_number: int
+    screen_texts: tuple[ScreenText, ...] = ()
+    sound_effects: tuple[SoundEffect, ...] = ()
 
 
 class Delivery(NamedTuple):
@@ -277,7 +335,137 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         subtitles=subtitles,
         picture=picture,
         line_number=line,
+        screen_texts=_parse_screen_texts(fields, cut_id=cut_id, line=line),
+        sound_effects=_parse_sound_effects(fields, cut_id=cut_id, line=line),
     )
+
+
+def _field_entries(
+    fields: dict[str, tuple[str, int]],
+    pattern: re.Pattern[str],
+    label: str,
+    *,
+    cut_id: str,
+    line: int,
+) -> tuple[bool, list[tuple[int, str, int]]]:
+    """Collect one kind of field, written once plain or as 「<label> 1..N」.
+
+    Returns whether the numbered form was used, and (number, value, line) rows
+    in number order. The plain form comes back as a single row numbered 1.
+    """
+
+    numbered: list[tuple[int, str, int]] = []
+    plain: Optional[tuple[str, int]] = None
+    for key, (value, where) in fields.items():
+        match = pattern.match(key.strip())
+        if not match:
+            continue
+        if match.group(1) is None:
+            plain = (value, where)
+        else:
+            numbered.append((int(match.group(1)), value, where))
+
+    if numbered and plain is not None:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{line}: {cut_id} 同时写了「{label}」和「{label} N」；"
+            f"一段用一种写法——一条用「{label}」，多条全部编号"
+        )
+    if not numbered:
+        return False, [] if plain is None else [(1, plain[0], plain[1])]
+    numbered.sort()
+    expected = list(range(1, len(numbered) + 1))
+    if [item[0] for item in numbered] != expected:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{line}: {cut_id} 的{label}编号要从 1 连续排到 "
+            f"{len(numbered)}，当前是 {[item[0] for item in numbered]}"
+        )
+    return True, numbered
+
+
+def _parse_screen_texts(
+    fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
+) -> tuple[ScreenText, ...]:
+    """Read 「画面文字 N：<起>-<止> <样式> <项>｜<项>…（倒计时：<秒>|接续）」 lines."""
+
+    _, entries = _field_entries(fields, SCREEN_TEXT_FIELD, "画面文字", cut_id=cut_id, line=line)
+    texts: list[ScreenText] = []
+    for index, value, where in entries:
+        if value.strip() == "无":
+            continue
+        countdown: Optional[float] = None
+        resume = False
+        counted = COUNTDOWN.search(value)
+        if counted:
+            value = value[: counted.start()]
+            if counted.group(1) == "接续":
+                resume = True
+            else:
+                countdown = float(counted.group(1))
+        found = SCREEN_TEXT.match(value)
+        if not found:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」要写成"
+                f"「<起>-<止> <样式> <文字>」，样式是 {'/'.join(SCREEN_TEXT_STYLES)}"
+            )
+        style = found.group(3)
+        items = tuple(item.strip() for item in found.group(4).split(SCREEN_TEXT_ITEM_SEPARATOR))
+        if not all(items):
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」有空项；"
+                f"「{SCREEN_TEXT_ITEM_SEPARATOR}」两边都要有文字"
+            )
+        if counted and style not in COUNTDOWN_STYLES:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」是{style}，"
+                f"倒计时只放在{'或'.join(sorted(COUNTDOWN_STYLES))}上"
+            )
+        texts.append(ScreenText(
+            float(found.group(1)), float(found.group(2)), style, items, countdown, resume
+        ))
+
+    by_slot: dict[str, list[ScreenText]] = {}
+    for text in texts:
+        by_slot.setdefault(SCREEN_TEXT_SLOTS[text.style], []).append(text)
+    for slot, group in by_slot.items():
+        ordered = sorted(group, key=lambda item: item.start)
+        for earlier, later in zip(ordered, ordered[1:]):
+            if later.start < earlier.end - TOLERANCE:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{line}: {cut_id} 的画面文字时间重叠：同一位置（{slot}）"
+                    f"{earlier.start:g}-{earlier.end:g} 与 {later.start:g}-{later.end:g}"
+                )
+    return tuple(texts)
+
+
+def _parse_sound_effects(
+    fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
+) -> tuple[SoundEffect, ...]:
+    """Read 「音效 N：<起>-<止> <文件>（增益：<dB>）」 lines."""
+
+    _, entries = _field_entries(fields, SOUND_EFFECT_FIELD, "音效", cut_id=cut_id, line=line)
+    effects: list[SoundEffect] = []
+    for index, value, where in entries:
+        if value.strip() == "无":
+            continue
+        gain = 0.0
+        stated = GAIN.search(value)
+        if stated:
+            value = value[: stated.start()]
+            gain = float(stated.group(1))
+            low, high = GAIN_LIMITS
+            if not low <= gain <= high:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{where}: {cut_id} 的「音效 {index}」增益 {gain:g} dB "
+                    f"超出 {low:g} 到 {high:g}"
+                )
+        found = SUBTITLE_CUE.match(value)
+        if not found:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「音效 {index}」要写成"
+                "「<起>-<止> <项目相对路径>」"
+            )
+        effects.append(SoundEffect(float(found.group(1)), float(found.group(2)), found.group(3), gain))
+    return tuple(effects)
 
 
 def _parse_subtitles(
@@ -291,31 +479,13 @@ def _parse_subtitles(
     never reach the screen, and nothing reports it.
     """
 
-    numbered: list[tuple[int, str, int]] = []
-    plain: Optional[tuple[str, int]] = None
-    for key, (value, where) in fields.items():
-        match = SUBTITLE_FIELD.match(key.strip())
-        if not match:
-            continue
-        if match.group(1) is None:
-            plain = (value, where)
-        else:
-            numbered.append((int(match.group(1)), value, where))
+    is_numbered, entries = _field_entries(
+        fields, SUBTITLE_FIELD, "字幕", cut_id=cut_id, line=line
+    )
+    plain = None if is_numbered or not entries else (entries[0][1], entries[0][2])
 
-    if numbered and plain is not None:
-        raise EditError(
-            f"{CUT_LIST_NAME}:{line}: {cut_id} 同时写了「字幕」和「字幕 N」；"
-            "一段用一种写法——一句用「字幕」，多句全部编号"
-        )
-
-    if numbered:
-        numbered.sort()
-        expected = list(range(1, len(numbered) + 1))
-        if [item[0] for item in numbered] != expected:
-            raise EditError(
-                f"{CUT_LIST_NAME}:{line}: {cut_id} 的字幕编号要从 1 连续排到 "
-                f"{len(numbered)}，当前是 {[item[0] for item in numbered]}"
-            )
+    if is_numbered:
+        numbered = entries
         cues: list[tuple[Optional[float], Optional[float], str]] = []
         for index, value, where in numbered:
             found = SUBTITLE_CUE.match(value)
@@ -507,9 +677,54 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕时间超出本段区间"
                     f": {window_start}-{window_end}"
                 )
+        for effect in cut.sound_effects:
+            if not 0 <= effect.start < effect.end <= span + TOLERANCE:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效时间超出本段区间"
+                    f": {effect.start:g}-{effect.end:g}"
+                )
+            if _resolve_media(episode, project_root, effect.path) is None:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在: "
+                    f"{effect.path}"
+                )
 
+    findings.extend(_screen_text_findings(cuts, screenplay))
     findings.extend(_overlap_findings(cuts))
     findings.extend(_stale_window_findings(episode, project_root, cuts))
+    return findings
+
+
+def _screen_text_findings(cuts: Sequence[Cut], screenplay: str) -> list[str]:
+    """Screen text is held to 剧本.md's [画面文字] lines, the way subtitles are to dialogue.
+
+    Without a screenplay the check is skipped exactly as the subtitle one is;
+    with one, a screenplay that declares no screen text traces nothing.
+    """
+
+    findings: list[str] = []
+    sources = [_normalize(body) for body in SCREENPLAY_SCREEN_TEXT.findall(screenplay)]
+    counting = False
+    for cut in cuts:
+        span = cut.end - cut.start
+        for text in sorted(cut.screen_texts, key=lambda item: item.start):
+            where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
+            if not 0 <= text.start < text.end <= span + TOLERANCE:
+                findings.append(
+                    f"{where} 的画面文字时间超出本段区间: {text.start:g}-{text.end:g}"
+                )
+            if screenplay:
+                for item in text.items:
+                    if not any(_normalize(item) in source for source in sources):
+                        findings.append(
+                            f"{where} 的画面文字在《{SCREENPLAY_DOCUMENT}》的"
+                            f"「[画面文字]」行里找不到: {item}"
+                        )
+            if text.resume and not counting:
+                findings.append(
+                    f"{where} 的画面文字写了「倒计时：接续」，但成片里在它之前没有倒计时"
+                )
+            counting = counting or text.countdown is not None or text.resume
     return findings
 
 
@@ -533,7 +748,12 @@ def _stale_window_findings(
         return []
     findings: list[str] = []
     for cut in cuts:
-        if not any(start is not None for start, _, _ in cut.subtitles):
+        timed = (
+            any(start is not None for start, _, _ in cut.subtitles)
+            or cut.screen_texts
+            or cut.sound_effects
+        )
+        if not timed:
             continue
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
@@ -545,7 +765,7 @@ def _stale_window_findings(
         if changed > authored + 1.0:
             findings.append(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材比剪辑单新"
-                f"（{cut.media}）；这一段的字幕时间是按旧素材的发声区间反推的，"
+                f"（{cut.media}）；这一段的字幕、画面文字与音效时间是按旧素材反推的，"
                 "重出之后必须重测再改，不能沿用"
             )
     return findings
@@ -631,30 +851,53 @@ def render(
         _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
               "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
 
+        effects: list[tuple[float, float, Path, float]] = []
+        for start, duration, written, gain in _placed_sound_effects(cuts, spans):
+            resolved = _resolve_media(episode, project_root, written)
+            if resolved is None:
+                raise EditError(f"音效文件不存在: {written}")
+            effects.append((start, duration, resolved, gain))
+        if effects:
+            # Mixed into its own file first, so the loudness pass below measures
+            # the film the audience hears rather than the one before the chimes.
+            mixed = output_root / "成片-含音效.mp4"
+            _run(_sound_effect_command(ffmpeg, joined, effects, mixed))
+            joined = mixed
+
         filters: list[str] = []
         subtitle_path = None
         styled_path = None
         overlay_path = None
-        if burn_subtitles and any(cut.subtitles for cut in cuts):
-            canvas = probe_stream(segments[0])
-            cues = _subtitle_cues(cuts, spans)
+        cues = (
+            _display_cues(_subtitle_cues(cuts, spans))
+            if burn_subtitles and any(cut.subtitles for cut in cuts)
+            else []
+        )
+        layers = _screen_text_layers(cuts, spans)
+        canvas = probe_stream(segments[0]) if cues or layers else {}
+        if cues:
             subtitle_path = output_root / "字幕.srt"
             subtitle_path.write_text(_build_srt(cues), encoding="utf-8")
-            if renderer == "remotion":
-                overlay_path = _render_remotion_overlay(
-                    output_root, cues, canvas, sum(spans), remotion_workspace,
-                    concurrency=remotion_concurrency,
-                )
-            else:
-                styled = styled_path = output_root / "字幕.ass"
-                styled.write_text(
-                    _build_ass(cues, canvas["width"] or 1080, canvas["height"] or 1920),
-                    encoding="utf-8",
-                )
-                escaped = (
-                    str(styled).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-                )
-                filters.append(f"ass='{escaped}'")
+        # Screen text has no ffmpeg route: panels, glow and a live countdown are
+        # layout, not subtitle styling. So it always goes through the Remotion
+        # pass, and on the ffmpeg subtitle route that pass carries no cues.
+        remotion_cues = cues if renderer == "remotion" else []
+        if remotion_cues or layers:
+            overlay_path = _render_remotion_overlay(
+                output_root, remotion_cues, layers, canvas, sum(spans), remotion_workspace,
+                concurrency=remotion_concurrency,
+                needed_for="画面文字" if layers else "字幕",
+            )
+        if cues and renderer != "remotion":
+            styled = styled_path = output_root / "字幕.ass"
+            styled.write_text(
+                _build_ass(cues, canvas["width"] or 1080, canvas["height"] or 1920),
+                encoding="utf-8",
+            )
+            escaped = (
+                str(styled).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+            )
+            filters.append(f"ass='{escaped}'")
 
         # Grain goes on last, over the whole assembled film, so one texture sits
         # across every cut. `t` makes it move frame to frame — static noise reads
@@ -674,12 +917,9 @@ def render(
             # to be named: the default one drops it and the overlay arrives as
             # an opaque black rectangle.
             command += ["-c:v", "libvpx", "-i", str(overlay_path)]
-            # The overlay branch owns its own chain, so grain is spliced in
-            # after the composite rather than left in `filters`, which this
-            # branch never reads.
-            chain = "[0:v][1:v]overlay=0:0:format=auto"
-            if grain is not None:
-                chain += f",{grain}"
+            # ffmpeg-route subtitles and grain follow the composite, so the
+            # subtitle sits above the screen text and one grain covers both.
+            chain = ",".join(["[0:v][1:v]overlay=0:0:format=auto", *filters])
             command += [
                 "-filter_complex",
                 f"{chain},format=yuv420p[v]",
@@ -704,8 +944,10 @@ def render(
         "分段": [str(segment) for segment in segments],
         "字幕": str(subtitle_path) if subtitle_path else None,
         "压制字幕": str(styled_path) if styled_path else None,
-        "字幕叠层": str(overlay_path) if overlay_path else None,
+        "叠层": str(overlay_path) if overlay_path else None,
         "字幕渲染": renderer if subtitle_path else None,
+        "画面文字": len(layers),
+        "音效": len(effects),
         "段数": len(segments),
         "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
     }
@@ -775,24 +1017,63 @@ def _sync_remotion_workspace(workspace: Path) -> Path:
     """
 
     workspace = workspace.expanduser().resolve()
-    (workspace / "src").mkdir(parents=True, exist_ok=True)
     for name in REMOTION_SOURCE_FILES:
         source = REMOTION_SOURCE / name
         if not source.is_file():
             raise EditError(f"技能里缺少 Remotion 源文件: {name}")
+        (workspace / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, workspace / name)
     return workspace
+
+
+def _overlay_props(
+    cues: Sequence[tuple[float, float, str]],
+    layers: Sequence[dict[str, Any]],
+    canvas: dict[str, Any],
+    duration: float,
+) -> dict[str, Any]:
+    """The whole contract with the composition, in output seconds."""
+
+    return {
+        "cues": [
+            {"start": round(start, 3), "end": round(end, 3), "text": text}
+            for start, end, text in cues
+        ],
+        "screenTexts": [
+            {
+                **layer,
+                "start": round(layer["start"], 3),
+                "end": round(layer["end"], 3),
+                "countdown": (
+                    None if layer["countdown"] is None else round(layer["countdown"], 3)
+                ),
+            }
+            for layer in layers
+        ],
+        "width": canvas.get("width") or 1080,
+        "height": canvas.get("height") or 1920,
+        "fps": canvas.get("fps") or 24,
+        "durationInSeconds": round(duration, 3),
+        "fontScale": 0.034,
+        "bottomScale": 0.055,
+        "fontFamily": (
+            '"PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", '
+            '"Microsoft YaHei", sans-serif'
+        ),
+    }
 
 
 def _render_remotion_overlay(
     output_root: Path,
     cues: Sequence[tuple[float, float, str]],
+    layers: Sequence[dict[str, Any]],
     canvas: dict[str, Any],
     duration: float,
     workspace_root: Path,
     concurrency: int = DEFAULT_REMOTION_CONCURRENCY,
+    needed_for: str = "字幕",
 ) -> Path:
-    """Render the subtitle layer as a transparent video with Remotion.
+    """Render subtitles and screen text as one transparent video with Remotion.
 
     The picture is never re-drawn by the browser: only the type is, onto an
     empty frame, and ffmpeg composites that over untouched footage. So the
@@ -806,44 +1087,32 @@ def _render_remotion_overlay(
     """
 
     workspace = _sync_remotion_workspace(workspace_root)
+    # Screen text has no other route, so the way out named here depends on why
+    # the pass is running: dropping a flag cannot draw a system panel.
+    alternative = (
+        "剪辑单里有画面文字，它只能由这条路线绘制；不装就把画面文字行删掉或写「无」。"
+        if needed_for == "画面文字"
+        else "或改用默认的 ffmpeg 字幕（去掉 --subtitles remotion）。"
+    )
     if not (workspace / "node_modules").is_dir():
         raise EditError(
-            f"Remotion 还没安装。先运行一次：\n"
+            f"Remotion 还没安装，{needed_for}需要它。先运行一次：\n"
             f"  cd {workspace} && npm install\n"
-            "或改用默认的 ffmpeg 字幕（去掉 --subtitles remotion）。\n"
+            f"{alternative}\n"
             "注意 Remotion 有自己的许可证：个人与小团队免费，超出规模需要商业授权；"
             "本工具不会替你安装它。"
         )
     npx = _which("npx")
     if npx is None:
         raise EditError(
-            "PATH 上没有 npx，无法运行 Remotion；装好 Node.js，或改用默认的 ffmpeg 字幕。"
+            f"PATH 上没有 npx，无法运行 Remotion 绘制{needed_for}；先装好 Node.js。{alternative}"
         )
-    props = output_root / "字幕.props.json"
+    props = output_root / "叠层.props.json"
     props.write_text(
-        json.dumps(
-            {
-                "cues": [
-                    {"start": round(start, 3), "end": round(end, 3), "text": text}
-                    for start, end, text in cues
-                ],
-                "width": canvas["width"] or 1080,
-                "height": canvas["height"] or 1920,
-                "fps": canvas["fps"] or 24,
-                "durationInSeconds": round(duration, 3),
-                "fontScale": 0.034,
-                "bottomScale": 0.055,
-                "fontFamily": (
-                    '"PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", '
-                    '"Microsoft YaHei", sans-serif'
-                ),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps(_overlay_props(cues, layers, canvas, duration), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    overlay = output_root / "字幕叠层.webm"
+    overlay = output_root / "叠层.webm"
     result = subprocess.run(
         [npx, "remotion", "render", REMOTION_COMPOSITION, str(overlay),
          f"--props={props}", "--log=error",
@@ -874,18 +1143,149 @@ def _subtitle_cues(
     """
 
     cues: list[tuple[float, float, str]] = []
-    cursor = 0.0
-    for cut, span in zip(cuts, spans):
+    for cut, cursor, scale in _timeline(cuts, spans):
         declared = cut.end - cut.start
-        # The windows were authored against the declared span; hold them in
-        # place proportionally rather than letting the tail slip out.
-        scale = span / declared if declared > 0 else 1.0
         for window_start, window_end, text in cut.subtitles:
             start = 0.0 if window_start is None else window_start
             end = declared if window_end is None else window_end
             cues.append((cursor + start * scale, cursor + end * scale, text))
-        cursor += span
     return cues
+
+
+def _timeline(
+    cuts: Sequence[Cut], spans: Sequence[float]
+) -> list[tuple[Cut, float, float]]:
+    """Each cut with its output start and the factor from declared to rendered time.
+
+    Windows were authored against the declared span; scaling holds them in
+    place proportionally rather than letting the tail slip out.
+    """
+
+    placed: list[tuple[Cut, float, float]] = []
+    cursor = 0.0
+    for cut, span in zip(cuts, spans):
+        declared = cut.end - cut.start
+        placed.append((cut, cursor, span / declared if declared > 0 else 1.0))
+        cursor += span
+    return placed
+
+
+def _display_line(text: str) -> str:
+    """The burned form of a subtitle: no closing punctuation, pauses as spaces."""
+
+    shown = text.strip().rstrip(SUBTITLE_END_MARKS + " 　")
+    shown = re.sub(f"[{SUBTITLE_PAUSE_MARKS}]+[ 　]*", " ", shown)
+    return re.sub(r"[ 　]{2,}", " ", shown).strip()
+
+
+def _display_cues(
+    cues: Sequence[tuple[float, float, str]],
+) -> list[tuple[float, float, str]]:
+    # A line that is all punctuation ("……") has nothing left to show.
+    shown = [(start, end, _display_line(text)) for start, end, text in cues]
+    return [cue for cue in shown if cue[2]]
+
+
+def _screen_text_layers(
+    cuts: Sequence[Cut], spans: Sequence[float]
+) -> list[dict[str, Any]]:
+    """Place screen text in output time and resolve every countdown to a number.
+
+    「接续」 continues the latest earlier countdown: its value here is that one's
+    value minus the output time between them, so a chip picks up exactly where
+    the task panel left off however long the cuts in between came out. A piece
+    that meets an identical piece at a cut is extended instead of re-entering.
+    """
+
+    layers: list[dict[str, Any]] = []
+    latest: Optional[dict[str, Any]] = None
+    for cut, cursor, scale in _timeline(cuts, spans):
+        for text in sorted(cut.screen_texts, key=lambda item: item.start):
+            start = cursor + text.start * scale
+            end = cursor + text.end * scale
+            countdown = text.countdown
+            if text.resume:
+                if latest is None:
+                    raise EditError(
+                        f"{cut.cut_id} 的画面文字写了「倒计时：接续」，但在它之前没有倒计时"
+                    )
+                countdown = latest["countdown"] - (start - latest["start"])
+            style = SCREEN_TEXT_STYLES[text.style]
+            previous = next((layer for layer in reversed(layers) if layer["style"] == style), None)
+            if (
+                previous is not None
+                and previous["items"] == list(text.items)
+                and abs(previous["end"] - start) <= SCREEN_TEXT_JOIN_GAP
+                and (
+                    (text.resume and previous is latest)
+                    or (countdown is None and previous["countdown"] is None)
+                )
+            ):
+                previous["end"] = end
+                continue
+            layer = {
+                "start": start,
+                "end": end,
+                "style": style,
+                "items": list(text.items),
+                "countdown": countdown,
+            }
+            layers.append(layer)
+            if countdown is not None:
+                latest = layer
+    return layers
+
+
+def _placed_sound_effects(
+    cuts: Sequence[Cut], spans: Sequence[float]
+) -> list[tuple[float, float, str, float]]:
+    """Each effect as (output start, duration, path as written, gain dB)."""
+
+    return [
+        (cursor + effect.start * scale, (effect.end - effect.start) * scale,
+         effect.path, effect.gain_db)
+        for cut, cursor, scale in _timeline(cuts, spans)
+        for effect in cut.sound_effects
+    ]
+
+
+def _sound_effect_command(
+    ffmpeg: str,
+    film: Path,
+    effects: Sequence[tuple[float, float, Path, float]],
+    output: Path,
+) -> list[str]:
+    """Lay each effect into the film's own audio at its output time.
+
+    `normalize=0` keeps the dialogue at its level: amix's default divides every
+    input by the input count, and the film would get quieter each time a chime
+    is added. A short fade closes each effect so a trimmed tail does not click.
+    """
+
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(film)]
+    # The film's channel layout is left as it is: forcing mono dialogue up to
+    # stereo costs it 3 dB, and the effects are converted to match instead.
+    stages = ["[0:a]aformat=sample_rates=48000[a0]"]
+    labels = ["[a0]"]
+    for index, (start, duration, media, gain) in enumerate(effects, start=1):
+        command += ["-i", str(media)]
+        fade = min(0.05, duration / 2)
+        stages.append(
+            f"[{index}:a]atrim=0:{duration:.3f},asetpts=PTS-STARTPTS,"
+            f"afade=t=out:st={duration - fade:.3f}:d={fade:.3f},volume={gain:g}dB,"
+            "aformat=sample_rates=48000,"
+            f"adelay={round(start * 1000)}:all=1[s{index}]"
+        )
+        labels.append(f"[s{index}]")
+    stages.append(
+        f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:"
+        "dropout_transition=0:normalize=0[a]"
+    )
+    return command + [
+        "-filter_complex", ";".join(stages),
+        "-map", "0:v", "-map", "[a]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", str(output),
+    ]
 
 
 def _build_srt(cues: Sequence[tuple[float, float, str]]) -> str:
@@ -1043,9 +1443,42 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     measurements["画内可读文字"] = (
         "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
     )
+    if any(cut.screen_texts or cut.sound_effects for cut in cuts):
+        measurements.update(_placements_for_sampling(episode, cuts))
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
+
+
+def _placements_for_sampling(episode: Path, cuts: Sequence[Cut]) -> dict[str, Any]:
+    """Where the screen text and effects landed in the film, from the rendered segments.
+
+    These are the frames and moments to sample; whether the text reads and the
+    chime sits right is still for someone to look and listen.
+    """
+
+    segments = [episode / OUTPUT_DIRECTORY / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4" for cut in cuts]
+    if not all(segment.is_file() for segment in segments):
+        reason = "未测（分段缺失，无法换算成片时间）"
+        return {"画面文字落点": reason, "音效落点": reason}
+    spans = [probe_duration(segment) for segment in segments]
+    return {
+        "画面文字落点": [
+            {
+                "起": round(layer["start"], 2),
+                "止": round(layer["end"], 2),
+                "样式": next(
+                    label for label, key in SCREEN_TEXT_STYLES.items() if key == layer["style"]
+                ),
+                "文字": SCREEN_TEXT_ITEM_SEPARATOR.join(layer["items"]),
+            }
+            for layer in _screen_text_layers(cuts, spans)
+        ],
+        "音效落点": [
+            {"起": round(start, 2), "止": round(start + duration, 2), "文件": written}
+            for start, duration, written, _ in _placed_sound_effects(cuts, spans)
+        ],
+    }
 
 
 def _matches_frame_size(delivery: Delivery, stream: dict[str, Any]) -> Any:

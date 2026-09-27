@@ -1,12 +1,10 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { Cue, SubtitleProps } from "./schema";
-import { assertFamilyResolves, waitForFonts } from "./font";
-
-waitForFonts();
+import { assertFamilyResolves } from "./font";
 
 /**
- * A transparent subtitle layer, composited onto untouched picture.
+ * The subtitle layer of the transparent overlay, composited onto untouched picture.
  *
  * Everything here is expressed as a fraction of frame height, so the same
  * numbers hold for 768×1344 and 1080×1920. That is the whole reason this file

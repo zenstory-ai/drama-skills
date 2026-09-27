@@ -2,12 +2,26 @@ export type Cue = {
   /** Output-time seconds, measured from the rendered segments. */
   start: number;
   end: number;
-  /** The line as written in 剧本.md. Never a transcription. */
+  /** The burned form of the 剧本.md line: closing punctuation dropped, pauses as spaces. */
   text: string;
 };
 
-export type SubtitleProps = {
+export type ScreenTextStyle = "card" | "system" | "task" | "corner";
+
+export type ScreenText = {
+  /** Output-time seconds. */
+  start: number;
+  end: number;
+  style: ScreenTextStyle;
+  /** Rows or items, each traced to a [画面文字] line in 剧本.md. */
+  items: string[];
+  /** Seconds left at `start`, already resolved for 「接续」; null when nothing counts down. */
+  countdown: number | null;
+};
+
+export type OverlayProps = {
   cues: Cue[];
+  screenTexts: ScreenText[];
   width: number;
   height: number;
   fps: number;
@@ -19,8 +33,11 @@ export type SubtitleProps = {
   fontFamily: string;
 };
 
-export const defaultProps: SubtitleProps = {
+export type SubtitleProps = Pick<OverlayProps, "cues" | "fontScale" | "bottomScale" | "fontFamily">;
+
+export const defaultProps: OverlayProps = {
   cues: [],
+  screenTexts: [],
   width: 1080,
   height: 1920,
   fps: 24,

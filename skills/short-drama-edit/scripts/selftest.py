@@ -362,7 +362,7 @@ def check_remotion_sources_all_shipped() -> None:
         path.relative_to(REMOTION_SOURCE).as_posix()
         for path in REMOTION_SOURCE.rglob("*")
         if path.is_file()
-        and path.suffix in {".ts", ".tsx", ".json"}
+        and path.suffix in {".ts", ".tsx", ".mjs", ".json"}
         and "node_modules" not in path.parts
     }
     listed = set(REMOTION_SOURCE_FILES)
@@ -439,6 +439,40 @@ def check_missing_shots_are_reported() -> None:
     require(not _unaccounted_shots(known, [Stub(m) for m in known], []), "全采用时不该报")
 
 
+def check_screen_text_and_effects() -> None:
+    """Screen text is traced to [画面文字] lines; effects are held to their cut."""
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        (episode / "剧本.md").write_text(
+            SCREENPLAY + "\n[画面文字] 剩余 4 天 23:59:58\n", encoding="utf-8"
+        )
+        (episode / "media" / "chime.wav").write_bytes(b"")
+        anchor = "- 字幕：这条路我自己走"
+        require(anchor in CUT_LIST, "夹具里应当有一条台词字幕")
+        lines = (
+            "- 画面文字 1：0.00-1.00 任务面板 剩余（倒计时：431998）\n"
+            "- 画面文字 2：1.00-2.00 角标 剩余（倒计时：接续）\n"
+            "- 音效：0.00-0.50 media/chime.wav（增益：-10）"
+        )
+        (episode / "剪辑单.md").write_text(
+            CUT_LIST.replace(anchor, anchor + "\n" + lines), encoding="utf-8"
+        )
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        require(len(cuts[1].screen_texts) == 2, "两条画面文字应全部解析")
+        require(len(cuts[1].sound_effects) == 1, "音效应当解析")
+        require(not check_cuts(episode, cuts, root, probe=False), "合法的画面文字与音效不该报错")
+
+        (episode / "剪辑单.md").write_text(
+            CUT_LIST.replace(anchor, anchor + "\n- 画面文字：0.00-1.00 卡片 剩余 5 天"),
+            encoding="utf-8",
+        )
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        findings = check_cuts(episode, cuts, root, probe=False)
+        require(any("[画面文字]" in item for item in findings), f"编造的画面文字没抓到: {findings}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -507,6 +541,7 @@ def main() -> int:
     check_shot_match()
     check_ass_escaping()
     check_multi_subtitle()
+    check_screen_text_and_effects()
     check_stale_window()
     check_missing_shots_are_reported()
     check_grain_is_a_delivery_wide_decision()
