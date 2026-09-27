@@ -13,6 +13,20 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-27
+
+本版主要改的是改编与分镜的节奏：原著先按观众收益排出爽点再切集，第 1 集开场就是钩子，分镜逐镜写运镜，
+项目可以定一份节奏档案让剧本、分镜与审查照着核对。剪辑能在成片上叠系统面板、任务卡和音效，同场景接镜自动匹配亮度；
+创作台重做成按阶段分视图。
+
+*升级*：
+
+- 三条由审查判定的规则收紧，既有项目复审时可能报出：改编不得改写原著核心人物的立场、关系与主线（STY-07）；
+  `move_earlier` / `cold_open` 要写明铺垫在哪里先出现（STY-29）；画面时代不得与原著矛盾（AST-14）。
+  按创作者确认登记为改动，或改回原著。
+- 用过 Remotion 字幕路线的工作区，在其中重新运行一次 `npm install`。
+- 节奏档案可选，不写不影响既有项目。
+
 ### Added
 
 - 创作台的可复制提示词与冻结关键帧提示词带「复制」按钮，多行提示词按原文整段复制。
@@ -1751,7 +1765,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.6...v0.7.0
 [0.6.6]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.5...v0.6.6
