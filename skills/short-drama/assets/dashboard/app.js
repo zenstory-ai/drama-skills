@@ -343,9 +343,13 @@ function projectRecovery(status) {
 
 function collectEpisodes(files) {
   const episodes = new Map();
+  // A review filed under an episode that no longer has a folder does not make one.
+  const folders = new Set((files || [])
+    .filter((file) => ROOT_ROLES[pathSegments(file.path)[0]] === "episodes")
+    .map((file) => episodeName(file.path)));
   for (const file of files || []) {
     const id = episodeName(file.path);
-    if (!id || !creatorSection(file.path)) continue;
+    if (!id || !folders.has(id) || !creatorSection(file.path)) continue;
     if (!episodes.has(id)) episodes.set(id, []);
     episodes.get(id).push(file);
   }
@@ -711,7 +715,7 @@ function jumpToContents() {
   $("contentNav").scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   const list = $("contentList");
   const current = list.querySelector(".content-link.active");
-  if (!current) { $("search").focus({ preventScroll: true }); return; }
+  if (!current || current.offsetParent === null) { $("search").focus({ preventScroll: true }); return; }
   list.scrollTop += current.getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientHeight / 3;
   current.focus({ preventScroll: true });
 }
@@ -905,7 +909,7 @@ function renderMarkdown(content) {
       continue;
     }
     if (stripped !== line) {
-      if (!stripped.trim()) { closeQuote(); continue; }
+      if (!stripped.trim()) { if (!quoteCopy) closeQuote(); continue; }
       line = stripped;
     }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
@@ -930,7 +934,8 @@ function renderMarkdown(content) {
       continue;
     }
     closeList();
-    if (!line.trim()) { closeQuote(); continue; }
+    // A copyable prompt is one request even across blank lines, as the checker reads it.
+    if (!line.trim()) { if (!quoteCopy) closeQuote(); continue; }
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
       if (quoteNode) quoteNode.append(element("br"));

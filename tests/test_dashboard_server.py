@@ -1896,7 +1896,10 @@ const files = [
   {{ path: "剧集/EP001/剧本.md", type: "text" }},
   {{ path: "审查/EP001-审查.md", type: "text" }},
   {{ path: "审查/人物弧线-审查.md", type: "text" }},
+  {{ path: "剧集/EP002/剧本.md", type: "text" }},
   {{ path: "reviews/EP002-审查.md", type: "text" }},
+  // The episode was renamed away; its old review must not bring it back.
+  {{ path: "审查/EP009-审查.md", type: "text" }},
 ];
 const overview = logic.projectOverviewModel(files, {{}});
 process.stdout.write(JSON.stringify({{
@@ -1911,7 +1914,7 @@ process.stdout.write(JSON.stringify({{
             result["episodes"],
             [
                 ["EP001", ["剧集/EP001/剧本.md", "审查/EP001-审查.md"]],
-                ["EP002", ["reviews/EP002-审查.md"]],
+                ["EP002", ["剧集/EP002/剧本.md", "reviews/EP002-审查.md"]],
             ],
         )
         self.assertEqual(result["reviewed"], [True, True])
@@ -1954,7 +1957,9 @@ process.stdout.write(JSON.stringify({json.dumps(paths)}.map(logic.fileLabel)));
                 "## 说明",
                 "> 这段引用只是说明，不是提示词。",
                 "### 可复制提示词",
-                *[f"> {line}" for line in h3],
+                f"> {h3[0]}",
+                "",
+                *[f"> {line}" for line in h3[1:]],
                 "### 冻结关键帧提示词",
                 "```text",
                 "Frozen frame, `raw` **as typed**",
@@ -2003,7 +2008,8 @@ process.stdout.write(JSON.stringify({{
                 expected.append("\n".join(quote))
         self.assertTrue(expected)
         self.assertEqual(result["example"], expected)
-        # A multi-line prompt copies as one request, line breaks intact; a fence
+        # A multi-line prompt copies as one request, line breaks intact, even
+        # across a blank line; a fence
         # copies verbatim, Markdown marks and all; neither a plain quote nor a
         # fence under an ordinary heading gets a button.
         self.assertEqual(
