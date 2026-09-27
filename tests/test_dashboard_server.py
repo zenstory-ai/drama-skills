@@ -34,15 +34,20 @@ def run_node(script: str) -> "subprocess.CompletedProcess[str]":
     Without an explicit encoding Windows decodes the child's pipe with the ANSI
     code page. The creator-facing Chinese these assertions are about then comes
     back as mojibake, or fails outright on the bytes cp1252 leaves undefined.
+    The snippet goes through a file, not ``node -e``: a snippet that embeds an
+    example document outgrows the Windows command-line limit.
     """
 
-    return subprocess.run(
-        ["node", "-e", script],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "snippet.js"
+        path.write_text(script, encoding="utf-8")
+        return subprocess.run(
+            ["node", str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
 
 
 def redirect_directory(link: Path, target: Path) -> bool:
