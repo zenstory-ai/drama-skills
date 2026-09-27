@@ -74,9 +74,10 @@ class Browser:
     @staticmethod
     def go(page, route: str) -> None:
         page.evaluate("(hash) => { location.hash = hash; }", route)
-        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
-        page.wait_for_function("(hash) => location.hash === hash", arg=route)
-        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+        page.wait_for_function(
+            "(hash) => { const v = document.querySelector('#view'); return v.dataset.route === hash && v.dataset.state === 'ready'; }",
+            arg=route,
+        )
 
     def assertNoHorizontalOverflow(self, page) -> None:
         extra, escaped = page.evaluate(NO_OVERFLOW)
@@ -150,18 +151,20 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
     def test_rhythm_strip_is_proportional_and_metrics_follow_the_profile(self) -> None:
         page = self.open(route="#/EP001/board")
         bars = page.locator(".strip-bars .sb")
-        self.assertEqual(bars.count(), 22)
+        expect(bars).to_have_count(22)
         widths = bars.evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().width)")
         # SHOT-002 is 4 s and SHOT-003 is 2 s: twice the width, less the gap.
         self.assertAlmostEqual(widths[1] / widths[2], 2, delta=0.15)
         expect(page.locator('.sb[data-shot="SHOT-EP001-006"]')).to_have_class(re.compile(r"\bunsized\b"))
-        self.assertEqual(page.locator(".sb .cl").count(), 11)
+        expect(page.locator(".sb .cl")).to_have_count(11)
         cards = page.locator("#boardMetrics .gauge")
-        expect(cards.nth(0)).to_contain_text("符合")
+        # A target without a tolerance is reported as a distance, not judged.
+        expect(cards.nth(0)).to_contain_text(re.compile(r"目标 60 秒 · (多|少) [\d.]+ 秒"))
+        expect(cards.nth(0).locator(".status")).to_have_count(0)
         expect(cards.nth(2)).to_contain_text("50%")
         expect(cards.nth(3)).to_contain_text("留意")
         # The one bound start frame is shown; the others are shot-size diagrams.
-        self.assertEqual(page.locator(".shot .thumb img").count(), 1)
+        expect(page.locator(".shot .thumb img")).to_have_count(1)
 
     def test_the_shot_drawer_follows_the_strip_and_the_keyboard(self) -> None:
         page = self.open(route="#/EP001/board")
@@ -180,30 +183,30 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
 
     def test_script_reads_as_a_screenplay_with_links_from_the_cut_list(self) -> None:
         page = self.open(route="#/EP001/script")
-        self.assertEqual(page.locator(".slug").count(), 2)
-        self.assertEqual(page.locator(".dlg").count(), 12)
+        expect(page.locator(".slug")).to_have_count(2)
+        expect(page.locator(".dlg")).to_have_count(12)
         expect(page.locator(".dlg.vo").first).to_contain_text("上辈子，我死在病床上。")
-        self.assertEqual(page.locator(".onscreen").count(), 5)
+        expect(page.locator(".onscreen")).to_have_count(5)
         # A line links to a shot only where the cut list quotes it as a subtitle.
         quoted = page.locator('.dlg[data-line="都听见了。新媒体这摊子，本来就是空白。"] .shotref')
         expect(quoted).to_have_attribute("href", "#/EP001/board/SHOT-EP001-002")
-        self.assertEqual(page.locator('.dlg[data-line="空白才好。"] .shotref').count(), 0)
-        self.assertEqual(page.locator('.dlg .shotref[href$="SHOT-EP001-001"]').count(), 1)
+        expect(page.locator('.dlg[data-line="空白才好。"] .shotref')).to_have_count(0)
+        expect(page.locator('.dlg .shotref[href$="SHOT-EP001-001"]')).to_have_count(1)
         page.locator(".slug .go").first.click()
         page.wait_for_function("() => location.hash === '#/EP001/board?scene=EP001-SC001'")
-        self.assertEqual(page.locator(".shot").count(), 13)
+        expect(page.locator(".shot")).to_have_count(13)
 
     def test_settings_cards_show_locks_and_filter_the_storyboard(self) -> None:
         page = self.open(route="#/EP001/settings")
         card = page.locator('.asset[data-entry="江晨"]')
         expect(card.locator(".lock .surface")).to_have_text("pine-green lapel service jacket")
-        self.assertEqual(card.locator(".pstrip i").count(), 22)
-        self.assertEqual(card.locator(".pstrip i.lk").count(), 11)
+        expect(card.locator(".pstrip i")).to_have_count(22)
+        expect(card.locator(".pstrip i.lk")).to_have_count(11)
         expect(page.locator(".era .p")).to_have_text("当下（2020 年代）")
         card.get_by_role("link", name="在分镜里筛出").click()
         page.wait_for_function("() => location.hash.startsWith('#/EP001/board?entity=')")
         expect(page.locator(".filter-note")).to_contain_text("江晨")
-        self.assertEqual(page.locator(".shot").count(), 13)
+        expect(page.locator(".shot")).to_have_count(13)
 
     def test_prompts_copy_verbatim_and_count_what_was_copied(self) -> None:
         page = self.open(route="#/EP001/prompts/video")
@@ -220,10 +223,10 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
 
     def test_film_view_lays_the_cut_list_on_a_timeline(self) -> None:
         page = self.open(route="#/EP001/film")
-        self.assertEqual(page.locator(".tl-cut").count(), 3)
-        self.assertEqual(page.locator(".tl-sub").count(), 3)
-        self.assertEqual(page.locator(".tl-txt").count(), 4)
-        self.assertEqual(page.locator(".tl-sfx").count(), 2)
+        expect(page.locator(".tl-cut")).to_have_count(3)
+        expect(page.locator(".tl-sub")).to_have_count(3)
+        expect(page.locator(".tl-txt")).to_have_count(4)
+        expect(page.locator(".tl-sfx")).to_have_count(2)
         expect(page.locator("#film")).to_have_count(1)
         widths = page.locator(".tl-cut").evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().width)")
         self.assertAlmostEqual(widths[1] / widths[2], 2, delta=0.1)
@@ -245,7 +248,7 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
         expect(page.locator("#inspector .refstate.must")).to_contain_text("空白才好")
         self.go(page, "#/EP001/review")
         page.locator('[data-rf="could"]').click()
-        self.assertEqual(page.locator(".finding").count(), 1)
+        expect(page.locator(".finding")).to_have_count(1)
 
     def test_search_jumps_to_the_line_it_found(self) -> None:
         page = self.open(route="#/EP001/board")
@@ -380,6 +383,53 @@ class PlainProjectBrowserTests(Browser, unittest.TestCase):
         page.goto(self.url)
         expect(page.locator("#notices")).to_contain_text("无效")
         self.assertNotIn("Cannot read properties", page.locator("#notices").inner_text())
+
+
+@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
+class PlantedMarkupBrowserTests(Browser, unittest.TestCase):
+    """Project text is shown as text in every view, never parsed as markup."""
+
+    MARK = '<img id="pwn" src="x">'
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        workspace = Path(cls.temporary.name)
+        project = workspace / "creator"
+        make_creator_project(project)
+        episode = project / "剧集/EP001"
+        # Free-text fields only: IDs, durations and sources stay parseable, so each view renders its structure.
+        free = "运镜|起点|终点|目的|景别/机位|声音|唯一动作|画面文字|用途|识别锚点|画面代称|本集造型|连续性锁|时代锚点|生成方式|状态链"
+        for path in [*episode.glob("*.md"), *project.glob("审查/*.md")]:
+            text = path.read_text(encoding="utf-8")
+            text = re.sub(rf"^(## .+ · .+|- (?:{free})：.+|[^#\-\n\[].+)$", lambda m: m.group(1) + cls.MARK, text, flags=re.M)
+            path.write_text(text, encoding="utf-8")
+        cls.start(workspace)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop()
+        cls.temporary.cleanup()
+
+    def test_no_view_turns_project_text_into_elements(self) -> None:
+        page = self.open()
+        for route in (
+            "#/", "#/EP001", "#/EP001/script", "#/EP001/settings", "#/EP001/board", "#/EP001/board/SHOT-EP001-004",
+            "#/EP001/prompts/video", "#/EP001/prompts/image", "#/EP001/prompts/keyframe", "#/EP001/film",
+            "#/EP001/review",
+        ):
+            with self.subTest(route=route):
+                self.go(page, route)
+                self.assertEqual(page.locator("#pwn").count(), 0)
+        self.go(page, "#/EP001/board")
+        expect(page.locator(".shot")).to_have_count(22)
+        expect(page.locator("#view")).to_contain_text('<img id="pwn"')
+        self.go(page, "#/EP001/prompts/video")
+        expect(page.locator("#view")).to_contain_text('文生视频<img id="pwn"')
+        page.keyboard.press("/")
+        page.fill("#palq", "没有针眼")
+        expect(page.locator(".pal-item").first).to_be_visible()
+        self.assertEqual(page.locator("#pwn").count(), 0)
 
 
 if __name__ == "__main__":

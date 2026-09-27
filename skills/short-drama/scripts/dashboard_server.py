@@ -642,6 +642,9 @@ class ProjectStore:
             or any(part in ("", ".", "..") for part in pure.parts)
         ):
             raise DashboardError(HTTPStatus.BAD_REQUEST, "unsafe project-relative path")
+        # Run state and the dashboard session live here; no document may point the page at them.
+        if pure.parts[0].casefold() == ".short-drama":
+            raise DashboardError(HTTPStatus.FORBIDDEN, "internal project state is not shown")
         return pure
 
     def _is_protected(self, relative: PurePosixPath) -> bool:

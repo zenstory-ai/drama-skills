@@ -375,7 +375,7 @@ function viewForPath(path) {
 /** The next thing an episode needs, as a sentence to hand to the assistant. */
 function nextFor(row) {
   const id = row.id;
-  if (row.legacy) return { kind: "legacy", rank: 9, text: "旧版格式，按原文阅读", ask: "", href: `#/${id}` };
+  if (row.legacy) return { kind: "legacy", rank: 6, text: "旧版格式，按原文阅读", detail: "这一集没有五份创作文档，创作台只列出原文件", ask: "", href: `#/${id}` };
   const must = row.must || [];
   if (must.length) {
     const ids = must.map((item) => item.id).join("、");
@@ -402,7 +402,7 @@ function nextFor(row) {
 function seriesTodos(rows, limit = 3) {
   return rows
     .map((row, order) => ({ row, order, next: nextFor(row) }))
-    .filter((item) => !["done", "legacy"].includes(item.next.kind))
+    .filter((item) => item.next.kind !== "done")
     .sort((a, b) => a.next.rank - b.next.rank || a.order - b.order)
     .slice(0, limit);
 }
@@ -411,10 +411,10 @@ function seriesTodos(rows, limit = 3) {
 function rhythmChecks(metrics, profile, target) {
   const checks = [];
   if (target && metrics.shots) {
-    checks.push({ key: "seconds", label: "全集时长", value: metrics.seconds, unit: " 秒", rule: "目标", goal: target, ok: Math.abs(metrics.seconds - target) <= target * 0.1 });
+    checks.push({ key: "seconds", label: "全集时长", value: metrics.seconds, unit: " 秒", rule: "目标", goal: target, ok: null });
   }
   if (profile && metrics.avg != null) {
-    checks.push({ key: "avg", label: "平均镜长", value: metrics.avg, unit: " 秒", rule: "目标", goal: profile.target_avg_shot_seconds, ok: Math.abs(metrics.avg - profile.target_avg_shot_seconds) <= 0.5 });
+    checks.push({ key: "avg", label: "平均镜长", value: metrics.avg, unit: " 秒", rule: "目标", goal: profile.target_avg_shot_seconds, ok: null });
   }
   if (profile && metrics.close != null) {
     checks.push({ key: "close", label: "近景类占比", value: metrics.close, share: true, rule: "不少于", goal: profile.close_shot_share_min, ok: metrics.close >= profile.close_shot_share_min });
@@ -810,8 +810,11 @@ async function loadProject(id) {
 }
 
 async function loadEpisode(ep) {
-  if (!S.episodes.has(ep)) S.episodes.set(ep, await api(`/api/episode?${query({ project: S.project, ep })}`));
-  return S.episodes.get(ep);
+  if (S.episodes.has(ep)) return S.episodes.get(ep);
+  // A save may swap S.episodes while this request is in flight; return what was read, not the new empty cache.
+  const data = await api(`/api/episode?${query({ project: S.project, ep })}`);
+  S.episodes.set(ep, data);
+  return data;
 }
 
 async function refreshProject() {
@@ -860,7 +863,7 @@ function renderTop(route) {
     <button class="search-trigger" type="button" data-act="search" aria-label="搜索">${icon("search")}<span>搜索台词、镜头、设定…</span><kbd>⌘K</kbd></button>
     <button class="icon-btn theme-btn" type="button" data-act="theme" aria-label="${isDark() ? "切换到浅色" : "切换到深色"}">${icon(isDark() ? "sun" : "moon")}</button>`;
   const bar = $("#stagebar");
-  bar.hidden = !(route.page === "episode" && row);
+  bar.hidden = !(route.page === "episode" && row) || Boolean(row?.legacy);
   if (bar.hidden) { bar.innerHTML = ""; return; }
   const E = S.episodes.get(row.id);
   const meta = stageMeta(row, E);
@@ -923,6 +926,12 @@ function askButton(ask, primary = true, label = "复制给助手") {
   if (!ask) return "";
   return `<button class="btn sm ${primary ? "primary" : ""}" type="button" data-copy="${esc(ask)}" data-copy-label="已复制，去对话里发送">${icon("copy")}${label}</button>`;
 }
+/** Distance from a target value, stated without judging it: the profile gives the target, not a tolerance. */
+function gapText(value, goal) {
+  const d = Math.round((value - goal) * 10) / 10;
+  return d === 0 ? "与目标相同" : `${d > 0 ? "多" : "少"} ${num(Math.abs(d))} 秒`;
+}
+const gap = (value, goal) => `<span class="status">${esc(gapText(value, goal))}</span>`;
 function statusMark(ok, words = ["符合", "偏离"]) {
   return `<span class="status ${ok ? "ok" : "warn"}">${icon(ok ? "check" : "alert")}${ok ? words[0] : words[1]}</span>`;
 }
@@ -937,7 +946,7 @@ function editButton(path, at = "", label = "编辑原文", cls = "btn") {
 function missingView(row, what) {
   const stage = { script: "剧本", settings: "视觉设定", board: "分镜", prompts: "提示词", film: "剪辑单", review: "审查意见" }[what];
   const ask = what === "film" ? `请为 ${row.id} 写剪辑单.md。` : what === "review" ? `请审查 ${row.id}。` : what === "prompts" ? `请为 ${row.id} 写图片提示词.md 和视频提示词.md。` : `请为 ${row.id} 写${stage}.md。`;
-  return `<div class="wrap"><div class="empty"><h3>${esc(row.id)} 还没有${stage}</h3><p>在和助手的对话里开始这一步；写好后这里会自动出现。</p><button class="btn primary" type="button" data-copy="${esc(ask)}" data-copy-label="已复制，去对话里发送">${icon("copy")}复制给助手：${esc(ask)}</button></div></div>`;
+  return `<div class="wrap"><div class="empty"><h3>${esc(row.id)} 还没有${stage}</h3><p>在和助手的对话里开始这一步；写好后回到这里就能看到。</p><button class="btn primary" type="button" data-copy="${esc(ask)}" data-copy-label="已复制，去对话里发送">${icon("copy")}复制给助手：${esc(ask)}</button></div></div>`;
 }
 function rawFallback(E, path, heading) {
   return `<div class="wrap"><div class="head"><div><h2>${esc(heading)}</h2><div class="sub">按原文显示</div></div><div class="actions">${editButton(path)}</div></div>${problemNotices(E)}<div data-raw="${esc(path)}"><div class="loading">正在读取原文…</div></div></div>`;
@@ -1068,7 +1077,7 @@ function viewOverview() {
 }
 
 function todoDetail(row, next) {
-  if (next.kind === "fix") return next.detail || "";
+  if (next.kind === "fix" || next.kind === "legacy") return next.detail || "";
   const done = DOCUMENT_STAGES.filter((stage) => row.has[stage.key]).map((stage) => stage.label);
   return done.length ? `已有：${done.join("、")}` : "还没有任何文档";
 }
@@ -1083,7 +1092,6 @@ function fileRow(file) {
 
 function viewEpisode(row, E) {
   const C = context(E);
-  if (row.legacy && !E.script && !E.board) return viewLegacyEpisode(row);
   const next = nextFor(row);
   const counts = { must: 0, should: 0, could: 0 };
   C.findings.forEach((finding) => counts[finding.sev]++);
@@ -1159,7 +1167,7 @@ function gauge(check, C) {
     foot = "按可发声字数；[OS] 画外对白不算";
   }
   const clamp = (x) => Math.max(0, Math.min(100, x * 100));
-  return `<div class="card gauge" data-gauge="${check.key}" data-ok="${check.ok ? 1 : 0}"><div class="k"><span>${check.label}</span>${statusMark(check.ok)}</div>
+  return `<div class="card gauge" data-gauge="${check.key}" ${check.ok == null ? "" : ` data-ok="${check.ok ? 1 : 0}"`}><div class="k"><span>${check.label}</span>${check.ok == null ? gap(check.value, check.goal) : statusMark(check.ok)}</div>
     <div class="v">${value}<small>${share ? "" : "秒 · "}${check.rule} ${goal}</small></div>
     <div class="bullet" role="img" aria-label="${esc(`${check.label} ${value}，${check.rule} ${goal}`)}"><span class="zone" data-css="left:${clamp(zone[0])}%;width:${clamp(zone[1]) - clamp(zone[0])}%"></span><span class="fill" data-css="width:${clamp(fill)}%"></span><span class="tick" data-css="left:${clamp(tick)}%"></span></div>
     <div class="foot">${esc(foot)}</div></div>`;
@@ -1269,8 +1277,8 @@ function viewBoard(row, E, arg, q) {
   ${problemNotices(E)}
   ${E.board.note ? `<p class="muted small" id="boardNote">${esc(E.board.note)}</p>` : ""}
   <div class="metrics" id="boardMetrics">
-    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target ? `目标 ${C.target} 秒` : "没有设每集目标", C.target ? Math.abs(C.total - C.target) <= C.target * 0.1 : null)}
-    ${metric("平均镜长", `${num(M.avg)}<small> 秒</small>`, P ? `目标 ${num(P.target_avg_shot_seconds)} 秒` : "没有接受节奏档案", P ? Math.abs(M.avg - P.target_avg_shot_seconds) <= 0.5 : null)}
+    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
+    ${metric("平均镜长", `${num(M.avg)}<small> 秒</small>`, P ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有接受节奏档案", null)}
     ${metric("近景类", pct(M.close), P ? `不少于 ${pct(P.close_shot_share_min)}` : "没有接受节奏档案", P ? M.close >= P.close_shot_share_min : null)}
     ${metric("没写景别", `${M.unsized}<small> 镜</small>`, "算不进近景类占比", M.unsized === 0)}
   </div>
@@ -1380,7 +1388,7 @@ function viewPrompts(row, E, arg, q) {
   if (!row.has.imgp && !row.has.vidp && !row.has.board) return missingView(row, "prompts");
   const C = context(E);
   const sets = {
-    video: (E.videoPrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [`${num(prompt.sec)} 秒${prompt.mode ? ` · ${prompt.mode}` : ""}`, prompt.shot ? `分镜 <a href="#/${esc(row.id)}/board/${esc(prompt.shot)}">${esc(sceneShort(prompt.shot))}</a>` : ""], text: prompt.prompt })),
+    video: (E.videoPrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [`${num(prompt.sec)} 秒${prompt.mode ? ` · ${esc(prompt.mode)}` : ""}`, prompt.shot ? `分镜 <a href="#/${esc(row.id)}/board/${esc(prompt.shot)}">${esc(sceneShort(prompt.shot))}</a>` : ""], text: prompt.prompt })),
     keyframe: C.shots.filter((shot) => shot.keyframe).map((shot) => ({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "冻结关键帧"], text: shot.keyframe })),
     image: (E.imagePrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [esc(prompt.use), `被 ${C.shots.filter((shot) => shot.imgs.some((img) => img.id === prompt.id)).length} 镜引用`], text: prompt.prompt })),
   };
@@ -1811,9 +1819,10 @@ async function render() {
   else if (route.page === "file") html = viewFile(route.q);
   else if (route.page === "edit") html = viewEdit(route.q);
   else if (route.page === "episode" && !row) html = `<div class="wrap"><div class="empty"><h3>没有 ${esc(route.ep)} 这一集</h3><p>它可能已被移动或改名。</p><a class="btn" href="#/">回到全剧</a></div></div>`;
+  else if (route.page === "episode" && row.legacy) html = viewLegacyEpisode(row);
   else if (route.page === "episode") {
-    const views = { "": viewEpisode, script: viewScript, settings: viewSettings, board: viewBoard, prompts: viewPrompts, film: viewFilm, review: viewReview };
-    html = (views[route.view] || viewEpisode)(row, E, route.arg, route.q);
+    const views = new Map([["script", viewScript], ["settings", viewSettings], ["board", viewBoard], ["prompts", viewPrompts], ["film", viewFilm], ["review", viewReview]]);
+    html = (views.get(route.view) || viewEpisode)(row, E, route.arg, route.q);
   } else html = viewOverview();
   view.innerHTML = html;
   applyCss(view);
@@ -1825,6 +1834,7 @@ async function render() {
   if (route.page === "episode" && route.view === "film" && E) bindFilm(context(E));
   if (route.page === "edit") await openEditor(route.q, sequence);
   if (sequence !== S.renderSequence) return;
+  view.dataset.route = location.hash || "#/";
   view.dataset.state = "ready";
   afterRender(route);
   await fillRaw(sequence);
@@ -2000,12 +2010,20 @@ async function boot() {
   }
 }
 
+/** Documents are written in the conversation, not here: reread them when the creator comes back to this tab. */
+async function refreshOnReturn() {
+  if (!S.project || parseRoute(location.hash).page === "edit") return;
+  try { await refreshProject(); } catch (_error) { return; }
+  render();
+}
+
 function start() {
   document.addEventListener("click", (event) => { onClick(event); });
   document.addEventListener("keydown", onKey);
   document.addEventListener("mouseover", onHover);
   document.addEventListener("change", (event) => { if (event.target.id === "projectSelect") selectProject(event.target.value); });
   addEventListener("hashchange", onHashChange);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshOnReturn(); });
   addEventListener("beforeunload", (event) => { if (S.edit?.dirty) { event.preventDefault(); event.returnValue = ""; } });
   if (typeof matchMedia === "function") matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.theme === "auto") renderTop(parseRoute(location.hash)); });
   boot();

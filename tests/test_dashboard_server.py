@@ -414,6 +414,10 @@ class ProjectStoreTests(unittest.TestCase):
             for unsafe in ("../outside.txt", "/etc/passwd", "a/../../outside.txt"):
                 with self.subTest(unsafe=unsafe), self.assertRaises(DashboardError):
                     store.read_text(project_id, unsafe)
+            for internal in (".short-drama/state.json", ".Short-Drama/state.json"):
+                with self.subTest(internal=internal), self.assertRaises(DashboardError) as caught:
+                    store.read_text(project_id, internal)
+                self.assertEqual(caught.exception.status, 403)
             try:
                 (project / "link.txt").symlink_to(outside)
             except OSError:
@@ -425,7 +429,6 @@ class ProjectStoreTests(unittest.TestCase):
 
             for protected in (
                 "short-drama.json",
-                ".short-drama/state.json",
                 "delivery/result.txt",
                 "交付/result.txt",
             ):
@@ -2354,6 +2357,14 @@ class CreatorViewsTests(unittest.TestCase):
             for block in scene["blocks"]
         ]
         self.assertEqual(mine, theirs)
+        # Same order, same words: every block's text (and any parenthetical) sits in the indexed block's source.
+        indexed = [block["_text"] for block in blocks if block["kind"] not in ("scene_heading", "comment")]
+        shown = [block for scene in ours["scenes"] for block in scene["blocks"]]
+        for block, source in zip(shown, indexed):
+            with self.subTest(text=block["text"]):
+                self.assertTrue(block["text"])
+                self.assertIn(block["text"], source)
+                self.assertIn(block.get("paren", ""), source)
         counts = estimate.measure(text.encode("utf-8"), [dict(block, record_type="block") for block in blocks])
         shares = views.voice_share(ours)
         self.assertEqual(shares["spoken"], counts["dialogue_characters"])
@@ -2643,7 +2654,8 @@ class FrontendLogicTests(unittest.TestCase):
             f"const m = {json.dumps(metrics)}; const p = {json.dumps(RHYTHM)};\n"
             "process.stdout.write(JSON.stringify([logic.rhythmChecks(m, p, 60).map((c) => [c.key, c.ok]), logic.rhythmChecks(m, null, null)]));"
         )
-        self.assertEqual(result[0], [["seconds", True], ["avg", True], ["close", True], ["vo", False]])
+        # Seconds and average shot length have a target but no tolerance in the profile, so they carry no verdict.
+        self.assertEqual(result[0], [["seconds", None], ["avg", None], ["close", True], ["vo", False]])
         self.assertEqual(result[1], [])
 
     def test_component_styles_take_colours_and_type_only_from_tokens(self) -> None:

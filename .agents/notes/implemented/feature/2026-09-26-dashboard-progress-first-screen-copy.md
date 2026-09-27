@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-对标提案（已删除，第 4–7 项见 [按阶段分视图](2026-09-27-dashboard-v2-stage-views.md)）第 1–3 项实测到的缺陷：
+[对标提案](../../rejected/feature/2026-09-26-dashboard-benchmark.md)第 1–3 项实测到的缺陷：
 
 - `episodePresentation` 只认旧的 `shots.jsonl` / `keyframes.jsonl`，给出的下一步是错的。
 - `slice(0, 6)` 让第 7 集起不可达。

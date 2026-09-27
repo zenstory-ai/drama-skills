@@ -2,7 +2,7 @@
 
 Status: implemented
 
-推翻 [单页创作台](2026-08-06-single-page-creator-dashboard.md) 里「单页、无 tabs、无视图切换」的决定；该笔记其余约束保留，并在下面 Decision 里重述。已删除的对标提案（`proposed/feature/2026-09-26-dashboard-benchmark.md`）第 4–7 项在这里落地，第 1–3 项见 [分集进度与首屏](2026-09-26-dashboard-progress-first-screen-copy.md)。
+推翻 [单页创作台](2026-08-06-single-page-creator-dashboard.md) 里「单页、无 tabs、无视图切换」的决定；该笔记其余约束保留，并在下面 Decision 里重述。[对标提案](../../rejected/feature/2026-09-26-dashboard-benchmark.md)第 4–7 项的内容在这里以分视图的形态落地，第 1–3 项见 [分集进度与首屏](2026-09-26-dashboard-progress-first-screen-copy.md)。
 
 ## Problem
 
