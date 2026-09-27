@@ -35,8 +35,8 @@
 - Does each shot's `运镜` line state a behavior and a reason chosen from the shot's
   purpose (`SHT-04`)? A stated lock-off with its reason passes. An episode locked on
   nearly every shot while its peak gets no movement is a finding; so is a missing line,
-  which leaves the choice to the video-prompt stage, and so is a bare lock-off with no
-  reason, which shows no choice was made.
+  which leaves the choice to the video-prompt stage; a bare 「运镜：固定」 with no reason
+  is also a finding.
 - Are Location/View, axis, screen direction, eyelines, entrances, positions,
   hands, and props coherent?
 - Are exact asset variants bound?

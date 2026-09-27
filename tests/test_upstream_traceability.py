@@ -38,7 +38,7 @@ production_tool = load_module(
     ROOT / "skills/short-drama-produce/scripts/production_tool.py",
 )
 
-# The shot this plan belongs to opens on Zhou Bosen's hand gripping a mug, so its
+# The shot this plan belongs to opens on Zhou Bosen's hand gripping a glass tumbler, so its
 # start frame is the shot's own keyframe and its identity anchor is his character board.
 CREATOR_SUPPLIED_PLAN = (
     "PLAN-SHOT-START（顺序：1）· SHOT-EP001-001《本镜冻结关键帧》"
