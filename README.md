@@ -161,39 +161,43 @@ done
 公开样例 [《让你管账号》EP001](examples/creator-first/EP001/) 里，同一个镜头在四份文档里各管一层。剧本只写发生了什么：
 
 ```markdown
-桌对面，周薄森把一摞材料推过厚玻璃桌面。纸角碰到江晨指尖。
-……
-周薄森端起缺口搪瓷茶缸，抿一口冷茶，眉头皱得更深。
+[OS] 其他军团的人：火箭军？四个号，加起来四个粉吧。
+
+笔记本的扬声器里一片哄笑。桌后，周薄森对着屏幕坐得笔直，脸绷着。桌前，江晨双手撑着桌沿，猛地回神。
 ```
 
 `视觉设定.md` 给需要跨镜保持的造型上「连续性锁」，锁面是一条能原样贴进提示词的短语：
 
 ```markdown
-- 连续性锁：LOCK-JIANGCHEN-DRESS《江晨橄榄绿立领常服》（镜头：SHOT-EP001-002、SHOT-EP001-003、SHOT-EP001-007；
-  图片提示词项：IMG-JIANGCHEN-SHEET）· 锁面：olive-green stand-collar service dress
+- 连续性锁：LOCK-JIANGCHEN-DRESS《江晨松枝绿常服》（镜头：SHOT-EP001-002、SHOT-EP001-003、SHOT-EP001-007、……；
+  图片提示词项：IMG-JIANGCHEN-SHEET）· 锁面：pine-green lapel service jacket
 ```
 
-`分镜.md` 写这一镜的起点和终点，冻结关键帧只画起点那一格，锁面原样出现在里面：
+`分镜.md` 写这一镜的起点和终点、运镜为什么这样动，冻结关键帧只画起点那一格，锁面原样出现在里面：
 
 ```markdown
-## SHOT-EP001-002 · 把空白交到他手里
-- 起点：材料在周薄森手下，茶缸停在旧茶渍旁。
-- 终点：纸角抵住江晨指尖；周薄森说出“基本还是空白”。
+## SHOT-EP001-002 · 四个号，四个粉
+- 运镜：缓推，哄笑声最响时开始，越过笔记本背面推向桌后，停在周薄森绷紧的脸；这阵笑是冲他去的。
+- 起点：周薄森面对笔记本坐得笔直，右手搭在茶杯旁；江晨双手掌心朝下撑在玻璃桌沿，眼神涣散。
+- 终点：画面停在周薄森绷紧的脸与屏幕冷光；江晨仍撑着桌沿，留在画右边缘。
 
 ### 冻结关键帧提示词
-> 9:16 vertical two-person medium shot inside an old regiment office, Zhoubosen, a broad square-faced middle-aged officer on
-> frame right rests one hand on a stack of papers ……, Jiangchen, a lean young man in olive-green stand-collar service dress,
-> seen three-quarter from behind on frame left ……; chipped white enamel mug beside an old tea ring, …… no text, no logo.
+> 9:16 vertical two-person medium shot in a present-day army arts-troupe office, framed at chest height: Jiangchen, a lean
+> young man in a pine-green lapel service jacket, stands mid-ground on frame right …… with both palms flat on the glass and a
+> dazed, unfocused look; Zhoubosen, a broad square-faced middle-aged officer, sits bolt upright behind the desk …… facing a
+> thin silver laptop whose lid faces the camera, …… his right hand beside a double-walled glass tea tumbler on a dark round
+> coaster; …… no text, no logo.
 ```
 
 `视频提示词.md` 只写起点到终点之间模型要执行的动作，整段复制进生成界面就能用：
 
 ```markdown
-## MOTION-EP001-002 · 把空白交到他手里
+## MOTION-EP001-002 · 四个号，四个粉
 ### 可复制提示词
-> …… The middle-aged officer pushes the paper stack about twenty centimeters across the glass desk while speaking calmly.
-> The young man does not reach for it until the paper touches his fingertip. The officer then lifts the chipped white enamel
-> mug for one small sip, frowns at the cold tea, and returns it exactly to the old tea ring. ……
+> …… Laughter keeps pouring out of the laptop's small speaker. The seated officer's jaw tightens and his back straightens a
+> little more. The young man blinks once and his eyes snap into focus. At the loudest point of the laughter, the camera moves
+> steadily forward past the back of the laptop and stops when the seated officer's tight face fills the middle of the frame,
+> the young man remaining at the right edge. ……
 ```
 
 四份原文：[`剧本.md`](examples/creator-first/EP001/剧本.md) ·
@@ -204,11 +208,11 @@ done
 ### 写漏了会被指出来
 
 `creator_markdown_check.py` 核对五份文档之间的引用。把样例故意改坏两处——删掉 SHOT-002 视觉依据里的周薄森、
-把 MOTION-003 的时长从 5s 改成 4s——它报的是原因，不是「校验失败」：
+把 MOTION-003 的时长从 2s 改成 3s——它报的是原因，不是「校验失败」：
 
 ```text
 ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视觉依据没有覆盖；本镜确实看不见时在视觉依据末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「画面代称：无」
-ERROR: SHOT-EP001-003: 分镜时长 5 秒与视频提示词 4 秒不一致；视频提示词只能原样照抄已接受的镜头时长
+ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词只能原样照抄已接受的镜头时长
 ```
 
 ### 样片是怎么剪出来的

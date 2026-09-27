@@ -32,7 +32,7 @@ Status: implemented
 7. **表演**：没有导演选择时，表演强度跟随形态与题材，漫剧与爽文峰值外放，AI 真人峰值至少一个读得出的表演拍（VID-26）；「停留」只替换精细操作，不替换表演。
 8. **审查**：档案核对（REV-12）、开场/结尾/中段三道局部检查（REV-13，开场一道另把第一拍单独读一遍）、修订只打补丁并记录被润色删掉的强钩子（REV-14）。故事审查表新增「Adaptation fidelity」一节，按映射引用的原著段落核对人物立场、关系、主线与 `add` 登记；分镜审查表核对每镜的「运镜」是否按目的选。
 
-涉及 `skills/short-drama/`（`project_tool.py`、项目模板、`SKILL.md`、`knowhow-index.md`、`creator-documents.md` 的分镜格式）、`short-drama-novel-analyze`、`short-drama-develop`、`short-drama-write`（含 `duration_estimate.py`）、`short-drama-storyboard`、`short-drama-video-prompts`、`short-drama-review` 的 references 与 stage-contract，以及 `tests/test_simple_lifecycle.py`、`tests/test_structural_validators.py`、`tests/test_creator_first_golden.py`。`examples/creator-first/EP001/分镜.md` 按新格式补了「运镜」一行，`视频提示词.md` 的运镜与之逐镜一致；8 镜里 3 镜有动机地移动，其中集尾对白镜是压力缓推。
+涉及 `skills/short-drama/`（`project_tool.py`、项目模板、`SKILL.md`、`knowhow-index.md`、`creator-documents.md` 的分镜格式）、`short-drama-novel-analyze`、`short-drama-develop`、`short-drama-write`（含 `duration_estimate.py`）、`short-drama-storyboard`、`short-drama-video-prompts`、`short-drama-review` 的 references 与 stage-contract，以及 `tests/test_simple_lifecycle.py`、`tests/test_structural_validators.py`、`tests/test_creator_first_golden.py`。`examples/creator-first/EP001` 五份文档按新规则重做，时代为当下（现行松枝绿常服、液晶显示器、笔记本电脑、LED 面板灯）：开场第一帧是周薄森死攥茶杯的手，视频会议里其他军团哄笑「四个号，加起来四个粉」，上级点名给出下周评比的期限——压力取自原著「年中军宣会被其他军团调侃」「上级当众点名批评」，不新增具名人物；第 31–34 秒江晨按住合上的笔记本顶回去。22 镜约 62 秒，平均镜长 2.8 秒，固定机位 11 镜，近景类 11 镜，`[VO]` 占台词字数 22%，系统面板只在后期叠加，集尾停在失败条款落下的那一声滴答。本例不声明目标模型，镜长按叙事定。`tests/test_creator_first_golden.py` 与 `tests/test_upstream_traceability.py` 里钉住旧示例的锁面、锁生效镜头、道具名、说话人与台词引文随之更新，断言不变；README 与 `docs/real-outputs*.md` 的节选改为新的 SHOT-EP001-002。
 
 ## Alternatives considered
 
@@ -51,7 +51,7 @@ Status: implemented
 
 - **收益**：选段、单集节奏、分镜密度都有了 owner 和可核对的数值；把高光提前有了合法的词汇；题材契约回到爽文本位；数值始终是创作者接受过的项目值。
 - **代价**：
-  - 改动横跨六个技能；`examples/creator-first/EP001` 仍是静止开场、平均镜长 6.25 秒，没有按新规则重做。
+  - 改动横跨六个技能。
   - 已按旧规则跑完的项目没有 `rhythm_profile` 槽位，只能是「未声明，不核对」，直到第一次写入整份档案。
   - 标「未实测」的起点值需要用样片再校准。
   - `close_shot_share_min` 的景别口径只在 develop 定义，storyboard 与 review 按技能名引用，单独安装它们的读者要回到 develop 才能看到完整口径。

@@ -11,11 +11,9 @@
 在四份文档里各管一层。剧本只写发生了什么：
 
 ```markdown
-桌对面，周薄森把一摞材料推过厚玻璃桌面。纸角碰到江晨指尖。
-……
-周薄森端起缺口搪瓷茶缸，抿一口冷茶，眉头皱得更深。
-……
-他把茶缸放回那圈旧茶渍里。
+[OS] 其他军团的人：火箭军？四个号，加起来四个粉吧。
+
+笔记本的扬声器里一片哄笑。桌后，周薄森对着屏幕坐得笔直，脸绷着。桌前，江晨双手撑着桌沿，猛地回神。
 ```
 
 `视觉设定.md` 把跨镜必须保持的可见事实写成条目，并给造型上「连续性锁」，锁面就是一条能原样贴进提示词的短语：
@@ -24,48 +22,52 @@
 ## 人物 · 江晨
 - 识别锚点：长脸、高眉骨、深眼窝、短寸、绷直的肩背。不要改成偶像刘海或宽松潮服。
 - 画面代称：Jiangchen
-- 连续性锁：LOCK-JIANGCHEN-DRESS《江晨橄榄绿立领常服》（镜头：SHOT-EP001-002、SHOT-EP001-003、SHOT-EP001-007；
-  图片提示词项：IMG-JIANGCHEN-SHEET）· 锁面：olive-green stand-collar service dress
+- 连续性锁：LOCK-JIANGCHEN-DRESS《江晨松枝绿常服》（镜头：SHOT-EP001-002、SHOT-EP001-003、SHOT-EP001-007、……；
+  图片提示词项：IMG-JIANGCHEN-SHEET）· 锁面：pine-green lapel service jacket
 ```
 
-`分镜.md` 写这一镜的起点和终点，冻结关键帧只画起点那一格；写完之后反查画面里需要认出身份、造型或地理的条目，
+`分镜.md` 写这一镜的起点和终点、运镜为什么这样动，冻结关键帧只画起点那一格；写完之后反查画面里需要认出身份、造型或地理的条目，
 回填成「视觉依据」——锁面在关键帧正文里原样出现：
 
 ```markdown
-## SHOT-EP001-002 · 把空白交到他手里
+## SHOT-EP001-002 · 四个号，四个粉
 - 来源：EP001-SC001
-- 时长：8s
-- 起点：材料在周薄森手下，茶缸停在旧茶渍旁。
-- 终点：纸角抵住江晨指尖；周薄森说出“基本还是空白”。
+- 时长：4s
+- 运镜：缓推，哄笑声最响时开始，越过笔记本背面推向桌后，停在周薄森绷紧的脸；这阵笑是冲他去的。
+- 起点：周薄森面对笔记本坐得笔直，右手搭在茶杯旁；江晨双手掌心朝下撑在玻璃桌沿，眼神涣散。
+- 终点：画面停在周薄森绷紧的脸与屏幕冷光；江晨仍撑着桌沿，留在画右边缘。
 - 输入参考图：无（创作者已明确选择文生视频）。
 - 视觉依据：《视觉设定.md》·人物「江晨」（控制：身份、体态、本集造型）；人物「周薄森」（控制：身份、体态、本集造型）；
-  地点「副团长办公室」（控制：玻璃桌面、旧茶渍、文件盒书柜、左侧窗光）；道具「缺口搪瓷茶缸」（控制：右侧把手缺瓷、深灰铁胎）。
+  地点「副团长办公室」（控制：清玻璃桌面、杯垫、文件夹书柜、左侧卷帘窗光）；道具「笔记本电脑」（控制：银色轻薄机身、盖角红贴签）；
+  道具「玻璃泡茶杯」（控制：双层玻璃杯身、沉底茶叶）。
 
 ### 冻结关键帧提示词
-> 9:16 vertical two-person medium shot inside an old regiment office, Zhoubosen, a broad square-faced middle-aged officer on
-> frame right rests one hand on a stack of papers ……, Jiangchen, a lean young man in olive-green stand-collar service dress,
-> seen three-quarter from behind on frame left ……; chipped white enamel mug beside an old tea ring, …… no text, no logo.
+> 9:16 vertical two-person medium shot in a present-day army arts-troupe office, framed at chest height: Jiangchen, a lean
+> young man in a pine-green lapel service jacket, stands mid-ground on frame right …… with both palms flat on the glass and a
+> dazed, unfocused look; Zhoubosen, a broad square-faced middle-aged officer, sits bolt upright behind the desk …… facing a
+> thin silver laptop whose lid faces the camera, …… his right hand beside a double-walled glass tea tumbler on a dark round
+> coaster; …… no text, no logo.
 ```
 
-`视频提示词.md` 把外观压成一句「静态视觉锚点」（锁面原样在内），其余篇幅只写「起点 → 动作 → 终点」里模型能执行的动作和可验证的终点：
+`视频提示词.md` 把外观压成一句「静态视觉锚点」（锁面原样在内），其余篇幅只写「起点 → 动作 → 终点」里模型能执行的动作、
+照分镜那一行写的运镜和可验证的终点：
 
 ```markdown
-## MOTION-EP001-002 · 把空白交到他手里
+## MOTION-EP001-002 · 四个号，四个粉
 - 分镜：SHOT-EP001-002
-- 时长：8s
+- 时长：4s
 - 生成方式：文生视频
-- 静态视觉锚点：A broad square-faced middle-aged East Asian officer sits frame right and a lean young East Asian man in
-  olive-green stand-collar service dress sits frame left across a glass-covered desk in an old office lit from the left.
-- 起始帧：周薄森右手压住材料，江晨手停在桌边。
-- 终点：材料抵住江晨指尖，周薄森把茶缸放回旧茶渍。
+- 静态视觉锚点：In a present-day army arts-troupe office with a bookcase of blue document binders ……, a lean young East Asian
+  man in a pine-green lapel service jacket stands mid-ground on frame right with both palms flat on the front edge of a
+  light-oak desk with a clear glass top and a dazed look, ……
+- 起始帧：周薄森对着笔记本坐得笔直，江晨撑着桌沿发懵。
+- 终点：画面停在周薄森绷紧的脸与屏幕冷光，江晨留在画右边缘。
 
 ### 可复制提示词
-> A broad square-faced middle-aged East Asian officer sits frame right and a lean young East Asian man in olive-green
-> stand-collar service dress sits frame left across a glass-covered desk in an old office lit from the left. The middle-aged
-> officer pushes the paper stack about twenty centimeters across the glass desk while speaking calmly. The young man does not
-> reach for it until the paper touches his fingertip. The officer then lifts the chipped white enamel mug for one small sip,
-> frowns at the cold tea, and returns it exactly to the old tea ring. Keep both seated positions, uniforms, file-box wall and
-> left-window light stable. Locked camera, restrained natural performance, no object duplication.
+> …… Laughter keeps pouring out of the laptop's small speaker. The seated officer's jaw tightens and his back straightens a
+> little more. The young man blinks once and his eyes snap into focus. At the loudest point of the laughter, the camera moves
+> steadily forward past the back of the laptop and stops when the seated officer's tight face fills the middle of the frame,
+> the young man remaining at the right edge. ……
 ```
 
 四份原文：[`剧本.md`](../examples/creator-first/EP001/剧本.md) ·
@@ -77,7 +79,7 @@
 ## 检查器抓什么：把样例故意改坏两处
 
 出处：同上一节的公开样例。`creator_markdown_check.py` 核对一集五份文档之间可执行的契约。原样跑过；删掉 SHOT-002 视觉依据里的周薄森、
-再把 MOTION-003 的时长从 5s 改成 4s，它报的是原因，不是「校验失败」：
+再把 MOTION-003 的时长从 2s 改成 3s，它报的是原因，不是「校验失败」：
 
 ```text
 $ python3 skills/short-drama/scripts/creator_markdown_check.py examples/creator-first/EP001 --project-root examples/creator-first
@@ -85,7 +87,7 @@ OK: examples/creator-first/EP001
 
 $ python3 skills/short-drama/scripts/creator_markdown_check.py <改坏的副本>/EP001 --project-root <改坏的副本>
 ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视觉依据没有覆盖；本镜确实看不见时在视觉依据末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「画面代称：无」
-ERROR: SHOT-EP001-003: 分镜时长 5 秒与视频提示词 4 秒不一致；视频提示词只能原样照抄已接受的镜头时长
+ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词只能原样照抄已接受的镜头时长
 ```
 
 它还核对：每镜「来源」必须以《剧本.md》里真实存在的场景 ID 开头，引文里点到的人物、地点、道具等条目要么在视觉依据里覆盖、

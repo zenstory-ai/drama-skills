@@ -38,13 +38,13 @@ production_tool = load_module(
     ROOT / "skills/short-drama-produce/scripts/production_tool.py",
 )
 
-# The shot this plan belongs to opens on a hand on the desk, so its start frame
-# is the shot's own keyframe and its identity anchor is the character board.
+# The shot this plan belongs to opens on Zhou Bosen's hand gripping a mug, so its
+# start frame is the shot's own keyframe and its identity anchor is his character board.
 CREATOR_SUPPLIED_PLAN = (
     "PLAN-SHOT-START（顺序：1）· SHOT-EP001-001《本镜冻结关键帧》"
     "（用途：起始帧；控制：起始构图、手部位置；不得控制：后续动作、终态）；"
-    "PLAN-JIANGCHEN（顺序：2）· IMG-JIANGCHEN-SHEET《江晨角色板》"
-    "（用途：身份；控制：脸型、体态、本集常服；不得控制：构图、动作）"
+    "PLAN-ZHOUBOSEN（顺序：2）· IMG-ZHOUBOSEN-SHEET《周薄森角色板》"
+    "（用途：身份；控制：手型、本集常服；不得控制：构图、动作）"
 )
 
 
@@ -139,7 +139,7 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
     def test_a_plan_slot_must_locate_an_entry_that_exists(self) -> None:
         cases = {
             "missing image board": (
-                CREATOR_SUPPLIED_PLAN.replace("IMG-JIANGCHEN-SHEET", "IMG-NOT-THERE"),
+                CREATOR_SUPPLIED_PLAN.replace("IMG-ZHOUBOSEN-SHEET", "IMG-NOT-THERE"),
                 "PLAN 指向不存在的 IMG 条目",
             ),
             "missing shot": (
@@ -147,7 +147,7 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
                 "PLAN 指向不存在的 SHOT 条目",
             ),
             "label drifted from the board": (
-                CREATOR_SUPPLIED_PLAN.replace("《江晨角色板》", "《另一个名字》"),
+                CREATOR_SUPPLIED_PLAN.replace("《周薄森角色板》", "《另一个名字》"),
                 "PLAN 中文名称与 IMG 标题不一致",
             ),
             "file path instead of an entry": (
@@ -280,7 +280,7 @@ class StoryboardFollowsTheScreenplayTests(EpisodeFixture):
             self.edit(
                 episode / "分镜.md",
                 "- 来源：EP001-SC001",
-                "- 来源：EP001-SC001（“明白，我一定尽最大努力。”）",
+                "- 来源：EP001-SC001（“一只粗手死死攥着玻璃泡茶杯，杯里的冷茶在抖。”）",
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
@@ -368,7 +368,7 @@ class StoryboardFollowsTheScreenplayTests(EpisodeFixture):
             self.edit(
                 episode / "分镜.md",
                 "- 来源：EP001-SC001",
-                "- 来源：EP001-SC001（“明白。我一定尽最大努力。”）",
+                "- 来源：EP001-SC001（“火箭军？四个号，加起来四个粉吧。”）",
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
@@ -434,7 +434,7 @@ class CopyableDialogueTests(EpisodeFixture):
             self.edit(
                 episode / "视频提示词.md",
                 self.ORIGINAL,
-                'He says in Chinese, "我一定尽最大努力。" No extra hands, no text.',
+                'He says in Chinese, "下周榜首，是我们团。" No extra hands, no text.',
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
@@ -445,7 +445,7 @@ class CopyableDialogueTests(EpisodeFixture):
             self.edit(
                 episode / "视频提示词.md",
                 self.ORIGINAL,
-                'He says in Chinese, "明白，我一定尽最大努力" No extra hands, no text.',
+                'He says in Chinese, "下周榜首是我们团" No extra hands, no text.',
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])

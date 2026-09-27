@@ -184,42 +184,49 @@ In the public sample [*Let You Run the Account*, EP001](examples/creator-first/E
 time across four documents. The script only says what happens (translated):
 
 ```markdown
-Across the desk, Zhou Bosen pushes a stack of papers over the thick glass top. A corner touches Jiang Chen's fingertip.
-…
-Zhou Bosen lifts the chipped enamel mug, takes a sip of cold tea, and frowns harder.
+[OS] Someone from another army unit: The Rocket Force? Four accounts, four followers between them, right?
+
+Laughter pours out of the laptop's speaker. Behind the desk, Zhou Bosen sits bolt upright facing the screen, face set.
+In front of it, Jiang Chen, palms on the desk edge, snaps back to himself.
 ```
 
 `视觉设定.md` (visual design) gives a look that must hold across shots a **continuity lock**, whose lock phrase can be
 pasted into a prompt unchanged (translated):
 
 ```markdown
-- Continuity lock: LOCK-JIANGCHEN-DRESS "Jiang Chen's olive-green stand-collar service dress" (shots: SHOT-EP001-002, SHOT-EP001-003, SHOT-EP001-007;
-  image prompt entry: IMG-JIANGCHEN-SHEET) · lock phrase: olive-green stand-collar service dress
+- Continuity lock: LOCK-JIANGCHEN-DRESS "Jiang Chen's pine-green service uniform" (shots: SHOT-EP001-002, SHOT-EP001-003, SHOT-EP001-007, …;
+  image prompt entry: IMG-JIANGCHEN-SHEET) · lock phrase: pine-green lapel service jacket
 ```
 
-`分镜.md` (storyboard) writes this shot's start and end; the frozen keyframe draws the start frame alone, with the lock
-phrase inside it (translated; the prompt is quoted as written):
+`分镜.md` (storyboard) writes this shot's start and end and why the camera moves the way it does; the frozen keyframe draws
+the start frame alone, with the lock phrase inside it (translated; the prompt is quoted as written):
 
 ```markdown
-## SHOT-EP001-002 · Handing him the blank
-- Start: the papers are under Zhou Bosen's hand; the mug rests beside the old tea ring.
-- End: the corner of the papers touches Jiang Chen's fingertip; Zhou Bosen says "basically still blank".
+## SHOT-EP001-002 · Four accounts, four followers
+- Camera: slow push-in, starting at the loudest point of the laughter, past the back of the laptop toward the desk, stopping
+  on Zhou Bosen's set face; the laughter is aimed at him.
+- Start: Zhou Bosen sits bolt upright facing the laptop, right hand beside his tea tumbler; Jiang Chen's palms rest flat on
+  the glass edge, his eyes unfocused.
+- End: the frame settles on Zhou Bosen's set face in the screen glow; Jiang Chen still leans on the desk at the right edge.
 
 ### Frozen keyframe prompt
-> 9:16 vertical two-person medium shot inside an old regiment office, Zhoubosen, a broad square-faced middle-aged officer on
-> frame right rests one hand on a stack of papers …, Jiangchen, a lean young man in olive-green stand-collar service dress,
-> seen three-quarter from behind on frame left …; chipped white enamel mug beside an old tea ring, … no text, no logo.
+> 9:16 vertical two-person medium shot in a present-day army arts-troupe office, framed at chest height: Jiangchen, a lean
+> young man in a pine-green lapel service jacket, stands mid-ground on frame right … with both palms flat on the glass and a
+> dazed, unfocused look; Zhoubosen, a broad square-faced middle-aged officer, sits bolt upright behind the desk … facing a
+> thin silver laptop whose lid faces the camera, … his right hand beside a double-walled glass tea tumbler on a dark round
+> coaster; … no text, no logo.
 ```
 
 `视频提示词.md` (video prompts) writes only the actions the model performs between start and end, ready to paste into the
 generation tool as one block:
 
 ```markdown
-## MOTION-EP001-002 · Handing him the blank
+## MOTION-EP001-002 · Four accounts, four followers
 ### Copyable prompt
-> … The middle-aged officer pushes the paper stack about twenty centimeters across the glass desk while speaking calmly.
-> The young man does not reach for it until the paper touches his fingertip. The officer then lifts the chipped white enamel
-> mug for one small sip, frowns at the cold tea, and returns it exactly to the old tea ring. …
+> … Laughter keeps pouring out of the laptop's small speaker. The seated officer's jaw tightens and his back straightens a
+> little more. The young man blinks once and his eyes snap into focus. At the loudest point of the laughter, the camera moves
+> steadily forward past the back of the laptop and stops when the seated officer's tight face fills the middle of the frame,
+> the young man remaining at the right edge. …
 ```
 
 The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) ·
@@ -230,16 +237,16 @@ The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) ·
 ### Omissions get pointed out
 
 `creator_markdown_check.py` checks the references between the five documents. Break the sample in two places on purpose,
-removing Zhou Bosen from SHOT-002's visual basis and changing MOTION-003's duration from 5s to 4s, and it reports the cause,
+removing Zhou Bosen from SHOT-002's visual basis and changing MOTION-003's duration from 2s to 3s, and it reports the cause,
 not "validation failed":
 
 ```text
 ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视觉依据没有覆盖；本镜确实看不见时在视觉依据末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「画面代称：无」
-ERROR: SHOT-EP001-003: 分镜时长 5 秒与视频提示词 4 秒不一致；视频提示词只能原样照抄已接受的镜头时长
+ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词只能原样照抄已接受的镜头时长
 ```
 
 The first line: the frozen keyframe names the character "Zhou Bosen" but the visual basis does not cover him; if he is
-genuinely not visible, declare him off-screen. The second: the storyboard says 5 seconds and the video prompt says 4.
+genuinely not visible, declare him off-screen. The second: the storyboard says 2 seconds and the video prompt says 3.
 
 ### How the sample was cut
 
