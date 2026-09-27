@@ -275,6 +275,34 @@ def project_video_model_profile(project: Mapping[str, Any]) -> dict[str, Any]:
     return {field: choices[field] for field in fields if field in choices}
 
 
+def project_format(project: Mapping[str, Any]) -> dict[str, Any]:
+    """The episode shape the creator set: count, length and frame.
+
+    Only well-formed values are reported, so a reader can do arithmetic on
+    them without re-validating; anything else in the format block (pacing
+    rates, prompt language) is working detail the status does not repeat.
+    """
+    block = project.get("format")
+    if not isinstance(block, Mapping):
+        return {}
+    result: dict[str, Any] = {}
+    count = block.get("episode_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count > 0:
+        result["episode_count"] = count
+    seconds = block.get("target_seconds_per_episode")
+    if (
+        isinstance(seconds, (int, float))
+        and not isinstance(seconds, bool)
+        and math.isfinite(seconds)
+        and seconds > 0
+    ):
+        result["target_seconds_per_episode"] = seconds
+    ratio = block.get("aspect_ratio")
+    if isinstance(ratio, str) and ratio.strip():
+        result["aspect_ratio"] = ratio.strip()
+    return result
+
+
 def rhythm_profile_problems(profile: Any) -> list[str]:
     """Type and range problems in a rhythm profile block; empty when usable.
 
@@ -998,6 +1026,7 @@ def _build_status(
         "prompt_language": languages["prompt_language"],
         "video_prompt_language": languages["video_prompt_language"],
         "video_model_profile": video_model_profile,
+        "format": project_format(project),
         "rhythm_profile": rhythm_profile,
         "rhythm_profile_problems": rhythm_problems,
         "project_root": project_root,

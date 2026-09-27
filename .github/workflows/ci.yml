@@ -99,6 +99,7 @@ jobs:
           mypy skills/short-drama/scripts/project_tool.py
           skills/short-drama/scripts/dashboard_server.py
           skills/short-drama/scripts/creator_markdown_check.py
+          skills/short-drama/scripts/creator_views.py
           skills/short-drama-develop/scripts/episode_intake.py
           skills/short-drama-assets/scripts/asset_check.py
           skills/short-drama-image-prompts/scripts/image_prompt_check.py

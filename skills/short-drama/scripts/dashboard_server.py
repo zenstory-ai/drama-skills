@@ -139,6 +139,39 @@ def load_project_tool(root: Path) -> ModuleType:
     return module
 
 
+def load_views() -> ModuleType:
+    """Load the document readers that ship beside this server."""
+    script = Path(__file__).resolve().with_name("creator_views.py")
+    spec = importlib.util.spec_from_file_location("dashboard_creator_views", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load creator views: {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+views = load_views()
+# Both spellings of each root a project may use; project_tool.py's
+# CANONICAL_ROOTS and LEGACY_ROOTS.
+EPISODE_ROOTS = ("剧集", "episodes")
+REVIEW_ROOTS = ("审查", "reviews")
+# A v0.5 episode never holds the five documents and is never migrated in place.
+LEGACY_EPISODE_FILES = frozenset(
+    {
+        "screenplay.md",
+        "image-prompts.md",
+        "keyframe-prompts.md",
+        "video-prompts.md",
+        "shots.jsonl",
+        "keyframes.jsonl",
+    }
+)
+MAX_SEARCH_QUERY = 80
+# Only what a creator set about the project's shape; everything else in the
+# status is lifecycle bookkeeping the dashboard does not show.
+CREATOR_STATUS_FIELDS = ("title", "format", "rhythm_profile", "lifecycle")
+
+
 def _version(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -909,6 +942,277 @@ class ProjectStore:
                 ) from exc
         return {"path": pure.as_posix(), "version": _version(encoded), "saved": True}
 
+    # -------------------------------------------------------------- views
+    #
+    # The endpoints below are read-only. They read through the same pinned,
+    # no-follow directories as /api/file and /api/media, and hand the text to
+    # creator_views.py, which parses with the checker's own patterns.
+
+    def _read_document(
+        self, directory: Directory, relative: str
+    ) -> tuple[str | None, str | None]:
+        """A document's text, or why it cannot be shown. Absent is (None, None)."""
+
+        pure = PurePosixPath(relative)
+        try:
+            with _open_parent_directory(directory, pure) as (parent, name):
+                data, _ = self._read_regular(parent, name)
+        except (FileNotFoundError, NotADirectoryError):
+            return None, None
+        except DashboardError:
+            return None, f"{pure.name} 太大，这里只能显示文件名。"
+        except OSError:
+            return None, f"{pure.name} 暂时无法安全打开。"
+        try:
+            return data.decode("utf-8"), None
+        except UnicodeDecodeError:
+            return None, f"{pure.name} 不是 UTF-8 文本。"
+
+    def _media_available(self, directory: Directory, relative: str) -> bool:
+        try:
+            pure = self._safe_relative(relative)
+            handle, _, _ = self._open_media(directory, pure)
+        except DashboardError:
+            return False
+        handle.close()
+        return True
+
+    @staticmethod
+    def _names(directory: Directory) -> dict[str, str]:
+        """Plain entries of one directory: name -> "dir" | "file". Links are skipped."""
+
+        found: dict[str, str] = {}
+        try:
+            with directory.scandir() as iterator:
+                for entry in iterator:
+                    if _entry_is_link(entry):
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        found[entry.name] = "dir"
+                    elif entry.is_file(follow_symlinks=False):
+                        found[entry.name] = "file"
+        except OSError:
+            return {}
+        return found
+
+    def _root_named(self, directory: Directory, candidates: tuple[str, ...]) -> str | None:
+        names = self._names(directory)
+        return next((name for name in candidates if names.get(name) == "dir"), None)
+
+    def _episode_ids(self, directory: Directory) -> tuple[str | None, list[str]]:
+        root = self._root_named(directory, EPISODE_ROOTS)
+        if root is None:
+            return None, []
+        try:
+            child = directory.child(root)
+        except OSError:
+            return root, []
+        try:
+            names = self._names(child)
+        finally:
+            child.close()
+        episodes = [
+            name
+            for name, kind in names.items()
+            if kind == "dir" and views.EPISODE_ID_RE.fullmatch(name)
+        ]
+        return root, sorted(episodes, key=lambda name: int(name[2:]))
+
+    def _episode_files(self, directory: Directory, root: str, episode: str) -> dict[str, str]:
+        """Files directly in the episode, plus legacy markers one level down."""
+
+        try:
+            folder = directory.child(root)
+        except OSError:
+            return {}
+        try:
+            try:
+                target = folder.child(episode)
+            except OSError:
+                return {}
+            try:
+                names = self._names(target)
+                for name, kind in list(names.items()):
+                    if kind != "dir":
+                        continue
+                    try:
+                        nested = target.child(name)
+                    except OSError:
+                        continue
+                    try:
+                        for inner, inner_kind in self._names(nested).items():
+                            if inner_kind == "file" and inner in LEGACY_EPISODE_FILES:
+                                names[f"{name}/{inner}"] = "file"
+                    finally:
+                        nested.close()
+                return names
+            finally:
+                target.close()
+        finally:
+            folder.close()
+
+    def _read_episode(
+        self, directory: Directory, root: str, episode: str
+    ) -> tuple[dict[str, Any], dict[str, str | None], list[str]]:
+        base = f"{root}/{episode}"
+        texts: dict[str, str | None] = {}
+        paths: dict[str, str | None] = {}
+        unreadable: list[str] = []
+        for name in (*views.CREATOR_DOCUMENTS, views.CUT_LIST):
+            text, problem = self._read_document(directory, f"{base}/{name}")
+            texts[name] = text
+            paths[name] = f"{base}/{name}" if text is not None or problem else None
+            if problem:
+                unreadable.append(problem)
+        review_text: str | None = None
+        paths["review"] = None
+        review_root = self._root_named(directory, REVIEW_ROOTS)
+        if review_root is not None:
+            relative = f"{review_root}/{episode}-审查.md"
+            review_text, problem = self._read_document(directory, relative)
+            if review_text is not None or problem:
+                paths["review"] = relative
+            if problem:
+                unreadable.append(problem)
+        parsed = views.read_episode(episode, texts, review_text)
+        parsed["problems"] = unreadable + parsed["problems"]
+        parsed["hasReviewText"] = review_text is not None
+        return parsed, paths, unreadable
+
+    def _episode_media(
+        self, directory: Directory, root: str, episode: str, parsed: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Media the documents bind, and only those that are really there.
+
+        A thumbnail is the shot's own 起始帧 REF; a clip is a cut list 来源 line;
+        the film is what the edit stage renders. Nothing is matched by filename.
+        """
+
+        frames: dict[str, str] = {}
+        for shot in (parsed.get("board") or {}).get("shots", []):
+            path = views.start_frame(shot)
+            if path and self._media_available(directory, path):
+                frames[shot["id"]] = path
+        clips: dict[str, str] = {}
+        for cut in (parsed.get("cutlist") or {}).get("cuts", []):
+            # The edit tool resolves a 来源 against the episode first, then the
+            # project root; the dashboard finds the same file it would cut.
+            for candidate in (f"{root}/{episode}/{cut['media']}", cut["media"]):
+                if self._media_available(directory, candidate):
+                    clips[cut["id"]] = candidate
+                    break
+        film = f"{root}/{episode}/{views.FILM}"
+        return {
+            "frames": frames,
+            "clips": clips,
+            "film": film if self._media_available(directory, film) else None,
+        }
+
+    def episode(self, project_id: str, episode: str) -> dict[str, Any]:
+        if views.EPISODE_ID_RE.fullmatch(episode) is None:
+            raise DashboardError(HTTPStatus.BAD_REQUEST, "unknown episode")
+        with self._pinned_project(project_id) as (directory, _root):
+            root, episodes = self._episode_ids(directory)
+            if root is None or episode not in episodes:
+                raise DashboardError(HTTPStatus.NOT_FOUND, "episode not found")
+            parsed, paths, _ = self._read_episode(directory, root, episode)
+            parsed["docs"] = paths
+            parsed["media"] = self._episode_media(directory, root, episode, parsed)
+        return parsed
+
+    def _creator_status(self, directory: Directory, root: Path) -> dict[str, Any]:
+        status = directory.status(self.project_tool, str(root))
+        return {field: status.get(field) for field in CREATOR_STATUS_FIELDS}
+
+    def series(self, project_id: str) -> dict[str, Any]:
+        with self._pinned_project(project_id) as (directory, root):
+            status = self._creator_status(directory, root)
+            episode_root, episodes = self._episode_ids(directory)
+            rows: list[dict[str, Any]] = []
+            cast: dict[str, dict[str, Any]] = {}
+            for episode in episodes:
+                assert episode_root is not None
+                files = self._episode_files(directory, episode_root, episode)
+                parsed, paths, _ = self._read_episode(directory, episode_root, episode)
+                has = {
+                    "script": paths[views.SCREENPLAY] is not None,
+                    "settings": paths[views.SETTINGS] is not None,
+                    "board": paths[views.STORYBOARD] is not None,
+                    "imgp": paths[views.IMAGE_PROMPTS] is not None,
+                    "vidp": paths[views.VIDEO_PROMPTS] is not None,
+                    "cut": paths[views.CUT_LIST] is not None,
+                    "film": self._media_available(
+                        directory, f"{episode_root}/{episode}/{views.FILM}"
+                    ),
+                    "review": paths["review"] is not None,
+                }
+                creator_documents = any(files.get(name) for name in views.CREATOR_DOCUMENTS)
+                legacy = not creator_documents and any(
+                    PurePosixPath(name).name in LEGACY_EPISODE_FILES for name in files
+                )
+                findings = (parsed.get("review") or {}).get("findings", [])
+                musts = [item for item in findings if item["sev"] == "must"]
+                rows.append(
+                    {
+                        "id": episode,
+                        "title": parsed["title"],
+                        "has": has,
+                        "legacy": legacy,
+                        "shots": parsed["metrics"]["shots"],
+                        "seconds": parsed["metrics"]["seconds"],
+                        "cutSeconds": (parsed.get("cutlist") or {}).get("seconds"),
+                        "review": views.review_counts(parsed.get("review")),
+                        "must": [
+                            {"id": item["id"], "title": item["title"]} for item in musts
+                        ],
+                        "problems": len(parsed["problems"]),
+                    }
+                )
+                for item in (parsed.get("settings") or {}).get("items", []):
+                    if item["cat"] != "人物" or item["name"] in cast:
+                        continue
+                    shots = [
+                        shot["id"]
+                        for shot in (parsed.get("board") or {}).get("shots", [])
+                        if any(entry["name"] == item["name"] for entry in shot["basis"])
+                    ]
+                    cast[item["name"]] = {
+                        "name": item["name"],
+                        "ep": episode,
+                        "desc": item["desc"][0] if item["desc"] else "",
+                        "shots": len(shots),
+                    }
+        rhythm = status.get("rhythm_profile") or None
+        return {
+            "title": status.get("title"),
+            "format": status.get("format") or {},
+            "rhythm": rhythm,
+            "lifecycle": status.get("lifecycle"),
+            "episodes": rows,
+            "cast": list(cast.values()),
+        }
+
+    def search(
+        self, project_id: str, query: str, scope: str, episode: str | None
+    ) -> dict[str, Any]:
+        query = query.strip()
+        if len(query) > MAX_SEARCH_QUERY:
+            raise DashboardError(HTTPStatus.BAD_REQUEST, "search query is too long")
+        if scope not in ("ep", "series"):
+            raise DashboardError(HTTPStatus.BAD_REQUEST, "unknown search scope")
+        if scope == "ep" and (episode is None or views.EPISODE_ID_RE.fullmatch(episode) is None):
+            raise DashboardError(HTTPStatus.BAD_REQUEST, "unknown episode")
+        rows: list[dict[str, Any]] = []
+        with self._pinned_project(project_id) as (directory, _root):
+            root, episodes = self._episode_ids(directory)
+            wanted = [episode] if scope == "ep" else episodes
+            for name in wanted:
+                if root is None or name not in episodes:
+                    continue
+                parsed, _, _ = self._read_episode(directory, root, str(name))
+                rows.extend(views.search_entries(parsed))
+        return {"query": query, "scope": scope, "hits": views.search(rows, query)}
+
     def media_info(self, project_id: str, relative: str) -> dict[str, Any]:
         pure = self._safe_relative(relative)
         with self._pinned_project(project_id) as (directory, _root):
@@ -1182,6 +1486,32 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if path == "/api/tree":
                 self._json(
                     HTTPStatus.OK, self.server.store.tree(self._one(query, "project"))
+                )
+                return
+            if path == "/api/series":
+                self._json(
+                    HTTPStatus.OK, self.server.store.series(self._one(query, "project"))
+                )
+                return
+            if path == "/api/episode":
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.store.episode(
+                        self._one(query, "project"), self._one(query, "ep")
+                    ),
+                )
+                return
+            if path == "/api/search":
+                scope = (query.get("scope") or ["ep"])[0]
+                episode = query["ep"][0] if query.get("ep") else None
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.store.search(
+                        self._one(query, "project"),
+                        (query.get("q") or [""])[0],
+                        scope,
+                        episode,
+                    ),
                 )
                 return
             if path == "/api/file":
