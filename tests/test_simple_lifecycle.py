@@ -742,7 +742,7 @@ class SimpleLifecycleTests(unittest.TestCase):
         # out-of-range profile must not land; a missing one means "do not check".
         profile = {
             "form": "motion_comic",
-            "first_hook_seconds": 3,
+            "first_hook_seconds": 5,
             "beat_interval_seconds_max": 30,
             "opposed_reversals_per_episode_min": 1,
             "end_on_peak": True,
@@ -757,9 +757,25 @@ class SimpleLifecycleTests(unittest.TestCase):
             {"decision_id": "CD-RHYTHM", "accepted_value": profile},
             {
                 "decision_id": "CD-RHYTHM-PARTIAL",
-                "accepted_value": {"form": "ai_live_action", "first_hook_seconds": 3},
+                "accepted_value": {"form": "ai_live_action", "first_hook_seconds": 5},
             },
             {"decision_id": "CD-RHYTHM-SHARE", "accepted_value": {**profile, "vo_share_max": 1.5}},
+            {
+                "decision_id": "CD-RHYTHM-NAN",
+                "accepted_value": {**profile, "close_shot_share_min": float("nan")},
+            },
+            {
+                "decision_id": "CD-RHYTHM-INF",
+                "accepted_value": {**profile, "target_avg_shot_seconds": float("inf")},
+            },
+            {
+                "decision_id": "CD-RHYTHM-BOOL",
+                "accepted_value": {**profile, "first_hook_seconds": True},
+            },
+            {
+                "decision_id": "CD-RHYTHM-FLOAT-COUNT",
+                "accepted_value": {**profile, "opposed_reversals_per_episode_min": 1.5},
+            },
             {"decision_id": "CD-RHYTHM-FORM", "accepted_value": {**profile, "form": "anime"}},
             {"decision_id": "CD-RHYTHM-EXTRA", "accepted_value": {**profile, "hooks_per_minute": 4}},
             {"decision_id": "CD-VO", "accepted_value": 0.6, "field": f"{pointer}/vo_share_max"},
@@ -803,14 +819,21 @@ class SimpleLifecycleTests(unittest.TestCase):
             for decision_id, reason in (
                 ("CD-RHYTHM-PARTIAL", "beat_interval_seconds_max is missing"),
                 ("CD-RHYTHM-SHARE", "vo_share_max must be a share"),
+                ("CD-RHYTHM-NAN", "close_shot_share_min must be a share"),
+                ("CD-RHYTHM-INF", "target_avg_shot_seconds must be a positive"),
+                ("CD-RHYTHM-BOOL", "first_hook_seconds must be a positive"),
+                ("CD-RHYTHM-FLOAT-COUNT", "opposed_reversals_per_episode_min must be a whole"),
                 ("CD-RHYTHM-FORM", "form must be"),
                 ("CD-RHYTHM-EXTRA", "no field hooks_per_minute"),
             ):
-                with self.assertRaisesRegex(ValueError, reason):
-                    bind(decision_id)
-                self.assertEqual(manifest.read_bytes(), before)
-            with self.assertRaisesRegex(ValueError, "declares no"):
+                with self.subTest(decision_id=decision_id):
+                    with self.assertRaisesRegex(ValueError, reason):
+                        bind(decision_id)
+                    self.assertEqual(manifest.read_bytes(), before)
+            # One field cannot be written into a profile nobody accepted yet.
+            with self.assertRaisesRegex(ValueError, "not accepted"):
                 bind("CD-VO", f"{pointer}/vo_share_max")
+            self.assertEqual(manifest.read_bytes(), before)
 
             bind("CD-RHYTHM")
             self.assertEqual(project_tool.project_status(root)["rhythm_profile"], profile)
@@ -824,6 +847,55 @@ class SimpleLifecycleTests(unittest.TestCase):
             proposed["creator_authority"]["rhythm_profile"]["status"] = "proposed"
             project_tool.atomic_json(manifest, proposed)
             self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
+            # A leaf write would accept the block it lands in: a complete but
+            # proposed profile must not become accepted through one field.
+            proposed_bytes = manifest.read_bytes()
+            with self.assertRaisesRegex(ValueError, "not accepted"):
+                bind("CD-VO", f"{pointer}/vo_share_max")
+            self.assertEqual(manifest.read_bytes(), proposed_bytes)
+
+    def test_status_declares_no_rhythm_profile_when_an_accepted_one_is_invalid(self) -> None:
+        # A hand edit can leave an accepted profile holding values downstream
+        # arithmetic cannot use; status must not hand them on as declared.
+        profile = {
+            "status": "accepted",
+            "form": "ai_live_action",
+            "first_hook_seconds": 5,
+            "beat_interval_seconds_max": 30,
+            "opposed_reversals_per_episode_min": 1,
+            "end_on_peak": True,
+            "reprise_previous_last_beat": True,
+            "vo_share_max": 0.3,
+            "target_avg_shot_seconds": 2.5,
+            "close_shot_share_min": 0.45,
+            "first_major_payoff_by_episode": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            manifest = root / "short-drama.json"
+            project = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(project["creator_authority"]["rhythm_profile"], {"status": "unset"})
+            self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
+            for field, value in (
+                (None, None),
+                ("vo_share_max", "x"),
+                ("first_hook_seconds", True),
+            ):
+                with self.subTest(field=field):
+                    edited = dict(profile)
+                    if field is not None:
+                        edited[field] = value
+                    project["creator_authority"]["rhythm_profile"] = edited
+                    project_tool.atomic_json(manifest, project)
+                    status = project_tool.project_status(root)
+                    if field is None:
+                        expected = {k: v for k, v in profile.items() if k != "status"}
+                        self.assertEqual(status["rhythm_profile"], expected)
+                        self.assertEqual(status["rhythm_profile_problems"], [])
+                    else:
+                        self.assertEqual(status["rhythm_profile"], {})
+                        self.assertEqual(len(status["rhythm_profile_problems"]), 1)
+                        self.assertIn(field, status["rhythm_profile_problems"][0])
 
     def test_set_authority_writes_only_through_an_accepted_decision(self) -> None:
         decisions = [

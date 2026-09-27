@@ -319,17 +319,22 @@ def rhythm_profile_problems(profile: Any) -> list[str]:
     return problems
 
 
-def project_rhythm_profile(project: Mapping[str, Any]) -> dict[str, Any]:
-    """The accepted rhythm profile values, or {} when none is accepted.
+def project_rhythm_profile(project: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The accepted rhythm profile values and the problems that void them.
 
     A missing, unset or merely proposed profile is undeclared: nothing
-    downstream checks against it.
+    downstream checks against it. An accepted profile that no longer passes
+    validation (a hand edit) is reported with its problems and declares
+    nothing either, since arithmetic on a bad value is a wrong number.
     """
     authority = project.get("creator_authority")
     profile = authority.get("rhythm_profile") if isinstance(authority, Mapping) else None
     if not isinstance(profile, Mapping) or profile.get("status") != "accepted":
-        return {}
-    return {name: profile[name] for name in RHYTHM_PROFILE_FIELDS if name in profile}
+        return {}, []
+    problems = rhythm_profile_problems(profile)
+    if problems:
+        return {}, problems
+    return {name: profile[name] for name in RHYTHM_PROFILE_FIELDS}, []
 
 
 def initialize_project(
@@ -985,6 +990,7 @@ def _build_status(
                     ownership[output] = owner
     languages = project_languages(project)
     video_model_profile = project_video_model_profile(project)
+    rhythm_profile, rhythm_problems = project_rhythm_profile(project)
     return {
         "project_id": project.get("project_id"),
         "title": project.get("title"),
@@ -992,7 +998,8 @@ def _build_status(
         "prompt_language": languages["prompt_language"],
         "video_prompt_language": languages["video_prompt_language"],
         "video_model_profile": video_model_profile,
-        "rhythm_profile": project_rhythm_profile(project),
+        "rhythm_profile": rhythm_profile,
+        "rhythm_profile_problems": rhythm_problems,
         "project_root": project_root,
         "last_action": state.get("last_action"),
         "layout": dict(layout),
@@ -1625,9 +1632,19 @@ def set_creator_authority(
             raise ValueError("project manifest must be an object")
         rhythm = tokens[:2] == RHYTHM_PROFILE_TOKENS
         authority = project.get(AUTHORITY_ROOT_TOKEN)
+        if rhythm and len(tokens) > 2:
+            # Writing one field accepts the block it sits in, so a leaf write
+            # into a proposed or unset profile would promote numbers nobody
+            # accepted. A single value can only change an accepted profile.
+            current = authority.get("rhythm_profile") if isinstance(authority, dict) else None
+            if not isinstance(current, Mapping) or current.get("status") != "accepted":
+                raise ValueError(
+                    "rhythm_profile is not accepted; accept the whole profile "
+                    "before changing one of its fields"
+                )
         if rhythm and isinstance(authority, dict) and "rhythm_profile" not in authority:
-            # Manifests created before the profile existed have no slot; the
-            # suite declares it, so the first accepted profile creates it.
+            # The project template declares this slot as unset; a manifest made
+            # from an older template lacks it, so a whole-profile write adds it.
             authority["rhythm_profile"] = {"status": "unset"}
         written = _write_authority_value(project, tokens, value)
         if rhythm:

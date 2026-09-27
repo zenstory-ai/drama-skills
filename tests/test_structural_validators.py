@@ -441,10 +441,10 @@ class SpokenDurationTests(unittest.TestCase):
 
     VO_HEAVY = "[VO] 葛晴：我知道他在撒谎。\n\n葛晴：你走吧。\n"
 
-    def with_rhythm_profile(self, status: str) -> dict[str, Any]:
+    def with_rhythm_profile(self, status: str, ceiling: Any = 0.3) -> dict[str, Any]:
         project = json.loads(json.dumps(self.PROJECT))
         project["creator_authority"] = {
-            "rhythm_profile": {"status": status, "vo_share_max": 0.3}
+            "rhythm_profile": {"status": status, "vo_share_max": ceiling}
         }
         return project
 
@@ -464,6 +464,27 @@ class SpokenDurationTests(unittest.TestCase):
         )
         self.assertNotIn("vo_share", proposed)
         self.assertNotIn("vo_share", self.measure(self.VO_HEAVY))
+
+    def test_a_ceiling_that_is_not_a_share_compares_nothing(self) -> None:
+        """A hand edit can put NaN or 5 where a share belongs; neither is a cap."""
+
+        for ceiling in (float("nan"), 5, float("inf"), -0.1):
+            with self.subTest(ceiling=ceiling):
+                report = self.measure(
+                    self.VO_HEAVY, project=self.with_rhythm_profile("accepted", ceiling)
+                )
+                self.assertNotIn("vo_share", report)
+
+    def test_an_off_screen_line_is_speech_but_not_voice_over(self) -> None:
+        """[OS] is in-scene dialogue from off frame, not narration or inner voice."""
+
+        report = self.measure(
+            "[OS] 船员：关窗，水进来了！\n\n[VO] 葛晴：我知道他在撒谎。\n",
+            project=self.with_rhythm_profile("accepted"),
+        )
+        self.assertEqual(report["counts"]["dialogue_characters"], 16)
+        self.assertEqual(report["counts"]["voiceover_characters"], 8)
+        self.assertEqual(report["vo_share"]["share"], 0.5)
 
     def test_an_index_built_from_other_bytes_is_refused(self) -> None:
         """Stale spans land on text the index never classified."""

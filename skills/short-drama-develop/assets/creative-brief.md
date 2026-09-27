@@ -33,7 +33,7 @@
 - **项目节奏档案（候选）**：【按制作形态从分集设计的默认值起步；改了哪项写一句理由。创作者接受后写入项目配置】
 
 ```json
-{"status": "proposed", "form": "ai_live_action", "first_hook_seconds": 3, "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1, "end_on_peak": true, "reprise_previous_last_beat": true, "vo_share_max": 0.3, "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45, "first_major_payoff_by_episode": 1}
+{"status": "proposed", "form": "ai_live_action", "first_hook_seconds": 5, "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1, "end_on_peak": true, "reprise_previous_last_beat": true, "vo_share_max": 0.3, "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45, "first_major_payoff_by_episode": 1}
 ```
 
 ## 4. 戏剧承诺（工作版）

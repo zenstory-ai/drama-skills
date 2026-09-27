@@ -44,8 +44,8 @@
 
 Under the `REV-12` conditions in the [story rubric](rubric-story-script.md#rhythm-profile-rev-12),
 measure two storyboard fields: the average shot length per scene (scene duration divided
-by its shot count) against `target_avg_shot_seconds`, and the share of 近景, 特写, 大特写,
-and detail shots across the episode against `close_shot_share_min`. The average is a
+by its shot count) against `target_avg_shot_seconds`, and the share of close-range shots
+across the episode, as the profile field defines them, against `close_shot_share_min`. The average is a
 scene-level target; one long or short shot is not a finding. Also report durations folded
 from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
 

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -195,6 +196,9 @@ def accepted_vo_share(
 ) -> dict[str, Any] | None:
     """The [VO] share of spoken characters against an accepted ceiling.
 
+    [OS] is off-screen dialogue inside the scene, not narration or inner
+    voice, so it counts as spoken but not as voice-over.
+
     Only a rhythm profile the creator accepted carries a ceiling; a missing or
     proposed one declares nothing, so nothing is compared. The comparison is
     reported, never enforced: the creator may keep an episode over its own cap.
@@ -205,6 +209,10 @@ def accepted_vo_share(
         return None
     ceiling = profile.get("vo_share_max")
     if isinstance(ceiling, bool) or not isinstance(ceiling, (int, float)):
+        return None
+    if not (math.isfinite(ceiling) and 0 <= ceiling <= 1):
+        # A hand-edited ceiling outside a share is no ceiling: comparing
+        # against NaN or 5 reports a verdict nobody accepted.
         return None
     spoken = counts["dialogue_characters"]
     if not spoken:
