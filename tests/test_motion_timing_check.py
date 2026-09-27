@@ -58,8 +58,8 @@ class MotionTimingCheckTests(unittest.TestCase):
     def test_a_gap_and_an_overrun_that_cancel_out_are_both_reported(self) -> None:
         # 0.0-2.0 plus 3.0-5.0 occupies exactly 4.0s of a 4.0s shot, so any
         # check that compares one total against the duration calls it clean —
-        # while a second is truncated off the end and the 2-3s window gets
-        # filled with unsourced motion.
+        # while a second is truncated off the end and the 2-3s window is
+        # left unallocated.
         result = self.check([spec("M-1", "SHOT-1", ["0.0-2.0", "3.0-5.0"])])
 
         self.assertEqual(
@@ -80,11 +80,9 @@ class MotionTimingCheckTests(unittest.TestCase):
         self.assertEqual(codes(result), ["VID_EXPLICIT_TIMING_SHORTFALL"])
         self.assertAlmostEqual(result["findings"][0]["unallocated_seconds"], 2.0)
 
-    def test_shortfall_is_reported_because_the_remainder_is_filled_unsourced(
-        self,
-    ) -> None:
-        # The direction that used to be argued away as harmless: an unallocated
-        # remainder does not render as a held frame.
+    def test_segments_ending_before_the_shot_does_are_a_shortfall(self) -> None:
+        # The direction that used to be argued away as harmless: the written
+        # action stretches over the remainder, so the plan's seconds drift.
         result = self.check([spec("M-1", "SHOT-2", ["0.0-2.0", "2.0-4.0"])])
 
         self.assertEqual(codes(result), ["VID_EXPLICIT_TIMING_SHORTFALL"])

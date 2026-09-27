@@ -91,7 +91,7 @@ python3 {技能目录}/scripts/project_tool.py set-authority <project> \
   --decision-ref "创作者决策/production-profile.jsonl#CD-H3"
 ```
 
-各字段取值由命中的模型方言给出：`$short-drama-video-prompts` 的 MiniMax H3 / Seedance 方言文件都写了
+各字段取值由命中的模型方言给出：`$short-drama-video-prompts` 的 MiniMax H3 / Seedance / Wan 3.0 方言文件都写了
 推荐档案。写完用 `status` 复核 `video_model_profile` 是否已经出现。
 
 项目定位与安全写入见 [运行预检](references/runtime-preflight.md)。用户明确要求 Dashboard 时运行：

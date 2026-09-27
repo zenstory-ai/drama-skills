@@ -142,7 +142,7 @@
 2.6–4.0s：说完后停住，右手仍握笔，落到 accepted end
 ```
 
-区间不可无意重叠；显式非重叠总量/最大终点不得超 duration。总量小于 duration 时也要处理：把余量分配给已有阶段或补一个有内容的收尾段，未分配的秒数会被执行端用自选动作填满（见 [motion-recipe.md](motion-recipe.md) 3.6）。不要为了塞进数学窗口而静默删掉 exact dialogue。
+区间不可无意重叠；显式非重叠总量/最大终点不得超 duration。总量小于 duration 时也要处理：把余量分配给已有阶段（原因见 [motion-recipe.md](motion-recipe.md) 3.6）。不要为了塞进数学窗口而静默删掉 exact dialogue。
 
 ### 对白预算
 

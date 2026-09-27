@@ -108,6 +108,7 @@ EXPECTED_KNOWHOW = {
         "seedance-2.5.md",
         "stage-contract.md",
         "target-model-profile.md",
+        "wan-3.0.md",
     },
     "short-drama-review": {
         "anti-template-repair.md",

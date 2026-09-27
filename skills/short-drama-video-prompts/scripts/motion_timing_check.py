@@ -7,9 +7,10 @@ differently:
 * **Overflow** — segments extend past the accepted duration. Whatever falls
   outside is truncated, taking the closing action, the verbatim dialogue tail
   and the end pose with it.
-* **Shortfall** — segments stop short. The unallocated remainder does not
-  render as a held frame; the execution end fills it with motion, expression or
-  camera movement that has no upstream source at all.
+* **Shortfall** — segments stop short. The execution end does not stop or
+  hold at the last written mark; it stretches the written action to fill the
+  shot, so every written second lands later than planned and the plan no
+  longer describes the output.
 
 Both are the same rule, so both are reported under the same ID with distinct
 diagnostic codes. Relative timing plans are out of scope by contract: only a
@@ -327,8 +328,8 @@ def check(
         # purpose. Comparing one total against the duration hides the plan that
         # commits both at once: 0.0-2.0 plus 3.0-5.0 covers exactly 4.0s of a
         # 4.0s shot, so the totals match — while a segment runs a second past
-        # the end (truncated) and the 2-3s window sits unallocated (filled with
-        # unsourced motion). Overflow is therefore read off the endpoint, and
+        # the end (truncated) and the 2-3s window sits unallocated (the written
+        # action stretches over it). Overflow is therefore read off the endpoint, and
         # shortfall off the union clipped to the shot.
         covered = _union_length(ordered)
         # max(), not ordered[-1][1]: sorting (start, end) tuples orders by
@@ -365,8 +366,8 @@ def check(
                     "VID_EXPLICIT_TIMING_SHORTFALL",
                     motion_id,
                     f"explicit timing leaves {round(unallocated, 6)}s of an accepted "
-                    f"{duration}s shot unallocated; the remainder will be filled with "
-                    "unsourced motion",
+                    f"{duration}s shot unallocated; the written action will be stretched "
+                    "to fill it, so the written seconds will not be where it lands",
                     accepted_duration_seconds=duration,
                     allocated_seconds=round(inside, 6),
                     unallocated_seconds=round(unallocated, 6),
