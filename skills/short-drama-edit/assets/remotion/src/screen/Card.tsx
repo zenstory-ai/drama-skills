@@ -3,7 +3,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { COLOURS, MONO, SANS, StyleProps, TOP_U, entrance, exit, unit } from "./tokens";
 
 /**
- * "微博 2" → name 微博, value 2; "微博 粉丝 2" adds 粉丝 as a small unit before
+ * "主号 2" → name 主号, value 2; "主号 粉丝 2" adds 粉丝 as a small unit before
  * the value. A row with one word is all name.
  */
 const splitRow = (row: string): { name: string; unit: string; value: string } => {

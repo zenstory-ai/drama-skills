@@ -20,7 +20,7 @@ SCREENPLAY = """# EP001
 
 ## EP001-SC001 内 · 办公室 · 日
 
-[画面文字] 微博 2　破站 1　短视频 0
+[画面文字] 主号 2　小号 1　短视频 0
 
 周团：十几个号，粉丝加起来，没号多。
 
@@ -74,13 +74,13 @@ class ScreenTextParsingTests(unittest.TestCase):
     def test_lines_parse_into_style_items_and_countdown(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Project(Path(directory), [[
-                "- 画面文字 1：0.00-1.40 卡片 微博 2｜破站 1",
+                "- 画面文字 1：0.00-1.40 卡片 主号 2｜小号 1",
                 "- 画面文字 2：1.50-3.00 任务面板 军宣新星｜5 天内粉丝破 1,000,000（倒计时：431998）",
                 "- 画面文字 3：1.50-3.00 角标 剩余（倒计时：接续）",
             ]])
             texts = project.parse()[0].screen_texts
             self.assertEqual([t.style for t in texts], ["卡片", "任务面板", "角标"])
-            self.assertEqual(texts[0].items, ("微博 2", "破站 1"))
+            self.assertEqual(texts[0].items, ("主号 2", "小号 1"))
             self.assertEqual((texts[1].countdown, texts[1].resume), (431998.0, False))
             self.assertEqual((texts[2].countdown, texts[2].resume), (None, True))
             self.assertEqual(project.findings(), [])
@@ -88,19 +88,19 @@ class ScreenTextParsingTests(unittest.TestCase):
     def test_malformed_lines_are_refused_at_parse(self):
         refused = {
             "same slot overlaps": [
-                "- 画面文字 1：0.00-2.00 卡片 微博 2",
+                "- 画面文字 1：0.00-2.00 卡片 主号 2",
                 "- 画面文字 2：1.50-3.00 系统面板 军宣新星",
             ],
-            "countdown on a card": ["- 画面文字：0.00-2.00 卡片 微博 2（倒计时：60）"],
-            "unknown style": ["- 画面文字：0.00-2.00 弹幕 微博 2"],
-            "empty item": ["- 画面文字：0.00-2.00 卡片 微博 2｜｜破站 1"],
+            "countdown on a card": ["- 画面文字：0.00-2.00 卡片 主号 2（倒计时：60）"],
+            "unknown style": ["- 画面文字：0.00-2.00 弹幕 主号 2"],
+            "empty item": ["- 画面文字：0.00-2.00 卡片 主号 2｜｜小号 1"],
             "numbering gap": [
-                "- 画面文字 1：0.00-1.00 卡片 微博 2",
-                "- 画面文字 3：1.00-2.00 卡片 破站 1",
+                "- 画面文字 1：0.00-1.00 卡片 主号 2",
+                "- 画面文字 3：1.00-2.00 卡片 小号 1",
             ],
             "plain and numbered": [
-                "- 画面文字：0.00-1.00 卡片 微博 2",
-                "- 画面文字 1：1.00-2.00 卡片 破站 1",
+                "- 画面文字：0.00-1.00 卡片 主号 2",
+                "- 画面文字 1：1.00-2.00 卡片 小号 1",
             ],
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -110,6 +110,24 @@ class ScreenTextParsingTests(unittest.TestCase):
                     project.write([lines])
                     with self.assertRaises(edit.EditError):
                         project.parse()
+
+    def test_a_field_written_twice_in_one_cut_is_refused(self):
+        repeated = {
+            "subtitle": ["- 字幕：五天，一百万？", "- 字幕：发布任务，军宣新星。"],
+            "screen text": ["- 画面文字：0.00-1.00 卡片 主号 2", "- 画面文字：1.00-2.00 卡片 小号 1"],
+            "sound effect": ["- 音效：0.00-1.00 media/1.mp4", "- 音效：1.00-2.00 media/1.mp4"],
+            "same number": ["- 字幕 1：0.00-1.00 五天，一百万？", "- 字幕 1：1.00-2.00 五天，一百万？"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[]])
+            for name, lines in repeated.items():
+                with self.subTest(name):
+                    project.write([lines])
+                    with self.assertRaises(edit.EditError):
+                        project.parse()
+            # The same fields in two different cuts are two cuts, not a repeat.
+            project.write([[line] for line in repeated["subtitle"]])
+            self.assertEqual(len(project.parse()), 2)
 
     def test_a_panel_and_the_corner_chip_may_share_a_moment(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,11 +139,11 @@ class ScreenTextParsingTests(unittest.TestCase):
 
     def test_check_reports_range_trace_and_orphan_countdown(self):
         cases = {
-            "past the cut": "- 画面文字：1.00-3.50 卡片 微博 2",
-            "reversed": "- 画面文字：2.00-1.00 卡片 微博 2",
+            "past the cut": "- 画面文字：1.00-3.50 卡片 主号 2",
+            "reversed": "- 画面文字：2.00-1.00 卡片 主号 2",
             # Dialogue is in the screenplay, but not on a [画面文字] line.
             "dialogue, not screen text": "- 画面文字：0.00-1.00 卡片 粉丝加起来",
-            "invented": "- 画面文字：0.00-1.00 卡片 微博 200",
+            "invented": "- 画面文字：0.00-1.00 卡片 主号 200",
             "resume with nothing before": "- 画面文字：0.00-1.00 角标 剩余（倒计时：接续）",
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -134,7 +152,7 @@ class ScreenTextParsingTests(unittest.TestCase):
                 with self.subTest(name):
                     project.write([[line]])
                     self.assertEqual(len(project.findings()), 1, project.findings())
-            project.write([["- 画面文字：0.00-1.00 卡片 微博 2｜破站 1"]])
+            project.write([["- 画面文字：0.00-1.00 卡片 主号 2｜小号 1"]])
             self.assertEqual(project.findings(), [])
 
     def test_resume_is_satisfied_by_a_countdown_in_an_earlier_cut(self):
@@ -154,7 +172,7 @@ class ScreenTextParsingTests(unittest.TestCase):
 class ScreenTextPlacementTests(unittest.TestCase):
     def blocks(self):
         return [
-            ["- 画面文字：0.50-2.50 卡片 微博 2｜破站 1"],
+            ["- 画面文字：0.50-2.50 卡片 主号 2｜小号 1"],
             [
                 "- 画面文字 1：1.00-2.00 任务面板 军宣新星（倒计时：431998）",
                 "- 画面文字 2：2.00-3.00 角标 剩余（倒计时：接续）",
@@ -214,13 +232,13 @@ class ScreenTextPlacementTests(unittest.TestCase):
             ])
             # Traced without the suffix, so it is found in the [画面文字] line.
             self.assertEqual(project.findings(), [])
-            project.write([["- 画面文字：0.00-2.00 卡片 微博 2（传说）"]])
+            project.write([["- 画面文字：0.00-2.00 卡片 主号 2（传说）"]])
             with self.assertRaises(edit.EditError):
                 project.parse()
 
     def test_missing_remotion_fails_with_the_install_command(self):
         layer = {"start": 0.0, "end": 1.0, "style": "card",
-                 "items": [{"text": "微博 2", "rarity": None}], "countdown": None}
+                 "items": [{"text": "主号 2", "rarity": None}], "countdown": None}
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory) / "workspace"
             # Nothing installed, and then Remotion without the font packages.
@@ -242,7 +260,7 @@ class ScreenTextPlacementTests(unittest.TestCase):
             project = Project(Path(directory), [[
                 "- 字幕 1：0.20-1.40 十几个号，粉丝加起来，没号多。",
                 "- 字幕 2：1.50-2.90 发布任务，军宣新星。（重点：军宣新星）",
-                "- 画面文字：0.00-1.40 卡片 微博 2",
+                "- 画面文字：0.00-1.40 卡片 主号 2",
             ]])
             cuts = project.parse()
             commands = []
@@ -281,7 +299,7 @@ class VerifyPlacementTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Project(Path(directory), [
                 ["- 画面文字：0.00-3.00 任务面板 军宣新星（倒计时：60）"],
-                ["- 画面文字：0.50-1.00 卡片 微博 2", "- 音效：0.50-1.00 media/1.mp4"],
+                ["- 画面文字：0.50-1.00 卡片 主号 2", "- 音效：0.50-1.00 media/1.mp4"],
             ])
             cuts = project.parse()
         self.assertEqual(
@@ -291,6 +309,16 @@ class VerifyPlacementTests(unittest.TestCase):
         placed = edit._placements_for_sampling(cuts, [3.1, 3.0])
         self.assertEqual([(p["起"], p["止"]) for p in placed["画面文字落点"]], [(0.0, 3.1), (3.6, 4.1)])
         self.assertEqual([(p["起"], p["止"]) for p in placed["音效落点"]], [(3.6, 4.1)])
+
+
+    def test_verify_reports_an_orphan_resume_instead_of_stopping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [["- 画面文字：0.00-1.00 角标 剩余（倒计时：接续）"]])
+            cuts = project.parse()
+        placed = edit._placements_for_sampling(cuts, [3.0])
+        self.assertTrue(placed["画面文字落点"].startswith("未测"), placed)
+        frames = [bytes([100]) * 16] * 30
+        self.assertEqual(edit._frame_report(frames, 10.0, cuts, [3.0], [None])["疑似坏帧"], [])
 
 
 class SubtitleDisplayTests(unittest.TestCase):
@@ -331,6 +359,27 @@ class SubtitleDisplayTests(unittest.TestCase):
         # A short line with a question inside stays whole.
         self.assertEqual(edit._split_display("五天　一百万？"), ["五天　一百万？"])
 
+    def test_a_highlighted_word_is_never_split_and_matches_its_burned_form(self):
+        cases = {
+            # The even split would fall between 看不 and 起.
+            "split point": ("我要让所有看不起我的人都后悔。", "看不起", "看不起"),
+            # The pause inside the word is burned as a full-width space.
+            "pause inside": ("给你十万，现金。", "十万，现金", "十万　现金"),
+            # A pause inside the word is not a place to break the line either.
+            "pause at the break": ("上辈子我手里有十几个百万大号，死在公司上市前一个月。",
+                                   "百万大号，死在", "百万大号　死在"),
+        }
+        for name, (line, word, burned) in cases.items():
+            with self.subTest(name):
+                cues = edit._display_cues([(0.0, 3.0, line, (word,))])
+                self.assertTrue(all(edit._visible(c.text) <= edit.SUBTITLE_MAX_VISIBLE for c in cues))
+                self.assertEqual("　".join(c.text for c in cues).replace("　", ""),
+                                 edit._display_line(line).replace("　", ""))
+                self.assertEqual([c.keys for c in cues if c.keys], [(burned,)])
+                self.assertIn(burned, next(c.text for c in cues if c.keys))
+        with self.assertRaises(edit.EditError):
+            edit._display_cues([(0.0, 1.0, "五天，一百万？", ("一千万",))])
+
     def test_colour_kind_comes_from_the_screenplay_line_quoted(self):
         screenplay = (
             "周团：十几个号，粉丝加起来，没号多。\n"
@@ -352,9 +401,11 @@ class SubtitleDisplayTests(unittest.TestCase):
             subtitle = project.parse()[0].subtitles[0]
             self.assertEqual((subtitle[2], subtitle[3]), ("五天，一百万？", ("一百万", "五天")))
             self.assertEqual(project.findings(), [])
-            project.write([["- 字幕：五天，一百万？（重点：一千万）"]])
-            with self.assertRaises(edit.EditError):
-                project.parse()
+            for stray in ("一千万", "，"):
+                with self.subTest(stray):
+                    project.write([[f"- 字幕：五天，一百万？（重点：{stray}）"]])
+                    with self.assertRaises(edit.EditError):
+                        project.parse()
 
     def test_the_cut_list_still_quotes_the_screenplay_with_its_punctuation(self):
         with tempfile.TemporaryDirectory() as directory:

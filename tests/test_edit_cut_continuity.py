@@ -46,7 +46,10 @@ class ShotMatchTests(unittest.TestCase):
             match = plan[cut_id]
             after_mean = before.mean[0] * match.gains[0] + match.offsets[0]
             self.assertAlmostEqual(after_mean, before.mean[0] + 0.7 * (120 - before.mean[0]))
-        self.assertIn("lutrgb=r='val*1.1750-3.500'", edit._auto_match_filter(plan["A"]))
+        # Gains and offsets are on the 0-255 scale they were measured on, so the
+        # lookup has to run on 8-bit RGB whatever the source's bit depth.
+        self.assertTrue(edit._auto_match_filter(plan["A"]).startswith(
+            "format=rgb24,lutrgb=r='val*1.1750-3.500'"))
 
     def test_gain_is_held_to_a_plausible_grade_for_a_flat_clip(self):
         cuts = [cut("A"), cut("B")]
@@ -65,7 +68,7 @@ class ShotMatchTests(unittest.TestCase):
         self.assertAlmostEqual(plan["A"].offsets[0], 0.7 * 20)
         self.assertEqual(filters[1], "eq=brightness=0.05")
         self.assertEqual(filters[2], "")
-        self.assertTrue(filters[0].startswith("lutrgb=") and filters[3].startswith("lutrgb="))
+        self.assertTrue("lutrgb=" in filters[0] and "lutrgb=" in filters[3])
 
         off, plan = edit._picture_plan(cuts, [S1] * 4, lambda c: measured[c.cut_id], enabled=False)
         self.assertEqual(plan, {})
@@ -171,17 +174,25 @@ class FrameReportTests(unittest.TestCase):
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class RenderedMatchTests(unittest.TestCase):
     def test_render_narrows_a_within_scene_jump_and_verify_measures_it(self):
+        # A 10-bit source must be corrected by the same amount as an 8-bit one.
+        for pixel_format in ("yuv420p", "yuv420p10le"):
+            with self.subTest(pixel_format):
+                self.render_and_measure(pixel_format)
+
+    def render_and_measure(self, pixel_format):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             episode = root / "剧集" / "EP001"
             (episode / "media").mkdir(parents=True)
             for index, level in ((1, "0x505050"), (2, "0x8C8C8C")):
-                subprocess.run(
+                made = subprocess.run(
                     ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
                      "-i", f"color=c={level}:size=90x160:rate=10:duration=1",
-                     str(episode / "media" / f"{index}.mp4")],
-                    check=True,
+                     "-pix_fmt", pixel_format, str(episode / "media" / f"{index}.mp4")],
+                    check=False,
                 )
+                if made.returncode != 0:
+                    self.skipTest(f"this ffmpeg cannot write {pixel_format}")
             (episode / edit.MOTION_DOCUMENT).write_text(
                 "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n", encoding="utf-8"
             )

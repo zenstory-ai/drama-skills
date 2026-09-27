@@ -24,7 +24,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, NamedTuple, Optional, Sequence
+from typing import Any, Callable, NamedTuple, Optional, Sequence, Union
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -355,9 +355,24 @@ def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
             continue
         field = FIELD.match(raw)
         if field:
-            current["fields"][field.group(1).strip()] = (field.group(2).strip(), number)
+            name = field.group(1).strip()
+            if name in current["fields"]:
+                raise EditError(_repeated_field(name, current["cut_id"], number))
+            current["fields"][name] = (field.group(2).strip(), number)
     close(current)
     return _parse_delivery(preamble), cuts, unused
+
+
+def _repeated_field(name: str, cut_id: str, line: int) -> str:
+    """A field written twice in one cut: the second would silently replace the first."""
+
+    where = f"{CUT_LIST_NAME}:{line}: {cut_id} 的「{name}」写了两遍"
+    for pattern, label in (
+        (SUBTITLE_FIELD, "字幕"), (SCREEN_TEXT_FIELD, "画面文字"), (SOUND_EFFECT_FIELD, "音效"),
+    ):
+        if pattern.match(name):
+            return f"{where}；一段有多条{label}时全部编号，且编号不重复：「{label} 1」「{label} 2」…"
+    return f"{where}；这一项一段只写一次"
 
 
 def _finish_cut(pending: dict[str, Any]) -> Cut:
@@ -583,10 +598,12 @@ def _parse_subtitles(
         words = tuple(
             word.strip() for word in marked.group(1).split(SCREEN_TEXT_ITEM_SEPARATOR)
         )
-        stray = [word for word in words if not word or word not in text]
+        stray = [
+            word for word in words if word not in text or not _display_line(word)
+        ]
         if stray:
             raise EditError(
-                f"{CUT_LIST_NAME}:{where}: {cut_id} 的字幕重点词不在这句里: {stray}"
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的字幕重点词不在这句里或只有标点: {stray}"
             )
         return text, words
 
@@ -1194,9 +1211,13 @@ def _plan_shot_match(
 
 
 def _auto_match_filter(match: ShotMatch) -> str:
-    """One `lutrgb` stage; the lookup clips to 0-255 itself."""
+    """One `lutrgb` stage on 8-bit RGB; the lookup clips to 0-255 itself.
 
-    return "lutrgb=" + ":".join(
+    The numbers were measured on a 0-255 scale. Left to negotiate, a 10-bit
+    source runs the lookup at 16 bits a channel and the offsets barely move it.
+    """
+
+    return "format=rgb24,lutrgb=" + ":".join(
         f"{channel}='val*{gain:.4f}{offset:+.3f}'"
         for channel, gain, offset in zip("rgb", match.gains, match.offsets)
     )
@@ -1495,39 +1516,64 @@ def _visible(text: str) -> int:
     return len(re.sub(r"[ 　]", "", text))
 
 
-def _split_display(text: str, limit: int = SUBTITLE_MAX_VISIBLE) -> list[str]:
+def _split_display(
+    text: str, limit: int = SUBTITLE_MAX_VISIBLE, keep: Sequence[str] = ()
+) -> list[str]:
     """Break a displayed line into one-line pieces of at most `limit` characters.
 
     Pieces break at the line's own pauses (the full-width spaces, and after ？！)
     and are packed back together while they fit. A single phrase longer than
     the limit is cut into near-equal parts, which is the only place a break
-    falls where the screenplay has no pause.
+    falls where the screenplay has no pause. No break falls inside a word in
+    `keep`: a highlight is looked up in the piece it lands in, and half a word
+    matches nothing.
     """
 
     if _visible(text) <= limit:
         return [text]
-    phrases = [
-        phrase
-        for part in text.split("　")
-        for phrase in re.findall(r"[^？！?!]+[？！?!]*|[？！?!]+", part)
-    ]
-    pieces: list[str] = []
-    for phrase in phrases:
-        count = _visible(phrase)
-        if count > limit:
-            parts = -(-count // limit)
+    held = {
+        at
+        for word in keep if word
+        for found in re.finditer(re.escape(word), text)
+        for at in range(found.start() + 1, found.end())
+    }
+    phrases: list[tuple[int, int]] = []
+    for found in re.finditer(r"[^　？！?!]+[？！?!]*|[？！?!]+", text):
+        start, end = found.span()
+        if phrases and any(at in held for at in range(phrases[-1][1], start + 1)):
+            phrases[-1] = (phrases[-1][0], end)
+        else:
+            phrases.append((start, end))
+
+    def even_parts(start: int, end: int) -> list[tuple[int, int]]:
+        count = _visible(text[start:end])
+        if count <= limit:
+            return [(start, end)]
+        free = [at for at in range(start + 1, end) if at not in held]
+        first: Optional[list[tuple[int, int]]] = None
+        for parts in range(-(-count // limit), count + 1):
             size = -(-count // parts)
-            pieces.extend(phrase[i:i + size] for i in range(0, len(phrase), size))
+            cuts = [start]
+            for index in range(1, parts):
+                ideal = start + index * size
+                later = [at for at in free if at > cuts[-1]]
+                if not later:
+                    break
+                cuts.append(min(later, key=lambda at: (abs(at - ideal), at)))
+            spans = list(zip(cuts, cuts[1:] + [end]))
+            if all(_visible(text[a:b]) <= limit for a, b in spans):
+                return spans
+            first = first or spans
+        return first or [(start, end)]
+
+    packed: list[tuple[int, int]] = []
+    for start, end in (span for phrase in phrases for span in even_parts(*phrase)):
+        # Joining by slicing the line keeps whatever stood between the pieces.
+        if packed and _visible(text[packed[-1][0]:end]) <= limit:
+            packed[-1] = (packed[-1][0], end)
         else:
-            pieces.append(phrase)
-    packed: list[str] = []
-    for piece in pieces:
-        if packed and _visible(packed[-1]) + _visible(piece) <= limit:
-            joiner = "" if packed[-1][-1] in "？！?!" else "　"
-            packed[-1] = packed[-1] + joiner + piece
-        else:
-            packed.append(piece)
-    return packed
+            packed.append((start, end))
+    return [text[start:end].strip(" 　") for start, end in packed]
 
 
 def _screenplay_text(episode: Path) -> str:
@@ -1562,14 +1608,19 @@ def _display_cues(
     shown: list[DisplayCue] = []
     for start, end, text, words in cues:
         kind = _line_kind(text, screenplay)
-        pieces = _split_display(_display_line(text))
+        # Highlights are matched in their burned form: 「十万，现金」 shows as 「十万　现金」.
+        burned = tuple(_display_line(word) for word in words)
+        pieces = _split_display(_display_line(text), keep=burned)
         # A line that is all punctuation ("……") has nothing left to show.
         pieces = [piece for piece in pieces if _visible(piece)]
+        lost = [word for word in burned if not word or not any(word in p for p in pieces)]
+        if lost:
+            raise EditError(f"字幕「{text}」的重点词在压制后的字幕里找不到: {lost}")
         total = sum(_visible(piece) for piece in pieces)
         cursor = start
         for piece in pieces:
             length = (end - start) * _visible(piece) / total
-            keys = tuple(word for word in words if word in piece)
+            keys = tuple(word for word in burned if word in piece)
             shown.append(DisplayCue(cursor, cursor + length, piece, kind, keys))
             cursor += length
     return shown
@@ -1970,7 +2021,8 @@ def _frame_report(
             f"{row['亮度变化']:+.1f}：看是否像闪了一下"
             for row in jumps if abs(row["亮度变化"]) > CUT_JUMP_NOTICE
         )
-        entrances = [layer["start"] for layer in _screen_text_layers(cuts, spans)]
+        placed = _placed_layers(cuts, spans)
+        entrances = [] if isinstance(placed, str) else [layer["start"] for layer in placed]
     suspects = []
     for index, before, after, across in _suspect_frames(frames):
         seconds = index / fps
@@ -1989,6 +2041,15 @@ def _frame_report(
     return report
 
 
+def _placed_layers(cuts: Sequence[Cut], spans: Sequence[float]) -> Union[list[dict[str, Any]], str]:
+    """The screen text layers, or why they cannot be placed: verify reports, it does not stop."""
+
+    try:
+        return _screen_text_layers(cuts, spans)
+    except EditError as error:
+        return f"未测（{error}）"
+
+
 def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float]]) -> dict[str, Any]:
     """Where the screen text and effects landed in the film, from the rendered segments.
 
@@ -1999,8 +2060,9 @@ def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float
     if spans is None:
         reason = "未测（分段缺失，无法换算成片时间）"
         return {"画面文字落点": reason, "音效落点": reason}
+    placed = _placed_layers(cuts, spans)
     return {
-        "画面文字落点": [
+        "画面文字落点": placed if isinstance(placed, str) else [
             {
                 "起": round(layer["start"], 2),
                 "止": round(layer["end"], 2),
@@ -2009,7 +2071,7 @@ def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float
                 ),
                 "文字": SCREEN_TEXT_ITEM_SEPARATOR.join(item["text"] for item in layer["items"]),
             }
-            for layer in _screen_text_layers(cuts, spans)
+            for layer in placed
         ],
         "音效落点": [
             {"起": round(start, 2), "止": round(start + duration, 2), "文件": written}
