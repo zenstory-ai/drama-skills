@@ -27,10 +27,10 @@
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
 </p>
 
-<video src="https://github.com/user-attachments/assets/96825043-cfed-4f0e-b53b-cf61919c9c0f" controls muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
 
-上面这段 24 秒竖屏样片是一次完整实跑的最后一步：从一部 20 章的原著开始，经原著分析、剧本、视觉设定、
-图片提示词、分镜（21 镜）、视频提示词，只为剧本第三场（SC003）逐镜生成八段素材，再按剪辑单剪成成片。
+上面这段 68 秒竖屏样片是《让你管账号》第 1 集开头：从一部 20 章的原著改编，分镜 20 镜，逐镜生成后剪成成片，
+字幕、系统面板与音效在剪辑时叠加。视频生成成本约 40 元。
 
 ## 这是什么
 
@@ -214,23 +214,6 @@ done
 ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视觉依据没有覆盖；本镜确实看不见时在视觉依据末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「画面代称：无」
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词只能原样照抄已接受的镜头时长
 ```
-
-### 样片是怎么剪出来的
-
-文首样片按 `剪辑单.md` 剪成：每一刀写画面上发生了什么，字幕逐字取自剧本，时间来自对素材的实测。最后一段：
-
-```markdown
-## CUT-EP001-008 · 诸君，且听龙吟
-- 来源：MOTION-EP001-017 · 制作成果/video/MOTION-EP001-017.mp4
-- 入点：2.00
-- 出点：7.00
-- 时长：5.00
-- 取舍：入点=开头 1.5 秒的凝视与上一段发布前的蓄势重复，整段去掉，从身体前倾进；出点=实测句尾收音在源 6.82 秒，
-  出点留到 7.00 秒，身体后靠的姿态变化已完成（素材总长 7.29 秒，可用余量只有 0.29 秒）
-- 字幕：诸君，且听龙吟
-```
-
-完整[剪辑单](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%89%AA%E8%BE%91%E5%8D%95.md)与 [21 镜分镜](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%88%86%E9%95%9C.md)在提交 `004d945` 里。
 
 ## 十一个技能
 

@@ -29,11 +29,11 @@
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
 </p>
 
-<video src="https://github.com/user-attachments/assets/96825043-cfed-4f0e-b53b-cf61919c9c0f" controls muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
 
-The 24-second portrait sample above is the last step of one complete run: a 20-chapter source novel went through
-analysis, screenplay, visual design, image prompts, a 21-shot storyboard and video prompts; eight clips were
-generated for the script's third scene (SC003) only and cut into a film against a cut list.
+The 68-second portrait sample above is the opening of *Let You Run the Account*, EP001: adapted from a 20-chapter
+novel, storyboarded into 20 shots, generated shot by shot and cut into a film, with subtitles, system panels and sound
+effects added in the edit. Video generation cost about ¥40.
 
 ## What it is
 
@@ -247,25 +247,6 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
 
 The first line: the frozen keyframe names the character "Zhou Bosen" but the visual basis does not cover him; if he is
 genuinely not visible, declare him off-screen. The second: the storyboard says 2 seconds and the video prompt says 3.
-
-### How the sample was cut
-
-The sample film at the top was cut against `剪辑单.md` (the cut list): every cut states what happens on screen, subtitles are
-taken verbatim from the script, and timings come from measuring the clip. Its last entry (translated):
-
-```markdown
-## CUT-EP001-008 · Gentlemen, hear the dragon roar
-- Source: MOTION-EP001-017 · 制作成果/video/MOTION-EP001-017.mp4
-- In: 2.00
-- Out: 7.00
-- Duration: 5.00
-- Choice: in = the first 1.5 s of staring repeats the wind-up before publishing in the previous cut, dropped entirely, enter on the lean
-  forward; out = the measured end of the line is at 6.82 s in the source, hold to 7.00 s, the settle back into the chair is complete
-  (clip length 7.29 s, only 0.29 s of margin)
-- Subtitle: 诸君，且听龙吟 ("Gentlemen, hear the dragon roar", verbatim from the script)
-```
-
-The full [cut list](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%89%AA%E8%BE%91%E5%8D%95.md) and [21-shot storyboard](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%88%86%E9%95%9C.md) are at commit `004d945`.
 
 ## The eleven skills
 
