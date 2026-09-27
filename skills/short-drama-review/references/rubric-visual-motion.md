@@ -32,6 +32,10 @@
 - Why is this a new shot?
 - Do framing and camera behavior serve attention, alignment, pressure, reveal, or
   rhythm rather than decorate the prose?
+- Does each shot's `运镜` line state a behavior and a reason chosen from the shot's
+  purpose (`SHT-04`)? A stated lock-off with its reason passes. An episode locked from
+  first shot to last while it contains movement that is the point of a shot, a reveal,
+  or a peak is a finding; so is a missing line, which the execution end reads as drift.
 - Are Location/View, axis, screen direction, eyelines, entrances, positions,
   hands, and props coherent?
 - Are exact asset variants bound?

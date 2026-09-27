@@ -5,6 +5,7 @@
 - [Promise](#story-promise-and-engine)
 - [Episode](#episode-shape)
 - [Entry and serial memory](#entry-character-and-serial-memory)
+- [Adaptation fidelity](#adaptation-fidelity)
 - [Scene](#scene-test)
 - [Action](#action-and-production-meaning)
 - [Dialogue](#dialogue)
@@ -122,6 +123,27 @@ What is reportable:
 Do not require a fixed hook type, beat count, reversal, climax timestamp, or
 dialogue quota beyond what an accepted rhythm profile declares.
 
+## Adaptation fidelity
+
+Active only when the project adapts a source. Read the source span each mapping in
+`项目开发/adaptation-map.jsonl` cites, then the episode record and screenplay.
+
+- For each core source character: is their stance toward the protagonist, their way of
+  acting, and their relationships the same on screen as in the source (`STY-07`)?
+  Pressure made louder or spoken aloud is fine; a supportive figure turned oppressor,
+  or a relationship reversed, is a finding unless the creator accepted the change.
+  Cite the source fact and the conflicting screenplay line (`REV-03`).
+- Does the main line still run the source's way, and does any invented detail
+  contradict a source fact?
+- Is every character, scene, or opponent the source lacks registered as its own `add`
+  mapping, with the function it serves, why existing source material cannot carry it,
+  the source facts checked against it, and a line in the brief for the creator (`STY-30`)?
+  An addition hidden inside `change_carrier`, `merge`, or `move_earlier` notes is a
+  `craft_default` finding; an unregistered addition that also contradicts the source
+  is a `STY-07` finding.
+- When an episode's opponent was manufactured to meet `opposed_reversals_per_episode_min`,
+  say so: the profile deviation is the honest outcome, not a new antagonist.
+
 ## Scene test
 
 For a scene organized around active pursuit or conflict, ask:
@@ -231,7 +253,12 @@ read lets a strong middle excuse a flat opening; a part read cannot.
 
 1. **Opening hook**: read only the first segment, up to `first_hook_seconds` or, with
    no accepted profile, the first scene. Would a viewer who saw only this stay? Name
-   the hook and say whether it is happening or only being set up.
+   the hook and say whether it is happening or only being set up. Then read the first
+   beat alone, the image of the first three seconds: does it raise a question by itself,
+   or does it need on-screen text read, a character recognized, or the next line heard
+   first (`SCR-22`)? A still image that poses its own question passes. For a first
+   episode, also check that the brief compared the entry candidates on that same image
+   (`STY-25`).
 2. **Ending suspense**: read only the last segment, the final scene's closing beats.
    What question is left open? Does it grow out of this episode's result? Is it a line
    hook (an unfinished question, an identity hint) or an image hook (a door half open,
@@ -276,6 +303,7 @@ the benefit is not, and the mark exists precisely so the strong version can stay
 - cliffhanger withholds all payoff;
 - episode pauses an unfinished action without producing a local result (`STY-13`);
 - first episode dumps the backstory reservoir instead of selecting an active entry;
+- an adaptation hardens a source character or invents an opponent without an `add` mapping or creator acceptance;
 - a declared character arc has no pressure test, choice, cost, or changed strategy;
 - serial summary omits an information permission or unpaid setup obligation;
 - generic emotion adjectives replace visible performance;

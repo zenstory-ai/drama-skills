@@ -49,7 +49,7 @@ license: MIT
 只读对应资料，不预加载整个项目：
 
 - 原著分析：[原著分析审查表](references/rubric-source-analysis.md)
-- 故事、场景、行动与对白，已接受节奏档案的核对，开场、结尾与中段的局部检查：[故事剧本审查表](references/rubric-story-script.md)
+- 故事、场景、行动与对白，改编是否守住原著人物与主线，已接受节奏档案的核对，开场、结尾与中段的局部检查：[故事剧本审查表](references/rubric-story-script.md)
 - 身份、变体、连续性与图片提示词：[资产提示词审查表](references/rubric-assets-prompts.md)
 - 原文落实、镜头、关键帧与视频运动：[视觉运动审查表](references/rubric-visual-motion.md)
 - 完整审查方法：[审查方法](references/review-method.md)
