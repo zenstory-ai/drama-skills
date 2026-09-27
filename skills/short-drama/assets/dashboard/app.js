@@ -1821,8 +1821,16 @@ async function render() {
   else if (route.page === "episode" && !row) html = `<div class="wrap"><div class="empty"><h3>没有 ${esc(route.ep)} 这一集</h3><p>它可能已被移动或改名。</p><a class="btn" href="#/">回到全剧</a></div></div>`;
   else if (route.page === "episode" && row.legacy) html = viewLegacyEpisode(row);
   else if (route.page === "episode") {
-    const views = new Map([["script", viewScript], ["settings", viewSettings], ["board", viewBoard], ["prompts", viewPrompts], ["film", viewFilm], ["review", viewReview]]);
-    html = (views.get(route.view) || viewEpisode)(row, E, route.arg, route.q);
+    const args = [row, E, route.arg, route.q];
+    switch (route.view) {
+      case "script": html = viewScript(...args); break;
+      case "settings": html = viewSettings(...args); break;
+      case "board": html = viewBoard(...args); break;
+      case "prompts": html = viewPrompts(...args); break;
+      case "film": html = viewFilm(...args); break;
+      case "review": html = viewReview(...args); break;
+      default: html = viewEpisode(...args);
+    }
   } else html = viewOverview();
   view.innerHTML = html;
   applyCss(view);
