@@ -2,10 +2,12 @@
 
 import json
 import os
+import re
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     from playwright.sync_api import expect, sync_playwright
@@ -14,23 +16,312 @@ except ImportError:  # pragma: no cover - exercised by dependency-free local run
         raise
     expect = sync_playwright = None
 
-from tests.test_dashboard_server import create_server, make_project
+from tests.test_dashboard_server import (
+    EXAMPLE,
+    create_server,
+    make_creator_project,
+    make_project,
+)
+
+NO_OVERFLOW = """() => {
+  const width = document.documentElement.clientWidth;
+  const escaped = [...document.querySelectorAll('body *')].filter((node) => {
+    const box = node.getBoundingClientRect();
+    if (!box.width || box.right <= width + 1) return false;
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      if (['auto', 'hidden', 'scroll'].includes(getComputedStyle(parent).overflowX)) return false;
+    }
+    return true;
+  });
+  return [document.documentElement.scrollWidth - width, escaped.slice(0, 5).map((node) => node.tagName + '.' + node.className)];
+}"""
+
+
+class Browser:
+    """One server over a temporary workspace and one Chromium, shared by a test class."""
+
+    @classmethod
+    def start(cls, workspace: Path) -> None:
+        cls.server = create_server(workspace, port=0)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        host, port = cls.server.server_address[:2]
+        cls.origin = f"http://{host}:{port}"
+        cls.url = f"{cls.origin}/#{cls.server.access_token}"
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch(headless=True)
+
+    @classmethod
+    def stop(cls) -> None:
+        cls.browser.close()
+        cls.playwright.stop()
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=3)
+
+    def open(self, width: int = 1440, height: int = 900, route: str = "#/", **options):
+        context = self.browser.new_context(
+            viewport={"width": width, "height": height}, reduced_motion="reduce", **options
+        )
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(self.url)
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+        if route != "#/":
+            self.go(page, route)
+        return page
+
+    @staticmethod
+    def go(page, route: str) -> None:
+        page.evaluate("(hash) => { location.hash = hash; }", route)
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+        page.wait_for_function("(hash) => location.hash === hash", arg=route)
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+
+    def assertNoHorizontalOverflow(self, page) -> None:
+        extra, escaped = page.evaluate(NO_OVERFLOW)
+        self.assertEqual((extra, escaped), (0, []))
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is unavailable")
-class DashboardBrowserTests(unittest.TestCase):
+class CreatorDeskBrowserTests(Browser, unittest.TestCase):
+    """The stage views over a creator-first project with a cut list, media and a review."""
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.temporary = tempfile.TemporaryDirectory()
-        cls.workspace = Path(cls.temporary.name)
-        cls.project = cls.workspace / "alpha"
-        make_project(cls.project, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN")
-        long_text = "# 长正文\n\n" + "\n\n".join(
-            f"## 第 {index} 节\n" + "正文" * 120 for index in range(1, 180)
+        workspace = Path(cls.temporary.name)
+        cls.project = workspace / "creator"
+        make_creator_project(cls.project)
+        for number in range(3, 9):
+            (cls.project / f"剧集/EP{number:03d}").mkdir()
+        cls.start(workspace)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop()
+        cls.temporary.cleanup()
+
+    def test_overview_lists_every_episode_and_leads_with_what_must_change(self) -> None:
+        page = self.open()
+        rows = page.locator(".matrix tbody tr")
+        self.assertEqual(
+            rows.evaluate_all("nodes => nodes.map((node) => node.dataset.episode)"),
+            [f"EP{number:03d}" for number in range(1, 9)],
         )
-        (cls.project / "剧本.md").write_text(long_text, encoding="utf-8")
-        (cls.project / "短文.md").write_text("# 短文\n\n只有一段。", encoding="utf-8")
-        (cls.project / "带注释.md").write_text(
+        first = rows.first
+        self.assertEqual(
+            first.locator(".pip[data-on='1']").evaluate_all("nodes => nodes.map((node) => node.dataset.stage)"),
+            ["script", "settings", "board", "imgp", "vidp", "cut", "film", "review"],
+        )
+        todos = page.locator("#nextSteps .todo")
+        self.assertEqual(
+            todos.evaluate_all("nodes => nodes.map((node) => node.dataset.ep)"), ["EP001", "EP002", "EP003"]
+        )
+        expect(todos.first).to_contain_text("必须改")
+        rows.nth(1).click()
+        page.wait_for_function("() => location.hash === '#/EP002'")
+
+    def test_copy_to_assistant_puts_a_request_on_the_clipboard_instead_of_producing(self) -> None:
+        page = self.open()
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=self.origin)
+        page.locator("#nextSteps .todo").first.get_by_role("button", name="复制给助手").click()
+        expect(page.locator("#toast")).to_contain_text("已复制")
+        self.assertEqual(
+            page.evaluate("() => navigator.clipboard.readText()"),
+            "请按 EP001 的审查意见，先改必须改的 1 条（REV-001）。",
+        )
+
+    def test_the_stage_bar_is_the_episodes_progress(self) -> None:
+        page = self.open(route="#/EP001")
+        tabs = page.locator("#stagebar .tab")
+        self.assertEqual(
+            tabs.evaluate_all("nodes => nodes.map((node) => node.querySelector('.lbl').textContent)"),
+            ["概况", "剧本", "设定", "分镜", "提示词", "成片", "审查"],
+        )
+        expect(page.locator('#stagebar [data-stage="board"] .meta')).to_have_text("22 镜")
+        expect(page.locator('#stagebar [data-stage="review"] .dot')).to_have_class("dot warn")
+        page.locator('#stagebar [data-stage="script"]').click()
+        page.wait_for_function("() => location.hash === '#/EP001/script'")
+        expect(page.locator('#stagebar [aria-current="page"]')).to_have_attribute("data-stage", "script")
+        self.go(page, "#/EP002")
+        expect(page.locator('#stagebar [data-stage="board"] .meta')).to_have_text("未写")
+
+    def test_rhythm_strip_is_proportional_and_metrics_follow_the_profile(self) -> None:
+        page = self.open(route="#/EP001/board")
+        bars = page.locator(".strip-bars .sb")
+        self.assertEqual(bars.count(), 22)
+        widths = bars.evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().width)")
+        # SHOT-002 is 4 s and SHOT-003 is 2 s: twice the width, less the gap.
+        self.assertAlmostEqual(widths[1] / widths[2], 2, delta=0.15)
+        expect(page.locator('.sb[data-shot="SHOT-EP001-006"]')).to_have_class(re.compile(r"\bunsized\b"))
+        self.assertEqual(page.locator(".sb .cl").count(), 11)
+        cards = page.locator("#boardMetrics .gauge")
+        expect(cards.nth(0)).to_contain_text("符合")
+        expect(cards.nth(2)).to_contain_text("50%")
+        expect(cards.nth(3)).to_contain_text("留意")
+        # The one bound start frame is shown; the others are shot-size diagrams.
+        self.assertEqual(page.locator(".shot .thumb img").count(), 1)
+
+    def test_the_shot_drawer_follows_the_strip_and_the_keyboard(self) -> None:
+        page = self.open(route="#/EP001/board")
+        page.locator('.sb[data-shot="SHOT-EP001-004"]').click()
+        page.wait_for_function("() => location.hash === '#/EP001/board/SHOT-EP001-004'")
+        drawer = page.locator("#inspector")
+        expect(drawer).to_be_visible()
+        expect(drawer.locator(".ins-head .t")).to_have_text("没有针眼的手")
+        expect(page.locator(".sb.sel")).to_have_attribute("data-shot", "SHOT-EP001-004")
+        page.keyboard.press("ArrowRight")
+        page.wait_for_function("() => location.hash === '#/EP001/board/SHOT-EP001-005'")
+        expect(drawer.locator(".ins-head .id")).to_have_text("SHOT-EP001-005")
+        page.keyboard.press("Escape")
+        page.wait_for_function("() => location.hash === '#/EP001/board'")
+        expect(drawer).to_be_hidden()
+
+    def test_script_reads_as_a_screenplay_with_links_from_the_cut_list(self) -> None:
+        page = self.open(route="#/EP001/script")
+        self.assertEqual(page.locator(".slug").count(), 2)
+        self.assertEqual(page.locator(".dlg").count(), 12)
+        expect(page.locator(".dlg.vo").first).to_contain_text("上辈子，我死在病床上。")
+        self.assertEqual(page.locator(".onscreen").count(), 5)
+        # A line links to a shot only where the cut list quotes it as a subtitle.
+        quoted = page.locator('.dlg[data-line="都听见了。新媒体这摊子，本来就是空白。"] .shotref')
+        expect(quoted).to_have_attribute("href", "#/EP001/board/SHOT-EP001-002")
+        self.assertEqual(page.locator('.dlg[data-line="空白才好。"] .shotref').count(), 0)
+        self.assertEqual(page.locator('.dlg .shotref[href$="SHOT-EP001-001"]').count(), 1)
+        page.locator(".slug .go").first.click()
+        page.wait_for_function("() => location.hash === '#/EP001/board?scene=EP001-SC001'")
+        self.assertEqual(page.locator(".shot").count(), 13)
+
+    def test_settings_cards_show_locks_and_filter_the_storyboard(self) -> None:
+        page = self.open(route="#/EP001/settings")
+        card = page.locator('.asset[data-entry="江晨"]')
+        expect(card.locator(".lock .surface")).to_have_text("pine-green lapel service jacket")
+        self.assertEqual(card.locator(".pstrip i").count(), 22)
+        self.assertEqual(card.locator(".pstrip i.lk").count(), 11)
+        expect(page.locator(".era .p")).to_have_text("当下（2020 年代）")
+        card.get_by_role("link", name="在分镜里筛出").click()
+        page.wait_for_function("() => location.hash.startsWith('#/EP001/board?entity=')")
+        expect(page.locator(".filter-note")).to_contain_text("江晨")
+        self.assertEqual(page.locator(".shot").count(), 13)
+
+    def test_prompts_copy_verbatim_and_count_what_was_copied(self) -> None:
+        page = self.open(route="#/EP001/prompts/video")
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=self.origin)
+        source = (EXAMPLE / "视频提示词.md").read_text(encoding="utf-8").split("\n")
+        first = source[source.index("### 可复制提示词") + 1][2:]
+        expect(page.locator("#copyProgress")).to_have_text("0 / 22")
+        page.locator(".copybar").get_by_role("button", name="复制下一条").click()
+        expect(page.locator("#copyProgress")).to_have_text("1 / 22")
+        self.assertEqual(page.evaluate("() => navigator.clipboard.readText()"), first)
+        expect(page.locator('.pcard[data-key="MOTION-EP001-001"]')).to_have_class(re.compile(r"\bcopied\b"))
+        page.get_by_role("button", name="清除标记").click()
+        expect(page.locator("#copyProgress")).to_have_text("0 / 22")
+
+    def test_film_view_lays_the_cut_list_on_a_timeline(self) -> None:
+        page = self.open(route="#/EP001/film")
+        self.assertEqual(page.locator(".tl-cut").count(), 3)
+        self.assertEqual(page.locator(".tl-sub").count(), 3)
+        self.assertEqual(page.locator(".tl-txt").count(), 4)
+        self.assertEqual(page.locator(".tl-sfx").count(), 2)
+        expect(page.locator("#film")).to_have_count(1)
+        widths = page.locator(".tl-cut").evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().width)")
+        self.assertAlmostEqual(widths[1] / widths[2], 2, delta=0.1)
+        page.locator("#r-CUT-EP001-002").click()
+        expect(page.locator("#r-CUT-EP001-002")).to_have_class(re.compile(r"\bon\b"))
+        expect(page.locator("#nowCut")).to_contain_text("四个号，四个粉")
+        # Clips come only from 来源: SHOT-002 has a file named after it, and still waits.
+        self.go(page, "#/EP001/film/clips")
+        tiles = page.locator("[data-shot-tile]")
+        self.assertEqual(tiles.evaluate_all("nodes => nodes.filter((node) => node.dataset.hasClip === '1').map((node) => node.dataset.shotTile)"), ["SHOT-EP001-001"])
+
+    def test_review_findings_link_to_where_they_are(self) -> None:
+        page = self.open(route="#/EP001/review")
+        finding = page.locator("#f-REV-001")
+        expect(finding).to_contain_text("先给周薄森半拍停顿")
+        self.assertNotIn("STY-14", page.locator("#view").inner_text())
+        finding.get_by_role("link", name="镜 011").click()
+        page.wait_for_function("() => location.hash === '#/EP001/board/SHOT-EP001-011'")
+        expect(page.locator("#inspector .refstate.must")).to_contain_text("空白才好")
+        self.go(page, "#/EP001/review")
+        page.locator('[data-rf="could"]').click()
+        self.assertEqual(page.locator(".finding").count(), 1)
+
+    def test_search_jumps_to_the_line_it_found(self) -> None:
+        page = self.open(route="#/EP001/board")
+        page.keyboard.press("Control+k")
+        expect(page.locator("#palette")).to_be_visible()
+        page.fill("#palq", "空白才好")
+        expect(page.locator(".pal-item").first).to_be_visible()
+        expect(page.locator(".pal-item mark").first).to_have_text("空白才好")
+        page.locator(".pal-item", has_text="江晨").first.click()
+        page.wait_for_function("() => location.hash === '#/EP001/script/EP001-SC001'")
+        expect(page.locator(".dlg.hl")).to_contain_text("空白才好")
+        page.keyboard.press("/")
+        page.locator('[data-scope="series"]').click()
+        page.fill("#palq", "空白才好")
+        expect(page.locator(".pal-item .w", has_text="EP002").first).to_be_visible()
+
+    def test_editing_saves_markdown_and_refuses_to_overwrite_a_newer_file(self) -> None:
+        page = self.open(route="#/EP001/board/SHOT-EP001-011")
+        page.get_by_role("link", name="在分镜.md 里编辑这一镜").click()
+        expect(page.locator("#editState")).to_have_text("已载入")
+        editor = page.locator("#editor")
+        caret = editor.evaluate("node => node.value.slice(node.selectionStart, node.selectionStart + 18)")
+        self.assertEqual(caret, "## SHOT-EP001-011 ")
+        path = self.project / "剧集/EP001/分镜.md"
+        original = path.read_text(encoding="utf-8")
+        self.addCleanup(path.write_text, original, encoding="utf-8")
+        editor.evaluate("node => { node.value = node.value.replace('## SHOT-EP001-011 · 冷茶', '## SHOT-EP001-011 · 凉茶'); node.dispatchEvent(new Event('input')); }")
+        path.write_text(original + "\n<!-- 别处的修改 -->\n", encoding="utf-8")
+        page.keyboard.press("Control+s")
+        expect(page.locator("#saveError")).to_have_attribute("data-conflict", "1")
+        self.assertIn("别处的修改", path.read_text(encoding="utf-8"))
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.get_by_role("button", name="载入最新版本").click()
+        expect(page.locator("#editState")).to_have_text("已载入")
+        editor.evaluate("node => { node.value = node.value.replace('## SHOT-EP001-011 · 冷茶', '## SHOT-EP001-011 · 凉茶'); node.dispatchEvent(new Event('input')); }")
+        page.get_by_role("button", name="保存").click()
+        expect(page.locator("#editState")).to_contain_text("已保存")
+        saved = path.read_text(encoding="utf-8")
+        self.assertIn("## SHOT-EP001-011 · 凉茶", saved)
+        self.assertIn("别处的修改", saved)
+        # The structured view reads the saved Markdown.
+        self.go(page, "#/EP001/board/SHOT-EP001-011")
+        expect(page.locator("#inspector .ins-head .t")).to_have_text("凉茶")
+
+    def test_phone_width_keeps_every_view_inside_the_screen(self) -> None:
+        page = self.open(390, 844)
+        for route in (
+            "#/", "#/EP001", "#/EP001/script", "#/EP001/settings", "#/EP001/board",
+            "#/EP001/board/SHOT-EP001-004", "#/EP001/prompts/video", "#/EP001/film",
+            "#/EP001/review", "#/files",
+        ):
+            with self.subTest(route=route):
+                self.go(page, route)
+                self.assertNoHorizontalOverflow(page)
+        self.go(page, "#/EP001/board/SHOT-EP001-004")
+        box = page.locator("#inspector").bounding_box()
+        self.assertEqual((box["x"], box["width"]), (0, 390))
+        self.go(page, "#/EP001/review")
+        current = page.locator('#stagebar [aria-current="page"]').bounding_box()
+        self.assertLessEqual(current["x"] + current["width"], 390)
+        self.go(page, "#/")
+        expect(page.locator(".ep-cards")).to_be_visible()
+        expect(page.locator(".matrix-wrap")).to_be_hidden()
+
+
+@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
+class PlainProjectBrowserTests(Browser, unittest.TestCase):
+    """Projects outside the five documents still open, and raw text stays text."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        workspace = Path(cls.temporary.name)
+        project = workspace / "alpha"
+        make_project(project, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN")
+        (project / "带注释.md").write_text(
             "# 带注释\n\n"
             "<!-- 改编取舍：\n     番号一律虚构。 -->\n\n"
             "第一段正文。\n\n"
@@ -43,298 +334,52 @@ class DashboardBrowserTests(unittest.TestCase):
             "<!-- 这条没有闭合\n还有一行\n",
             encoding="utf-8",
         )
-        empty = cls.workspace / "empty"
-        make_project(empty, "空项目")
-
-        cls.server = create_server(cls.workspace, port=0)
-        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
-        cls.thread.start()
-        host, port = cls.server.server_address[:2]
-        cls.url = f"http://{host}:{port}/#{cls.server.access_token}"
-        cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch(headless=True)
+        make_project(workspace / "empty", "空项目")
+        cls.start(workspace)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.browser.close()
-        cls.playwright.stop()
-        cls.server.shutdown()
-        cls.server.server_close()
-        cls.thread.join(timeout=3)
+        cls.stop()
         cls.temporary.cleanup()
 
-    def setUp(self) -> None:
-        self.context = self.browser.new_context(
-            viewport={"width": 1440, "height": 900}, reduced_motion="reduce"
-        )
-        self.page = self.context.new_page()
-        self.page.goto(self.url)
-        expect(self.page.locator("#message")).to_contain_text("已载入")
-
-    def tearDown(self) -> None:
-        self.context.close()
-
-    def content_button(self, label: str):
-        return self.page.locator(".content-link", has_text=label).first
-
-    def test_preserves_reading_progress_when_toggling_edit_mode(self) -> None:
-        stage = self.page.locator(".content-stage")
-        stage.evaluate("node => node.scrollTop = node.scrollHeight * 0.6")
-        before = stage.evaluate(
-            "node => node.scrollTop / (node.scrollHeight - node.clientHeight)"
-        )
-
-        self.page.click("#editMode")
-        editor_progress = self.page.locator("#editor").evaluate(
-            "node => node.scrollTop / (node.scrollHeight - node.clientHeight)"
-        )
-        self.page.click("#editMode")
-        after = stage.evaluate(
-            "node => node.scrollTop / (node.scrollHeight - node.clientHeight)"
-        )
-
-        self.assertAlmostEqual(editor_progress, before, delta=0.02)
-        self.assertAlmostEqual(after, before, delta=0.02)
-
-    def test_starts_each_newly_opened_file_at_the_top(self) -> None:
-        self.page.set_viewport_size({"width": 861, "height": 650})
-        stage = self.page.locator(".content-stage")
-        stage.evaluate("node => node.scrollTop = node.scrollHeight")
-        self.content_button("短文").evaluate("node => node.click()")
-        expect(self.page.locator("#filename")).to_have_text("短文")
-        expect(self.page.locator("#message")).to_contain_text("已载入")
-
-        self.assertEqual(stage.evaluate("node => node.scrollTop"), 0)
-
-    def test_creator_notes_in_markdown_comments_stay_out_of_the_reading_pane(
-        self,
-    ) -> None:
-        """剧本 format sanctions comments for creator notes; the pane showed them.
-
-        A screenplay legitimately opens with several lines of adaptation notes,
-        and they were rendered as body text — so the first thing the creator read
-        in the one pane meant for reading the screenplay was their own scratch
-        notes. The same rule says unrecognised Markdown is preserved rather than
-        quietly "fixed", so an unterminated comment must still render.
-        """
-
-        self.content_button("带注释").evaluate("node => node.click()")
-        expect(self.page.locator("#filename")).to_have_text("带注释")
-        # The filename changes before the fetch; the body only after it.
-        expect(self.page.locator("#message")).to_contain_text("已载入")
-        body = self.page.locator(".content-stage").inner_text()
-
-        self.assertIn("第一段正文。", body)
-        self.assertNotIn("改编取舍", body)
-        self.assertNotIn("番号一律虚构", body)
-        # An inline comment loses only itself, not the sentence around it.
-        self.assertIn("第二段正文", body)
-        self.assertIn("后半句", body)
-        self.assertNotIn("行内备注", body)
-        # Removing the inner comment must not leave a fresh `<!--` behind.
-        self.assertIn("嵌套", body)
-        self.assertIn("之后。", body)
-        self.assertNotIn("外层", body)
-        # A fenced block is copied verbatim, comments included.
-        self.assertIn("代码块里的注释要保留", body)
-        # Text after the terminator on a closing line is body text.
-        self.assertIn("终止符后面的正文。", body)
-        self.assertNotIn("跨行备注", body)
-        self.assertNotIn("第二行", body)
-        # A fence inside a comment is commented out, not a code block.
-        self.assertNotIn("围栏里的内容不该出现", body)
-        self.assertNotIn("注释里的围栏", body)
-        self.assertIn("围栏之后的正文。", body)
-        # Unterminated: preserved, not swallowed along with the rest.
-        self.assertIn("这条没有闭合", body)
-        self.assertIn("还有一行", body)
-        # ...and preserved once. A line that closes one comment and opens an
-        # unterminated one must not render its prefix twice.
-        self.assertEqual(body.count("嵌套"), 1)
+    def test_creator_notes_in_markdown_comments_stay_out_of_the_reading_view(self) -> None:
+        page = self.open(route=f"#/file?path={quote('带注释.md')}")
+        body = page.locator("[data-raw] .doc")
+        expect(body).to_contain_text("第一段正文。")
+        text = body.inner_text()
+        for kept in ("第一段正文。", "第二段正文", "后半句", "嵌套", "之后。", "代码块里的注释要保留",
+                     "终止符后面的正文。", "围栏之后的正文。", "这条没有闭合", "还有一行"):
+            self.assertIn(kept, text)
+        for dropped in ("改编取舍", "番号一律虚构", "行内备注", "外层", "跨行备注", "第二行",
+                        "围栏里的内容不该出现", "注释里的围栏"):
+            self.assertNotIn(dropped, text)
+        self.assertEqual(text.count("嵌套"), 1)
 
     def test_long_project_title_never_creates_horizontal_page_scroll(self) -> None:
-        for width in (861, 860, 620, 390, 360):
+        page = self.open()
+        for width in (1440, 861, 760, 620, 390, 360):
             with self.subTest(width=width):
-                self.page.set_viewport_size({"width": width, "height": 700})
-                dimensions = self.page.evaluate(
-                    "() => [document.documentElement.scrollWidth, "
-                    "document.documentElement.clientWidth]"
-                )
-                overflow = self.page.evaluate(
-                    "() => [...document.querySelectorAll('*')].filter(node => "
-                    "node.getBoundingClientRect().right > document.documentElement.clientWidth + 1)"
-                    ".slice(0, 8).map(node => [node.tagName, node.id, node.className, "
-                    "node.getBoundingClientRect().right])"
-                )
-                self.assertEqual(dimensions[0], dimensions[1], overflow)
+                page.set_viewport_size({"width": width, "height": 700})
+                self.assertNoHorizontalOverflow(page)
 
-    def test_empty_project_finishes_with_an_idle_status_message(self) -> None:
-        value = self.page.locator("#projects option", has_text="空项目").get_attribute(
-            "value"
-        )
-        self.page.select_option("#projects", value)
-        expect(self.page.locator("#filename")).to_have_text("暂无创作内容")
-
-        self.assertNotIn("正在", self.page.locator("#message").inner_text())
-        self.assertIsNone(self.page.locator("#documentPane").get_attribute("aria-busy"))
+    def test_projects_switch_and_an_empty_one_says_what_to_do(self) -> None:
+        page = self.open()
+        value = page.locator("#projectSelect option", has_text="空项目").get_attribute("value")
+        page.select_option("#projectSelect", value)
+        expect(page.locator(".matrix-wrap, .empty").first).to_contain_text("还没有分集")
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
 
     def test_invalid_projects_payload_shows_creator_safe_chinese_error(self) -> None:
         context = self.browser.new_context(viewport={"width": 861, "height": 650})
-        page = context.new_page()
-
-        def invalid_projects(route):
-            route.fulfill(
-                status=200,
-                content_type="application/json",
-                body=json.dumps({"projects": None}),
-            )
-
-        page.route("**/api/projects", invalid_projects)
-        page.goto(self.url)
-        expect(page.locator("#notices")).to_contain_text("无效")
-        notice = page.locator("#notices").inner_text()
-        context.close()
-
-        self.assertNotIn("Cannot read properties", notice)
-
-
-EXAMPLE = Path(__file__).resolve().parents[1] / "examples/creator-first/EP001"
-DOCUMENTS = ["剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md"]
-# A 1×1 PNG: enough for the gallery to have real media to show.
-PIXEL = bytes.fromhex(
-    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
-    "0000000c49444154789c63789862030003ab018271b1e22c0000000049454e44ae426082"
-)
-
-
-def make_creator_first_project(root: Path) -> None:
-    """Eight episodes from the creator-first example, with media and a review."""
-
-    make_project(root, "让你管账号")
-    for number in range(1, 9):
-        episode = f"EP{number:03d}"
-        folder = root / "剧集" / episode
-        folder.mkdir(parents=True)
-        for name in DOCUMENTS[: 1 + number % 5]:
-            text = (EXAMPLE / name).read_text(encoding="utf-8")
-            (folder / name).write_text(text.replace("EP001", episode), encoding="utf-8")
-    for name in DOCUMENTS:
-        (root / "剧集/EP001" / name).write_text(
-            (EXAMPLE / name).read_text(encoding="utf-8"), encoding="utf-8"
-        )
-    images = root / "剧集/EP001/制作成果/images"
-    images.mkdir(parents=True)
-    for number in range(1, 4):
-        (images / f"SHOT-EP001-00{number}.png").write_bytes(PIXEL)
-    (root / "审查").mkdir(exist_ok=True)
-    (root / "审查/EP001-审查.md").write_text(
-        "# EP001 审查意见\n\n- 第 3 镜的笑意来得太早。\n", encoding="utf-8"
-    )
-
-
-@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
-class CreatorFirstDashboardBrowserTests(unittest.TestCase):
-    """A real creator-first project: more episodes than fit, media, a review."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory()
-        workspace = Path(cls.temporary.name)
-        make_creator_first_project(workspace / "creator")
-        cls.server = create_server(workspace, port=0)
-        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
-        cls.thread.start()
-        host, port = cls.server.server_address[:2]
-        cls.origin = f"http://{host}:{port}"
-        cls.url = f"{cls.origin}/#{cls.server.access_token}"
-        cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch(headless=True)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.browser.close()
-        cls.playwright.stop()
-        cls.server.shutdown()
-        cls.server.server_close()
-        cls.thread.join(timeout=3)
-        cls.temporary.cleanup()
-
-    def open(self, width: int, height: int, **options):
-        context = self.browser.new_context(
-            viewport={"width": width, "height": height}, reduced_motion="reduce", **options
-        )
         self.addCleanup(context.close)
         page = context.new_page()
+        page.route(
+            "**/api/projects",
+            lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"projects": None})),
+        )
         page.goto(self.url)
-        expect(page.locator("#message")).to_contain_text("已载入")
-        return page
-
-    def test_the_current_document_starts_on_the_first_screen(self) -> None:
-        # With media in the project the reading pane began at 995px on a
-        # laptop and 2065px on a phone, below an overview that grew with it.
-        for width, height in ((1440, 900), (375, 812)):
-            with self.subTest(width=width):
-                page = self.open(width, height)
-                top = page.locator("#documentPane").evaluate(
-                    "node => node.getBoundingClientRect().top"
-                )
-                scroll = page.evaluate(
-                    "() => [document.documentElement.scrollWidth, "
-                    "document.documentElement.clientWidth]"
-                )
-                self.assertLess(top, height)
-                self.assertEqual(scroll[0], scroll[1])
-
-    def test_every_episode_is_reachable_from_the_overview(self) -> None:
-        # The strip stopped at six cards under a heading that promised eight.
-        page = self.open(1440, 900)
-        cards = page.locator(".episode-card")
-        self.assertEqual(
-            cards.evaluate_all("nodes => nodes.map(node => node.dataset.episode)"),
-            [f"EP{number:03d}" for number in range(1, 9)],
-        )
-        cards.last.click()
-        expect(page.locator("#fileKind")).to_contain_text("EP008")
-
-    def test_reading_bar_stays_in_view_and_leads_back_to_the_contents(self) -> None:
-        page = self.open(375, 812)
-        page.click("#openScreenplay")
-        expect(page.locator("#message")).to_contain_text("已载入")
-        page.evaluate("() => scrollTo(0, document.body.scrollHeight / 2)")
-        bar = page.locator(".reading-bar")
-        self.assertEqual(bar.evaluate("node => node.getBoundingClientRect().top"), 0)
-        expect(bar.locator("#filename")).to_have_text("剧本")
-
-        page.click("#jumpToContents")
-        nav_top = page.locator("#contentNav").evaluate(
-            "node => node.getBoundingClientRect().top"
-        )
-        self.assertGreaterEqual(nav_top, 0)
-        self.assertLess(nav_top, 812 / 2)
-        self.assertTrue(
-            page.evaluate(
-                "() => document.activeElement.classList.contains('content-link') "
-                "&& document.activeElement.classList.contains('active')"
-            )
-        )
-
-    def test_copy_button_puts_the_prompt_on_the_clipboard(self) -> None:
-        page = self.open(1440, 900)
-        page.context.grant_permissions(
-            ["clipboard-read", "clipboard-write"], origin=self.origin
-        )
-        page.locator(".content-link", has_text="视频提示词").first.click()
-        expect(page.locator("#filename")).to_have_text("视频提示词")
-        source = (EXAMPLE / "视频提示词.md").read_text(encoding="utf-8").split("\n")
-        first_prompt = source[source.index("### 可复制提示词") + 1][2:]
-
-        copy = page.locator(".copy-button").first
-        copy.click()
-        expect(copy).to_have_text("已复制")
-
-        self.assertEqual(
-            page.evaluate("() => navigator.clipboard.readText()"), first_prompt
-        )
+        expect(page.locator("#notices")).to_contain_text("无效")
+        self.assertNotIn("Cannot read properties", page.locator("#notices").inner_text())
 
 
 if __name__ == "__main__":

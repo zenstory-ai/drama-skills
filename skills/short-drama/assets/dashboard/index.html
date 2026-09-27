@@ -2,117 +2,23 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
   <title>短剧创作台</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/tokens.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <a class="brand" href="/" aria-label="回到创作台顶部">
-      <span class="brand-mark" aria-hidden="true">场</span>
-      <h1 class="brand-title">短剧创作台</h1>
-    </a>
-    <div class="project-tools">
-      <div id="workspaceStatus" aria-live="polite"></div>
-      <label class="project-picker">
-        <span>正在创作</span>
-        <select id="projects" aria-label="选择短剧项目"></select>
-      </label>
-    </div>
-  </header>
-
-  <main id="mainContent" tabindex="-1">
-    <!-- One compact band, so the document below it is on the first screen. -->
-    <section id="projectOverview" class="project-overview" aria-labelledby="projectTitle">
-      <div class="overview-title-row">
-        <div class="overview-heading">
-          <h2 id="projectTitle">正在打开项目…</h2>
-          <p>浏览全剧内容与分集进度。创作和生产仍由 skills 完成。</p>
-        </div>
-        <div id="overviewStats" class="overview-stats" aria-live="polite"></div>
-        <button id="openScreenplay" class="secondary" disabled>阅读当前剧本</button>
-      </div>
-      <div class="overview-flow">
-        <div class="section-heading">
-          <h3>分集进度</h3>
-          <span id="episodeHint" class="section-note"></span>
-        </div>
-        <div id="episodeStrip" class="episode-strip" aria-label="按分集浏览"></div>
-      </div>
-    </section>
-
-    <section class="creator-desk" aria-label="创作内容">
-      <aside id="contentNav" class="content-nav">
-        <div class="content-nav-heading">
-          <h2>本剧内容</h2>
-          <label class="creator-search"><span class="sr-only">搜索内容标题或集数</span><input id="search" type="search" placeholder="搜索标题或集数"></label>
-        </div>
-        <div id="contentList" class="content-list" aria-live="polite"></div>
-      </aside>
-
-      <section id="documentPane" class="document-pane" aria-labelledby="filename">
-        <div class="document-toolbar">
-          <!-- On a narrow screen this bar sticks while the page scrolls the
-               document, and 目录 leads back up to the contents. -->
-          <div class="reading-bar">
-            <div class="file-identity">
-              <span id="fileKind" class="file-location">创作正文</span>
-              <h2 id="filename">创作内容</h2>
-              <span id="fileMeta" class="file-meta"></span>
-            </div>
-            <button id="jumpToContents" class="secondary toc-jump" type="button">目录</button>
-          </div>
-          <div class="toolbar-actions">
-            <button id="editMode" class="secondary" aria-pressed="false" disabled>修改正文</button>
-            <button id="save" class="primary" disabled>已保存</button>
-          </div>
-        </div>
-        <div class="content-stage">
-          <textarea id="editor" hidden disabled spellcheck="false" aria-label="内容编辑器"></textarea>
-          <article id="preview" class="document-preview empty-document" aria-label="内容预览"></article>
-          <div id="media" class="media" hidden></div>
-        </div>
-        <footer class="document-footer"><div id="message" role="status" aria-live="polite"></div><span>⌘/Ctrl + S 保存</span></footer>
-      </section>
-    </section>
-
-    <section id="assistRow" class="assist-row" aria-label="创作辅助" hidden>
-      <article id="taskSummary" class="assist-card" aria-live="polite"></article>
-      <article id="exportSummary" class="assist-card" aria-live="polite"></article>
-    </section>
-
-    <section id="mediaShowcase" class="media-showcase" aria-labelledby="mediaTitle" hidden>
-      <div class="section-heading">
-        <div><span class="eyebrow">MEDIA</span><h3 id="mediaTitle">已有制作成果</h3></div>
-        <span class="section-note">仅展示 · 生产需在 skill 中明确确认</span>
-      </div>
-      <div id="mediaGallery" class="media-gallery"></div>
-    </section>
-  </main>
-
-  <div id="notices" class="notices" aria-live="polite"></div>
-
-  <!-- One drawn icon family: 24×24 grid, one stroke weight, cloned by app.js.
-       They live in markup so the script never needs the SVG namespace string. -->
-  <template id="iconTemplates">
-    <svg data-icon="sources" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 6.5C10.4 5.2 8.4 4.5 6 4.5H4v13h2c2.4 0 4.4.7 6 2"/><path d="M12 6.5c1.6-1.3 3.6-2 6-2h2v13h-2c-2.4 0-4.4.7-6 2"/><path d="M12 6.5v15"/></svg>
-    <svg data-icon="analysis" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4.5h9l3.5 3.5v6"/><path d="M14 4.5v3.5h3.5"/><path d="M8 9.5h5"/><path d="M8 13h3"/><path d="M14.5 15.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/><path d="M16.8 20.3l2.7 2.2"/></svg>
-    <svg data-icon="project" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Z"/><path d="M15.4 8.6l-1.9 4.9-4.9 1.9 1.9-4.9 4.9-1.9Z"/></svg>
-    <svg data-icon="cast" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4.5 20.5c1.4-3.4 4.1-5 7.5-5s6.1 1.6 7.5 5"/></svg>
-    <svg data-icon="story" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3.5h8l4 4v13H6v-17Z"/><path d="M14 3.5v4h4"/><path d="M9 12.5h6"/><path d="M9 16h4"/></svg>
-    <svg data-icon="prompts" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.5 4l1.4 3.7 3.6 1.3-3.6 1.4L9.5 14l-1.4-3.6L4.5 9l3.6-1.3L9.5 4Z"/><path d="M17 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg>
-    <svg data-icon="visual" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 5.5h15v13h-15v-13Z"/><path d="M4.5 15.5l4.2-4.2 3.3 3.3 3-3 4 4"/><path d="M9 9.7a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z"/></svg>
-    <svg data-icon="storyboard" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 5.5h17v13h-17v-13Z"/><path d="M3.5 12h17"/><path d="M9.5 5.5v13"/><path d="M15.5 5.5v13"/></svg>
-    <svg data-icon="other" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 6.5h6l2 2.5h9v11h-17v-13.5Z"/></svg>
-    <svg data-icon="media" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17Z"/><path d="M10.2 8.5l6 3.5-6 3.5v-7Z"/></svg>
-    <svg data-icon="image" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 5.5h15v13h-15v-13Z"/><path d="M4.5 15.5l4.2-4.2 3.3 3.3 3-3 4 4"/><path d="M9 9.7a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z"/></svg>
-    <svg data-icon="video" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 5.5h15v13h-15v-13Z"/><path d="M10 9l5 3-5 3V9Z"/></svg>
-    <svg data-icon="audio" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13v-2"/><path d="M9 16V8"/><path d="M13 19V5"/><path d="M17 16V8"/><path d="M21 13v-2"/></svg>
-    <svg data-icon="chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9.5 6.5l5.5 5.5-5.5 5.5"/></svg>
-  </template>
-
+  <a class="skip" href="#view">跳到正文</a>
+  <header class="topbar" id="topbar"></header>
+  <nav class="tabbar" id="stagebar" aria-label="本集各阶段" hidden></nav>
+  <main id="view" tabindex="-1" aria-live="polite"><div class="loading">正在打开创作台…</div></main>
+  <div class="sheet-scrim" id="scrim" hidden></div>
+  <aside class="inspector" id="inspector" aria-label="镜头详情" hidden></aside>
+  <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="搜索" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
   <script src="/app.js"></script>
 </body>
 </html>

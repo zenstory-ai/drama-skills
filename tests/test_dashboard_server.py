@@ -1347,30 +1347,6 @@ class DashboardEntrypointTests(unittest.TestCase):
         project_tool = dashboard_server.load_project_tool(SKILL)
         self.assertTrue(callable(project_tool.project_status))
 
-    def test_document_reader_keeps_long_content_in_a_scroll_container(self) -> None:
-        styles = (dashboard_server.STATIC_ROOT / "styles.css").read_text(
-            encoding="utf-8"
-        )
-
-        def declarations(selector: str) -> str:
-            match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", styles)
-            if match is None:
-                self.fail(f"missing Dashboard CSS rule for {selector}")
-            return match.group(1)
-
-        creator_desk = declarations(".creator-desk")
-        document_pane = declarations(".document-pane")
-        content_stage = declarations(".content-stage")
-        self.assertRegex(creator_desk, r"\boverflow:\s*hidden\s*;")
-        self.assertRegex(document_pane, r"\bmin-height:\s*0\s*;")
-        self.assertRegex(document_pane, r"\bdisplay:\s*grid\s*;")
-        self.assertRegex(
-            document_pane,
-            r"\bgrid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto\s*;",
-        )
-        self.assertRegex(content_stage, r"\bmin-height:\s*0\s*;")
-        self.assertRegex(content_stage, r"\boverflow:\s*auto\s*;")
-
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_supports_simple_and_legacy_creator_statuses(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
@@ -1414,8 +1390,7 @@ const result = {{
     independent_review: "approve",
     delivery_gate: "ready"
   }}, {{needed: true}}),
-  typedDuringSave: logic.savedContentIsCurrent("sent", "sent plus more"),
-  refreshFailure: logic.statusRefreshFailureMessage()
+  typedDuringSave: logic.savedContentIsCurrent("sent", "sent plus more")
 }};
 process.stdout.write(JSON.stringify(result));
 """
@@ -1434,7 +1409,6 @@ process.stdout.write(JSON.stringify(result));
         self.assertEqual(result["failed"], ["需要修改", "danger"])
         self.assertEqual(result["recovery"], ["需要更新", "warning"])
         self.assertFalse(result["typedDuringSave"])
-        self.assertIn("状态刷新失败", result["refreshFailure"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_hides_machine_files_and_groups_creator_content(self) -> None:
@@ -1486,50 +1460,6 @@ process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(pat
                 None,
             ],
         )
-
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_overview_summarizes_without_owning_production(self) -> None:
-        app = dashboard_server.STATIC_ROOT / "app.js"
-        script = f"""
-const logic = require({json.dumps(str(app))});
-const files = [
-  {{ path: "剧集/EP001/screenplay.md", type: "text" }},
-  {{ path: "剧集/EP001/storyboard/video-prompts.md", type: "text" }},
-  {{ path: "剧集/EP001/制作成果/image/SHOT001.png", type: "media", size: 2048 }},
-  {{ path: "剧集/EP002/screenplay.md", type: "text" }},
-  {{ path: "剧集/EP002/制作成果/tts/LINE001.wav", type: "media", size: 4096 }},
-];
-const overview = logic.projectOverviewModel(files, {{ title: "逆光告白" }});
-process.stdout.write(JSON.stringify({{
-  title: overview.title,
-  episodes: overview.episodes.length,
-  documents: overview.documents,
-  media: overview.media.length,
-  kinds: overview.media.map(logic.mediaKind),
-  stages: overview.episodes.map((episode) => logic.episodePresentation(episode.files).label),
-  size: logic.formatBytes(2048),
-}}));
-"""
-        completed = run_node(script)
-        self.assertEqual(
-            json.loads(completed.stdout),
-            {
-                "title": "逆光告白",
-                "episodes": 2,
-                "documents": 3,
-                "media": 2,
-                "kinds": ["image", "audio"],
-                "stages": ["已有媒体", "已有媒体"],
-                "size": "2.0 KB",
-            },
-        )
-
-        index = (dashboard_server.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-        frontend = app.read_text(encoding="utf-8")
-        self.assertIn('id="mediaGallery"', index)
-        self.assertIn('id="episodeStrip"', index)
-        self.assertNotIn("/api/production", frontend)
-        self.assertNotIn("adapter-config", frontend)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_structured_projection_removes_machine_fields(self) -> None:
@@ -1803,128 +1733,6 @@ process.stdout.write(JSON.stringify([
         self.assertEqual(breaks, 5)
         # A blank line still separates two quotes, as Markdown says it does.
         self.assertEqual(split_by_blank_line, 2)
-
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_understands_creator_first_episode_documents(self) -> None:
-        # Raw directory order buried the screenplay below every generated prompt.
-        app = dashboard_server.STATIC_ROOT / "app.js"
-        script = f"""
-const logic = require({json.dumps(str(app))});
-const files = [
-  {{ path: "\u5267\u96c6/EP001/\u5206\u955c.md", type: "text" }},
-  {{ path: "\u5267\u96c6/EP001/\u56fe\u7247\u63d0\u793a\u8bcd.md", type: "text" }},
-  {{ path: "\u5267\u96c6/EP001/\u5267\u672c.md", type: "text" }},
-  {{ path: "\u5267\u96c6/EP001/\u89c6\u89c9\u8bbe\u5b9a.md", type: "text" }},
-  {{ path: "\u5267\u96c6/EP001/\u89c6\u9891\u63d0\u793a\u8bcd.md", type: "text" }},
-];
-process.stdout.write(JSON.stringify({{
-  order: logic.orderedForReading(files).map((file) => file.path.split("/").pop()),
-  sections: Object.fromEntries(files.map((file) => [file.path.split("/").pop(), logic.creatorSection(file.path)])),
-  presentation: logic.episodePresentation(files),
-  reviewSection: logic.creatorSection("审查/EP001-审查.md"),
-  legacyReviewSection: logic.creatorSection("审查/EP001-findings.jsonl"),
-}}));
-"""
-        completed = run_node(script)
-        result = json.loads(completed.stdout)
-        self.assertEqual(result["order"][0], "剧本.md")
-        self.assertEqual(
-            result["sections"],
-            {
-                "剧本.md": "story",
-                "视觉设定.md": "cast",
-                "分镜.md": "storyboard",
-                "图片提示词.md": "prompts",
-                "视频提示词.md": "prompts",
-            },
-        )
-        self.assertEqual(result["presentation"]["label"], "5/5")
-        self.assertIsNone(result["presentation"]["next"])
-        self.assertEqual(result["reviewSection"], "review")
-        self.assertIsNone(result["legacyReviewSection"])
-
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_episode_progress_follows_the_five_documents(self) -> None:
-        # Progress was read off the legacy shots/keyframes files, so an episode
-        # with 剧本, 视觉设定 and 分镜 was told to go and make its storyboard, and
-        # one holding only 图片提示词 was called ready for production.
-        app = dashboard_server.STATIC_ROOT / "app.js"
-        script = f"""
-const logic = require({json.dumps(str(app))});
-const docs = (episode, names) => names.map((name) => ({{ path: `剧集/${{episode}}/${{name}}`, type: "text" }}));
-const cases = {{
-  three: docs("EP002", ["剧本.md", "视觉设定.md", "分镜.md"]),
-  promptOnly: docs("EP003", ["图片提示词.md"]),
-  gap: docs("EP006", ["剧本.md", "分镜.md", "视频提示词.md"]),
-  // A document nested deeper is not the episode's document.
-  nested: docs("EP007", ["剧本.md", "旧稿/视觉设定.md"]),
-  withMedia: [
-    ...docs("EP001", ["剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md"]),
-    {{ path: "剧集/EP001/制作成果/images/SHOT-EP001-001.png", type: "media" }},
-    {{ path: "剧集/EP001/制作成果/images/SHOT-EP001-002.png", type: "media" }},
-  ],
-  legacy: docs("EP009", ["screenplay.md", "storyboard/shots.jsonl"]),
-}};
-const result = Object.fromEntries(Object.entries(cases).map(([name, files]) => {{
-  const presentation = logic.episodePresentation(files);
-  return [name, {{
-    label: presentation.label,
-    next: presentation.next,
-    done: presentation.steps && presentation.steps.map((step) => step.done),
-    media: presentation.media,
-  }}];
-}}));
-process.stdout.write(JSON.stringify(result));
-"""
-        result = json.loads(run_node(script).stdout)
-
-        self.assertEqual(result["three"]["label"], "3/5")
-        self.assertEqual(result["three"]["next"], "图片提示词")
-        # Starting from a later stage is allowed; the first gap is still 剧本.
-        self.assertEqual(result["promptOnly"]["done"], [False, False, False, True, False])
-        self.assertEqual(result["promptOnly"]["next"], "剧本")
-        self.assertEqual(result["gap"]["next"], "视觉设定")
-        self.assertEqual(result["nested"]["done"], [True, False, False, False, False])
-        self.assertEqual(result["withMedia"]["label"], "5/5")
-        self.assertIsNone(result["withMedia"]["next"])
-        self.assertEqual(result["withMedia"]["media"], 2)
-        # A read-only v0.5 episode is not graded against documents it never had.
-        self.assertIsNone(result["legacy"]["done"])
-        self.assertIsNone(result["legacy"]["next"])
-
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_files_an_episode_review_under_its_episode(self) -> None:
-        app = dashboard_server.STATIC_ROOT / "app.js"
-        script = f"""
-const logic = require({json.dumps(str(app))});
-const files = [
-  {{ path: "剧集/EP001/剧本.md", type: "text" }},
-  {{ path: "审查/EP001-审查.md", type: "text" }},
-  {{ path: "审查/人物弧线-审查.md", type: "text" }},
-  {{ path: "剧集/EP002/剧本.md", type: "text" }},
-  {{ path: "reviews/EP002-审查.md", type: "text" }},
-  // The episode was renamed away; its old review must not bring it back.
-  {{ path: "审查/EP009-审查.md", type: "text" }},
-];
-const overview = logic.projectOverviewModel(files, {{}});
-process.stdout.write(JSON.stringify({{
-  episodes: overview.episodes.map((episode) => [episode.id, episode.files.map((file) => file.path)]),
-  reviewed: overview.episodes.map((episode) => logic.episodePresentation(episode.files).review),
-  topic: logic.episodeName("审查/人物弧线-审查.md"),
-}}));
-"""
-        result = json.loads(run_node(script).stdout)
-
-        self.assertEqual(
-            result["episodes"],
-            [
-                ["EP001", ["剧集/EP001/剧本.md", "审查/EP001-审查.md"]],
-                ["EP002", ["剧集/EP002/剧本.md", "reviews/EP002-审查.md"]],
-            ],
-        )
-        self.assertEqual(result["reviewed"], [True, True])
-        # A topic review is about the series, not an episode called 人物弧线.
-        self.assertEqual(result["topic"], "")
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_labels_keep_ids_as_written(self) -> None:
@@ -2326,6 +2134,536 @@ class PathPinnedDashboardHTTPTests(DashboardHTTPTests):
         self.assertIs(
             self.server.store.backend, dashboard_server._PathDirectory
         )
+
+
+# ------------------------------------------------------------------ v2 views
+
+EXAMPLE = SUITE / "examples/creator-first/EP001"
+DOCUMENTS = ("剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md")
+views = dashboard_server.views
+RHYTHM = {
+    "status": "accepted",
+    "form": "motion_comic",
+    "first_hook_seconds": 5,
+    "beat_interval_seconds_max": 30,
+    "opposed_reversals_per_episode_min": 1,
+    "end_on_peak": True,
+    "reprise_previous_last_beat": True,
+    "vo_share_max": 0.3,
+    "target_avg_shot_seconds": 3.0,
+    "close_shot_share_min": 0.45,
+    "first_major_payoff_by_episode": 1,
+}
+# A cut list written the way the edit stage documents it: numbered and plain
+# subtitles, highlighted words, every overlay style, countdowns, rarities and
+# sound effects with and without gain.
+CUT_LIST = """# EP001 剪辑单
+
+- 成片目标时长：9.00 秒
+- 画幅与帧率：9:16 · 1080×1920 · 24fps
+- 交付响度：-16 LUFS
+- 字幕：硬字幕
+- 未采用镜头：MOTION-EP001-003（理由：文件缺失——尚未生产）；MOTION-EP001-004（理由：质量不可用）
+
+## CUT-EP001-001 · 攥紧的茶杯
+
+- 来源：MOTION-EP001-001 · 制作成果/videos/cup.mp4
+- 入点：0.30
+- 出点：3.30
+- 时长：3.00
+- 取舍：入点=起势删掉；出点=动作落定
+- 声音：保留原声
+- 字幕 1：0.10-1.40 火箭军？（重点：火箭军）
+- 字幕 2：1.50-2.90 四个号，加起来四个粉吧。
+- 画面文字 1：0.00-1.00 卡片 主号 粉丝 2｜小号 1
+- 画面文字 2：1.20-2.80 角标 剩余 4 天（倒计时：431999）
+- 音效 1：0.90-1.40 制作成果/音效/cup-knock.wav（增益：-10）
+- 音效 2：2.00-2.20 制作成果/音效/tick.wav
+
+## CUT-EP001-002 · 四个号，四个粉
+
+- 来源：MOTION-EP001-002 · 制作成果/videos/laugh.mp4
+- 入点：0.00
+- 出点：4.00
+- 时长：4.00
+- 取舍：入点=哄笑起；出点=推到脸
+- 声音：保留原声
+- 字幕：都听见了。
+- 字幕时间：0.40-2.00
+- 画面文字：0.50-3.50 系统面板 系统绑定成功｜创作者认证（史诗）｜全站第 1 位（传说）
+
+## CUT-EP001-003 · 倒计时接着走
+
+- 来源：MOTION-EP001-005 · 制作成果/videos/tick.mp4
+- 入点：1.00
+- 出点：3.00
+- 时长：2.00
+- 取舍：入点=抬眼；出点=笑僵
+- 声音：保留原声
+- 字幕：无
+- 画面文字：0.00-2.00 任务面板 任务：五天内｜0 / 1000000（倒计时：接续）
+"""
+REVIEW = """# EP001 审查
+
+- 范围：剧本、分镜、剪辑单
+- 结论：REVISE
+- 复核方式：独立 reviewer
+
+## Blocker · REV-001 · 「空白才好」落地时看不到对手的判断
+- 位置：剧本.md / EP001-SC001；分镜.md / SHOT-EP001-010、SHOT-EP001-011
+- 证据：中间没有他听到这句话的反应。
+- 影响：反转的力量减半。
+- 修订结果：先给周薄森半拍停顿。
+- 规则：STY-14 · reviewed_invariant
+
+## Minor · REV-002 · 字幕和面板同时出现
+- 位置：剪辑单.md / CUT-EP001-002
+- 证据：重叠。
+- 影响：容易扫过去。
+- 修订结果：字幕推后。
+- 规则：EDT-03 · craft_default
+"""
+PIXEL = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+    "0000000c49444154789c63789862030003ab018271b1e22c0000000049454e44ae426082"
+)
+
+
+def load_script(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def example(name: str) -> str:
+    return (EXAMPLE / name).read_text(encoding="utf-8")
+
+
+def make_creator_project(root: Path, *, rhythm: bool = True) -> None:
+    """EP001 from the example, a cut list and a review; EP002 with a screenplay only."""
+
+    root.mkdir(parents=True)
+    manifest = {
+        "project_id": "creator", "title": "让你管账号", "current_checkpoint": "draft",
+        "format": {"episode_count": 8, "target_seconds_per_episode": 60, "aspect_ratio": "9:16"},
+    }
+    if rhythm:
+        manifest["creator_authority"] = {"rhythm_profile": RHYTHM}
+    (root / "short-drama.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+    episode = root / "剧集/EP001"
+    episode.mkdir(parents=True)
+    for name in DOCUMENTS:
+        (episode / name).write_text(example(name), encoding="utf-8")
+    board = example("分镜.md")
+    # SHOT-001 binds a first frame that exists; SHOT-002 one that does not.
+    for number, image in (("001", "001.png"), ("002", "missing.png")):
+        slot = (
+            f"REF-START-{number}（顺序：1）· 剧集/EP001/制作成果/images/{image}《起始帧》"
+            "（用途：起始帧；控制：构图；不得控制：动作）。"
+        )
+        head, _, rest = board.partition(f"## SHOT-EP001-{number}")
+        rest = rest.replace("- 输入参考图：无（创作者已明确选择文生视频）。", f"- 输入参考图：{slot}", 1)
+        board = f"{head}## SHOT-EP001-{number}{rest}"
+    (episode / "分镜.md").write_text(board, encoding="utf-8")
+    (episode / "剪辑单.md").write_text(CUT_LIST, encoding="utf-8")
+    (episode / "制作成果/images").mkdir(parents=True)
+    (episode / "制作成果/images/001.png").write_bytes(PIXEL)
+    (episode / "制作成果/videos").mkdir(parents=True)
+    (episode / "制作成果/videos/cup.mp4").write_bytes(b"\x00" * 64)
+    # Named like the shot it would be, but no 来源 line points at it.
+    (episode / "制作成果/videos/SHOT-EP001-002.mp4").write_bytes(b"\x00" * 64)
+    (episode / "制作成果/成片").mkdir(parents=True)
+    (episode / "制作成果/成片/成片.mp4").write_bytes(b"\x00" * 64)
+    (root / "剧集/EP002").mkdir(parents=True)
+    (root / "剧集/EP002/剧本.md").write_text(
+        example("剧本.md").replace("EP001", "EP002").replace("四个号，四个粉", "五天一百万", 1),
+        encoding="utf-8",
+    )
+    (root / "审查").mkdir()
+    (root / "审查/EP001-审查.md").write_text(REVIEW, encoding="utf-8")
+
+
+class CreatorViewsTests(unittest.TestCase):
+    """The readers the dashboard shows, held to the checker and to each stage's own parser."""
+
+    def episode(self, **documents: str) -> dict:
+        texts = {name: example(name) for name in DOCUMENTS}
+        texts.update(documents)
+        return views.read_episode("EP001", texts, REVIEW)
+
+    def test_the_example_episode_reads_as_its_storyboard_says(self) -> None:
+        episode = self.episode()
+        metrics = episode["metrics"]
+        self.assertEqual(episode["problems"], [])
+        self.assertEqual(episode["title"], "四个号，四个粉")
+        self.assertEqual((metrics["shots"], metrics["seconds"]), (22, 62))
+        self.assertEqual(metrics["close"], 0.5)
+        self.assertEqual(metrics["unsized"], 1)
+        shots = {shot["id"]: shot for shot in episode["board"]["shots"]}
+        self.assertEqual(shots["SHOT-EP001-006"]["scale"], "")
+        self.assertEqual(shots["SHOT-EP001-001"]["refState"], "t2v")
+        self.assertEqual([scene["id"] for scene in episode["script"]["scenes"]], ["EP001-SC001", "EP001-SC002"])
+
+    def test_the_storyboard_is_read_by_the_checkers_own_functions(self) -> None:
+        # Change what the checker thinks a duration is and the dashboard follows;
+        # a second parser would keep answering 62.
+        with patch.object(views.check, "_declared_seconds", lambda _value: 1.0):
+            metrics = self.episode()["metrics"]
+        self.assertEqual(metrics["seconds"], 22)
+
+    def test_shot_scale_reads_the_first_rung_whole(self) -> None:
+        self.assertEqual(views.shot_scale("过肩中近景，桌面高度"), "中近景")
+        self.assertEqual(views.shot_scale("手与茶杯大特写"), "大特写")
+        self.assertEqual(views.shot_scale("江晨近景，三分之四侧"), "近景")
+        self.assertEqual(views.shot_scale("越过右肩看屏幕"), "")
+        self.assertNotIn("中近景", views.CLOSE_SCALES)
+
+    def test_screenplay_blocks_match_the_write_stage_index(self) -> None:
+        index = load_script(
+            "parity_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
+        )
+        estimate = load_script(
+            "parity_duration_estimate", SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
+        )
+        text = example("剧本.md")
+        ours = views.parse_screenplay(text)
+        speakers = frozenset(
+            block["who"] for scene in ours["scenes"] for block in scene["blocks"] if block["k"] == "line"
+        )
+        blocks, issues = index._parse_screenplay(text.encode("utf-8"), speakers)
+        self.assertEqual(issues, [])
+
+        def canonical(block: dict) -> tuple:
+            if block["kind"] == "dialogue":
+                return ("line", "", block["speaker"])
+            if block["kind"] == "production_tag" and block["tag"] in ("VO", "OS"):
+                return ("line", block["tag"], block["speaker"])
+            if block["kind"] == "production_tag":
+                return ("tag", block["tag"], "")
+            return (block["kind"], "", "")
+
+        theirs = [canonical(block) for block in blocks if block["kind"] not in ("scene_heading", "comment")]
+        mine = [
+            (block["k"], block.get("tag", ""), block.get("who", ""))
+            for scene in ours["scenes"]
+            for block in scene["blocks"]
+        ]
+        self.assertEqual(mine, theirs)
+        counts = estimate.measure(text.encode("utf-8"), [dict(block, record_type="block") for block in blocks])
+        shares = views.voice_share(ours)
+        self.assertEqual(shares["spoken"], counts["dialogue_characters"])
+        self.assertEqual(shares["vo"], counts["voiceover_characters"])
+
+    def test_cut_list_matches_the_edit_tool(self) -> None:
+        edit = load_script("parity_edit_tool", SUITE / "skills/short-drama-edit/scripts/edit_tool.py")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "剪辑单.md"
+            path.write_text(CUT_LIST, encoding="utf-8")
+            delivery, cuts, unused = edit.parse_cut_list(path)
+        ours = views.parse_cut_list(CUT_LIST)
+        self.assertEqual(
+            (ours["target"], ours["lufs"], ours["burn"], tuple(ours["frame"]), ours["fps"]),
+            (delivery.target_seconds, delivery.loudness_lufs, delivery.burn_subtitles, delivery.frame_size, delivery.fps),
+        )
+        self.assertEqual(ours["unused"], unused)
+        placed = edit._timeline(cuts, [cut.declared for cut in cuts])
+        self.assertEqual(len(ours["cuts"]), len(cuts))
+        for mine, (cut, at, _scale) in zip(ours["cuts"], placed):
+            with self.subTest(cut=cut.cut_id):
+                self.assertEqual(
+                    (mine["id"], mine["title"], mine["motion"], mine["media"], mine["in"], mine["out"], mine["sec"], mine["at"]),
+                    (cut.cut_id, cut.title, cut.motion, cut.media, cut.start, cut.end, cut.declared, round(at, 3)),
+                )
+                self.assertEqual(
+                    [(sub["s"], sub["e"], sub["text"], tuple(sub["keys"])) for sub in mine["subs"]],
+                    [tuple(sub) for sub in cut.subtitles],
+                )
+                self.assertEqual(
+                    [(t["s"], t["e"], t["style"], tuple(t["items"]), t["countdown"], t["resume"], tuple(t["rarities"])) for t in mine["texts"]],
+                    [(t.start, t.end, t.style, t.items, t.countdown, t.resume, t.rarities) for t in cut.screen_texts],
+                )
+                self.assertEqual(
+                    [(x["s"], x["e"], x["path"], x["gain"]) for x in mine["sfx"]],
+                    [(x.start, x.end, x.path, x.gain_db) for x in cut.sound_effects],
+                )
+
+    def test_a_document_that_does_not_parse_falls_back_instead_of_failing(self) -> None:
+        broken_cut = CUT_LIST.replace("- 来源：MOTION-EP001-001 · 制作成果/videos/cup.mp4\n", "")
+        episode = self.episode(**{"分镜.md": "# EP001 分镜\n\n随手记的几句。\n", "剪辑单.md": broken_cut})
+        self.assertIsNone(episode["board"])
+        self.assertEqual([cut["id"] for cut in episode["cutlist"]["cuts"]], ["CUT-EP001-002", "CUT-EP001-003"])
+        self.assertTrue(any("分镜.md" in problem for problem in episode["problems"]))
+        # Nothing else is lost because one document is unreadable.
+        self.assertIsNotNone(episode["script"])
+        self.assertEqual(episode["metrics"]["shots"], 0)
+
+    def test_review_keeps_what_to_change_and_drops_reviewer_internals(self) -> None:
+        review = views.parse_review(REVIEW)
+        self.assertEqual(review["verdict"], "需要修改")
+        self.assertTrue(review["independent"])
+        self.assertEqual([item["sev"] for item in review["findings"]], ["must", "could"])
+        self.assertEqual(
+            review["findings"][0]["targets"], ["EP001-SC001", "SHOT-EP001-010", "SHOT-EP001-011"]
+        )
+        visible = json.dumps(review, ensure_ascii=False)
+        for internal in ("STY-14", "EDT-03", "reviewed_invariant", "craft_default", "Blocker"):
+            self.assertNotIn(internal, visible)
+        # A review not written in the suggested structure is shown as text.
+        self.assertEqual(views.parse_review("# EP001 审查意见\n\n- 第 3 镜的笑意来得太早。\n")["findings"], [])
+
+    def test_visual_settings_keep_the_era_locks_and_overlay_entries(self) -> None:
+        settings = views.parse_settings(example("视觉设定.md"))
+        self.assertEqual(settings["era"]["period"], "当下（2020 年代）")
+        self.assertIn("制服", [facet["k"] for facet in settings["era"]["facets"]])
+        items = {item["name"]: item for item in settings["items"]}
+        self.assertEqual(items["江晨"]["lock"]["surface"], "pine-green lapel service jacket")
+        self.assertEqual(len(items["江晨"]["lock"]["shots"]), 11)
+        self.assertEqual([name for name, item in items.items() if item["overlay"]], ["系统面板"])
+
+    def test_the_episode_id_spelling_is_the_project_tools(self) -> None:
+        tool = dashboard_server.load_project_tool(SKILL)
+        for candidate in ("EP001", "EP1000", "EP01", "EP0100", "EP1", "ep001"):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(
+                    bool(views.EPISODE_ID_RE.fullmatch(candidate)),
+                    bool(tool.EPISODE_ID_RE.fullmatch(candidate)),
+                )
+
+    def test_search_finds_lines_shots_and_settings(self) -> None:
+        rows = views.search_entries(self.episode())
+        groups = {hit["g"] for hit in views.search(rows, "茶杯")}
+        self.assertTrue({"镜头", "剧本动作", "设定"} <= groups)
+        line = views.search(rows, "空白才好")
+        self.assertIn(("台词", "script", "EP001-SC001"), {(hit["g"], hit["view"], hit["arg"]) for hit in line})
+        self.assertEqual(views.search(rows, "   "), [])
+
+
+class StatusFormatTests(unittest.TestCase):
+    def test_status_reports_only_a_well_formed_episode_shape(self) -> None:
+        tool = dashboard_server.load_project_tool(SKILL)
+        self.assertEqual(
+            tool.project_format({"format": {"episode_count": 8, "target_seconds_per_episode": 60, "aspect_ratio": "9:16", "pacing": {"x": 1}}}),
+            {"episode_count": 8, "target_seconds_per_episode": 60, "aspect_ratio": "9:16"},
+        )
+        self.assertEqual(
+            tool.project_format({"format": {"episode_count": True, "target_seconds_per_episode": -1, "aspect_ratio": " "}}),
+            {},
+        )
+        self.assertEqual(tool.project_format({}), {})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            make_creator_project(root)
+            status = tool.project_status_from_root(root, project_root=str(root))
+            self.assertEqual(status["format"]["target_seconds_per_episode"], 60)
+
+
+class DashboardViewEndpointTests(unittest.TestCase):
+    """GET /api/series, /api/episode and /api/search over a real socket."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.workspace = Path(self.temporary.name)
+        self.project = self.workspace / "creator"
+        make_creator_project(self.project)
+        self.server = create_server(self.workspace, port=0)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.host, self.port = self.server.server_address[:2]
+
+    def tearDown(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.temporary.cleanup()
+
+    def request(self, path: str, *, headers=None):
+        connection = http.client.HTTPConnection(self.host, self.port, timeout=10)
+        request_headers = {"Host": f"127.0.0.1:{self.port}", "X-Short-Drama-Token": self.server.access_token}
+        request_headers.update(headers or {})
+        connection.request("GET", path, headers=request_headers)
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        return response.status, body
+
+    def get(self, path: str):
+        status, body = self.request(path)
+        self.assertEqual(status, 200, body)
+        return json.loads(body), body.decode("utf-8")
+
+    def project_id(self) -> str:
+        return self.get("/api/projects")[0]["projects"][0]["id"]
+
+    def test_series_summarises_every_episode_without_internals(self) -> None:
+        series, raw = self.get(f"/api/series?project={self.project_id()}")
+        self.assertEqual(set(series), {"title", "format", "rhythm", "lifecycle", "episodes", "cast"})
+        self.assertEqual(series["format"]["target_seconds_per_episode"], 60)
+        self.assertEqual(series["rhythm"]["close_shot_share_min"], 0.45)
+        first, second = series["episodes"]
+        self.assertEqual((first["id"], first["title"], first["shots"], first["seconds"]), ("EP001", "四个号，四个粉", 22, 62))
+        self.assertTrue(all(first["has"].values()))
+        self.assertEqual(first["review"], {"must": 1, "should": 0, "could": 1})
+        self.assertEqual([item["id"] for item in first["must"]], ["REV-001"])
+        self.assertEqual(first["cutSeconds"], 9)
+        self.assertEqual({key for key, value in second["has"].items() if value}, {"script"})
+        self.assertEqual([person["name"] for person in series["cast"]], ["江晨", "周薄森"])
+        for internal in (str(self.workspace), "project_root", "authority", "ownership", "STY-14", ".short-drama"):
+            self.assertNotIn(internal, raw)
+
+    def test_an_unaccepted_rhythm_profile_is_not_compared_against(self) -> None:
+        manifest = json.loads((self.project / "short-drama.json").read_text(encoding="utf-8"))
+        manifest["creator_authority"]["rhythm_profile"]["status"] = "proposed"
+        (self.project / "short-drama.json").write_text(json.dumps(manifest), encoding="utf-8")
+        series, _ = self.get(f"/api/series?project={self.project_id()}")
+        self.assertIsNone(series["rhythm"])
+
+    def test_media_is_bound_only_through_the_documents(self) -> None:
+        episode, _ = self.get(f"/api/episode?project={self.project_id()}&ep=EP001")
+        media = episode["media"]
+        # The 起始帧 that exists is shown; the one written but absent is not.
+        self.assertEqual(media["frames"], {"SHOT-EP001-001": "剧集/EP001/制作成果/images/001.png"})
+        # A clip comes from a 来源 line, resolved against the episode first;
+        # SHOT-EP001-002.mp4 sits in the folder but no line names it.
+        self.assertEqual(media["clips"], {"CUT-EP001-001": "剧集/EP001/制作成果/videos/cup.mp4"})
+        self.assertEqual(media["film"], "剧集/EP001/制作成果/成片/成片.mp4")
+        self.assertEqual(episode["docs"]["review"], "审查/EP001-审查.md")
+        self.assertEqual(episode["docs"]["分镜.md"], "剧集/EP001/分镜.md")
+
+    def test_episode_endpoint_refuses_what_it_cannot_serve(self) -> None:
+        project = self.project_id()
+        self.assertEqual(self.request(f"/api/episode?project={project}&ep=..%2FEP001")[0], 400)
+        self.assertEqual(self.request(f"/api/episode?project={project}&ep=EP009")[0], 404)
+        self.assertEqual(self.request(f"/api/episode?project={project}")[0], 400)
+        self.assertEqual(self.request(f"/api/episode?project={project}&ep=EP001", headers={"X-Short-Drama-Token": "wrong"})[0], 401)
+        self.assertEqual(self.request(f"/api/series?project={project}", headers={"Host": "evil.example"})[0], 403)
+        self.assertEqual(
+            self.request(f"/api/search?project={project}&q=a&scope=series", headers={"Origin": "http://evil.example"})[0], 403
+        )
+
+    def test_linked_episodes_and_media_are_not_followed(self) -> None:
+        outside = self.workspace / "outside"
+        outside.mkdir()
+        (outside / "剧本.md").write_text(example("剧本.md").replace("EP001", "EP009"), encoding="utf-8")
+        (outside / "frame.png").write_bytes(PIXEL)
+        if not redirect_directory(self.project / "剧集/EP009", outside):
+            self.skipTest("directory links unavailable")
+        images = self.project / "剧集/EP001/制作成果/images"
+        (images / "001.png").unlink()
+        try:
+            (images / "001.png").symlink_to(outside / "frame.png")
+        except OSError:
+            (images / "001.png").write_bytes(PIXEL)
+            linked_media = False
+        else:
+            linked_media = True
+        project = self.project_id()
+        series, _ = self.get(f"/api/series?project={project}")
+        self.assertEqual([row["id"] for row in series["episodes"]], ["EP001", "EP002"])
+        self.assertEqual(self.request(f"/api/episode?project={project}&ep=EP009")[0], 404)
+        if linked_media:
+            episode, _ = self.get(f"/api/episode?project={project}&ep=EP001")
+            self.assertEqual(episode["media"]["frames"], {})
+
+    def test_search_covers_one_episode_or_the_series(self) -> None:
+        project = self.project_id()
+        within, _ = self.get(f"/api/search?project={project}&q=%E7%A9%BA%E7%99%BD&scope=ep&ep=EP001")
+        self.assertEqual({hit["ep"] for hit in within["hits"]}, {"EP001"})
+        across, _ = self.get(f"/api/search?project={project}&q=%E7%A9%BA%E7%99%BD&scope=series")
+        self.assertEqual({hit["ep"] for hit in across["hits"]}, {"EP001", "EP002"})
+        hit = next(item for item in within["hits"] if item["g"] == "台词")
+        self.assertEqual(hit["snippet"][hit["at"]:hit["at"] + hit["len"]], "空白")
+        self.assertEqual(self.request(f"/api/search?project={project}&q={'a' * 81}&scope=series")[0], 400)
+        self.assertEqual(self.request(f"/api/search?project={project}&q=a&scope=ep")[0], 400)
+        empty, _ = self.get(f"/api/search?project={project}&q=&scope=series")
+        self.assertEqual(empty["hits"], [])
+
+
+class PathPinnedDashboardViewEndpointTests(DashboardViewEndpointTests):
+    """The same read-only views through the backend Windows must use."""
+
+    def setUp(self) -> None:
+        patcher = patch.object(dashboard_server, "SECURE_DIR_FD", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        super().setUp()
+        self.assertIs(self.server.store.backend, dashboard_server._PathDirectory)
+
+
+class FrontendLogicTests(unittest.TestCase):
+    """Pure frontend decisions, run in Node against the shipped app.js."""
+
+    def run_app(self, body: str):
+        if not shutil.which("node"):
+            self.skipTest("Node.js is unavailable")
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"const logic = require({json.dumps(str(app))});\n{body}"
+        return json.loads(run_node(script).stdout)
+
+    def test_next_steps_put_must_fix_before_writing_before_editing(self) -> None:
+        empty = {"script": False, "settings": False, "board": False, "imgp": False, "vidp": False, "cut": False, "film": False, "review": False}
+        rows = [
+            {"id": "EP001", "has": {**empty, "script": True, "settings": True, "board": True, "imgp": True, "vidp": True}, "review": {"must": 0}, "must": []},
+            {"id": "EP002", "has": {**empty, "script": True}, "review": {"must": 0}, "must": []},
+            {"id": "EP003", "has": dict(empty), "review": {"must": 0}, "must": []},
+            {"id": "EP004", "has": {**empty, "script": True, "review": True}, "review": {"must": 2}, "must": [{"id": "REV-001", "title": "开场慢"}, {"id": "REV-002", "title": "旁白多"}]},
+            {"id": "EP005", "has": {key: True for key in empty}, "review": {"must": 0}, "must": []},
+        ]
+        result = self.run_app(
+            f"const rows = {json.dumps(rows, ensure_ascii=False)};\n"
+            "process.stdout.write(JSON.stringify({todos: logic.seriesTodos(rows).map((t) => [t.row.id, t.next.kind, t.next.ask]),"
+            " done: logic.nextFor(rows[4]).kind}));"
+        )
+        self.assertEqual([item[:2] for item in result["todos"]], [["EP004", "fix"], ["EP002", "write"], ["EP001", "cut"]])
+        self.assertIn("REV-001、REV-002", result["todos"][0][2])
+        self.assertIn("视觉设定.md", result["todos"][1][2])
+        self.assertEqual(result["done"], "done")
+
+    def test_routes_address_every_view(self) -> None:
+        result = self.run_app(
+            "const r = (h) => { const x = logic.parseRoute(h); return [x.page, x.ep, x.view, x.arg, x.q.get('scene')]; };\n"
+            "process.stdout.write(JSON.stringify([r('#/'), r('#/EP001'), r('#/EP001/board/SHOT-EP001-011?scene=EP001-SC002'),"
+            " r('#/EP1000/settings/%E6%B1%9F%E6%99%A8'), r('#/files'), r('#/edit?path=x'), r('#abc'),"
+            " logic.viewForPath('剧集/EP001/分镜.md'), logic.viewForPath('审查/EP001-审查.md'), logic.viewForPath('项目开发/brief.md')]));"
+        )
+        self.assertEqual(result[0], ["overview", None, "", None, None])
+        self.assertEqual(result[1], ["episode", "EP001", "", None, None])
+        self.assertEqual(result[2], ["episode", "EP001", "board", "SHOT-EP001-011", "EP001-SC002"])
+        self.assertEqual(result[3], ["episode", "EP1000", "settings", "江晨", None])
+        self.assertEqual([result[4][0], result[5][0], result[6][0]], ["files", "edit", "overview"])
+        self.assertEqual(result[7:], ["#/EP001/board", "#/EP001/review", "#/"])
+
+    def test_rhythm_checks_compare_only_against_an_accepted_profile(self) -> None:
+        metrics = {"shots": 22, "seconds": 62, "avg": 2.82, "close": 0.5, "vo": 0.35}
+        result = self.run_app(
+            f"const m = {json.dumps(metrics)}; const p = {json.dumps(RHYTHM)};\n"
+            "process.stdout.write(JSON.stringify([logic.rhythmChecks(m, p, 60).map((c) => [c.key, c.ok]), logic.rhythmChecks(m, null, null)]));"
+        )
+        self.assertEqual(result[0], [["seconds", True], ["avg", True], ["close", True], ["vo", False]])
+        self.assertEqual(result[1], [])
+
+    def test_component_styles_take_colours_and_type_only_from_tokens(self) -> None:
+        # tokens.css is shared verbatim with another dashboard; a raw colour or
+        # font stack in styles.css would fork the design language silently.
+        styles = (dashboard_server.STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
+        stray = re.findall(r"#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(|PingFang|Songti|Menlo|Consolas", styles)
+        self.assertEqual(stray, [])
+        tokens = (dashboard_server.STATIC_ROOT / "tokens.css").read_text(encoding="utf-8")
+        declared = set(re.findall(r"(--zs-[a-z0-9-]+)\s*:", tokens))
+        used = set(re.findall(r"var\((--zs-[a-z0-9-]+)\)", styles))
+        self.assertEqual(sorted(used - declared), [])
+
+    def test_a_line_links_to_a_shot_only_through_the_cut_list(self) -> None:
+        cuts = [{"shot": "SHOT-EP001-010", "subs": [{"text": "空白才好。"}], "texts": [{"items": ["系统绑定成功"]}]}]
+        result = self.run_app(
+            f"const map = logic.lineShots({json.dumps(cuts, ensure_ascii=False)});\n"
+            "process.stdout.write(JSON.stringify([logic.lineShot(map, '空白才好。'), logic.lineShot(map, '系统绑定成功'), logic.lineShot(map, '空白')]));"
+        )
+        self.assertEqual(result, ["SHOT-EP001-010", "SHOT-EP001-010", None])
 
 
 if __name__ == "__main__":
