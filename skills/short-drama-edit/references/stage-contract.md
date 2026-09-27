@@ -31,6 +31,8 @@
 | EDT-16 | reviewed_invariant | Compare shots within the same scene and lighting state using comparable image regions. Record corrections, then inspect the output. Whole-frame averages alone do not establish a mismatch; intentional lighting changes are valid. |
 | EDT-17 | structural_invariant | After material is regenerated, re-measure the spoken spans and update its subtitle windows before rendering. The material-mtime warning is a prompt to check, not proof of alignment. |
 | EDT-18 | taste_option | Optional grain is declared once in the delivery spec and applied dynamically after assembly by the built-in renderer. Its supported range is a tool limit, not a quality standard; other treatments may use external grading tools. |
+| EDT-19 | craft_default | A dialogue cut enters about 0.25 s before the line's speech onset and leaves about 0.4 s after the line ends, and lasts at least about 1.2 s. Locate these from the sounds that belong to the scripted line, so noise never stretches the cut. |
+| EDT-20 | craft_default | Within one scene, the built-in renderer pulls each cut partway toward the scene's median exposure and colour and reports the values it applied. A cut's stated correction or 「不校」 replaces the automatic match, and the delivery spec can turn it off. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、

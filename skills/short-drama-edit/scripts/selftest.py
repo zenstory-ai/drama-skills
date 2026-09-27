@@ -154,18 +154,17 @@ def check_subtitle_timing() -> None:
 
 
 def check_shot_match() -> None:
-    """A declared correction is applied; an undeclared one never is.
+    """A stated correction becomes its own filter chain, within the tool's ranges.
 
-    Generated shots drift a stop apart, so the join reads as a mistake. The
-    correction has to be visible in the document — a tool that measured clips
-    and adjusted them on its own would be changing pictures nobody could review.
+    Generated shots drift a stop apart, so the join reads as a mistake. What a
+    cut states in 「画面」 replaces the automatic within-scene match for that cut.
     """
 
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         episode = build(root, CUT_LIST)
         _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
-        require(_shot_match_filter(cuts[0]) == "", "没写画面的段不得被改动")
+        require(_shot_match_filter(cuts[0]) == "", "没写画面的段没有自己的校正")
 
         listed = CUT_LIST.replace(
             "- 声音：保留原声\n- 字幕：无",

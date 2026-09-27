@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import operator
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, NamedTuple, Optional, Sequence
+from typing import Any, Callable, NamedTuple, Optional, Sequence
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -148,6 +149,35 @@ PICTURE_LIMITS = {
     "saturation": (0.0, 2.0),
     "warmth": (-30.0, 30.0),
 }
+# 「画面：不校」 keeps a cut exactly as generated: no stated correction and no
+# automatic one. 「画面：无」 only says nothing is stated.
+PICTURE_UNTOUCHED = "不校"
+# Clips are generated one by one and come back up to ~35 luma apart at a cut,
+# which reads as a flash. Within one scene, render pulls each cut this far
+# toward the scene's median per-channel mean and spread: close enough to stop
+# the flash, short of flattening a deliberate change inside the scene.
+SHOT_MATCH_STRENGTH = 0.7
+# A near-flat clip (a black insert) has almost no spread; stretching it to the
+# scene's would amplify noise, so the gain is held to a plausible grade.
+SHOT_MATCH_GAIN_LIMITS = (0.6, 1.6)
+SHOT_MATCH_SAMPLE = "fps=4,scale=64:-2"
+STORYBOARD_DOCUMENT = "分镜.md"
+SHOT_HEADING = re.compile(r"^##\s+(SHOT-[^\s·]+)")
+SHOT_REFERENCE = re.compile(r"SHOT-[A-Za-z0-9-]+")
+SCENE_ID = re.compile(r"[A-Za-z]+[0-9]+-SC[0-9]+")
+# verify reads the delivered film at this size in grey, one value per pixel.
+FRAME_PROBE_SIZE = (90, 160)
+# A frame is suspect when it differs from both neighbours by more than this
+# (mean absolute difference, 0-255) while the neighbours differ from each other
+# by less than this share of it: a picture that belongs to neither side, such
+# as a strip of another shot decoded into the top of the frame.
+FLASH_FRAME_DIFFERENCE = 8.0
+FLASH_NEIGHBOUR_SHARE = 0.5
+# A panel entering over 2-3 frames of glitch trips the detector too; a suspect
+# frame this soon after a screen text starts is labelled as that.
+SCREEN_TEXT_ENTRANCE = 0.15
+# Mean-luma change across a cut (0-255) above which verify asks for a look.
+CUT_JUMP_NOTICE = 20.0
 TOLERANCE = 0.005
 # ffmpeg's `noise` strength runs to 100, which is snow, not grain. The useful
 # band for a finished film is single digits; the cap keeps a typo from shipping
@@ -196,6 +226,8 @@ class Cut(NamedTuple):
     line_number: int
     screen_texts: tuple[ScreenText, ...] = ()
     sound_effects: tuple[SoundEffect, ...] = ()
+    # 「画面：不校」: neither a stated nor an automatic correction.
+    untouched: bool = False
 
 
 class Delivery(NamedTuple):
@@ -205,6 +237,22 @@ class Delivery(NamedTuple):
     frame_size: Optional[tuple[int, int]]
     fps: Optional[float]
     grain: Optional[float]
+    # 「接镜匹配：无」 turns the automatic within-scene match off.
+    shot_match: bool = True
+
+
+class ChannelStats(NamedTuple):
+    """Per-channel (R, G, B) mean and standard deviation, 0-255."""
+
+    mean: tuple[float, ...]
+    spread: tuple[float, ...]
+
+
+class ShotMatch(NamedTuple):
+    """Per-channel `value * gain + offset`, applied to one cut."""
+
+    gains: tuple[float, ...]
+    offsets: tuple[float, ...]
 
 
 def _seconds(raw: str, *, field: str, line: int) -> float:
@@ -221,6 +269,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
     frame_size: Optional[tuple[int, int]] = None
     fps: Optional[float] = None
     grain: Optional[float] = None
+    shot_match = True
     for raw in lines:
         match = FIELD.match(raw)
         if not match:
@@ -253,6 +302,8 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
                             "这一档以上不再像胶片，像信号故障"
                         )
                     grain = amount or None
+        elif name == "接镜匹配":
+            shot_match = value.strip() not in {"无", "关"}
         elif name == "画幅与帧率":
             size = re.search(r"([0-9]{2,5})\s*[×x*]\s*([0-9]{2,5})", value)
             if size:
@@ -260,7 +311,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
             rate = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*fps", value, re.I)
             if rate:
                 fps = float(rate.group(1))
-    return Delivery(target, loudness, burn, frame_size, fps, grain)
+    return Delivery(target, loudness, burn, frame_size, fps, grain, shot_match)
 
 
 def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
@@ -332,9 +383,10 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
     subtitles = _parse_subtitles(fields, cut_id=cut_id, line=line)
     picture: dict[str, float] = {}
     picture_raw = fields.get("画面")
+    untouched = picture_raw is not None and picture_raw[0].strip() == PICTURE_UNTOUCHED
     if picture_raw is not None:
         text, where = picture_raw
-        if text.strip() not in {"", "无", "不校"}:
+        if text.strip() not in {"", "无", PICTURE_UNTOUCHED}:
             for label, value in PICTURE_TERM.findall(text):
                 key = PICTURE_KEYS[label]
                 number = float(value)
@@ -348,7 +400,8 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
             if not picture:
                 raise EditError(
                     f"{CUT_LIST_NAME}:{where}: {cut_id} 的画面写了内容但没有可执行的项；"
-                    "只认「亮度 <数>」「饱和 <数>」「色温 <数>」，不需要校正时写「无」"
+                    "只认「亮度 <数>」「饱和 <数>」「色温 <数>」，不需要校正时写「无」，"
+                    f"连自动接镜也不要时写「{PICTURE_UNTOUCHED}」"
                 )
     return Cut(
         cut_id=cut_id,
@@ -363,6 +416,7 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         line_number=line,
         screen_texts=_parse_screen_texts(fields, cut_id=cut_id, line=line),
         sound_effects=_parse_sound_effects(fields, cut_id=cut_id, line=line),
+        untouched=untouched,
     )
 
 
@@ -873,9 +927,16 @@ def render(
     segments_root = output_root / SEGMENT_DIRECTORY
     segments_root.mkdir(parents=True, exist_ok=True)
 
+    def measure(cut: Cut) -> Optional[ChannelStats]:
+        media = _resolve_media(episode, project_root, cut.media)
+        return None if media is None else _channel_stats(ffmpeg, media, cut.start, cut.end - cut.start)
+
+    scenes = _scene_keys(episode, cuts)
+    pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
+
     segments: list[Path] = []
     spans: list[float] = []
-    for cut in cuts:
+    for cut, match in zip(cuts, pictures):
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             raise EditError(f"{cut.cut_id} 的素材不存在: {cut.media}")
@@ -884,7 +945,6 @@ def render(
             ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
             "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
         ]
-        match = _shot_match_filter(cut)
         if match:
             command += ["-vf", match]
         command += [
@@ -1001,20 +1061,14 @@ def render(
         "字幕渲染": renderer if subtitle_path else None,
         "画面文字": len(layers),
         "音效": len(effects),
+        "自动接镜": _shot_match_report(auto, scenes, enabled=delivery.shot_match),
         "段数": len(segments),
         "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
     }
 
 
 def _shot_match_filter(cut: Cut) -> str:
-    """Match one cut to its neighbours, using only what the cut list declared.
-
-    Generated shots drift: two takes of the same person at the same table come
-    back a stop apart and half a step of white balance away from each other, and
-    the join reads as a mistake rather than a cut. The correction stays a stated
-    creator decision — the tool never measures a clip and adjusts it on its own,
-    because a correction nobody wrote down is one nobody can review.
-    """
+    """The correction a cut states in 「画面：」. It replaces the automatic match."""
 
     stages: list[str] = []
     eq = [
@@ -1030,6 +1084,188 @@ def _shot_match_filter(cut: Cut) -> str:
         amount = warmth / 100.0
         stages.append(f"colorbalance=rm={amount:.4f}:bm={-amount:.4f}")
     return ",".join(stages)
+
+
+def _heading_fields(path: Path, heading: re.Pattern[str], field: str) -> dict[str, str]:
+    """`{ID: value}` for one `- <field>：` line under each matching `##` heading."""
+
+    if not path.is_file():
+        return {}
+    found: dict[str, str] = {}
+    current: Optional[str] = None
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        match = heading.match(raw)
+        if match:
+            current = match.group(1)
+            continue
+        if raw.startswith("## "):
+            current = None
+            continue
+        line = FIELD.match(raw)
+        if current and line and line.group(1).strip() == field:
+            found.setdefault(current, line.group(2).strip())
+    return found
+
+
+def _scene_keys(episode: Path, cuts: Sequence[Cut]) -> list[Optional[tuple[str, ...]]]:
+    """Each cut's scene: MOTION → its 分镜 SHOT → the scene IDs that SHOT's 来源 names.
+
+    A shot drawing on two scenes keys on both, so it matches neither neighbour.
+    None where the chain breaks; such a cut is never matched.
+    """
+
+    shots = _heading_fields(episode / MOTION_DOCUMENT, MOTION_HEADING, "分镜")
+    sources = _heading_fields(episode / STORYBOARD_DOCUMENT, SHOT_HEADING, "来源")
+    keys: list[Optional[tuple[str, ...]]] = []
+    for cut in cuts:
+        shot = SHOT_REFERENCE.search(shots.get(cut.motion, ""))
+        scenes = tuple(SCENE_ID.findall(sources.get(shot.group(0), ""))) if shot else ()
+        keys.append(scenes or None)
+    return keys
+
+
+def _scene_runs(scenes: Sequence[Optional[tuple[str, ...]]]) -> list[list[int]]:
+    """Indexes of consecutive cuts from one scene. Intercut scenes form separate runs."""
+
+    runs: list[list[int]] = []
+    for index, scene in enumerate(scenes):
+        if scene is None:
+            continue
+        if runs and scenes[index - 1] == scene:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+    return runs
+
+
+def _median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _match_toward(
+    stats: ChannelStats, reference: ChannelStats, strength: float = SHOT_MATCH_STRENGTH
+) -> ShotMatch:
+    """Gain and offset per channel moving mean and spread `strength` of the way to `reference`."""
+
+    low, high = SHOT_MATCH_GAIN_LIMITS
+    gains: list[float] = []
+    offsets: list[float] = []
+    for mean, spread, target_mean, target_spread in zip(
+        stats.mean, stats.spread, reference.mean, reference.spread
+    ):
+        mean_to = mean + strength * (target_mean - mean)
+        spread_to = spread + strength * (target_spread - spread)
+        gain = min(high, max(low, spread_to / spread)) if spread > 1e-6 else 1.0
+        gains.append(gain)
+        offsets.append(mean_to - gain * mean)
+    return ShotMatch(tuple(gains), tuple(offsets))
+
+
+def _plan_shot_match(
+    cuts: Sequence[Cut],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+    measure: Callable[[Cut], Optional[ChannelStats]],
+    strength: float = SHOT_MATCH_STRENGTH,
+) -> dict[str, ShotMatch]:
+    """The automatic match for every cut it applies to, by CUT ID.
+
+    Within each run of one scene, the cuts that state no correction are pulled
+    toward the median of those same cuts. A cut with 「画面：<校正>」 or
+    「画面：不校」 is neither corrected nor counted in the median. `measure(cut)`
+    returns ChannelStats, or None when the clip cannot be read.
+    """
+
+    plan: dict[str, ShotMatch] = {}
+    for run in _scene_runs(scenes):
+        eligible = [cuts[i] for i in run if not cuts[i].picture and not cuts[i].untouched]
+        measured = [(cut, measure(cut)) for cut in eligible] if len(eligible) > 1 else []
+        known = [(cut, stats) for cut, stats in measured if stats is not None]
+        if len(known) < 2:
+            continue
+        reference = ChannelStats(
+            tuple(_median([stats.mean[c] for _, stats in known]) for c in range(3)),
+            tuple(_median([stats.spread[c] for _, stats in known]) for c in range(3)),
+        )
+        for cut, stats in known:
+            plan[cut.cut_id] = _match_toward(stats, reference, strength)
+    return plan
+
+
+def _auto_match_filter(match: ShotMatch) -> str:
+    """One `lutrgb` stage; the lookup clips to 0-255 itself."""
+
+    return "lutrgb=" + ":".join(
+        f"{channel}='val*{gain:.4f}{offset:+.3f}'"
+        for channel, gain, offset in zip("rgb", match.gains, match.offsets)
+    )
+
+
+def _picture_plan(
+    cuts: Sequence[Cut],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+    measure: Callable[[Cut], Optional[ChannelStats]],
+    *,
+    enabled: bool,
+) -> tuple[list[str], dict[str, ShotMatch]]:
+    """Each cut's picture filter: its stated correction, else the automatic match, else none."""
+
+    auto = _plan_shot_match(cuts, scenes, measure) if enabled else {}
+    filters = [
+        _shot_match_filter(cut) if cut.picture
+        else _auto_match_filter(auto[cut.cut_id]) if cut.cut_id in auto
+        else ""
+        for cut in cuts
+    ]
+    return filters, auto
+
+
+def _shot_match_report(
+    auto: dict[str, ShotMatch], scenes: Sequence[Optional[tuple[str, ...]]], *, enabled: bool
+) -> Any:
+    """What the automatic match did, so the correction is on the record."""
+
+    if not enabled:
+        return "关（剪辑单写了「接镜匹配：无」）"
+    if not any(scenes):
+        return f"未执行（按《{MOTION_DOCUMENT}》与《{STORYBOARD_DOCUMENT}》找不到各段所属场景）"
+    return {
+        cut_id: {
+            "增益": [round(gain, 3) for gain in match.gains],
+            "偏移": [round(offset, 1) for offset in match.offsets],
+        }
+        for cut_id, match in auto.items()
+    }
+
+
+def _channel_stats(
+    ffmpeg: str, media: Path, start: float, duration: float
+) -> Optional[ChannelStats]:
+    """Per-channel mean and spread of one cut's source range, sampled small."""
+
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+         "-i", str(media), "-vf", SHOT_MATCH_SAMPLE,
+         "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
+        capture_output=True, check=False,
+    )
+    if result.returncode != 0 or len(result.stdout) < 3:
+        return None
+    return _rgb_stats(result.stdout)
+
+
+def _rgb_stats(raw: bytes) -> ChannelStats:
+    means: list[float] = []
+    spreads: list[float] = []
+    for channel in range(3):
+        values = raw[channel::3]
+        count = len(values)
+        mean = sum(values) / count
+        square = sum(map(operator.mul, values, values)) / count
+        means.append(mean)
+        spreads.append(max(0.0, square - mean * mean) ** 0.5)
+    return ChannelStats(tuple(means), tuple(spreads))
 
 
 def _loudnorm_filter(ffmpeg: str, media: Path, target: float) -> str:
@@ -1626,25 +1862,143 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     measurements["画内可读文字"] = (
         "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
     )
+    segments = [episode / OUTPUT_DIRECTORY / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4" for cut in cuts]
+    spans = (
+        [probe_duration(segment) for segment in segments]
+        if all(segment.is_file() for segment in segments)
+        else None
+    )
     if any(cut.screen_texts or cut.sound_effects for cut in cuts):
-        measurements.update(_placements_for_sampling(episode, cuts))
+        measurements.update(_placements_for_sampling(cuts, spans))
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
+    measurements.update(_frame_report(
+        _grey_frames(ffmpeg, final), stream["fps"], cuts, spans, _scene_keys(episode, cuts)
+    ))
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
 
 
-def _placements_for_sampling(episode: Path, cuts: Sequence[Cut]) -> dict[str, Any]:
+def _grey_frames(ffmpeg: str, media: Path) -> Optional[list[bytes]]:
+    """Every frame of the film, grey, at FRAME_PROBE_SIZE."""
+
+    width, height = FRAME_PROBE_SIZE
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(media), "-vf", f"scale={width}:{height},format=gray",
+         "-f", "rawvideo", "-"],
+        capture_output=True, check=False,
+    )
+    size = width * height
+    if result.returncode != 0 or len(result.stdout) < size:
+        return None
+    raw = result.stdout
+    return [raw[at:at + size] for at in range(0, len(raw) - size + 1, size)]
+
+
+def _mean_difference(first: bytes, second: bytes) -> float:
+    return sum(map(abs, map(operator.sub, first, second))) / len(first)
+
+
+def _suspect_frames(frames: Sequence[bytes]) -> list[tuple[int, float, float, float]]:
+    """Frames unlike both neighbours while the neighbours are alike: (index, prev, next, across).
+
+    A hard cut differs from one side only; fast motion differs from both, but
+    its neighbours differ from each other even more.
+    """
+
+    steps = [_mean_difference(a, b) for a, b in zip(frames, frames[1:])]
+    suspects: list[tuple[int, float, float, float]] = []
+    for index in range(1, len(frames) - 1):
+        before, after = steps[index - 1], steps[index]
+        if min(before, after) <= FLASH_FRAME_DIFFERENCE:
+            continue
+        across = _mean_difference(frames[index - 1], frames[index + 1])
+        if across < FLASH_NEIGHBOUR_SHARE * min(before, after):
+            suspects.append((index, before, after, across))
+    return suspects
+
+
+def _cut_jumps(
+    means: Sequence[float],
+    fps: float,
+    cuts: Sequence[Cut],
+    spans: Sequence[float],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+) -> list[dict[str, Any]]:
+    """Mean-luma change from the last frame before each cut to the first after it."""
+
+    rows: list[dict[str, Any]] = []
+    cursor = 0.0
+    for index in range(1, len(cuts)):
+        cursor += spans[index - 1]
+        frame = round(cursor * fps)
+        if not 0 < frame < len(means):
+            continue
+        before, after = scenes[index - 1], scenes[index]
+        rows.append({
+            "切点秒": round(cursor, 2),
+            "前段": cuts[index - 1].cut_id,
+            "后段": cuts[index].cut_id,
+            "亮度变化": round(means[frame] - means[frame - 1], 1),
+            "场景": "未知" if before is None or after is None
+            else "同场" if before == after else "换场",
+        })
+    return rows
+
+
+def _frame_report(
+    frames: Optional[Sequence[bytes]],
+    fps: float,
+    cuts: Sequence[Cut],
+    spans: Optional[Sequence[float]],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+) -> dict[str, Any]:
+    """Luma jumps at cuts and suspect frames, with what to look at. Nothing here blocks."""
+
+    if frames is None or not fps:
+        reason = "未测（读不出成片的逐帧画面）"
+        return {"切点亮度变化": reason, "疑似坏帧": reason}
+    notes: list[str] = []
+    report: dict[str, Any] = {}
+    if spans is None:
+        report["切点亮度变化"] = "未测（分段缺失，无法换算切点时间）"
+        entrances: list[float] = []
+    else:
+        jumps = _cut_jumps([sum(frame) / len(frame) for frame in frames], fps, cuts, spans, scenes)
+        report["切点亮度变化"] = jumps
+        notes.extend(
+            f"{row['切点秒']:.2f} 秒 {row['前段']} → {row['后段']}（{row['场景']}）亮度变化 "
+            f"{row['亮度变化']:+.1f}：看是否像闪了一下"
+            for row in jumps if abs(row["亮度变化"]) > CUT_JUMP_NOTICE
+        )
+        entrances = [layer["start"] for layer in _screen_text_layers(cuts, spans)]
+    suspects = []
+    for index, before, after, across in _suspect_frames(frames):
+        seconds = index / fps
+        entering = any(0 <= seconds - start <= SCREEN_TEXT_ENTRANCE for start in entrances)
+        suspects.append({
+            "秒": round(seconds, 3), "帧": index,
+            "与前帧差": round(before, 1), "与后帧差": round(after, 1), "前后帧互差": round(across, 1),
+            "画面文字入场": entering,
+        })
+        notes.append(
+            f"{seconds:.3f} 秒（第 {index} 帧）与前后两帧都不像："
+            + ("画面文字正在入场，确认是入场效果" if entering else "逐帧看是否有错位或串入别的画面")
+        )
+    report["疑似坏帧"] = suspects
+    report["请逐帧查看"] = notes
+    return report
+
+
+def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float]]) -> dict[str, Any]:
     """Where the screen text and effects landed in the film, from the rendered segments.
 
     These are the frames and moments to sample; whether the text reads and the
     chime sits right is still for someone to look and listen.
     """
 
-    segments = [episode / OUTPUT_DIRECTORY / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4" for cut in cuts]
-    if not all(segment.is_file() for segment in segments):
+    if spans is None:
         reason = "未测（分段缺失，无法换算成片时间）"
         return {"画面文字落点": reason, "音效落点": reason}
-    spans = [probe_duration(segment) for segment in segments]
     return {
         "画面文字落点": [
             {

@@ -284,16 +284,11 @@ class VerifyPlacementTests(unittest.TestCase):
                 ["- 画面文字：0.50-1.00 卡片 微博 2", "- 音效：0.50-1.00 media/1.mp4"],
             ])
             cuts = project.parse()
-            self.assertEqual(
-                edit._placements_for_sampling(project.episode, cuts)["画面文字落点"],
-                "未测（分段缺失，无法换算成片时间）",
-            )
-            segments = project.episode / edit.OUTPUT_DIRECTORY / edit.SEGMENT_DIRECTORY
-            segments.mkdir(parents=True)
-            for cut in cuts:
-                (segments / f"{cut.cut_id}.mp4").write_bytes(b"")
-            with patch.object(edit, "probe_duration", side_effect=[3.1, 3.0]):
-                placed = edit._placements_for_sampling(project.episode, cuts)
+        self.assertEqual(
+            edit._placements_for_sampling(cuts, None)["画面文字落点"],
+            "未测（分段缺失，无法换算成片时间）",
+        )
+        placed = edit._placements_for_sampling(cuts, [3.1, 3.0])
         self.assertEqual([(p["起"], p["止"]) for p in placed["画面文字落点"]], [(0.0, 3.1), (3.6, 4.1)])
         self.assertEqual([(p["起"], p["止"]) for p in placed["音效落点"]], [(3.6, 4.1)])
 
