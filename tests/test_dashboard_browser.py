@@ -120,6 +120,8 @@ class DashboardBrowserTests(unittest.TestCase):
 
         self.content_button("带注释").evaluate("node => node.click()")
         expect(self.page.locator("#filename")).to_have_text("带注释")
+        # The filename changes before the fetch; the body only after it.
+        expect(self.page.locator("#message")).to_contain_text("已载入")
         body = self.page.locator(".content-stage").inner_text()
 
         self.assertIn("第一段正文。", body)
