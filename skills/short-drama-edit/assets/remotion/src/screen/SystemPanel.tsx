@@ -1,58 +1,43 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { COLOURS, PANEL_TOP_U, StyleProps, entrance, exit, glass, scanBand, unit } from "./tokens";
+import { Frame, Header, Reward, Typed } from "./chrome";
+import { COLOURS, StyleProps, TOP_U, entrance, exit, glitch, unit } from "./tokens";
 
-/** A glowing system panel: the first item is the status line, the rest arrive one by one. */
-export const SystemPanel: React.FC<StyleProps> = ({ text, fontFamily }) => {
+const TYPE_DELAY = 0.15;
+
+/**
+ * 【系统提示】: the first item types out as the status line, the rest arrive as
+ * rarity-coloured reward rows once it has finished.
+ */
+export const SystemPanel: React.FC<StyleProps> = ({ text }) => {
   const frame = useCurrentFrame();
   const { fps, height, width } = useVideoConfig();
   const u = unit(height);
-  const shown = entrance(frame, fps);
-  // A brief flicker on arrival, stepped on even frames so it is the same every render.
-  const flicker = frame < 0.3 * fps && Math.floor(frame / 2) % 2 ? 0.55 : 1;
-  const [status, ...items] = text.items;
+  const shown = entrance(frame, fps, 0, 13);
+  const jitter = glitch(frame);
+  const leaving = exit(frame, fps, text);
+  const [status, ...rewards] = text.items;
+  const rewardsFrom = TYPE_DELAY + Array.from(status.text).length * 0.035 + 0.15;
   return (
-    <AbsoluteFill
-      style={{ alignItems: "center", paddingTop: u * PANEL_TOP_U, opacity: exit(frame, fps, text) * flicker }}
-    >
-      <div
-        style={{
-          ...glass(u, COLOURS.systemAccent, fontFamily),
-          width: width * 0.8,
-          transform: `scaleY(${0.2 + 0.8 * shown})`,
-          opacity: shown,
-        }}
-      >
-        <div style={scanBand(frame, fps, COLOURS.systemScan)} />
-        <div
-          style={{
-            fontSize: u * 4,
-            fontWeight: 800,
-            marginBottom: items.length ? u * 1.4 : 0,
-            textShadow: `0 0 ${u * 1.2}px ${COLOURS.systemAccent}`,
-          }}
-        >
-          {status}
-        </div>
-        {items.map((item, index) => {
-          const arrived = entrance(frame, fps, 0.35 + index * 0.22);
-          return (
-            <div
-              key={index}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: u,
-                margin: `${u * 0.7}px 0`,
-                opacity: arrived,
-                transform: `translateX(${(1 - arrived) * u * 4}px)`,
-              }}
-            >
-              <span style={{ color: COLOURS.bullet, fontSize: u * 2.2 }}>✦</span>
-              <span style={{ fontSize: u * 2.6, fontWeight: 700 }}>{item}</span>
-            </div>
-          );
-        })}
+    <AbsoluteFill style={{ alignItems: "center", paddingTop: u * TOP_U.system, opacity: leaving * jitter.opacity }}>
+      <div style={{ transform: `translate(${jitter.dx}px, ${(1 - leaving) * -u * 2}px) scale(${0.9 + 0.1 * shown})` }}>
+        <Frame colour={COLOURS.system} width={width * 0.82}>
+          <Header text="【系统提示】" colour={COLOURS.system} />
+          <Typed
+            text={status.text}
+            delay={TYPE_DELAY}
+            style={{
+              fontSize: u * 4.4,
+              fontWeight: 900,
+              letterSpacing: u * 0.3,
+              textShadow: `0 0 ${u * 1.4}px ${COLOURS.system}`,
+              margin: `${u * 0.4}px 0 ${rewards.length ? u * 1.2 : 0}px`,
+            }}
+          />
+          {rewards.map((item, index) => (
+            <Reward key={index} name={item.text} rarity={item.rarity} delay={rewardsFrom + index * 0.28} />
+          ))}
+        </Frame>
       </div>
     </AbsoluteFill>
   );

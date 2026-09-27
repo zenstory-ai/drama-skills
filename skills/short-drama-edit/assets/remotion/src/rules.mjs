@@ -1,6 +1,95 @@
 // Decisions the overlay makes that do not need a browser. Plain JavaScript so
 // the suite's tests can import this file with Node and no build step.
 
+// ---------------------------------------------------------------- fonts
+
+/** The faces the overlay draws with, as `document.fonts.load` names them. */
+export const FACES = {
+  heavy: '900 16px "Noto Sans SC"',
+  bold: '700 16px "Noto Sans SC"',
+  mono: '800 16px "JetBrains Mono"',
+};
+
+/** Fixed words the panels draw themselves, so their glyphs are loaded too. */
+export const CHROME_TEXT = "【系统提示】【新任务】进度传说史诗稀有·";
+const DIGITS = "0123456789天:/, ";
+
+/**
+ * Which characters each face must have loaded before the first frame.
+ *
+ * The faces are split by unicode range, and a browser fetches a range only
+ * when text in it is laid out -- after the frame has been captured. Asking for
+ * every character the film will draw, up front, is what makes frame 0 look
+ * like frame 1000.
+ *
+ * @param {{ text: string }[]} cues
+ * @param {{ items: { text: string }[] }[]} screenTexts
+ */
+export const fontLoadPlan = (cues, screenTexts) => {
+  const unique = (/** @type {string} */ text) => [...new Set(Array.from(text))].join("");
+  const drawn = unique(
+    [...cues.map((cue) => cue.text), ...screenTexts.flatMap((piece) => piece.items.map((item) => item.text)),
+      CHROME_TEXT, DIGITS].join(""),
+  );
+  return [
+    { font: FACES.heavy, text: drawn },
+    { font: FACES.bold, text: drawn },
+    { font: FACES.mono, text: DIGITS },
+  ];
+};
+
+export const TIMED_OUT = "timed out";
+
+/**
+ * What is wrong with a finished load, or null when every face is ready.
+ *
+ * A face that no stylesheet declares loads as an empty list and raises
+ * nothing; the browser would substitute and the film would ship in the wrong
+ * typeface. So an empty list is a failure, as is a load that never finished.
+ *
+ * @param {{ font: string, text: string }[]} plan
+ * @param {unknown} outcome what `settleWithin(Promise.all(loads))` resolved to
+ * @param {(font: string, text: string) => boolean} check `document.fonts.check`
+ */
+export const fontLoadProblem = (plan, outcome, check) => {
+  if (outcome === TIMED_OUT) return `字体在 ${FONT_WAIT_MS / 1000} 秒内没有加载完：${plan.map((p) => p.font).join("、")}`;
+  if (outcome instanceof Error) return `字体加载失败：${outcome.message}`;
+  const loaded = /** @type {unknown[][]} */ (outcome);
+  const undeclared = plan.filter((_, index) => !loaded[index] || loaded[index].length === 0);
+  if (undeclared.length) {
+    return `没有声明这些字体（Remotion 工作区的字体包没装？）：${undeclared.map((p) => p.font).join("、")}`;
+  }
+  const pending = plan.filter((p) => !check(p.font, p.text));
+  if (pending.length) return `字体还没就绪：${pending.map((p) => p.font).join("、")}`;
+  return null;
+};
+
+export const FONT_WAIT_MS = 10000;
+
+/**
+ * Resolves with `promise`'s value, its error, or `TIMED_OUT` after `ms` --
+ * whichever comes first -- so a load that never settles cannot hold a frame
+ * until the whole render times out, and never resolves as if it had succeeded.
+ *
+ * @param {Promise<unknown>} promise
+ * @param {number} ms
+ * @returns {Promise<unknown>}
+ */
+export const settleWithin = (promise, ms) =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(TIMED_OUT), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        resolve(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+
 const GENERIC_FAMILIES = new Set([
   "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "math",
   "emoji", "fangsong", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded",
@@ -21,7 +110,7 @@ const LATIN_PROBE = " Hamburgefonstiv 0123456789";
 const PROBE_TAILS = ["serif", "monospace"];
 
 /**
- * True when none of the stack's named families is installed.
+ * True when none of the stack's named families resolves.
  *
  * `measure(stack, text)` returns the rendered width of `text` in that stack.
  * A family that resolves changes the width against at least one tail; only
@@ -40,36 +129,32 @@ export const familyIsMissing = (measure, stack, sample) => {
   );
 };
 
-/**
- * Whether a frame has to wait for fonts at all. Installed families lay out
- * synchronously; only declared web faces (@font-face) load in the background.
- * The overlay declares none, and waiting anyway is what hung renders: in a
- * render tab with a video beside it, neither `document.fonts.ready` nor a timer
- * fired before the frame timed out.
- *
- * @param {{ size: number, status: string }} fontSet `document.fonts`
- */
-export const mustWaitForFonts = (fontSet) => fontSet.size > 0 && fontSet.status !== "loaded";
+// ---------------------------------------------------------------- text
+
+/** Width of a line in ems: CJK and full-width forms are one, the rest a little over half. */
+export const lineEms = (/** @type {string} */ text) =>
+  Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.58), 0);
+
+/** Characters of `text` a typewriter shows `elapsed` seconds in, at 35 ms each after `delay`. */
+export const typedLength = (/** @type {number} */ elapsed, delay = 0) =>
+  Math.max(0, Math.floor((elapsed - delay) / 0.035 + 1e-9));
 
 /**
- * Resolves when `promise` settles or after `ms`, whichever comes first, so a
- * web face that never finishes loading cannot hold a frame forever.
+ * `2 / 1,000,000` → { done: 2, total: 1000000, ratio }, or null when the item is
+ * not a progress reading. The ratio is clamped so the bar never overruns.
  *
- * @param {Promise<unknown>} promise
- * @param {number} ms
- * @returns {Promise<void>}
+ * @param {string} text
  */
-export const settleWithin = (promise, ms) =>
-  new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    const finish = () => {
-      clearTimeout(timer);
-      resolve(undefined);
-    };
-    promise.then(finish, finish);
-  });
+export const parseProgress = (text) => {
+  const found = text.match(/^\s*([0-9][0-9,]*)\s*\/\s*([0-9][0-9,]*)\s*$/);
+  if (!found) return null;
+  const done = Number(found[1].replace(/,/g, ""));
+  const total = Number(found[2].replace(/,/g, ""));
+  if (!(total > 0)) return null;
+  return { done, total, ratio: Math.min(1, Math.max(0, done / total)) };
+};
 
-export const FONT_WAIT_MS = 3000;
+// ---------------------------------------------------------------- countdown
 
 /**
  * Whole seconds still showing `elapsed` seconds after a countdown that read
@@ -82,6 +167,12 @@ export const FONT_WAIT_MS = 3000;
  */
 export const secondsLeft = (countdown, elapsed) =>
   Math.max(0, Math.ceil(countdown - elapsed - 1e-6));
+
+/** Seconds since the displayed digit last changed; drives the per-second pulse. */
+export const sinceTick = (/** @type {number} */ countdown, /** @type {number} */ elapsed) => {
+  const remaining = countdown - elapsed;
+  return Math.ceil(remaining - 1e-6) - remaining;
+};
 
 const two = (/** @type {number} */ n) => String(n).padStart(2, "0");
 

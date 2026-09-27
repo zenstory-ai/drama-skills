@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edit_tool import (  # noqa: E402
     _unaccounted_shots,
     DEFAULT_REMOTION_CONCURRENCY,
+    DisplayCue,
     REMOTION_SOURCE,
     REMOTION_SOURCE_FILES,
     EditError,
@@ -102,7 +103,7 @@ def check_subtitle_geometry() -> None:
     """
 
     width, height = 768, 1344
-    ass = _build_ass([(1.0, 2.0, "这条路我自己走")], width, height)
+    ass = _build_ass([DisplayCue(1.0, 2.0, "这条路我自己走")], width, height)
     require(f"PlayResX: {width}" in ass, "PlayResX 必须等于画面宽")
     require(f"PlayResY: {height}" in ass, "PlayResY 必须等于画面高")
     style = next(line for line in ass.splitlines() if line.startswith("Style:"))
@@ -113,7 +114,12 @@ def check_subtitle_geometry() -> None:
         f"字号 {font_size} 不在画面高度的 2%–6% 之间",
     )
     margin_v = float(fields[21])
-    require(margin_v < height * 0.2, f"底边距 {margin_v} 会把字幕推离安全区")
+    # The baseline sits about a quarter up, above the platform's own bottom UI;
+    # much higher and the line lands on faces.
+    require(
+        height * 0.15 < margin_v < height * 0.3,
+        f"底边距 {margin_v} 不在画面高度的 15%–30% 之间",
+    )
     margin_h = float(fields[19])
     require(margin_h > 0, "左右边距为 0 时长句会顶到画面边缘")
     require("这条路我自己走" in ass, "台词原文必须原样进 ASS")
@@ -341,7 +347,7 @@ def check_ass_escaping() -> None:
     escaped = _ass_text(line)
     require("\\{" in escaped and "\\}" in escaped, f"花括号没有转义: {escaped}")
     require("姓名" in escaped, "转义把字弄丢了")
-    ass = _build_ass([(1.0, 2.0, line)], 1080, 1920)
+    ass = _build_ass([DisplayCue(1.0, 2.0, line)], 1080, 1920)
     dialogue = [row for row in ass.splitlines() if row.startswith("Dialogue")][0]
     require(dialogue.endswith(escaped), f"Dialogue 行没有用转义后的正文: {dialogue}")
     require(

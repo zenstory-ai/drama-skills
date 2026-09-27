@@ -28,6 +28,8 @@ SCREENPLAY = """# EP001
 
 [画面文字] 剩余 4 天 23:59:58
 
+[VO] 系统：发布任务，军宣新星。
+
 江晨：五天，一百万？
 """
 
@@ -169,7 +171,10 @@ class ScreenTextPlacementTests(unittest.TestCase):
             spans = [3.0, 3.06, 3.0]
             layers = edit._screen_text_layers(cuts, spans)
             workspace = Path(directory) / "workspace"
-            (workspace / "node_modules").mkdir(parents=True)
+            manifest = json.loads((edit.REMOTION_SOURCE / "package.json").read_text(encoding="utf-8"))
+            for name in manifest["dependencies"]:
+                (workspace / "node_modules" / name).mkdir(parents=True)
+                (workspace / "node_modules" / name / "package.json").write_text("{}")
             captured = {}
 
             def fake_run(command, **_):
@@ -197,22 +202,46 @@ class ScreenTextPlacementTests(unittest.TestCase):
         self.assertEqual(captured["cues"], [])
         self.assertEqual((captured["width"], captured["height"], captured["fps"]), (720, 1280, 30))
 
+    def test_rarity_travels_with_its_item_and_is_not_part_of_the_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 画面文字：0.00-2.00 任务面板 军宣新星｜5 天内粉丝破 1,000,000（传说）",
+            ]])
+            layers = edit._screen_text_layers(project.parse(), [3.0])
+            self.assertEqual(layers[0]["items"], [
+                {"text": "军宣新星", "rarity": None},
+                {"text": "5 天内粉丝破 1,000,000", "rarity": "传说"},
+            ])
+            # Traced without the suffix, so it is found in the [画面文字] line.
+            self.assertEqual(project.findings(), [])
+            project.write([["- 画面文字：0.00-2.00 卡片 微博 2（传说）"]])
+            with self.assertRaises(edit.EditError):
+                project.parse()
+
     def test_missing_remotion_fails_with_the_install_command(self):
+        layer = {"start": 0.0, "end": 1.0, "style": "card",
+                 "items": [{"text": "微博 2", "rarity": None}], "countdown": None}
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory) / "workspace"
-            layer = {"start": 0.0, "end": 1.0, "style": "card", "items": ["微博 2"], "countdown": None}
-            with self.assertRaises(edit.EditError) as raised:
-                edit._render_remotion_overlay(
-                    Path(directory), [], [layer], {}, 1.0, workspace, needed_for="画面文字"
-                )
-            self.assertIn(f"cd {workspace.resolve()} && npm install", str(raised.exception))
+            # Nothing installed, and then Remotion without the font packages.
+            for installed in ((), ("remotion", "@remotion/cli", "react", "react-dom")):
+                for name in installed:
+                    (workspace / "node_modules" / name).mkdir(parents=True, exist_ok=True)
+                    (workspace / "node_modules" / name / "package.json").write_text("{}")
+                with self.subTest(installed=installed), \
+                        self.assertRaises(edit.EditError) as raised:
+                    edit._render_remotion_overlay(
+                        Path(directory), [], [layer], {}, 1.0, workspace, needed_for="画面文字"
+                    )
+                self.assertIn(f"cd {workspace.resolve()} && npm install", str(raised.exception))
+                self.assertIn("@fontsource/noto-sans-sc", str(raised.exception))
             self.assertFalse((Path(directory) / "叠层.webm").exists())
 
     def test_ffmpeg_subtitles_are_burned_over_the_remotion_screen_text(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Project(Path(directory), [[
-                "- 字幕：十几个号，粉丝加起来，没号多。",
-                "- 字幕时间：0.20-1.40",
+                "- 字幕 1：0.20-1.40 十几个号，粉丝加起来，没号多。",
+                "- 字幕 2：1.50-2.90 发布任务，军宣新星。（重点：军宣新星）",
                 "- 画面文字：0.00-1.40 卡片 微博 2",
             ]])
             cuts = project.parse()
@@ -241,7 +270,10 @@ class ScreenTextPlacementTests(unittest.TestCase):
         graph = final[final.index("-filter_complex") + 1]
         self.assertLess(graph.index("overlay="), graph.index("ass="))
         dialogue = [row for row in ass.splitlines() if row.startswith("Dialogue")]
-        self.assertTrue(dialogue[0].endswith(",十几个号 粉丝加起来 没号多"), dialogue)
+        # Dialogue in the style's white; the system voice cyan, its keyword yellow.
+        self.assertTrue(dialogue[0].endswith(",十几个号　粉丝加起来　没号多"), dialogue)
+        self.assertTrue(dialogue[1].endswith(
+            ",{\\c&H00FFE03F&}发布任务　{\\c&H0000D4FF&}军宣新星{\\c&H00FFE03F&}"), dialogue)
 
 
 class VerifyPlacementTests(unittest.TestCase):
@@ -267,20 +299,67 @@ class VerifyPlacementTests(unittest.TestCase):
 
 
 class SubtitleDisplayTests(unittest.TestCase):
-    def test_burned_text_drops_closing_marks_and_spaces_pauses(self):
+    def test_burned_text_drops_closing_marks_spaces_pauses_and_keeps_questions(self):
         cases = {
-            "十几个号，粉丝加起来，没号多。": "十几个号 粉丝加起来 没号多",
-            "五天，一百万？": "五天 一百万",
+            "十几个号，粉丝加起来，没号多。": "十几个号　粉丝加起来　没号多",
+            "五天，一百万？": "五天　一百万？",
             "上辈子，我手里十几个百万大号。死在公司上市前一个月。":
-                "上辈子 我手里十几个百万大号 死在公司上市前一个月",
-            "粉丝破 1,000,000！": "粉丝破 1,000,000",
+                "上辈子　我手里十几个百万大号　死在公司上市前一个月",
+            "粉丝破 1,000,000！": "粉丝破 1,000,000！",
+            "你刚唱的什么？！": "你刚唱的什么？！",
             "伴奏《亮剑》": "伴奏《亮剑》",
             "嗯……": "嗯",
         }
         for line, shown in cases.items():
             with self.subTest(line):
                 self.assertEqual(edit._display_line(line), shown)
-        self.assertEqual(edit._display_cues([(0, 1, "……"), (1, 2, "走。")]), [(1, 2, "走")])
+        cues = edit._display_cues([(0, 1, "……", ()), (1, 2, "走。", ())])
+        self.assertEqual([(c.start, c.end, c.text) for c in cues], [(1, 2, "走")])
+
+    def test_long_lines_split_at_pauses_into_timed_one_line_cues(self):
+        line = "上辈子，我手里十几个百万大号。死在公司上市前一个月。"
+        cues = edit._display_cues([(10.0, 16.0, line, ("百万大号",))])
+        self.assertEqual([c.text for c in cues], ["上辈子", "我手里十几个百万大号", "死在公司上市前一个月"])
+        self.assertTrue(all(edit._visible(c.text) <= edit.SUBTITLE_MAX_VISIBLE for c in cues))
+        # Back to back across the window, each share by its character count.
+        self.assertAlmostEqual(cues[0].start, 10.0)
+        self.assertAlmostEqual(cues[-1].end, 16.0)
+        self.assertAlmostEqual(cues[0].end, cues[1].start)
+        self.assertAlmostEqual(cues[0].end - cues[0].start, 6.0 * 3 / 23)
+        self.assertEqual([c.keys for c in cues], [(), ("百万大号",), ()])
+        # Short phrases are packed back together while they fit.
+        self.assertEqual(edit._split_display("发布任务　军宣新星　五天　一百万？"),
+                         ["发布任务　军宣新星　五天", "一百万？"])
+        # A phrase with no pause in it is cut into near-equal one-line parts.
+        unbroken = edit._split_display("一二三四五六七八九十甲乙丙丁戊己庚辛")
+        self.assertEqual(unbroken, ["一二三四五六七八九", "十甲乙丙丁戊己庚辛"])
+        # A short line with a question inside stays whole.
+        self.assertEqual(edit._split_display("五天　一百万？"), ["五天　一百万？"])
+
+    def test_colour_kind_comes_from_the_screenplay_line_quoted(self):
+        screenplay = (
+            "周团：十几个号，粉丝加起来，没号多。\n"
+            "[VO] 江晨：我不懂音乐。\n"
+            "[VO] 系统：绑定成功。\n"
+            "[OS] 船员：关窗，水进来了！\n"
+            "[画面文字] 系统：绑定中\n"
+        )
+        cases = {"粉丝加起来": "line", "我不懂音乐": "vo", "绑定成功": "system",
+                 "关窗": "line", "绑定中": "line", "剧本里没有": "line"}
+        for text, kind in cases.items():
+            with self.subTest(text):
+                cue = edit._display_cues([(0.0, 1.0, text, ())], screenplay)[0]
+                self.assertEqual(cue.kind, kind)
+
+    def test_keywords_must_occur_in_their_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [["- 字幕：五天，一百万？（重点：一百万｜五天）"]])
+            subtitle = project.parse()[0].subtitles[0]
+            self.assertEqual((subtitle[2], subtitle[3]), ("五天，一百万？", ("一百万", "五天")))
+            self.assertEqual(project.findings(), [])
+            project.write([["- 字幕：五天，一百万？（重点：一千万）"]])
+            with self.assertRaises(edit.EditError):
+                project.parse()
 
     def test_the_cut_list_still_quotes_the_screenplay_with_its_punctuation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -399,28 +478,75 @@ console.log(JSON.stringify({
             "fractional": "4天 23:59:57",
         })
 
-    def test_installed_families_register_no_font_wait(self):
-        verdicts = self.run_rules(r"""
-console.log(JSON.stringify([
-  rules.mustWaitForFonts({ size: 0, status: "loading" }),
-  rules.mustWaitForFonts({ size: 2, status: "loaded" }),
-  rules.mustWaitForFonts({ size: 2, status: "loading" }),
-]));
+    def test_every_drawn_character_is_loaded_for_the_face_that_draws_it(self):
+        plan = self.run_rules(r"""
+const cues = [{ text: "五天　一百万？" }];
+const screenTexts = [{ items: [{ text: "军宣新星" }, { text: "2 / 1,000,000" }] }];
+console.log(JSON.stringify(rules.fontLoadPlan(cues, screenTexts)));
 """)
-        self.assertEqual(verdicts, [False, False, True])
+        faces = {entry["font"]: set(entry["text"]) for entry in plan}
+        sans = {face: chars for face, chars in faces.items() if "Noto Sans SC" in face}
+        self.assertEqual({face.split()[0] for face in sans}, {"700", "900"})
+        drawn = set("五天　一百万？军宣新星2 / 1,000,000【系统提示】【新任务】进度传说史诗稀有")
+        for face, chars in sans.items():
+            self.assertLessEqual(drawn, chars, face)
+        mono = next(chars for face, chars in faces.items() if "JetBrains Mono" in face)
+        self.assertLessEqual(set("0123456789:/, "), mono)
 
-    def test_font_wait_is_bounded_when_the_promise_never_settles(self):
+    def test_a_face_that_is_undeclared_late_or_unfinished_stops_the_render(self):
+        verdicts = self.run_rules(r"""
+const plan = [{ font: "900 16px A", text: "字" }, { font: "800 16px B", text: "1" }];
+const ok = () => true;
+console.log(JSON.stringify({
+  ready: rules.fontLoadProblem(plan, [[{}], [{}]], ok),
+  undeclared: rules.fontLoadProblem(plan, [[{}], []], ok),
+  late: rules.fontLoadProblem(plan, rules.TIMED_OUT, ok),
+  failed: rules.fontLoadProblem(plan, new Error("404"), ok),
+  pending: rules.fontLoadProblem(plan, [[{}], [{}]], (font) => font.includes("A")),
+}));
+""")
+        self.assertIsNone(verdicts.pop("ready"))
+        for name, problem in verdicts.items():
+            with self.subTest(name):
+                self.assertIsInstance(problem, str)
+        self.assertIn("800 16px B", verdicts["undeclared"])
+        self.assertNotIn("900 16px A", verdicts["undeclared"])
+        self.assertIn("800 16px B", verdicts["pending"])
+
+    def test_font_wait_is_bounded_and_never_passes_off_a_timeout_as_success(self):
         outcome = self.run_rules(r"""
 const started = Date.now();
-await rules.settleWithin(new Promise(() => {}), 50);
-const hung = Date.now() - started;
-const quick = Date.now();
-await rules.settleWithin(Promise.resolve(), 5000);
-console.log(JSON.stringify({ hung, quick: Date.now() - quick }));
+const hung = await rules.settleWithin(new Promise(() => {}), 50);
+const waited = Date.now() - started;
+const quick = await rules.settleWithin(Promise.resolve([1]), 5000);
+const failed = await rules.settleWithin(Promise.reject(new Error("no")), 5000);
+console.log(JSON.stringify({ hung, waited, quick, failed: failed instanceof Error }));
 """)
-        self.assertGreaterEqual(outcome["hung"], 45)
-        self.assertLess(outcome["hung"], 2000)
-        self.assertLess(outcome["quick"], 1000)
+        self.assertEqual(outcome["hung"], "timed out")
+        self.assertGreaterEqual(outcome["waited"], 45)
+        self.assertLess(outcome["waited"], 2000)
+        self.assertEqual(outcome["quick"], [1])
+        self.assertTrue(outcome["failed"])
+
+    def test_typing_progress_and_pulse_are_pure_functions_of_time(self):
+        values = self.run_rules(r"""
+console.log(JSON.stringify({
+  typed: [0, 0.14, 0.15, 0.184, 0.186, 1.0].map((t) => rules.typedLength(t, 0.15)),
+  progress: ["2 / 1,000,000", "1,000,001/1,000,000", "2 天", "3 / 0"].map(rules.parseProgress),
+  pulse: [0, 0.1, 0.5, 1.0].map((t) => Math.round(rules.sinceTick(431998, t) * 100) / 100),
+  // A resumed clock starts mid-second; its digit still changes on the whole second.
+  resumed: [0, 0.5, 0.6].map((t) => Math.round(rules.sinceTick(431996.5, t) * 100) / 100),
+  ems: rules.lineEms("五天　一百万？ok"),
+}));
+""")
+        self.assertEqual(values["typed"], [0, 0, 0, 0, 1, 24])
+        self.assertEqual(values["progress"][0], {"done": 2, "total": 1000000, "ratio": 2e-06})
+        self.assertEqual(values["progress"][1]["ratio"], 1)
+        self.assertEqual(values["progress"][2:], [None, None])
+        # The digit changes at each whole second; the pulse restarts there.
+        self.assertEqual(values["pulse"], [0.0, 0.1, 0.5, 0.0])
+        self.assertEqual(values["resumed"], [0.5, 0.0, 0.1])
+        self.assertAlmostEqual(values["ems"], 7 + 2 * 0.58)
 
 
 if __name__ == "__main__":

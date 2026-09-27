@@ -60,6 +60,7 @@ REMOTION_SOURCE_FILES = (
     "src/rules.mjs",
     "src/screen/ScreenText.tsx",
     "src/screen/tokens.ts",
+    "src/screen/chrome.tsx",
     "src/screen/Card.tsx",
     "src/screen/SystemPanel.tsx",
     "src/screen/TaskPanel.tsx",
@@ -86,15 +87,31 @@ SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 # Numbered fields keep them ordered and let each one state its own window.
 SUBTITLE_FIELD = re.compile(r"^字幕(?:\s*(\d+))?$")
 SUBTITLE_CUE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
-# Short-drama subtitles carry no closing punctuation, and a pause inside a line
-# shows as a space. Only the burned text changes: the cut list keeps the
-# screenplay's punctuation, so the line is still checked against 剧本.md as written.
-# ASCII marks are left alone mid-line: they sit inside numbers such as 1,000.
+# Burned subtitles follow GY/T 288 and short-drama practice: no closing
+# punctuation, a pause inside a line shows as a full-width space, and ？ ！ stay
+# because they change how the line reads. Only the burned text changes: the cut
+# list keeps the screenplay's punctuation, so the line is still checked against
+# 剧本.md as written. ASCII marks are left alone mid-line: they sit inside
+# numbers such as 1,000.
 SUBTITLE_PAUSE_MARKS = "，、；：。"
-SUBTITLE_KEPT_END_MARKS = ""
+SUBTITLE_KEPT_END_MARKS = "？！?!"
 SUBTITLE_END_MARKS = "".join(
     mark for mark in "，、；：。…—～！？,.;:!?~" if mark not in SUBTITLE_KEPT_END_MARKS
 )
+# One line on screen: a longer line is split at its pauses into cues shown one
+# after another, each given a share of the window by its character count.
+SUBTITLE_MAX_VISIBLE = 12
+# 「字幕：… （重点：词｜词）」 marks words to highlight; they must occur in the line.
+SUBTITLE_KEYWORDS = re.compile(r"[（(]重点[：:]\s*(.+?)\s*[）)]\s*$")
+# Colour by who is speaking, read from 剧本.md rather than written again here:
+# `[VO] 系统：` is the system voice, any other `[VO]` an inner or narrating voice.
+SPOKEN_LINE = re.compile(
+    r"^\s*(?:\[(VO|OS)\]\s*)?([^\s：:\[\]（(]+)(?:[（(][^）)]*[）)])?\s*[：:]\s*(.+?)\s*$"
+)
+SYSTEM_SPEAKER = "系统"
+# The same values as the Remotion layer's `src/screen/tokens.ts`.
+SUBTITLE_COLOURS = {"line": "#FFFFFF", "vo": "#9FE8FF", "system": "#3FE0FF"}
+SUBTITLE_KEYWORD_COLOUR = "#FFD400"
 # Text the picture had to leave blank -- a system panel, a countdown, follower
 # counts on a monitor -- because video models garble it. It is drawn here, over
 # the finished picture, and every item must come from a [画面文字] line.
@@ -106,6 +123,9 @@ SCREEN_TEXT = re.compile(
 SCREEN_TEXT_ITEM_SEPARATOR = "｜"
 COUNTDOWN = re.compile(r"[（(]倒计时[：:]\s*([0-9]+(?:\.[0-9]+)?|接续)\s*[）)]\s*$")
 COUNTDOWN_STYLES = {"任务面板", "角标"}
+# 「现金 10 万（传说）」: an item's rarity sets its colour. Unmarked items are 稀有.
+RARITY = re.compile(r"[（(](传说|史诗|稀有)[）)]$")
+RARITY_STYLES = {"系统面板", "任务面板"}
 # The three panels share the top of the frame; the chip has its own corner.
 SCREEN_TEXT_SLOTS = {"卡片": "面板", "系统面板": "面板", "任务面板": "面板", "角标": "角标"}
 SCREENPLAY_SCREEN_TEXT = re.compile(r"^\s*\[画面文字\]\s*(.+?)\s*$", re.MULTILINE)
@@ -148,6 +168,12 @@ class ScreenText(NamedTuple):
     countdown: Optional[float] = None
     # 「倒计时：接续」 carries on from the latest earlier countdown in the film.
     resume: bool = False
+    # One per item: 传说 / 史诗 / 稀有, or None where the item names none.
+    rarities: tuple[Optional[str], ...] = ()
+
+
+# (start, end, text as in 剧本.md, words to highlight); times relative to the cut.
+Subtitle = tuple[Optional[float], Optional[float], str, tuple[str, ...]]
 
 
 class SoundEffect(NamedTuple):
@@ -165,7 +191,7 @@ class Cut(NamedTuple):
     start: float
     end: float
     declared: float
-    subtitles: tuple[tuple[Optional[float], Optional[float], str], ...]
+    subtitles: tuple[Subtitle, ...]
     picture: dict[str, float]
     line_number: int
     screen_texts: tuple[ScreenText, ...] = ()
@@ -408,7 +434,18 @@ def _parse_screen_texts(
                 f"「<起>-<止> <样式> <文字>」，样式是 {'/'.join(SCREEN_TEXT_STYLES)}"
             )
         style = found.group(3)
-        items = tuple(item.strip() for item in found.group(4).split(SCREEN_TEXT_ITEM_SEPARATOR))
+        items: list[str] = []
+        rarities: list[Optional[str]] = []
+        for raw in found.group(4).split(SCREEN_TEXT_ITEM_SEPARATOR):
+            item = raw.strip()
+            rare = RARITY.search(item)
+            if rare and style not in RARITY_STYLES:
+                raise EditError(
+                    f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」是{style}，"
+                    f"稀有度只用在{'或'.join(sorted(RARITY_STYLES))}上"
+                )
+            items.append(item[: rare.start()].strip() if rare else item)
+            rarities.append(rare.group(1) if rare else None)
         if not all(items):
             raise EditError(
                 f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」有空项；"
@@ -420,7 +457,8 @@ def _parse_screen_texts(
                 f"倒计时只放在{'或'.join(sorted(COUNTDOWN_STYLES))}上"
             )
         texts.append(ScreenText(
-            float(found.group(1)), float(found.group(2)), style, items, countdown, resume
+            float(found.group(1)), float(found.group(2)), style, tuple(items),
+            countdown, resume, tuple(rarities),
         ))
 
     by_slot: dict[str, list[ScreenText]] = {}
@@ -470,7 +508,7 @@ def _parse_sound_effects(
 
 def _parse_subtitles(
     fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
-) -> tuple[tuple[Optional[float], Optional[float], str], ...]:
+) -> tuple[Subtitle, ...]:
     """Read every subtitle a cut declares, in written order.
 
     A shot is not one line. The exchange "就是什么 / 就是少了点东西 / 少了什么" is a
@@ -482,19 +520,33 @@ def _parse_subtitles(
     is_numbered, entries = _field_entries(
         fields, SUBTITLE_FIELD, "字幕", cut_id=cut_id, line=line
     )
-    plain = None if is_numbered or not entries else (entries[0][1], entries[0][2])
+
+    def keywords(value: str, where: int) -> tuple[str, tuple[str, ...]]:
+        marked = SUBTITLE_KEYWORDS.search(value)
+        if not marked:
+            return value.strip(), ()
+        text = value[: marked.start()].strip()
+        words = tuple(
+            word.strip() for word in marked.group(1).split(SCREEN_TEXT_ITEM_SEPARATOR)
+        )
+        stray = [word for word in words if not word or word not in text]
+        if stray:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的字幕重点词不在这句里: {stray}"
+            )
+        return text, words
 
     if is_numbered:
-        numbered = entries
-        cues: list[tuple[Optional[float], Optional[float], str]] = []
-        for index, value, where in numbered:
+        cues: list[Subtitle] = []
+        for index, value, where in entries:
             found = SUBTITLE_CUE.match(value)
             if not found:
                 raise EditError(
                     f"{CUT_LIST_NAME}:{where}: {cut_id} 的「字幕 {index}」要写成"
                     "「<起>-<止> <台词>」，多句必须各自带时间"
                 )
-            cues.append((float(found.group(1)), float(found.group(2)), found.group(3)))
+            text, words = keywords(found.group(3), where)
+            cues.append((float(found.group(1)), float(found.group(2)), text, words))
         for earlier, later in zip(cues, cues[1:]):
             if later[0] is not None and earlier[1] is not None and later[0] < earlier[1]:
                 raise EditError(
@@ -502,17 +554,18 @@ def _parse_subtitles(
                 )
         return tuple(cues)
 
-    if plain is None or plain[0].strip() == "无":
+    if not entries or entries[0][1].strip() == "无":
         return ()
+    text, words = keywords(entries[0][1], entries[0][2])
     window_raw = fields.get("字幕时间")
     if window_raw is None:
-        return ((None, None, plain[0].strip()),)
+        return ((None, None, text, words),)
     found = SUBTITLE_WINDOW.match(window_raw[0])
     if not found:
         raise EditError(
             f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 的字幕时间要写成「起-止」秒数"
         )
-    return ((float(found.group(1)), float(found.group(2)), plain[0].strip()),)
+    return ((float(found.group(1)), float(found.group(2)), text, words),)
 
 
 def _which(name: str) -> Optional[str]:
@@ -664,7 +717,7 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
                     f"超过素材实际时长 {available:.2f}"
                 )
-        for window_start, window_end, text in cut.subtitles:
+        for window_start, window_end, text, _ in cut.subtitles:
             if screenplay and _normalize(text) not in _normalize(screenplay):
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕在《"
@@ -749,7 +802,7 @@ def _stale_window_findings(
     findings: list[str] = []
     for cut in cuts:
         timed = (
-            any(start is not None for start, _, _ in cut.subtitles)
+            any(subtitle[0] is not None for subtitle in cut.subtitles)
             or cut.screen_texts
             or cut.sound_effects
         )
@@ -869,7 +922,7 @@ def render(
         styled_path = None
         overlay_path = None
         cues = (
-            _display_cues(_subtitle_cues(cuts, spans))
+            _display_cues(_subtitle_cues(cuts, spans), _screenplay_text(episode))
             if burn_subtitles and any(cut.subtitles for cut in cuts)
             else []
         )
@@ -1027,17 +1080,22 @@ def _sync_remotion_workspace(workspace: Path) -> Path:
 
 
 def _overlay_props(
-    cues: Sequence[tuple[float, float, str]],
+    cues: Sequence[DisplayCue],
     layers: Sequence[dict[str, Any]],
     canvas: dict[str, Any],
     duration: float,
 ) -> dict[str, Any]:
-    """The whole contract with the composition, in output seconds."""
+    """The whole contract with the composition, in output seconds.
+
+    Typography -- faces, sizes, colours -- is the composition's own; only what
+    to draw and when crosses this boundary.
+    """
 
     return {
         "cues": [
-            {"start": round(start, 3), "end": round(end, 3), "text": text}
-            for start, end, text in cues
+            {"start": round(cue.start, 3), "end": round(cue.end, 3), "text": cue.text,
+             "kind": cue.kind, "keys": list(cue.keys)}
+            for cue in cues
         ],
         "screenTexts": [
             {
@@ -1054,18 +1112,26 @@ def _overlay_props(
         "height": canvas.get("height") or 1920,
         "fps": canvas.get("fps") or 24,
         "durationInSeconds": round(duration, 3),
-        "fontScale": 0.034,
-        "bottomScale": 0.055,
-        "fontFamily": (
-            '"PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", '
-            '"Microsoft YaHei", sans-serif'
-        ),
     }
+
+
+def _missing_remotion_packages(workspace: Path) -> list[str]:
+    """Dependencies the synced package.json names that the workspace has not installed.
+
+    The fonts are packages too: a workspace installed before they were added
+    has `node_modules` but no faces, and the bundle would fail halfway in.
+    """
+
+    manifest = json.loads((workspace / "package.json").read_text(encoding="utf-8"))
+    return sorted(
+        name for name in manifest.get("dependencies", {})
+        if not (workspace / "node_modules" / name / "package.json").is_file()
+    )
 
 
 def _render_remotion_overlay(
     output_root: Path,
-    cues: Sequence[tuple[float, float, str]],
+    cues: Sequence[DisplayCue],
     layers: Sequence[dict[str, Any]],
     canvas: dict[str, Any],
     duration: float,
@@ -1094,9 +1160,10 @@ def _render_remotion_overlay(
         if needed_for == "画面文字"
         else "或改用默认的 ffmpeg 字幕（去掉 --subtitles remotion）。"
     )
-    if not (workspace / "node_modules").is_dir():
+    missing = _missing_remotion_packages(workspace)
+    if missing:
         raise EditError(
-            f"Remotion 还没安装，{needed_for}需要它。先运行一次：\n"
+            f"Remotion 叠层的依赖没装全（缺 {'、'.join(missing)}），{needed_for}需要它们。先运行一次：\n"
             f"  cd {workspace} && npm install\n"
             f"{alternative}\n"
             "注意 Remotion 有自己的许可证：个人与小团队免费，超出规模需要商业授权；"
@@ -1133,7 +1200,7 @@ def _frame_geometry(media: Path) -> str:
 
 def _subtitle_cues(
     cuts: Sequence[Cut], spans: Sequence[float]
-) -> list[tuple[float, float, str]]:
+) -> list[tuple[float, float, str, tuple[str, ...]]]:
     """Place each line in output time, measuring the segments that were written.
 
     A segment lands on a frame boundary, so it is a few milliseconds longer than
@@ -1142,13 +1209,13 @@ def _subtitle_cues(
     before the actor stops speaking. The rendered files are the timeline.
     """
 
-    cues: list[tuple[float, float, str]] = []
+    cues: list[tuple[float, float, str, tuple[str, ...]]] = []
     for cut, cursor, scale in _timeline(cuts, spans):
         declared = cut.end - cut.start
-        for window_start, window_end, text in cut.subtitles:
+        for window_start, window_end, text, words in cut.subtitles:
             start = 0.0 if window_start is None else window_start
             end = declared if window_end is None else window_end
-            cues.append((cursor + start * scale, cursor + end * scale, text))
+            cues.append((cursor + start * scale, cursor + end * scale, text, words))
     return cues
 
 
@@ -1170,20 +1237,106 @@ def _timeline(
     return placed
 
 
+class DisplayCue(NamedTuple):
+    """One subtitle as burned: output seconds, display text, speaker kind, highlights."""
+
+    start: float
+    end: float
+    text: str
+    kind: str = "line"
+    keys: tuple[str, ...] = ()
+
+
 def _display_line(text: str) -> str:
-    """The burned form of a subtitle: no closing punctuation, pauses as spaces."""
+    """The burned form of a line: no closing punctuation, pauses as full-width spaces."""
 
     shown = text.strip().rstrip(SUBTITLE_END_MARKS + " 　")
-    shown = re.sub(f"[{SUBTITLE_PAUSE_MARKS}]+[ 　]*", " ", shown)
-    return re.sub(r"[ 　]{2,}", " ", shown).strip()
+    shown = re.sub(f"[{SUBTITLE_PAUSE_MARKS}]+[ 　]*", "　", shown)
+    return re.sub(r"[ 　]{2,}", "　", shown).strip(" 　")
+
+
+def _visible(text: str) -> int:
+    return len(re.sub(r"[ 　]", "", text))
+
+
+def _split_display(text: str, limit: int = SUBTITLE_MAX_VISIBLE) -> list[str]:
+    """Break a displayed line into one-line pieces of at most `limit` characters.
+
+    Pieces break at the line's own pauses (the full-width spaces, and after ？！)
+    and are packed back together while they fit. A single phrase longer than
+    the limit is cut into near-equal parts, which is the only place a break
+    falls where the screenplay has no pause.
+    """
+
+    if _visible(text) <= limit:
+        return [text]
+    phrases = [
+        phrase
+        for part in text.split("　")
+        for phrase in re.findall(r"[^？！?!]+[？！?!]*|[？！?!]+", part)
+    ]
+    pieces: list[str] = []
+    for phrase in phrases:
+        count = _visible(phrase)
+        if count > limit:
+            parts = -(-count // limit)
+            size = -(-count // parts)
+            pieces.extend(phrase[i:i + size] for i in range(0, len(phrase), size))
+        else:
+            pieces.append(phrase)
+    packed: list[str] = []
+    for piece in pieces:
+        if packed and _visible(packed[-1]) + _visible(piece) <= limit:
+            joiner = "" if packed[-1][-1] in "？！?!" else "　"
+            packed[-1] = packed[-1] + joiner + piece
+        else:
+            packed.append(piece)
+    return packed
+
+
+def _screenplay_text(episode: Path) -> str:
+    path = episode / SCREENPLAY_DOCUMENT
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def _line_kind(text: str, screenplay: str) -> str:
+    """`system`, `vo` or `line`, from the 剧本.md line the subtitle quotes."""
+
+    needle = _normalize(text)
+    for raw in screenplay.splitlines():
+        spoken = SPOKEN_LINE.match(raw)
+        if not spoken or needle not in _normalize(spoken.group(3)):
+            continue
+        if spoken.group(1) == "VO":
+            return "system" if SYSTEM_SPEAKER in spoken.group(2) else "vo"
+        return "line"
+    return "line"
 
 
 def _display_cues(
-    cues: Sequence[tuple[float, float, str]],
-) -> list[tuple[float, float, str]]:
-    # A line that is all punctuation ("……") has nothing left to show.
-    shown = [(start, end, _display_line(text)) for start, end, text in cues]
-    return [cue for cue in shown if cue[2]]
+    cues: Sequence[tuple[float, float, str, tuple[str, ...]]],
+    screenplay: str = "",
+) -> list[DisplayCue]:
+    """Turn placed lines into what is burned: display text, split, coloured by speaker.
+
+    A split line shares its window by character count, so each piece stays up
+    about as long as it takes to read.
+    """
+
+    shown: list[DisplayCue] = []
+    for start, end, text, words in cues:
+        kind = _line_kind(text, screenplay)
+        pieces = _split_display(_display_line(text))
+        # A line that is all punctuation ("……") has nothing left to show.
+        pieces = [piece for piece in pieces if _visible(piece)]
+        total = sum(_visible(piece) for piece in pieces)
+        cursor = start
+        for piece in pieces:
+            length = (end - start) * _visible(piece) / total
+            keys = tuple(word for word in words if word in piece)
+            shown.append(DisplayCue(cursor, cursor + length, piece, kind, keys))
+            cursor += length
+    return shown
 
 
 def _screen_text_layers(
@@ -1211,10 +1364,14 @@ def _screen_text_layers(
                     )
                 countdown = latest["countdown"] - (start - latest["start"])
             style = SCREEN_TEXT_STYLES[text.style]
+            items = [
+                {"text": item, "rarity": rarity}
+                for item, rarity in zip(text.items, text.rarities or (None,) * len(text.items))
+            ]
             previous = next((layer for layer in reversed(layers) if layer["style"] == style), None)
             if (
                 previous is not None
-                and previous["items"] == list(text.items)
+                and previous["items"] == items
                 and abs(previous["end"] - start) <= SCREEN_TEXT_JOIN_GAP
                 and (
                     (text.resume and previous is latest)
@@ -1227,7 +1384,7 @@ def _screen_text_layers(
                 "start": start,
                 "end": end,
                 "style": style,
-                "items": list(text.items),
+                "items": items,
                 "countdown": countdown,
             }
             layers.append(layer)
@@ -1288,18 +1445,42 @@ def _sound_effect_command(
     ]
 
 
-def _build_srt(cues: Sequence[tuple[float, float, str]]) -> str:
-    """The text is the screenplay's, verbatim; only the timing is ours."""
+def _build_srt(cues: Sequence[DisplayCue]) -> str:
+    """The screenplay's words in their burned form; only the timing is ours."""
 
     return "\n".join(
-        f"{index}\n{_timecode(start)} --> {_timecode(end)}\n{text}\n"
-        for index, (start, end, text) in enumerate(cues, start=1)
+        f"{index}\n{_timecode(cue.start)} --> {_timecode(cue.end)}\n{cue.text}\n"
+        for index, cue in enumerate(cues, start=1)
     )
 
 
-def _build_ass(
-    cues: Sequence[tuple[float, float, str]], width: int, height: int
-) -> str:
+def _ass_colour(hex_rgb: str) -> str:
+    """`#RRGGBB` as ASS writes it: blue, green, red."""
+
+    red, green, blue = hex_rgb[1:3], hex_rgb[3:5], hex_rgb[5:7]
+    return f"&H00{blue}{green}{red}&".upper()
+
+
+def _ass_line(cue: DisplayCue) -> str:
+    """Escaped text with the speaker's colour and the highlighted words in yellow."""
+
+    base = _ass_colour(SUBTITLE_COLOURS[cue.kind])
+    marked = "{\\c" + base + "}" if cue.kind != "line" else ""
+    rest = cue.text
+    while rest:
+        hits = [(rest.find(word), word) for word in cue.keys if word in rest]
+        if not hits:
+            marked += _ass_text(rest)
+            break
+        at, word = min(hits)
+        marked += _ass_text(rest[:at])
+        marked += "{\\c" + _ass_colour(SUBTITLE_KEYWORD_COLOUR) + "}" + _ass_text(word)
+        marked += "{\\c" + base + "}"
+        rest = rest[at + len(word):]
+    return marked
+
+
+def _build_ass(cues: Sequence[DisplayCue], width: int, height: int) -> str:
     """Author the ASS directly so the type size is stated in frame pixels.
 
     Letting ffmpeg convert the SRT hands libass a 384-high canvas, and every
@@ -1310,9 +1491,11 @@ def _build_ass(
     PlayRes as the frame removes the conversion, so one unit is one pixel.
     """
 
-    font_size = max(18, round(height * 0.034))
-    outline = max(2, round(height * 0.0022))
-    margin_v = max(24, round(height * 0.055))
+    # The same measures as the Remotion layer: type 4.3% of frame height, a
+    # 0.42% dark rim, and the baseline 24% up, clear of the platform's own UI.
+    font_size = max(18, round(height * 0.043))
+    outline = max(2, round(height * 0.0042))
+    margin_v = max(24, round(height * 0.24))
     margin_h = max(24, round(width * 0.06))
     header = (
         "[Script Info]\n"
@@ -1327,15 +1510,15 @@ def _build_ass(
         "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
         "MarginL, MarginR, MarginV, Encoding\n"
         f"Style: 正片,{SUBTITLE_FONT},{font_size},&H00FFFFFF,&H00FFFFFF,"
-        f"&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,{outline},1,2,"
+        f"&H00120D0B,&H80000000,-1,0,0,0,100,100,0,0,1,{outline},1,2,"
         f"{margin_h},{margin_h},{margin_v},1\n"
         "\n[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
         "Effect, Text\n"
     )
     lines = [
-        f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},正片,,0,0,0,,{_ass_text(text)}"
-        for start, end, text in cues
+        f"Dialogue: 0,{_ass_time(cue.start)},{_ass_time(cue.end)},正片,,0,0,0,,{_ass_line(cue)}"
+        for cue in cues
     ]
     return header + "\n".join(lines) + "\n"
 
@@ -1470,7 +1653,7 @@ def _placements_for_sampling(episode: Path, cuts: Sequence[Cut]) -> dict[str, An
                 "样式": next(
                     label for label, key in SCREEN_TEXT_STYLES.items() if key == layer["style"]
                 ),
-                "文字": SCREEN_TEXT_ITEM_SEPARATOR.join(layer["items"]),
+                "文字": SCREEN_TEXT_ITEM_SEPARATOR.join(item["text"] for item in layer["items"]),
             }
             for layer in _screen_text_layers(cuts, spans)
         ],
