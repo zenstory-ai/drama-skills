@@ -107,31 +107,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 main { width: min(100%, 100rem); margin: 0 auto; padding: var(--desk-gutter) clamp(var(--space-3), 1.5vw, var(--space-6)) var(--space-8); }
 main:focus { outline: none; }
 
-.project-overview { padding: clamp(var(--space-5), 3vw, var(--space-10)); display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(20rem, .75fr); gap: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-xl); background: linear-gradient(145deg, rgba(33,30,26,.96), rgba(19,18,16,.96)); box-shadow: 0 24px 60px rgba(0,0,0,.22); }
-.overview-lead { min-width: 0; display: grid; align-content: start; gap: var(--space-4); }
+/* One compact band: title, figures and the episode row. The document below is
+   the reason the page exists, so this band never grows with the project. */
+.project-overview { padding: var(--space-4) var(--space-5); display: grid; gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-xl); background: linear-gradient(145deg, rgba(33,30,26,.96), rgba(19,18,16,.96)); box-shadow: 0 24px 60px rgba(0,0,0,.22); }
 .eyebrow { color: #d79072; font-size: var(--text-2xs); font-weight: 750; letter-spacing: .16em; }
-.overview-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); }
-.overview-title-row > div { min-width: 0; }
-.overview-title-row h2 { margin: 0; overflow-wrap: anywhere; font-family: var(--font-doc); font-size: clamp(1.9rem, 3vw, 3.25rem); font-weight: 580; line-height: 1.08; letter-spacing: -.02em; }
-.overview-title-row p { max-width: 44rem; margin: var(--space-3) 0 0; color: var(--muted); }
+.overview-title-row { display: flex; align-items: center; gap: var(--space-5); }
+.overview-heading { min-width: 0; flex: 1 1 auto; }
+.overview-heading h2 { margin: 0; overflow-wrap: anywhere; font-family: var(--font-doc); font-size: clamp(1.375rem, 2.2vw, 1.875rem); font-weight: 580; line-height: 1.15; letter-spacing: -.01em; }
+.overview-heading p { margin: 2px 0 0; color: var(--muted); font-size: var(--text-xs); }
 .overview-title-row button { flex: 0 0 auto; }
-.overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
-.overview-stat { min-width: 0; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(13,12,11,.38); }
-.overview-stat strong { display: block; overflow: hidden; font-family: var(--font-doc); font-size: var(--text-xl); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.overview-stat span { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-2xs); }
-.overview-flow, .media-showcase { min-width: 0; display: grid; align-content: start; gap: var(--space-3); }
-.media-showcase { grid-column: 1 / -1; padding-top: var(--space-6); border-top: 1px solid var(--line); }
-.section-heading { min-height: 2.75rem; display: flex; align-items: end; justify-content: space-between; gap: var(--space-4); }
-.section-heading h3 { margin: 2px 0 0; font-family: var(--font-doc); font-size: var(--text-lg); font-weight: 600; }
+.overview-stats { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.overview-stat { min-width: 0; padding: var(--space-1) var(--space-3); display: flex; align-items: baseline; gap: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(13,12,11,.38); }
+.overview-stat strong { overflow: hidden; font-family: var(--font-doc); font-size: var(--text-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.overview-stat span { color: var(--muted); font-size: var(--text-2xs); white-space: nowrap; }
+.overview-flow, .media-showcase { min-width: 0; display: grid; align-content: start; gap: var(--space-2); }
+.media-showcase { margin-top: var(--space-4); padding: var(--space-5); gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
+.section-heading h3 { margin: 2px 0 0; font-family: var(--font-doc); font-size: var(--text-base); font-weight: 600; }
+.media-showcase .section-heading h3 { font-size: var(--text-lg); }
 .section-note { color: var(--muted); font-size: var(--text-2xs); text-align: right; }
-.episode-strip { display: grid; gap: var(--space-2); }
-.episode-card { width: 100%; min-height: 4.5rem; padding: var(--space-3) var(--space-4); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border-color: var(--line); background: rgba(13,12,11,.34); text-align: left; }
+/* Every episode stays reachable in one row that scrolls sideways, so a long
+   series costs no height. */
+.episode-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(14rem, 16rem); gap: var(--space-2); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-bottom: var(--space-1); scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; }
+.episode-strip > .empty-copy { margin: 0; }
+.episode-card { position: relative; width: 100%; min-height: 3.75rem; padding: var(--space-2) var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-content: center; align-items: center; column-gap: var(--space-3); row-gap: 0; border-color: var(--line); background: rgba(13,12,11,.34); text-align: left; scroll-snap-align: start; }
 .episode-card:hover:not(:disabled) { border-color: var(--line-control); }
-.episode-number { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: var(--radius-sm); color: var(--accent-strong); background: var(--accent-wash); font-size: var(--text-2xs); font-weight: 750; }
-.episode-copy { min-width: 0; display: grid; }
-.episode-copy strong { overflow: hidden; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
-.episode-copy small { color: var(--muted); font-size: var(--text-2xs); }
-.episode-state { color: var(--muted); font-size: var(--text-2xs); }
+.episode-number { grid-row: 1 / span 3; align-self: start; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius-sm); color: var(--accent-strong); background: var(--accent-wash); font-size: var(--text-2xs); font-weight: 750; }
+.episode-id { min-width: 0; overflow: hidden; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.episode-next { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--muted); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.episode-progress { display: flex; align-items: center; gap: var(--space-2); }
+.episode-dots { display: flex; gap: 3px; }
+.episode-dot { width: .5rem; height: .5rem; border: 1px solid var(--line-control); border-radius: 50%; }
+.episode-dot[data-done="true"] { border-color: var(--success); background: var(--success); }
+.episode-state { color: var(--muted); font-size: var(--text-2xs); white-space: nowrap; }
+.episode-extras { grid-column: 2 / -1; display: flex; gap: var(--space-2); overflow: hidden; color: var(--muted); font-size: var(--text-2xs); white-space: nowrap; }
+.episode-review { color: var(--warning); }
 .media-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: var(--space-3); }
 .media-card { min-width: 0; min-height: 9.5rem; padding: 0; overflow: hidden; display: grid; grid-template-rows: 6.25rem auto; border-color: var(--line); background: rgba(13,12,11,.42); text-align: left; }
 .media-card:hover:not(:disabled) { border-color: var(--accent); }
@@ -177,6 +187,9 @@ main:focus { outline: none; }
 /* Desktop Grid shrink contract: keep the long document inside .content-stage's scroll area. */
 .document-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; scroll-margin-top: var(--space-4); background: var(--workspace); }
 .document-toolbar { min-height: 5.375rem; padding: var(--space-4) var(--space-5); display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); border-bottom: 1px solid var(--line); }
+.reading-bar { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+/* The contents sit beside the document here; the jump only exists stacked. */
+.toc-jump { display: none; }
 .file-identity { min-width: 0; display: grid; gap: var(--space-1); }
 .file-identity h2 { margin: 0; overflow: hidden; font-family: var(--font-doc); font-size: var(--text-lg); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 /* Where the open file sits, not a label for the heading below it. */
@@ -200,6 +213,13 @@ main:focus { outline: none; }
 .document-preview p, .document-preview li { font-size: var(--text-read); line-height: 1.8; }
 .document-preview blockquote { margin: 1.2em 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); }
 .document-preview code { padding: 2px 5px; border-radius: 4px; background: rgba(255,255,255,.07); }
+/* A copyable prompt: the block as written, its button in the corner. */
+.copy-block { position: relative; margin: 1.2em 0; }
+.copy-block > blockquote, .copy-block > pre { margin: 0; padding-right: 5.5rem; }
+.copy-block > pre { padding: var(--space-3) 5.5rem var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
+.copy-button { position: absolute; top: var(--space-2); right: var(--space-2); min-height: 2rem; padding: var(--space-1) var(--space-3); color: var(--ink); background: var(--surface-raised); font-size: var(--text-2xs); font-weight: 650; }
+.copy-button[data-state="copied"] { border-color: rgba(120,184,146,.5); color: var(--success); }
+.clipboard-scratch { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .document-loading { display: block; }
 .skeleton { display: grid; gap: var(--space-4); }
@@ -245,13 +265,19 @@ main:focus { outline: none; }
 .notice[data-tone="success"] { border-color: rgba(120,184,146,.42); color: var(--success); }
 
 @media (max-width: 860px) {
-  .project-overview { grid-template-columns: 1fr; }
-  .media-showcase { grid-column: 1; }
   .creator-desk { height: auto; min-height: 0; grid-template-columns: 1fr; overflow: visible; }
-  .content-nav { display: block; border-right: 0; border-bottom: 1px solid var(--line); }
-  .content-nav-heading { margin-bottom: var(--space-4); }
-  .content-list { max-height: 16.25rem; }
-  .document-pane { min-height: 40rem; }
+  .content-nav { display: block; scroll-margin-top: var(--space-2); border-right: 0; border-bottom: 1px solid var(--line); }
+  .content-nav-heading { margin-bottom: var(--space-3); grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .content-list { max-height: 13rem; }
+  /* Stacked, the page scrolls the document, so the toolbar dissolves into the
+     pane: its reading bar sticks to the viewport, its actions scroll away. */
+  .document-pane { min-height: 40rem; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .document-toolbar { display: contents; }
+  .reading-bar { position: sticky; top: 0; z-index: 5; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); background: rgba(19,18,16,.94); backdrop-filter: blur(6px); }
+  .reading-bar .file-identity { gap: 0; }
+  .reading-bar .file-identity h2 { font-size: var(--text-md); }
+  .toc-jump { display: inline-flex; align-items: center; flex: 0 0 auto; }
+  .toolbar-actions { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
   .content-stage { max-height: none; }
   #editor, .document-preview { padding: var(--space-8) var(--space-6); }
   .assist-row { grid-template-columns: 1fr; }
@@ -265,14 +291,18 @@ main:focus { outline: none; }
   button, input, select { min-height: 2.75rem; }
   .content-nav-group-toggle { min-height: 2.75rem; }
   main { padding-top: var(--space-3); }
-  .project-overview { padding: var(--space-5); gap: var(--space-6); }
-  .overview-title-row { align-items: stretch; flex-direction: column; }
+  .project-overview { padding: var(--space-4); }
+  .overview-title-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
+  /* A phone's first screen goes to the document; the standing sentence about
+     who does production is the first thing to give way. */
+  .overview-heading p { display: none; }
+  .overview-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .overview-stat { padding: var(--space-1) var(--space-2); display: grid; gap: 0; }
+  .content-list { max-height: 10rem; }
   .overview-title-row button { width: 100%; }
-  .overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .section-heading { align-items: start; flex-direction: column; gap: var(--space-1); }
-  .section-note { text-align: left; }
+  .media-showcase .section-heading { align-items: start; flex-direction: column; gap: var(--space-1); }
+  .media-showcase .section-note { text-align: left; }
   .media-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .document-toolbar { align-items: stretch; flex-direction: column; }
   .toolbar-actions { justify-content: space-between; }
   .toolbar-actions button { flex: 1; }
   #editor, .document-preview { min-height: 37.5rem; padding: var(--space-6) var(--space-5); }
@@ -282,9 +312,12 @@ main:focus { outline: none; }
 }
 
 @media (max-width: 420px) {
-  .app-header { flex-direction: column; }
-  .project-tools, .project-picker { width: 100%; align-items: stretch; }
-  .project-picker select { width: 100%; max-width: none; }
+  /* Brand and status share a row, the picker takes the next: two rows, not four. */
+  .app-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); }
+  .project-tools { display: contents; }
+  .project-picker { grid-column: 1 / -1; width: 100%; flex-direction: row; align-items: center; gap: var(--space-2); }
+  .project-picker span { flex: 0 0 auto; }
+  .project-picker select { width: 100%; min-width: 0; max-width: none; }
 }
 
 @media (max-width: 360px) {
