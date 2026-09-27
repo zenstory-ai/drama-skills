@@ -61,6 +61,7 @@
 | NVA-10 | reviewed_invariant | Episode candidates are cut on local dramatic result and precise handoff, not on chapter count or word budget. |
 | NVA-11 | craft_default | Triage a deterministic spread of chapters across the whole book and stop for the creator before committing to a full pass. |
 | NVA-12 | taste_option | Where to open, which line to keep and which ending to promise remain creator choices; analysis may argue but never blocks. |
+| NVA-13 | craft_default | Before cutting episode candidates, rank the book's plot points by audience payoff — face-slap, spectacle, reversal, identity reveal, reward delivered, crisis — counting payoffs a bystander or crowd delivers; candidates follow the payoff distribution rather than one chapter per episode and cite the payoffs they carry. The opening replacement point is the strongest payoff that can also establish the protagonist's identity, crisis and goal, and a stronger later peak is reported as a cold-open option. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、

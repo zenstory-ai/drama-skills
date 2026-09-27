@@ -119,6 +119,14 @@ Dashboard 展示和编辑创作文件，不负责工作流编排或媒体生产�
 制作形态、视觉方向、播放面和集长目标确实约束多个阶段时，展示选择及影响后由用户决定。
 Look Development 是可选分支，不是进入图片提示词或分镜的固定门槛。
 
+节奏数值（首钩秒数、情绪触点间隔、反转次数、VO 占比、平均镜长等）住在
+`creator_authority.rhythm_profile`。字段与默认值由 `$short-drama-develop` 按制作形态提出，
+创作者接受或改写后，按上文三步写入：决策的 `accepted_value` 是完整档案对象，`--field`
+写 `/creator_authority/rhythm_profile`；之后单改一个值时 `--field` 指向该字段。
+`set-authority` 只校验类型与范围，缺字段、越界或多出未知字段都拒绝写入；旧项目没有这个槽位，
+第一次写入时自动建立。下游只按 `status` 为 `accepted` 的档案做算术核对，缺失、`unset` 或
+`proposed` 都表示「未声明，不核对」。写完用 `status` 复核 `rhythm_profile`。
+
 按问题只读取一份相关知识：
 
 - 规则分级与 owner 路由：[规则与路由索引](references/knowhow-index.md)

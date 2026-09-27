@@ -737,6 +737,94 @@ class SimpleLifecycleTests(unittest.TestCase):
                     decision_id="CD-PACING-BAD",
                 )
 
+    def test_rhythm_profile_is_declared_only_once_a_complete_profile_is_accepted(self) -> None:
+        # Later stages do arithmetic on these numbers, so a partial or
+        # out-of-range profile must not land; a missing one means "do not check".
+        profile = {
+            "form": "motion_comic",
+            "first_hook_seconds": 3,
+            "beat_interval_seconds_max": 30,
+            "opposed_reversals_per_episode_min": 1,
+            "end_on_peak": True,
+            "reprise_previous_last_beat": True,
+            "vo_share_max": 0.3,
+            "target_avg_shot_seconds": 3.0,
+            "close_shot_share_min": 0.45,
+            "first_major_payoff_by_episode": 1,
+        }
+        pointer = "/creator_authority/rhythm_profile"
+        decisions = [
+            {"decision_id": "CD-RHYTHM", "accepted_value": profile},
+            {
+                "decision_id": "CD-RHYTHM-PARTIAL",
+                "accepted_value": {"form": "ai_live_action", "first_hook_seconds": 3},
+            },
+            {"decision_id": "CD-RHYTHM-SHARE", "accepted_value": {**profile, "vo_share_max": 1.5}},
+            {"decision_id": "CD-RHYTHM-FORM", "accepted_value": {**profile, "form": "anime"}},
+            {"decision_id": "CD-RHYTHM-EXTRA", "accepted_value": {**profile, "hooks_per_minute": 4}},
+            {"decision_id": "CD-VO", "accepted_value": 0.6, "field": f"{pointer}/vo_share_max"},
+        ]
+        relative = "创作者决策/decisions.jsonl"
+        lines = "".join(
+            json.dumps(
+                {
+                    "decision_id": record["decision_id"],
+                    "status": "accepted",
+                    "accepted_value": record["accepted_value"],
+                    "target_locators": [
+                        {"src": "short-drama", "field": record.get("field", pointer)}
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+            for record in decisions
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            manifest = root / "short-drama.json"
+            self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="project:decisions",
+                outputs={relative: lines.encode()},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
+
+            def bind(decision_id: str, field: str = pointer) -> None:
+                project_tool.set_creator_authority(
+                    root, field=field, decision_path=relative, decision_id=decision_id
+                )
+
+            before = manifest.read_bytes()
+            for decision_id, reason in (
+                ("CD-RHYTHM-PARTIAL", "beat_interval_seconds_max is missing"),
+                ("CD-RHYTHM-SHARE", "vo_share_max must be a share"),
+                ("CD-RHYTHM-FORM", "form must be"),
+                ("CD-RHYTHM-EXTRA", "no field hooks_per_minute"),
+            ):
+                with self.assertRaisesRegex(ValueError, reason):
+                    bind(decision_id)
+                self.assertEqual(manifest.read_bytes(), before)
+            with self.assertRaisesRegex(ValueError, "declares no"):
+                bind("CD-VO", f"{pointer}/vo_share_max")
+
+            bind("CD-RHYTHM")
+            self.assertEqual(project_tool.project_status(root)["rhythm_profile"], profile)
+            bind("CD-VO", f"{pointer}/vo_share_max")
+            self.assertEqual(
+                project_tool.project_status(root)["rhythm_profile"],
+                {**profile, "vo_share_max": 0.6},
+            )
+
+            proposed = json.loads(manifest.read_text(encoding="utf-8"))
+            proposed["creator_authority"]["rhythm_profile"]["status"] = "proposed"
+            project_tool.atomic_json(manifest, proposed)
+            self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
+
     def test_set_authority_writes_only_through_an_accepted_decision(self) -> None:
         decisions = [
             {

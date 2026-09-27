@@ -30,6 +30,11 @@
 - **可用角色与场景规模**：【填写】
 - **难以承受的制作元素**：【填写】
 - **必须保留的视觉/声音特征**：【填写】
+- **项目节奏档案（候选）**：【按制作形态从分集设计的默认值起步；改了哪项写一句理由。创作者接受后写入项目配置】
+
+```json
+{"status": "proposed", "form": "ai_live_action", "first_hook_seconds": 3, "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1, "end_on_peak": true, "reprise_previous_last_beat": true, "vo_share_max": 0.3, "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45, "first_major_payoff_by_episode": 1}
+```
 
 ## 4. 戏剧承诺（工作版）
 
@@ -92,6 +97,7 @@
 
 - **故事切入前已经运行的压力**：【填写】
 - **叙事切入窗口**：【从哪个必须行动的时刻开始】
+- **第 1 集入口候选**：【至少三个：时序入口、收益入口、后文高潮提前的冷开；写选了哪个、为什么】
 - **为什么不更早/更晚开始**：【更早会变成什么准备；更晚会丢掉哪个选择】
 - **开场可见证据**：【让观众从行为、物件、关系或异常结果反推前因】
 - **观众现在必须知道**：【只列当前行动所需】
