@@ -2206,6 +2206,45 @@ CUT_LIST = """# EP001 剪辑单
 - 字幕：无
 - 画面文字：0.00-2.00 任务面板 任务：五天内｜0 / 1000000（倒计时：接续）
 """
+# The static route beside a video cut: keyframes from the storyboard and the
+# image prompts, camera moves, and voice lines numbered, plain and with gain.
+STILL_CUT_LIST = """# EP001 剪辑单
+
+- 画幅与帧率：1080×1920 · 24fps
+
+## CUT-EP001-001 · 攥紧的茶杯
+
+- 来源：MOTION-EP001-001 · 制作成果/videos/cup.mp4
+- 入点：0.30
+- 出点：3.30
+- 时长：3.00
+- 取舍：入点=起势删掉；出点=动作落定
+- 声音：保留原声
+- 配音：0.40 制作成果/audio/L03.mp3
+
+## CUT-EP001-002 · 四个号，四个粉
+
+- 来源：SHOT-EP001-002 · 制作成果/images/002.png
+- 入点：0.00
+- 出点：2.50
+- 时长：2.50
+- 取舍：入点=起；出点=止
+- 声音：配音
+- 运镜：推近 6%
+- 字幕 1：0.10-1.20 火箭军？（重点：火箭军）
+- 配音 1：0.10 制作成果/audio/L01.mp3（增益：-2）
+- 配音 2：1.30 制作成果/audio/L02.mp3
+- 音效：0.00-1.00 制作成果/audio/S_laugh.mp3
+
+## CUT-EP001-003 · 办公室
+
+- 来源：IMG-OFFICE-PLATE · 制作成果/images/office.jpg
+- 入点：0.00
+- 出点：1.50
+- 时长：1.50
+- 取舍：入点=起；出点=止
+- 声音：环境
+"""
 REVIEW = """# EP001 审查
 
 - 范围：剧本、分镜、剪辑单
@@ -2372,11 +2411,14 @@ class CreatorViewsTests(unittest.TestCase):
 
     def test_cut_list_matches_the_edit_tool(self) -> None:
         edit = load_script("parity_edit_tool", SUITE / "skills/short-drama-edit/scripts/edit_tool.py")
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "剪辑单.md"
-            path.write_text(CUT_LIST, encoding="utf-8")
-            delivery, cuts, unused = edit.parse_cut_list(path)
-        ours = views.parse_cut_list(CUT_LIST)
+        for name, document in (("video", CUT_LIST), ("stills", STILL_CUT_LIST)):
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "剪辑单.md"
+                path.write_text(document, encoding="utf-8")
+                delivery, cuts, unused = edit.parse_cut_list(path)
+                self.assert_cut_list_parity(views.parse_cut_list(document), delivery, cuts, unused, edit)
+
+    def assert_cut_list_parity(self, ours, delivery, cuts, unused, edit) -> None:
         self.assertEqual(
             (ours["target"], ours["lufs"], ours["burn"], tuple(ours["frame"]), ours["fps"]),
             (delivery.target_seconds, delivery.loudness_lufs, delivery.burn_subtitles, delivery.frame_size, delivery.fps),
@@ -2402,6 +2444,20 @@ class CreatorViewsTests(unittest.TestCase):
                     [(x["s"], x["e"], x["path"], x["gain"]) for x in mine["sfx"]],
                     [(x.start, x.end, x.path, x.gain_db) for x in cut.sound_effects],
                 )
+                self.assertEqual(mine["still"], cut.still)
+                self.assertEqual(
+                    None if mine["move"] is None else (mine["move"]["kind"], mine["move"]["amount"]),
+                    None if cut.move is None else tuple(cut.move),
+                )
+                self.assertEqual(
+                    [(v["s"], v["path"], v["gain"]) for v in mine["voices"]],
+                    [tuple(voice) for voice in cut.voices],
+                )
+
+    def test_a_still_cut_links_its_storyboard_shot_and_an_image_prompt_still_links_none(self) -> None:
+        cuts = views.parse_cut_list(STILL_CUT_LIST)["cuts"]
+        self.assertEqual([cut["shot"] for cut in cuts], ["SHOT-EP001-001", "SHOT-EP001-002", None])
+        self.assertEqual([cut["at"] for cut in cuts], [0, 3.0, 5.5])
 
     def test_a_document_that_does_not_parse_falls_back_instead_of_failing(self) -> None:
         broken_cut = CUT_LIST.replace("- 来源：MOTION-EP001-001 · 制作成果/videos/cup.mp4\n", "")

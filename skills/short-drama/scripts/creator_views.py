@@ -406,7 +406,9 @@ def parse_video_prompts(text: str) -> list[dict[str, Any]]:
 # the edit tool is the one that refuses a malformed cut list.
 CUT_HEADING_RE = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
 CUT_FIELD_RE = re.compile(r"^-\s*([^：]+)：\s*(.*)$")
-SOURCE_RE = re.compile(r"^(MOTION-\S+)\s*·\s*(.+?)\s*$")
+SOURCE_RE = re.compile(r"^((?:MOTION|SHOT|IMG)-\S+)\s*·\s*(.+?)\s*$")
+MOVE_RE = re.compile(r"^(推近|拉远|左移|右移|上移|下移)\s*([0-9]+)\s*[%％]$")
+VOICE_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
 WINDOW_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 CUE_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
 KEYWORDS_RE = re.compile(r"[（(]重点[：:]\s*(.+?)\s*[）)]\s*$")
@@ -421,6 +423,7 @@ NUMBERED_RE = {
     "字幕": re.compile(r"^字幕(?:\s*(\d+))?$"),
     "画面文字": re.compile(r"^画面文字(?:\s*(\d+))?$"),
     "音效": re.compile(r"^音效(?:\s*(\d+))?$"),
+    "配音": re.compile(r"^配音(?:\s*(\d+))?$"),
 }
 
 
@@ -534,16 +537,38 @@ def _sound_effects(fields: dict[str, str]) -> list[dict[str, Any]]:
     for value in _entries(fields, "音效")[1]:
         if value.strip() == "无":
             continue
-        gain = 0.0
-        stated = GAIN_RE.search(value)
-        if stated:
-            value = value[: stated.start()]
-            gain = float(stated.group(1))
+        value, gain = _gain(value)
         found = CUE_RE.match(value)
         if not found:
             continue
         effects.append({"s": float(found.group(1)), "e": float(found.group(2)), "path": found.group(3), "gain": gain})
     return effects
+
+
+def _gain(value: str) -> tuple[str, float]:
+    stated = GAIN_RE.search(value)
+    return (value[: stated.start()], float(stated.group(1))) if stated else (value, 0.0)
+
+
+def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
+    voices = []
+    for value in _entries(fields, "配音")[1]:
+        if value.strip() == "无":
+            continue
+        value, gain = _gain(value)
+        found = VOICE_RE.match(value)
+        if found:
+            voices.append({"s": float(found.group(1)), "path": found.group(2), "gain": gain})
+    return voices
+
+
+def _move(fields: dict[str, str], still: bool) -> Optional[dict[str, Any]]:
+    """A still's 「运镜」; 固定 when unwritten or unreadable, None on a video cut."""
+
+    if not still:
+        return None
+    found = MOVE_RE.match(fields.get("运镜", "").strip())
+    return {"kind": found.group(1), "amount": int(found.group(2))} if found else {"kind": "固定", "amount": 0}
 
 
 def _seconds(value: Optional[str]) -> Optional[float]:
@@ -586,12 +611,16 @@ def parse_cut_list(text: str) -> dict[str, Any]:
             # The edit tool refuses this cut; the dashboard shows the rest.
             continue
         motion = source.group(1)
+        still = not motion.startswith("MOTION-")
+        # A still names its storyboard shot directly; an IMG- still names none.
+        shot = motion if motion.startswith("SHOT-") else None if still else "SHOT-" + motion[len("MOTION-"):]
         cuts.append({
             "id": item["id"], "n": _number(item["id"]), "title": item["title"],
-            "motion": motion, "shot": "SHOT-" + motion[len("MOTION-"):],
+            "motion": motion, "shot": shot, "still": still, "move": _move(fields, still),
             "media": source.group(2), "in": start, "out": end, "sec": declared,
             "at": round(cursor, 3),
             "subs": _subtitles(fields), "texts": _screen_texts(fields), "sfx": _sound_effects(fields),
+            "voices": _voices(fields),
         })
         cursor += declared
     if not cuts:

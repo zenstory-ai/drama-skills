@@ -17,7 +17,7 @@ Status: implemented
 - 全部落在 URL hash 上：`#/` 全剧；`#/EP001` 本集概况；`#/EP001/{script,settings,board,prompts,film,review}[/<ID>]`；`#/files`、`#/file?path=`、`#/edit?path=&at=`。可收藏、可后退。
 - 全剧页：下一步（最多三条，必须改的审查意见 → 缺的第一份文档 → 剪辑与渲染）、四个进度数字、分集进度矩阵（手机上是每集一张卡）、已接受的节奏档案、人物、项目文件入口。
 - 每集一条阶段栏：概况 · 剧本 · 设定 · 分镜 · 提示词 · 成片 · 审查，每格一个状态点和一个数字。
-- 分镜：四个指标对照档案、按时长定宽按景别着色的节奏条、镜头卡或列表、按场次或设定条目筛选；镜头详情抽屉可用 ←/→、j/k 切镜。剧本按剧本排版，对白旁的镜号只来自剪辑单字幕的逐字匹配。成片把剪辑单排成画面、字幕、画面文字、音效四轨，与播放器、剪辑单表联动。
+- 分镜：四个指标对照档案、按时长定宽按景别着色的节奏条、镜头卡或列表、按场次或设定条目筛选；镜头详情抽屉可用 ←/→、j/k 切镜。剧本按剧本排版，对白旁的镜号只来自剪辑单字幕的逐字匹配。成片把剪辑单排成画面、字幕、画面文字、音效四轨，有配音时加一条配音轨；静帧段在画面轨上带斜纹、标出运镜，逐镜素材与镜头详情用图片而不是视频显示它。与播放器、剪辑单表联动。
 - ⌘K 或 `/` 打开搜索，范围是本集或全剧。
 - 某份文档读不出结构时，该视图退回原文渲染，并用一句话说明哪份没读懂；没有归属的文件仍从 `#/files` 可达。
 
@@ -25,7 +25,7 @@ Status: implemented
 
 - 新增只读接口 `GET /api/series`、`GET /api/episode`、`GET /api/search`，沿用现有令牌、Host/Origin 校验、按描述符或验证路径固定目录、拒绝符号链接与大小上限；两套目录后端都有 HTTP 测试。
 - 分镜、视觉设定、提示词直接调用检查器自己的 `_sections`、`_fields`、`_declared_seconds`、`_copyable_prompt`、`REF_RE`/`PLAN_RE`、`_visual_entries`、`_continuity_locks` 等；测试替换检查器的函数，接口结果跟着变。
-- 剧本语法归写作技能（`screenplay_index.py`），剪辑单语法归剪辑技能（`edit_tool.py`）。技能各自安装，所以这里各保留一份最小读法，由 `tests/test_dashboard_server.py` 在同一输入上对照原解析器：剧本逐块比对、旁白字数比对 `duration_estimate.measure`，剪辑单逐段比对字幕、画面文字（倒计时、稀有度、接续）与音效。
+- 剧本语法归写作技能（`screenplay_index.py`），剪辑单语法归剪辑技能（`edit_tool.py`）。技能各自安装，所以这里各保留一份最小读法，由 `tests/test_dashboard_server.py` 在同一输入上对照原解析器：剧本逐块比对、旁白字数比对 `duration_estimate.measure`，剪辑单逐段比对字幕、画面文字（倒计时、稀有度、接续）、音效，以及静帧段的来源种类、运镜与配音。
 - `shot_scale` 取「景别/机位」里第一个档位词，`中近景`、`大特写` 整词读出；近景类是近景、特写、大特写、细节，与节奏档案的定义一致。
 - 审查只取结论、范围、复核方式和每条意见的位置、证据、影响、修订结果；「规则」行与内部严重度名不出服务端。
 - `project_tool status` 新增 `format`：只报格式正确的 `episode_count`、`target_seconds_per_episode`、`aspect_ratio`。`/api/series` 只转出 `title`、`format`、`rhythm_profile`、`lifecycle`。
