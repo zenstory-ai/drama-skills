@@ -36,7 +36,9 @@ Status: implemented
 
 **render / verify**
 
-- `_with_voices` 把配音转成从 `起点` 放到文件末尾的音效；`_sound_effect_command` 用 `atrim=start=<起点>:duration=<长>`。
+- `_placed_voices` 把配音摆成与音效同形的条目，从 `起点` 放到文件末尾；`_sound_effect_command` 用
+  `atrim=start=<起点>:duration=<长>`。起点随渲染出的分段位置走，长度不随：音效的窗口是本段的一截，
+  跟着帧取整缩放，配音若也缩放，按帧取整变短的段会把跨过去的台词尾巴截掉。
   跨出本段的部分照常按成片时间 `adelay`，由 `amix duration=first` 截在成片结尾。
 - `verify` 的「配音落点」列每句在成片里有声的起止和所属段。
 

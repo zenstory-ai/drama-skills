@@ -43,8 +43,8 @@ Status: implemented
   音轨是 `anullsrc` 静音，采样率与声道取第一个有声视频段的原声，没有时为 48 kHz 立体声（`_silent_track`），
   这样按流拷贝拼接时不会从第一个静帧起解错。没有音轨的视频段也补同样的静音：否则它之后的声音整体前移，
   排在第一段时拼出的成片干脆没有音轨。
-- 配音由 `_with_voices` 转成从起点放到文件末尾的 `SoundEffect`，与音效走同一个 `_placed_sound_effects`
-  和 `_sound_effect_command`，随后照常测响度、标准化。
+- 配音由 `_placed_voices` 摆成与 `_placed_sound_effects` 同形的条目，与音效进同一个
+  `_sound_effect_command`，随后照常测响度、标准化。
 - 自动接镜：`SHOT-` 静帧从该 SHOT 追场景并参与；取样用 `_still_stats` 读整张图铺满后的样子，
   因为 `fps` 会丢掉单帧图、对 JPEG 做 `-ss` 读不出帧。
 - `verify` 另列「配音落点」；切点亮度与坏帧报告不区分段的种类。

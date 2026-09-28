@@ -1382,7 +1382,7 @@ def render(
     scenes = _scene_keys(episode, cuts)
     pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
     silence = _silent_track(episode, project_root, cuts, delivery)
-    voiced = _with_voices(cuts, _voice_sounds(episode, project_root, cuts))
+    sounds = _voice_sounds(episode, project_root, cuts)
 
     segments: list[Path] = []
     spans: list[float] = []
@@ -1425,7 +1425,8 @@ def render(
               "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
 
         effects: list[tuple[float, float, Path, float, float]] = []
-        for start, duration, written, gain, offset in _placed_sound_effects(voiced, spans):
+        placed = _placed_sound_effects(cuts, spans) + _placed_voices(cuts, sounds, spans)
+        for start, duration, written, gain, offset in placed:
             resolved = _resolve_media(episode, project_root, written)
             if resolved is None:
                 raise EditError(f"音效或配音文件不存在或不在项目目录内: {written}")
@@ -1610,22 +1611,23 @@ def _still_command(
     ]
 
 
-def _with_voices(cuts: Sequence[Cut], sounds: dict[str, Audible]) -> list[Cut]:
-    """Voice lines as sound effects that run to the end of their file, so one mix places both.
+def _placed_voices(
+    cuts: Sequence[Cut], sounds: dict[str, Audible], spans: Sequence[float]
+) -> list[tuple[float, float, str, float, float]]:
+    """Each voice line in the form `_placed_sound_effects` gives, for the same mix.
 
-    An effect placed past its cut's end is still laid on the film's timeline at
-    its cut's start plus 起, which is what lets a line run over the next cut.
+    Its start follows the rendered cut positions, like an effect's. Its length
+    does not: an effect's window is a stretch of its cut and scales with the
+    frame rounding, but a voice plays its file from 起点 to the end, and
+    scaling that would clip the line. It is laid at its cut's start plus 起
+    however far past the cut it runs, which is what makes an L-cut.
     """
 
     return [
-        cut._replace(sound_effects=cut.sound_effects + tuple(
-            SoundEffect(
-                voice.start, voice.start + sounds[voice.path].duration - voice.offset,
-                voice.path, voice.gain_db, voice.offset,
-            )
-            for voice in cut.voices
-        ))
-        for cut in cuts
+        (max(0.0, cursor + voice.start * scale), sounds[voice.path].duration - voice.offset,
+         voice.path, voice.gain_db, voice.offset)
+        for cut, cursor, scale in _timeline(cuts, spans)
+        for voice in cut.voices
     ]
 
 

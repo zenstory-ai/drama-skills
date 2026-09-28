@@ -551,3 +551,32 @@ class StillRenderTests(unittest.TestCase):
         self.assertGreater(voiced, -25, "配音应落在无声视频段的 1.0 秒处")
         self.assertLess(before, -50)
         self.assertAlmostEqual(seconds, 2.0 * len(order), delta=0.15)
+
+    def test_a_voice_plays_whole_when_its_cut_rounds_to_the_frame(self):
+        # 0.52 s at 24 fps renders as 12 frames, 0.50 s. The voice that starts
+        # there and runs 5 s over the next cut must still play all 5 s.
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=gray:size=180x320", "-frames:v", "1",
+                                    str(media / "1.png")], check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=300:duration=5",
+                                    str(media / "line.wav")], check=True)
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.00 media/line.wav"], end=0.52),
+                still_block(2, "SHOT-2 · media/1.png", end=6.0),
+            )
+            delivery, cuts, unused = project.parse()
+            self.assertEqual(edit.check_cuts(project.episode, cuts, project.root, probe=True,
+                                             unused=unused, delivery=delivery), [])
+            film = Path(edit.render(project.episode, project.root, cuts, delivery,
+                                    burn_subtitles=False)["成片"])
+            measured = edit.verify(project.episode, cuts, delivery, project.root)
+            result = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-i", str(film), "-af", "atrim=4.85:4.95,volumedetect",
+                 "-f", "null", "-"], capture_output=True, text=True)
+            tail = float(re.search(r"max_volume: (\S+) dB", result.stderr).group(1))
+        self.assertGreater(tail, -25, "配音的最后 0.15 秒被按画面取整截掉了")
+        (line,) = measured["配音落点"]
+        self.assertAlmostEqual(line["止"] - line["起"], 5.0, delta=0.05)
