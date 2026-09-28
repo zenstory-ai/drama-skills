@@ -260,6 +260,58 @@ class StillCutCheckTests(unittest.TestCase):
                                                unused=unused, delivery=delivery)
                 self.assertEqual(len(findings), expected, findings)
 
+    def test_one_keyframe_may_serve_several_cuts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png"), still_block(2, "SHOT-2 · media/1.png"),
+                          still_block(3, "SHOT-1 · media/1.png"))
+            self.assertEqual(project.findings(), [])
+
+    def test_an_odd_delivery_size_is_refused_when_stills_are_drawn_at_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            blocks = (still_block(1, "SHOT-1 · media/1.png"), still_block(2, "SHOT-2 · media/2.jpg"))
+            project.write(*blocks, head="- 画幅与帧率：181×321 · 24fps\n")
+            (odd,) = project.findings()
+            self.assertIn("181×321", odd)
+            project.write(*blocks, head="- 画幅与帧率：182×322 · 24fps\n")
+            self.assertEqual(project.findings(), [])
+
+    def test_media_outside_the_project_is_not_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory) / "outside"
+            outside.mkdir()
+            (outside / "x.png").write_bytes(b"")
+            (outside / "x.wav").write_bytes(b"")
+            project = StillProject(Path(directory) / "project")
+            cases = {
+                "picture up and out": still_block(1, "SHOT-1 · ../../../outside/x.png"),
+                "picture by absolute path": still_block(1, f"SHOT-1 · {outside / 'x.png'}"),
+                "voice up and out": still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.20 ../../../outside/x.wav"]),
+            }
+            for name, block in cases.items():
+                with self.subTest(name):
+                    project.write(block, head=SPEC_LINE + EXCUSE_TWO)
+                    (finding,) = project.findings()
+                    self.assertIn("不在项目目录内", finding)
+            project.write(still_block(1, "SHOT-1 · 剧集/EP001/media/1.png"), head=SPEC_LINE + EXCUSE_TWO)
+            self.assertEqual(project.findings(), [], "项目根下的相对路径照常可用")
+
+    def test_without_ffmpeg_the_voice_checks_are_reported_unmeasured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.20 media/line.wav"]),
+                          head=SPEC_LINE + EXCUSE_TWO)
+            argv = ["check", str(project.episode), "--project-root", str(project.root)]
+            for tools, unmeasured in (({"ffprobe"}, ["配音"]), (set(), ["区间", "配音"])):
+                with self.subTest(tools=tools), patch.object(
+                    edit, "_which", side_effect=lambda name, tools=tools: name if name in tools else None
+                ), patch.object(edit, "probe_stream", return_value={}), patch.object(edit, "_emit") as emit:
+                    self.assertEqual(edit.main(argv), 0)
+                payload = emit.call_args.args[0]
+                self.assertEqual(payload["findings"], [])
+                self.assertEqual([item[:2] for item in payload["未测"]], unmeasured)
+
     def test_voice_lines_are_held_to_the_film_not_to_their_cut(self):
         # Two 2-second stills, a 4-second film. line.wav is heard 0.2-1.2 of
         # its 1.4 s; reply.wav 0.2-0.5 of its 0.8 s.
@@ -450,3 +502,52 @@ class StillRenderTests(unittest.TestCase):
         (line,) = measured["配音落点"]
         self.assertEqual((line["段"], line["起"]), ("CUT-1", 1.0))
         self.assertAlmostEqual(line["止"], 2.2, delta=0.05)
+
+    def test_a_silent_video_beside_stills_keeps_every_sound_in_place(self):
+        # A clip with no audio track used to shift every sound after it, or,
+        # placed first, leave the joined film without sound at all.
+        for order in (("still", "video", "still"), ("video", "still")):
+            with self.subTest(order=order):
+                self.render_with_silent_video(order)
+
+    def render_with_silent_video(self, order):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=gray:size=180x320", "-frames:v", "1",
+                                    str(media / "1.png")], check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=gray:size=180x320:rate=24:duration=2",
+                                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", str(media / "1.mp4")],
+                           check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=300:duration=0.8",
+                                    str(media / "line.wav")], check=True)
+            (project.episode / edit.MOTION_DOCUMENT).write_text("## MOTION-1\n- 分镜：SHOT-9\n", encoding="utf-8")
+            blocks, shots = [], iter(("SHOT-1", "SHOT-2"))
+            for number, kind in enumerate(order, start=1):
+                if kind == "video":
+                    video_at = 2.0 * (number - 1)
+                    blocks.append(still_block(number, "MOTION-1 · media/1.mp4", ["- 配音：1.00 media/line.wav"]))
+                else:
+                    blocks.append(still_block(number, f"{next(shots)} · media/1.png"))
+            project.write(*blocks, head=SPEC_LINE + "- 交付响度：-16 LUFS\n"
+                          + ("" if len(order) == 3 else EXCUSE_TWO))
+            delivery, cuts, unused = project.parse()
+            self.assertEqual(edit.check_cuts(project.episode, cuts, project.root, probe=True,
+                                             unused=unused, delivery=delivery), [])
+            film = Path(edit.render(project.episode, project.root, cuts, delivery,
+                                    burn_subtitles=False)["成片"])
+
+            def peak(start, length):
+                result = subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-i", str(film), "-af",
+                     f"atrim={start}:{start + length},volumedetect", "-f", "null", "-"],
+                    capture_output=True, text=True)
+                return float(re.search(r"max_volume: (\S+) dB", result.stderr).group(1))
+
+            quiet_from = max(0.0, video_at - 1.0)
+            voiced, before = peak(video_at + 1.2, 0.4), peak(quiet_from, video_at + 0.9 - quiet_from)
+            seconds = edit.probe_duration(film)
+        self.assertGreater(voiced, -25, "配音应落在无声视频段的 1.0 秒处")
+        self.assertLess(before, -50)
+        self.assertAlmostEqual(seconds, 2.0 * len(order), delta=0.15)

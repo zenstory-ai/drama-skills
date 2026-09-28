@@ -998,7 +998,7 @@ def _voice_sounds(episode: Path, project_root: Path, cuts: Sequence[Cut]) -> dic
                 continue
             media = _resolve_media(episode, project_root, voice.path)
             if media is None:
-                raise EditError(f"配音文件不存在: {voice.path}")
+                raise EditError(f"配音文件不存在或不在项目目录内: {voice.path}")
             sounds[voice.path] = probe_audible(media)
     return sounds
 
@@ -1080,8 +1080,16 @@ def check_cuts(
     probe: bool,
     unused: Sequence[str] = (),
     delivery: Optional[Delivery] = None,
+    listen: Optional[bool] = None,
 ) -> list[str]:
-    """Every mechanical cross-check the cut list can be held to. Returns findings."""
+    """Every mechanical cross-check the cut list can be held to. Returns findings.
+
+    `probe` reads media with ffprobe; `listen` (default: `probe`) decodes voice
+    files with ffmpeg to find where they are audible.
+    """
+
+    if listen is None:
+        listen = probe
 
     findings: list[str] = []
     if not cuts:
@@ -1105,6 +1113,11 @@ def check_cuts(
             )
         else:
             spec = (*delivery.frame_size, round(delivery.fps, 3))
+            if any(side % 2 for side in delivery.frame_size):
+                findings.append(
+                    f"{CUT_LIST_NAME}: 交付画幅 {delivery.frame_size[0]}×{delivery.frame_size[1]} "
+                    "有奇数边；静帧按它编码成 4:2:0，宽高都要是偶数"
+                )
 
     screenplay = ""
     screenplay_path = episode / SCREENPLAY_DOCUMENT
@@ -1140,7 +1153,7 @@ def check_cuts(
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             findings.append(
-                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}"
             )
         elif probe and cut.still:
             try:
@@ -1186,7 +1199,7 @@ def check_cuts(
                 )
             if _resolve_media(episode, project_root, effect.path) is None:
                 findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在: "
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在或不在项目目录内: "
                     f"{effect.path}"
                 )
         for voice in cut.voices:
@@ -1200,13 +1213,13 @@ def check_cuts(
             if _resolve_media(episode, project_root, voice.path) is None:
                 voiced = False
                 findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在: "
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在或不在项目目录内: "
                     f"{voice.path}"
                 )
         previous = cut
 
     findings.extend(_subtitle_findings(cuts))
-    if probe and voiced and any(cut.voices for cut in cuts):
+    if listen and voiced and any(cut.voices for cut in cuts):
         try:
             findings.extend(_voice_findings(cuts, _voice_sounds(episode, project_root, cuts)))
         except EditError as error:
@@ -1304,7 +1317,9 @@ def _overlap_findings(cuts: Sequence[Cut]) -> list[str]:
     findings: list[str] = []
     by_media: dict[str, list[Cut]] = {}
     for cut in cuts:
-        by_media.setdefault(cut.media, []).append(cut)
+        # A keyframe reused in a shot/reverse-shot is a choice, not repeated footage.
+        if not cut.still:
+            by_media.setdefault(cut.media, []).append(cut)
     for media, group in by_media.items():
         ordered = sorted(group, key=lambda item: item.start)
         for earlier, later in zip(ordered, ordered[1:]):
@@ -1323,9 +1338,16 @@ def _normalize(text: str) -> str:
 
 
 def _resolve_media(episode: Path, project_root: Path, relative: str) -> Optional[Path]:
+    """The file a cut list names, against the episode then the project; None if absent.
+
+    A path that leaves the project (`../`, an absolute path, a link out) is
+    treated as absent: the cut list describes this project's material only.
+    """
+
+    root = project_root.resolve()
     for base in (episode, project_root):
         candidate = (base / relative).resolve()
-        if candidate.is_file():
+        if candidate.is_file() and (candidate == root or root in candidate.parents):
             return candidate
     return None
 
@@ -1359,7 +1381,7 @@ def render(
 
     scenes = _scene_keys(episode, cuts)
     pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
-    silence = _still_audio(episode, project_root, cuts, delivery)
+    silence = _silent_track(episode, project_root, cuts, delivery)
     voiced = _with_voices(cuts, _voice_sounds(episode, project_root, cuts))
 
     segments: list[Path] = []
@@ -1367,15 +1389,22 @@ def render(
     for cut, match in zip(cuts, pictures):
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
-            raise EditError(f"{cut.cut_id} 的素材不存在: {cut.media}")
+            raise EditError(f"{cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}")
         segment = segments_root / f"{cut.cut_id}.mp4"
         if cut.still:
             command = _still_command(ffmpeg, media, cut, delivery, silence, match)
         else:
+            span = cut.end - cut.start
             command = [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-                "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
+                "-ss", f"{cut.start:.3f}", "-t", f"{span:.3f}", "-i", str(media),
             ]
+            if probe_audio(media) is None:
+                rate, layout = silence
+                command += [
+                    "-f", "lavfi", "-t", f"{span:.3f}", "-i", f"anullsrc=r={rate}:cl={layout}",
+                    "-map", "0:v", "-map", "1:a", "-shortest",
+                ]
             if match:
                 command += ["-vf", match]
         command += [
@@ -1399,7 +1428,7 @@ def render(
         for start, duration, written, gain, offset in _placed_sound_effects(voiced, spans):
             resolved = _resolve_media(episode, project_root, written)
             if resolved is None:
-                raise EditError(f"音效或配音文件不存在: {written}")
+                raise EditError(f"音效或配音文件不存在或不在项目目录内: {written}")
             effects.append((start, duration, resolved, gain, offset))
         if effects:
             # Mixed into its own file first, so the loudness pass below measures
@@ -1500,24 +1529,24 @@ def render(
     }
 
 
-def _still_audio(
+def _silent_track(
     episode: Path, project_root: Path, cuts: Sequence[Cut], delivery: Delivery
 ) -> tuple[int, str]:
-    """The silent track's (sample rate, layout): the first video cut's, else 48 kHz stereo.
+    """(sample rate, layout) for segments that bring no sound: stills and silent clips.
 
-    Segments are joined by stream copy, so a still's silence must be encoded
-    like the video audio beside it or the joined track decodes wrong from the
-    first still on.
+    Segments are joined by stream copy, so every segment needs an audio track
+    and the silence must be encoded like the first video audio beside it: a
+    segment without one shifts every sound after it, and a mismatched one
+    decodes wrong. 48 kHz stereo when no clip has sound.
     """
 
-    if not any(cut.still for cut in cuts):
-        return STILL_AUDIO
-    if delivery.frame_size is None or delivery.fps is None:
+    if any(cut.still for cut in cuts) and (delivery.frame_size is None or delivery.fps is None):
         raise EditError("有静帧段时，交付规格必须写「画幅与帧率」；静帧按它出画")
     for cut in cuts:
         media = None if cut.still else _resolve_media(episode, project_root, cut.media)
-        if media is not None:
-            return probe_audio(media) or STILL_AUDIO
+        heard = probe_audio(media) if media is not None else None
+        if heard is not None:
+            return heard
     return STILL_AUDIO
 
 
@@ -2713,6 +2742,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             findings = check_cuts(
                 episode, cuts, project_root,
                 probe=_which("ffprobe") is not None, unused=unused, delivery=delivery,
+                listen=_which("ffmpeg") is not None,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -2721,10 +2751,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "未采用镜头": unused,
                 "findings": findings,
             }
+            unmeasured = []
             if _which("ffprobe") is None:
-                payload["未测"] = [
-                    "区间是否超过素材实际时长、配音是否超出本段或互相重叠（PATH 上没有 ffprobe）"
-                ]
+                unmeasured.append("区间是否超过素材实际时长（PATH 上没有 ffprobe）")
+            if _which("ffmpeg") is None and any(cut.voices for cut in cuts):
+                unmeasured.append("配音是否越过成片结尾、是否互相重叠（PATH 上没有 ffmpeg）")
+            if unmeasured:
+                payload["未测"] = unmeasured
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
