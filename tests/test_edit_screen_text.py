@@ -273,6 +273,7 @@ class ScreenTextPlacementTests(unittest.TestCase):
             with patch.object(edit, "_require", return_value="ffmpeg"), \
                     patch.object(edit, "_run", side_effect=commands.append), \
                     patch.object(edit, "probe_duration", return_value=3.0), \
+                    patch.object(edit, "probe_audio", return_value=(48000, "stereo")), \
                     patch.object(edit, "probe_stream",
                                  return_value={"width": 720, "height": 1280, "fps": 30}), \
                     patch.object(edit, "_render_remotion_overlay", side_effect=fake_overlay):
@@ -444,7 +445,7 @@ class SoundEffectTests(unittest.TestCase):
             subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=1760:duration=2",
                                     str(chime)], check=True)
             subprocess.run(edit._sound_effect_command(
-                "ffmpeg", film, [(1.5, 0.6, chime, -6.0)], mixed), check=True)
+                "ffmpeg", film, [(1.5, 0.6, chime, -6.0, 0.0)], mixed), check=True)
 
             def level(media, start, length, band="highpass=f=1200,highpass=f=1200"):
                 result = subprocess.run(

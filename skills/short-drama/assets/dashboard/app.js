@@ -428,7 +428,7 @@ function rhythmChecks(metrics, profile, target) {
 /** Subtitles the cut list quotes verbatim: the only line-to-shot link trusted. */
 function lineShots(cuts) {
   const map = new Map();
-  for (const cut of cuts || []) {
+  for (const cut of (cuts || []).filter((item) => item.shot)) {
     for (const sub of cut.subs) if (!map.has(squash(sub.text))) map.set(squash(sub.text), cut.shot);
     for (const text of cut.texts) for (const item of text.items) if (!map.has(squash(item))) map.set(squash(item), cut.shot);
   }
@@ -970,11 +970,14 @@ function placeholderSVG(shot) {
 
 /* ================================================================ episode context */
 
+/** A still's 「运镜」 as the cut list writes it: 固定, or 推近 6%. */
+const moveLabel = (cut) => (!cut.move || cut.move.kind === "固定" ? "固定" : cut.move.rate != null ? `${cut.move.kind} ${cut.move.rate}%/秒` : `${cut.move.kind} ${cut.move.amount}%`);
+
 function context(E) {
   const shots = E.board?.shots || [];
   const cuts = E.cutlist?.cuts || [];
   const clipByShot = {};
-  for (const cut of cuts) if (E.media.clips[cut.id] && !clipByShot[cut.shot]) clipByShot[cut.shot] = { path: E.media.clips[cut.id], cut };
+  for (const cut of cuts) if (E.media.clips[cut.id] && cut.shot && !clipByShot[cut.shot]) clipByShot[cut.shot] = { path: E.media.clips[cut.id], cut };
   const promptByShot = Object.fromEntries((E.videoPrompts || []).map((prompt) => [prompt.shot, prompt]));
   return {
     E,
@@ -1322,8 +1325,8 @@ function renderInspector(row, E, id) {
   <div class="ins-body">
     ${found.map((finding) => `<a class="refstate ${finding.sev === "must" ? "must" : "pending"}" href="#/${esc(row.id)}/review/${esc(finding.id)}"><span class="tag ${finding.sev}">${SEVERITY_LABEL[finding.sev]}</span><span><b>${esc(finding.title)}</b><br><span class="muted">${esc(finding.fix)}</span></span></a>`).join("")}
     <div class="ins-media">
-      <div>${clip ? `<div class="thumb"><video src="${esc(mediaUrl(clip.path))}#t=${num(clip.cut.in)},${num(clip.cut.out)}" ${frame ? `poster="${esc(mediaUrl(frame))}"` : ""} controls playsinline preload="metadata"></video></div>` : thumb(C, shot, false)}
-        <div class="muted small">${clip ? `素材 · 剪辑单 ${esc(clip.cut.id)}` : frame ? "起始帧 · 尚无素材" : "未绑定起始帧 · 尚无素材"}</div></div>
+      <div>${clip?.cut.still ? `<div class="thumb"><img src="${esc(mediaUrl(clip.path))}" alt="${esc(shot.title)} 关键帧"></div>` : clip ? `<div class="thumb"><video src="${esc(mediaUrl(clip.path))}#t=${num(clip.cut.in)},${num(clip.cut.out)}" ${frame ? `poster="${esc(mediaUrl(frame))}"` : ""} controls playsinline preload="metadata"></video></div>` : thumb(C, shot, false)}
+        <div class="muted small">${clip ? `${clip.cut.still ? `静帧 · ${esc(moveLabel(clip.cut))}` : "素材"} · 剪辑单 ${esc(clip.cut.id)}` : frame ? "起始帧 · 尚无素材" : "未绑定起始帧 · 尚无素材"}</div></div>
       <div class="facts">
         <div class="fact"><div class="k">时长</div><div class="v">${esc(num(shot.sec))} 秒 · 第 ${fmt(startAt)} 起</div></div>
         <div class="fact"><div class="k">场次</div><div class="v">${shot.scene ? `<a href="#/${esc(row.id)}/script/${esc(shot.scene)}">${esc(sceneShort(shot.scene))} ${esc(placeOf(C, shot.scene))}</a>` : "—"}</div></div>
@@ -1432,16 +1435,17 @@ function viewFilm(row, E, arg, q) {
   const kindOf = (text) => { for (const scene of C.scenes) for (const block of scene.blocks) if (block.k === "line" && squash(block.text) === squash(text)) return block.tag === "VO" ? "vo" : ""; return ""; };
   const timeline = CL ? `<div class="tl-inner" id="tl">
     <div class="tl-row"><span></span><div class="tl-ruler">${ticks.join("")}</div></div>
-    <div class="tl-row"><span class="tl-lab">画面</span><div class="tl-track">${C.cuts.map((cut, i) => `<button class="tl-cut ${i % 2 ? "b" : ""}" type="button" data-cut="${esc(cut.id)}" data-css="left:${X(cut.at)};width:calc(${X(cut.sec)} - 2px)" data-tip-b="${esc(cut.n)}" data-tip="${esc(`${cut.title} · ${num(cut.sec)}s`)}">${esc(cut.n.slice(-2))}</button>`).join("")}</div></div>
+    <div class="tl-row"><span class="tl-lab">画面</span><div class="tl-track">${C.cuts.map((cut, i) => `<button class="tl-cut ${i % 2 ? "b" : ""}${cut.still ? " still" : ""}" type="button" data-cut="${esc(cut.id)}" data-css="left:${X(cut.at)};width:calc(${X(cut.sec)} - 2px)" data-tip-b="${esc(cut.n)}" data-tip="${esc(`${cut.title} · ${num(cut.sec)}s${cut.still ? ` · 静帧 ${moveLabel(cut)}` : ""}`)}">${esc(cut.n.slice(-2))}</button>`).join("")}</div></div>
     <div class="tl-row"><span class="tl-lab">字幕</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.subs.map((sub) => { const s = sub.s ?? 0; const e = sub.e ?? cut.sec; return `<span class="tl-sub ${kindOf(sub.text)}" data-css="left:${X(cut.at + s)};width:${X(Math.max(0.1, e - s))}" data-tip="${esc(sub.text)}">${esc(sub.text)}</span>`; })).join("")}</div></div>
     <div class="tl-row"><span class="tl-lab">画面文字</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.texts.map((text) => `<span class="tl-txt" data-css="left:${X(cut.at + text.s)};width:${X(Math.max(0.1, text.e - text.s))}" data-tip-b="${esc(text.style)}" data-tip="${esc(text.items.join(" ｜ "))}">${esc(text.style)}</span>`)).join("")}</div></div>
     <div class="tl-row"><span class="tl-lab">音效</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.sfx.map((sfx) => { const name = sfx.path.split("/").at(-1); return `<span class="tl-sfx" data-css="left:${X(cut.at + sfx.s)}" data-tip="${esc(`${name} · ${num(sfx.gain)} dB`)}"></span><span class="sfx-l" data-css="left:calc(${X(cut.at + sfx.s)} + 10px)">${esc(name.replace(/\.\w+$/, ""))}</span>`; })).join("")}</div></div>
+    ${C.cuts.some((cut) => cut.voices.length) ? `<div class="tl-row"><span class="tl-lab">配音</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.voices.map((voice) => { const name = voice.path.split("/").at(-1); return `<span class="tl-sfx tl-voice" data-css="left:${X(cut.at + voice.s)}" data-tip="${esc(`${name}${voice.gain ? ` · ${num(voice.gain)} dB` : ""}`)}"></span><span class="sfx-l" data-css="left:calc(${X(cut.at + voice.s)} + 10px)">${esc(name.replace(/\.\w+$/, ""))}</span>`; })).join("")}</div></div>` : ""}
     <div class="tl-head" id="playhead" data-css="left:64px"></div><div class="tl-hit" id="tlhit" aria-label="点击跳转"></div></div>` : "";
   const highlight = (text, keys) => { let html = esc(text); for (const key of keys || []) html = html.replace(esc(key), `<mark>${esc(key)}</mark>`); return html; };
-  const rows = C.cuts.map((cut) => `<tr data-cut="${esc(cut.id)}" id="r-${esc(cut.id)}"><td class="mono">${esc(cut.n)}</td><td><b>${esc(cut.title)}</b><div class="muted small">${C.shot[cut.shot] ? `<a href="#/${esc(row.id)}/board/${esc(cut.shot)}">镜 ${esc(sceneShort(cut.shot))}</a> · ` : ""}<span class="mono">${fmt(cut.at)}</span></div></td>
+  const rows = C.cuts.map((cut) => `<tr data-cut="${esc(cut.id)}" id="r-${esc(cut.id)}"><td class="mono">${esc(cut.n)}</td><td><b>${esc(cut.title)}</b><div class="muted small">${cut.still ? `<span class="pill">静帧 · ${esc(moveLabel(cut))}</span> ` : ""}${C.shot[cut.shot] ? `<a href="#/${esc(row.id)}/board/${esc(cut.shot)}">镜 ${esc(sceneShort(cut.shot))}</a> · ` : ""}<span class="mono">${fmt(cut.at)}</span></div></td>
     <td class="mono hide-m">${cut.in.toFixed(2)}–${cut.out.toFixed(2)}</td><td class="mono">${esc(num(cut.sec))}s</td>
     <td>${cut.subs.map((sub) => `<span class="subline">${highlight(sub.text, sub.keys)}</span>`).join("") || '<span class="muted">—</span>'}${cut.texts.map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</td>
-    <td class="hide-m">${cut.sfx.map((sfx) => `<span class="pill id">${icon("sfx")}${esc(sfx.path.split("/").at(-1))}</span>`).join("")}</td></tr>`).join("");
+    <td class="hide-m">${cut.bed?.path ? `<span class="pill id">环境声 · ${esc(cut.bed.path.split("/").at(-1))}</span>` : ""}${cut.voices.map((voice) => `<span class="pill id">${icon("voice")}${esc(voice.path.split("/").at(-1))}</span>`).join("")}${cut.sfx.map((sfx) => `<span class="pill id">${icon("sfx")}${esc(sfx.path.split("/").at(-1))}</span>`).join("")}</td></tr>`).join("");
   const film = E.media.film;
   const ask = CL ? `请按 ${row.id} 的剪辑单.md 渲染成片。` : "";
   return `<div class="wrap" data-view="film">${header}${problemNotices(E)}<div class="film">
@@ -1451,15 +1455,15 @@ function viewFilm(row, E, arg, q) {
       <div>
         ${CL ? `<div class="deliv">${[CL.target != null ? `目标 ${num(CL.target)} 秒` : "", CL.frame ? `${S.series.format.aspect_ratio ? `${S.series.format.aspect_ratio} · ` : ""}${CL.frame.join("×")}${CL.fps ? ` · ${num(CL.fps)}fps` : ""}` : "", CL.lufs != null ? `响度 ${num(CL.lufs)} LUFS` : "", CL.burn ? "硬字幕" : "不烧字幕"].filter(Boolean).map((item) => `<span class="pill">${esc(item)}</span>`).join("")}</div>
         <section class="card tl">${timeline}</section>
-        <div class="card table-card"><table class="cuts"><thead><tr><th>段</th><th>镜头</th><th class="hide-m">入–出</th><th>时长</th><th>字幕与画面文字</th><th class="hide-m">音效</th></tr></thead><tbody>${rows}</tbody></table></div>
-        ${CL.unused.length ? `<p class="muted small">未采用：${esc(CL.unused.join("；"))}</p>` : ""}` : '<div class="empty"><p>剪辑单写好后，这里会按段列出字幕、画面文字与音效。</p></div>'}
+        <div class="card table-card"><table class="cuts"><thead><tr><th>段</th><th>镜头</th><th class="hide-m">入–出</th><th>时长</th><th>字幕与画面文字</th><th class="hide-m">配音与音效</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${CL.unused.length ? `<p class="muted small">未采用：${esc(CL.unused.join("；"))}</p>` : ""}` : '<div class="empty"><p>剪辑单写好后，这里会按段列出字幕、画面文字、配音与音效。</p></div>'}
       </div></div></div>`;
 }
 
 function clipsView(C, row) {
   if (!C.shots.length) return '<div class="empty"><p>分镜写好后，每镜一格。</p></div>';
   return `<p class="muted small">每镜素材只按剪辑单「来源」显示；没有来源的镜头保持空位，不按文件名猜。</p><div class="clips">${C.shots.map((shot) => { const clip = C.clipByShot[shot.id];
-    return `<a class="cliptile" href="#/${esc(row.id)}/board/${esc(shot.id)}" data-shot-tile="${esc(shot.id)}" data-has-clip="${clip ? 1 : 0}">${clip ? `<div class="thumb"><video src="${esc(mediaUrl(clip.path))}#t=${num(clip.cut.in)}" preload="metadata" muted playsinline></video><span class="sec">${esc(num(shot.sec))}s</span></div>` : `<div class="thumb">${placeholderSVG(shot)}<span class="sec">${esc(num(shot.sec))}s</span></div>`}<span class="m"><b>${esc(shot.n)}</b>${clip ? esc(shot.title) : "待生成"}</span></a>`; }).join("")}</div>`;
+    return `<a class="cliptile" href="#/${esc(row.id)}/board/${esc(shot.id)}" data-shot-tile="${esc(shot.id)}" data-has-clip="${clip ? 1 : 0}">${clip ? `<div class="thumb">${clip.cut.still ? `<img src="${esc(mediaUrl(clip.path))}" alt="${esc(shot.title)} 关键帧" loading="lazy">` : `<video src="${esc(mediaUrl(clip.path))}#t=${num(clip.cut.in)}" preload="metadata" muted playsinline></video>`}<span class="sec">${esc(num(shot.sec))}s</span></div>` : `<div class="thumb">${placeholderSVG(shot)}<span class="sec">${esc(num(shot.sec))}s</span></div>`}<span class="m"><b>${esc(shot.n)}</b>${clip ? esc(shot.title) : "待生成"}</span></a>`; }).join("")}</div>`;
 }
 
 function bindFilm(C) {
