@@ -107,6 +107,14 @@ SCREENPLAY_DIALOGUE_RE = re.compile(
 SCREENPLAY_VOICE_TAG_RE = re.compile(
     r"^\[(?:VO|OS)\]\s*(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<text>\S[\s\S]*)$"
 )
+# A later line of a paragraph that starts another block (the index's
+# ASCII_DIALOGUE_RE, ANY_TAG_RE and MALFORMED_TAG_RE): the paragraph is missing
+# a separator and the index emits no dialogue for it.
+SCREENPLAY_BLOCK_START_RE = re.compile(
+    r"^[^\s：（）:\[\]#]{1,40}(?:（[^（）\r\n]+）)?:\s*\S"
+    r"|^\[[^\]\r\n]+\]"
+    r"|^\[(?:VO|OS|SFX|画面文字|连续性|转场)(?:\s|：|:)"
+)
 # Where the clause that introduces a quote begins.
 CLAUSE_BREAK_RE = re.compile(r"[。！？；.!?;]")
 # `EP001-SC001` is the documented shape, but a project that scopes ids by season
@@ -501,24 +509,51 @@ class SpokenLine(NamedTuple):
 def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
     """Every dialogue paragraph, read the way screenplay_index.py reads it.
 
-    A paragraph runs until a blank line, a heading or a comment. A later line
-    that is itself dialogue- or tag-shaped means two blocks are missing their
-    separator; the index rejects that paragraph, so it proves nothing here.
+    Mirrors `_parse_screenplay` block by block: a comment runs through the line
+    that closes it, and an unclosed one ends the parse; a heading sets or clears
+    the scene (scene ids use this checker's own SCENE_HEADING_RE, the one
+    来源 resolves against); a paragraph runs until a blank line, a heading or a comment and
+    counts only inside a scene; a later line that starts another block means a
+    missing separator, so the paragraph is not dialogue. The one difference is
+    the speaker list: the index takes it from the project, and here a speaker
+    is only ever looked up by 人物 entry name.
     """
     found: list[SpokenLine] = []
     scene: Optional[str] = None
-    paragraph: list[str] = []
-
-    def flush() -> None:
-        if not paragraph:
-            return
-        text = "\n".join(paragraph)
-        paragraph.clear()
-        if any(
-            line.startswith("[") or SCREENPLAY_DIALOGUE_RE.fullmatch(line)
-            for line in text.splitlines()[1:]
+    lines = screenplay.splitlines()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not stripped:
+            index += 1
+            continue
+        if stripped.startswith("<!--"):
+            end = index
+            while end < len(lines) and "-->" not in lines[end]:
+                end += 1
+            if end >= len(lines):
+                break
+            index = end + 1
+            continue
+        if stripped.startswith("#"):
+            heading = SCENE_HEADING_RE.match(stripped)
+            scene = heading.group(1) if heading else None
+            index += 1
+            continue
+        end = index
+        while end + 1 < len(lines):
+            following = lines[end + 1].strip()
+            if not following or following.startswith(("#", "<!--")):
+                break
+            end += 1
+        paragraph = [line.strip() for line in lines[index : end + 1]]
+        index = end + 1
+        if scene is None or any(
+            SCREENPLAY_DIALOGUE_RE.fullmatch(line) or SCREENPLAY_BLOCK_START_RE.match(line)
+            for line in paragraph[1:]
         ):
-            return
+            continue
+        text = "\n".join(paragraph)
         match = SCREENPLAY_VOICE_TAG_RE.fullmatch(text) or SCREENPLAY_DIALOGUE_RE.fullmatch(
             text
         )
@@ -526,17 +561,6 @@ def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
             found.append(
                 SpokenLine(scene, match.group("speaker"), _han_key(match.group("text")))
             )
-
-    for raw in screenplay.splitlines():
-        stripped = raw.strip()
-        if stripped and not stripped.startswith(("#", "<!--")):
-            paragraph.append(stripped)
-            continue
-        flush()
-        if stripped.startswith("#"):
-            heading = SCENE_HEADING_RE.match(stripped)
-            scene = heading.group(1) if heading else None
-    flush()
     return found
 
 

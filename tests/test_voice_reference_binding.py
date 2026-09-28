@@ -129,20 +129,31 @@ class CheckerTests(unittest.TestCase):
                 errors = checker.validate_episode(bound_episode(root, audio_line=line), root)
                 self.assertTrue(any(expected in error for error in errors), errors)
 
-    def test_a_wrapped_dialogue_paragraph_is_one_line(self) -> None:
-        # The screenplay index reads a dialogue paragraph across physical lines,
-        # so a verbatim quote of the whole line is 江晨 speaking.
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            episode = bound_episode(root)
-            screenplay = episode / "剧本.md"
-            screenplay.write_text(
-                screenplay.read_text(encoding="utf-8").replace(
-                    "江晨：下周榜首，是我们团。", "江晨：下周榜首，\n是我们团。", 1
-                ),
-                encoding="utf-8",
-            )
-            self.assertEqual(checker.validate_episode(episode, root), [])
+    def test_dialogue_is_read_the_way_the_screenplay_index_reads_it(self) -> None:
+        # 江晨's line as written in 剧本.md, and whether screenplay_index.py
+        # would emit it as his dialogue block.
+        line = "江晨：下周榜首，是我们团。"
+        cases = {
+            "wrapped onto a second line": ("江晨：下周榜首，\n是我们团。", True),
+            "tagged VO, wrapped": ("[VO] 江晨：下周榜首，\n是我们团。", True),
+            "right after a multiline comment": (f"<!-- 备注\n还没定 -->\n{line}", True),
+            "inside a comment, between blank lines": (f"<!--\n\n{line}\n\n-->", False),
+            "after a comment that never closes": (f"<!-- 备注\n\n{line}", False),
+            "missing the separator before a tag": (f"{line}\n[SFX] 茶杯轻响", False),
+            "missing the separator before ASCII dialogue": (f"{line}\nNote: 旁注", False),
+        }
+        for name, (written, speaks) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                episode = bound_episode(root)
+                screenplay = episode / "剧本.md"
+                screenplay.write_text(
+                    screenplay.read_text(encoding="utf-8").replace(line, written, 1),
+                    encoding="utf-8",
+                )
+                errors = checker.validate_episode(episode, root)
+                silent = [e for e in errors if "人物「江晨」在本镜可复制提示词里没有说出" in e]
+                self.assertEqual(bool(silent), not speaks, errors)
 
     def test_a_line_two_people_share_is_attributed_or_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
