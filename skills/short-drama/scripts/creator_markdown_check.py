@@ -91,8 +91,10 @@ AUDIO_IN_IMAGE_FIELD_RE = re.compile(
 VOICE_RECORD_RE = re.compile(
     r"^[ \t　]*[-*+][ \t　]*声音参考[：:](.*)$", re.MULTILINE
 )
+# Same filename rule as the binding's locator (`[^；\n]+?`), so any path a
+# 参考音频 slot may name can also be the recorded one -- spaces included.
 VOICE_RECORD_PATH_RE = re.compile(
-    r"([^（；\s]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))(?=（|$)", re.IGNORECASE
+    r"([^（；\n]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))(?=（|$)", re.IGNORECASE
 )
 # `角色（提示）：台词`, optionally tagged [VO] or [OS] -- the screenplay's own
 # dialogue grammar. Only speakers that are 人物 entries are ever looked up.

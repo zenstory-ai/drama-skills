@@ -63,20 +63,23 @@ def _edit_section(path: Path, entry: str, old: str, new: str) -> None:
     )
 
 
-def bound_episode(root: Path, *, audio_line: str = AUDIO_LINE) -> Path:
+def bound_episode(
+    root: Path, *, audio_line: str = AUDIO_LINE, voice_path: str = VOICE_PATH
+) -> Path:
     """The shipped episode with one picture and 江晨's voice bound on one MOTION."""
+    audio_line = audio_line.replace(VOICE_PATH, voice_path)
     episode = root / "剧集/EP001"
     if episode.exists():
         shutil.rmtree(episode)
     shutil.copytree(EXAMPLE, episode)
-    for relative, content in ((VOICE_PATH, b"RIFF voice"), (PICTURE_PATH, b"picture")):
+    for relative, content in ((voice_path, b"RIFF voice"), (PICTURE_PATH, b"picture")):
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
         (root / relative).write_bytes(content)
     _edit_section(
         episode / "视觉设定.md",
         "人物 · 江晨",
         "- 画面代称：Jiangchen\n",
-        f"- 画面代称：Jiangchen\n{VOICE_RECORD}\n",
+        f"- 画面代称：Jiangchen\n{VOICE_RECORD.replace(VOICE_PATH, voice_path)}\n",
     )
     _edit_section(episode / "分镜.md", SHOT, TEXT_TO_VIDEO, f"- 输入参考图：{PICTURE_SLOT}")
     video = episode / "视频提示词.md"
@@ -90,6 +93,12 @@ class CheckerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.assertEqual(checker.validate_episode(bound_episode(root), root), [])
+
+    def test_a_recorded_path_with_a_space_is_still_the_characters_voice(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = bound_episode(root, voice_path="输入/声音/voice sample.wav")
+            self.assertEqual(checker.validate_episode(episode, root), [])
 
     def test_a_voice_binding_that_breaks_the_contract_is_named(self) -> None:
         cases = {
@@ -155,7 +164,7 @@ class CheckerTests(unittest.TestCase):
 
 
 class ProductionTests(unittest.TestCase):
-    def project(self, directory: str) -> Path:
+    def project(self, directory: str, *, audio_line: str = AUDIO_LINE) -> Path:
         root = Path(directory) / "project"
         project_tool.initialize_project(
             root,
@@ -164,7 +173,7 @@ class ProductionTests(unittest.TestCase):
             aspect_ratio="9:16",
             suite_root=SUITE / "skills/short-drama",
         )
-        bound_episode(root)
+        bound_episode(root, audio_line=audio_line)
         return root
 
     def job(self, root: Path, *, include_audio: bool = True) -> Path:
@@ -252,10 +261,24 @@ class ProductionTests(unittest.TestCase):
             self.assertIn("参考 @图片1（江晨定妆照）", body["content"][0]["text"])
 
     def test_a_declared_voice_cannot_be_dropped_from_the_job(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.project(directory)
-            with self.assertRaisesRegex(ValueError, "do not match the selected source entry"):
-                production_tool.prepare_job(root, self.job(root, include_audio=False))
+        # `- **参考音频**：` is the same field to the checker, so production must
+        # read it too, or it would accept the job that drops the voice.
+        bold = AUDIO_LINE.replace("- 参考音频：", "- **参考音频**：", 1)
+        for name, line in (("plain", AUDIO_LINE), ("bold field name", bold)):
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                root = self.project(directory, audio_line=line)
+                self.assertEqual(
+                    checker.validate_episode(root / "剧集/EP001", root), []
+                )
+                with self.assertRaisesRegex(
+                    ValueError, "do not match the selected source entry"
+                ):
+                    production_tool.prepare_job(root, self.job(root, include_audio=False))
+                preview = production_tool.prepare_job(root, self.job(root))
+                self.assertEqual(
+                    [binding["role"] for binding in preview["reference_bindings"]],
+                    ["reference_image", "reference_audio"],
+                )
 
     def test_a_model_without_reference_audio_fails_before_submission(self) -> None:
         for roles in (None, ["reference_image"]):

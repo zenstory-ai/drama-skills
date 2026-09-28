@@ -828,12 +828,25 @@ def _contains_plan_token(value: str) -> bool:
     return "plan-" in value.casefold()
 
 
+def _field_values(section: str, field_name: str) -> list[str]:
+    """Every value of one `- 字段：值` field, read the way the creator checker reads it.
+
+    `- **参考音频**：…` is the same field to a human and to
+    creator_markdown_check.py; reading it any other way here would let the
+    checker validate a binding that production then silently omits.
+    """
+    values = []
+    for key, value in re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE):
+        key = re.sub(r"^(?:\*\*|__|\*|_)(.+?)(?:\*\*|__|\*|_)$", r"\1", key.strip())
+        if key == field_name:
+            values.append(value)
+    return values
+
+
 def _markdown_reference_bindings(
     section: str, *, field_name: str, creator_supplied_ok: bool = False
 ) -> list[dict[str, Any]]:
-    lines = re.findall(
-        rf"^- {re.escape(field_name)}：(.+)$", section, re.MULTILINE
-    )
+    lines = _field_values(section, field_name)
     if not lines:
         raise ValueError(f"source entry has no {field_name} declaration")
     if len(lines) != 1:
@@ -892,7 +905,7 @@ def _markdown_reference_bindings(
 
 def _markdown_audio_bindings(section: str) -> list[dict[str, Any]]:
     """The MOTION's 参考音频 slots in audio order; empty when there is none."""
-    lines = re.findall(r"^- 参考音频：(.+)$", section, re.MULTILINE)
+    lines = _field_values(section, "参考音频")
     if not lines:
         return []
     if len(lines) != 1:
