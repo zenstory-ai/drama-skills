@@ -1009,23 +1009,24 @@ def _voice_spans(
     """Each voice line's audible span in film seconds, cuts laid end to end at `lengths`."""
 
     spans: list[tuple[float, float, Cut, Voice]] = []
-    for cut, cursor, scale in _timeline(cuts, lengths):
+    for cut, cursor, length in _timeline(cuts, lengths):
         for voice in cut.voices:
             sound = sounds[voice.path]
             # Where the file's own second zero lands on the film.
-            zero = cursor + voice.start * scale - voice.offset
+            zero = _at(cut, cursor, length, voice.start) - voice.offset
             spans.append((zero + max(sound.head, voice.offset), zero + sound.tail, cut, voice))
     return sorted(spans, key=lambda span: span[0])
 
 
-def _voice_findings(cuts: Sequence[Cut], sounds: dict[str, Audible]) -> list[str]:
+def _voice_findings(
+    cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
+) -> list[str]:
     """A voice line is heard inside the film and never over another line, across cuts too."""
 
-    declared = [cut.declared for cut in cuts]
-    total = sum(declared)
+    total = sum(lengths)
     findings: list[str] = []
     latest: Optional[tuple[float, float, Cut, Voice]] = None
-    for span in _voice_spans(cuts, sounds, declared):
+    for span in _voice_spans(cuts, sounds, lengths):
         start, end, cut, voice = span
         where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
         if end <= start:
@@ -1046,22 +1047,23 @@ def _voice_findings(cuts: Sequence[Cut], sounds: dict[str, Audible]) -> list[str
     return findings
 
 
-def _subtitle_findings(cuts: Sequence[Cut]) -> list[str]:
+def _subtitle_findings(cuts: Sequence[Cut], lengths: Sequence[float]) -> list[str]:
     """A subtitle may run on past its cut, but stays in the film and off every other subtitle."""
 
-    total = sum(cut.declared for cut in cuts)
+    total = sum(lengths)
     placed: list[tuple[float, float, Cut]] = []
     findings: list[str] = []
-    for cut, cursor, _ in _timeline(cuts, [cut.declared for cut in cuts]):
+    for cut, cursor, length in _timeline(cuts, lengths):
         for window_start, window_end, _, _ in cut.subtitles:
             start = 0.0 if window_start is None else window_start
             end = cut.declared if window_end is None else window_end
-            if not 0 <= start < min(end, cut.declared) or cursor + end > total + TOLERANCE:
+            shown = (_at(cut, cursor, length, start), _at(cut, cursor, length, end))
+            if not 0 <= start < min(end, cut.declared) or shown[1] > total + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕时间要从本段内开始、"
                     f"在成片结尾之前结束: {start:g}-{end:g}"
                 )
-            placed.append((cursor + start, cursor + end, cut))
+            placed.append((*shown, cut))
     placed.sort(key=lambda item: item[0])
     for (_, end, earlier), (start, _, later) in zip(placed, placed[1:]):
         if earlier is not later and start < end - TOLERANCE:
@@ -1125,7 +1127,6 @@ def check_cuts(
         screenplay = screenplay_path.read_text(encoding="utf-8")
 
     media_format: Optional[tuple[Any, Any, float]] = None
-    previous: Optional[Cut] = None
     voiced = True
     for cut in cuts:
         span = cut.end - cut.start
@@ -1203,25 +1204,29 @@ def check_cuts(
                     f"{effect.path}"
                 )
         for voice in cut.voices:
-            # A J-cut reaches back at most to the previous cut's start.
-            earliest = -previous.declared if previous is not None else 0.0
-            if not earliest - TOLERANCE <= voice.start < span:
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音起点 {voice.start:g} "
-                    f"要在 {earliest:g}（上一段开头）到本段结尾之间"
-                )
             if _resolve_media(episode, project_root, voice.path) is None:
                 voiced = False
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在或不在项目目录内: "
                     f"{voice.path}"
                 )
-        previous = cut
 
-    findings.extend(_subtitle_findings(cuts))
+    # The film's rate: the spec's, else the one the probe loop read off the video.
+    fps = delivery.fps if delivery is not None and delivery.fps else (media_format or (0, 0, 0.0))[2]
+    lengths = _film_spans(cuts, fps)
+    for index, cut in enumerate(cuts):
+        for voice in cut.voices:
+            # A J-cut reaches back at most to the previous cut's start.
+            earliest = -lengths[index - 1] if index else 0.0
+            if not earliest - TOLERANCE <= voice.start < cut.end - cut.start:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音起点 {voice.start:g} "
+                    f"要在 {earliest:g}（上一段开头）到本段结尾之间"
+                )
+    findings.extend(_subtitle_findings(cuts, lengths))
     if listen and voiced and any(cut.voices for cut in cuts):
         try:
-            findings.extend(_voice_findings(cuts, _voice_sounds(episode, project_root, cuts)))
+            findings.extend(_voice_findings(cuts, _voice_sounds(episode, project_root, cuts), lengths))
         except EditError as error:
             findings.append(f"{CUT_LIST_NAME}: {error}")
 
@@ -1383,18 +1388,20 @@ def render(
     pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
     silence = _silent_track(episode, project_root, cuts, delivery)
     sounds = _voice_sounds(episode, project_root, cuts)
+    fps = _film_fps(episode, project_root, cuts, delivery, probe=True)
+    spans = _film_spans(cuts, fps)
 
     segments: list[Path] = []
-    spans: list[float] = []
-    for cut, match in zip(cuts, pictures):
+    for cut, match, length in zip(cuts, pictures, spans):
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             raise EditError(f"{cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}")
         segment = segments_root / f"{cut.cut_id}.mp4"
         if cut.still:
-            command = _still_command(ffmpeg, media, cut, delivery, silence, match)
+            command = _still_command(ffmpeg, media, cut, delivery, silence, match, length)
         else:
-            span = cut.end - cut.start
+            # Read enough source for the whole frames the film gives this cut.
+            span = max(cut.end - cut.start, length)
             command = [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
                 "-ss", f"{cut.start:.3f}", "-t", f"{span:.3f}", "-i", str(media),
@@ -1403,17 +1410,26 @@ def render(
                 rate, layout = silence
                 command += [
                     "-f", "lavfi", "-t", f"{span:.3f}", "-i", f"anullsrc=r={rate}:cl={layout}",
-                    "-map", "0:v", "-map", "1:a", "-shortest",
+                    "-map", "0:v", "-map", "1:a",
                 ]
             if match:
                 command += ["-vf", match]
+            if fps:
+                command += ["-frames:v", str(round(length * fps)), "-t", f"{length:.6f}"]
         command += [
             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", str(segment),
         ]
         _run(command)
         segments.append(segment)
-        spans.append(probe_duration(segment))
+        # Everything after this cut is placed by `spans`; a segment that came
+        # out short (the source ran out of frames) would shift all of it.
+        rendered = probe_duration(segment)
+        if fps and abs(rendered - length) > 1.5 / fps:
+            raise EditError(
+                f"{cut.cut_id} 渲染出 {rendered:.3f} 秒，按 {fps:g} fps 应为 {length:.3f} 秒；"
+                "素材在出点附近可能不够帧，先把出点提前一帧"
+            )
 
     with tempfile.TemporaryDirectory() as scratch:
         listing = Path(scratch) / "segments.txt"
@@ -1593,13 +1609,16 @@ def _still_command(
     delivery: Delivery,
     silence: tuple[int, str],
     match: str,
+    seconds: float,
 ) -> list[str]:
-    """The input half of a still segment's command: picture, move, correction and silence."""
+    """The input half of a still segment's command: picture, move, correction and silence.
+
+    `seconds` is the cut's span from `_film_spans`, a whole number of frames.
+    """
 
     assert delivery.frame_size is not None and delivery.fps is not None
     width, height = delivery.frame_size
-    frames = max(1, round(cut.declared * delivery.fps))
-    seconds = frames / delivery.fps
+    frames = max(1, round(seconds * delivery.fps))
     chain = _still_filter(cut.move or CameraMove(), width, height, frames)
     rate, layout = silence
     return [
@@ -1624,9 +1643,9 @@ def _placed_voices(
     """
 
     return [
-        (max(0.0, cursor + voice.start * scale), sounds[voice.path].duration - voice.offset,
+        (max(0.0, _at(cut, cursor, length, voice.start)), sounds[voice.path].duration - voice.offset,
          voice.path, voice.gain_db, voice.offset)
-        for cut, cursor, scale in _timeline(cuts, spans)
+        for cut, cursor, length in _timeline(cuts, spans)
         for voice in cut.voices
     ]
 
@@ -2025,40 +2044,79 @@ def _frame_geometry(media: Path) -> str:
 def _subtitle_cues(
     cuts: Sequence[Cut], spans: Sequence[float]
 ) -> list[tuple[float, float, str, tuple[str, ...]]]:
-    """Place each line in output time, measuring the segments that were written.
+    """Place each line in film seconds, on the frame-rounded spans the segments are rendered at.
 
-    A segment lands on a frame boundary, so it is a few milliseconds longer than
-    the cut list declares. Accumulating the declared numbers instead drifts —
-    a third of a second by the end of eight cuts here — and the subtitle leaves
-    before the actor stops speaking. The rendered files are the timeline.
+    A segment lands on a frame boundary, so it runs a few milliseconds off the
+    length the cut list declares. Accumulating the declared numbers instead
+    drifts -- a third of a second by the end of eight cuts here -- and the
+    subtitle leaves before the actor stops speaking.
     """
 
     cues: list[tuple[float, float, str, tuple[str, ...]]] = []
-    for cut, cursor, scale in _timeline(cuts, spans):
-        declared = cut.end - cut.start
+    for cut, cursor, length in _timeline(cuts, spans):
         for window_start, window_end, text, words in cut.subtitles:
             start = 0.0 if window_start is None else window_start
-            end = declared if window_end is None else window_end
-            cues.append((cursor + start * scale, cursor + end * scale, text, words))
+            end = cut.declared if window_end is None else window_end
+            cues.append((_at(cut, cursor, length, start), _at(cut, cursor, length, end), text, words))
     return cues
+
+
+def _film_spans(cuts: Sequence[Cut], fps: Optional[float]) -> list[float]:
+    """How long each cut runs in the film: its declared length rounded to whole frames.
+
+    render writes every segment as exactly this many frames, and everything
+    that places or checks something on the film -- subtitles, screen text,
+    effects, voices, the film's end -- lays the cuts end to end at these spans.
+    Nothing re-derives timing from the declared lengths, so no path can drift
+    from the picture by the frame rounding. Without a known rate, the declared
+    lengths are all there is.
+    """
+
+    if not fps:
+        return [cut.declared for cut in cuts]
+    return [max(1, round(cut.declared * fps)) / fps for cut in cuts]
+
+
+def _film_fps(
+    episode: Path, project_root: Path, cuts: Sequence[Cut], delivery: Optional[Delivery], *, probe: bool
+) -> Optional[float]:
+    """The film's frame rate: the delivery spec's, else the first video cut's."""
+
+    if delivery is not None and delivery.fps:
+        return delivery.fps
+    if probe:
+        for cut in cuts:
+            media = None if cut.still else _resolve_media(episode, project_root, cut.media)
+            if media is not None:
+                return probe_stream(media)["fps"] or None
+    return None
 
 
 def _timeline(
     cuts: Sequence[Cut], spans: Sequence[float]
 ) -> list[tuple[Cut, float, float]]:
-    """Each cut with its output start and the factor from declared to rendered time.
-
-    Windows were authored against the declared span; scaling holds them in
-    place proportionally rather than letting the tail slip out.
-    """
+    """Each cut with its start in the film and its span there."""
 
     placed: list[tuple[Cut, float, float]] = []
     cursor = 0.0
     for cut, span in zip(cuts, spans):
-        declared = cut.end - cut.start
-        placed.append((cut, cursor, span / declared if declared > 0 else 1.0))
+        placed.append((cut, cursor, span))
         cursor += span
     return placed
+
+
+def _at(cut: Cut, cursor: float, span: float, seconds: float) -> float:
+    """A time written against a cut, in film seconds.
+
+    Inside the cut it keeps its place relative to the cut's rendered length, so
+    a window written to end with the cut still does. Before or past the cut --
+    a J-cut's start, an L-cut subtitle's end -- it is plain seconds from the
+    cut's start, the same clock a voice file plays on.
+    """
+
+    if 0 <= seconds <= cut.declared and cut.declared > 0:
+        return cursor + seconds * span / cut.declared
+    return cursor + seconds
 
 
 class DisplayCue(NamedTuple):
@@ -2206,10 +2264,10 @@ def _screen_text_layers(
 
     layers: list[dict[str, Any]] = []
     latest: Optional[dict[str, Any]] = None
-    for cut, cursor, scale in _timeline(cuts, spans):
+    for cut, cursor, length in _timeline(cuts, spans):
         for text in sorted(cut.screen_texts, key=lambda item: item.start):
-            start = cursor + text.start * scale
-            end = cursor + text.end * scale
+            start = _at(cut, cursor, length, text.start)
+            end = _at(cut, cursor, length, text.end)
             countdown = text.countdown
             if text.resume:
                 if latest is None:
@@ -2253,9 +2311,10 @@ def _placed_sound_effects(
     """Each effect as (output start, duration, path as written, gain dB, 起点 in the file)."""
 
     return [
-        (max(0.0, cursor + effect.start * scale), (effect.end - effect.start) * scale,
+        (max(0.0, _at(cut, cursor, length, effect.start)),
+         _at(cut, cursor, length, effect.end) - _at(cut, cursor, length, effect.start),
          effect.path, effect.gain_db, effect.offset)
-        for cut, cursor, scale in _timeline(cuts, spans)
+        for cut, cursor, length in _timeline(cuts, spans)
         for effect in cut.sound_effects
     ]
 
@@ -2482,12 +2541,8 @@ def verify(
     measurements["画内可读文字"] = (
         "未测（抽有画内文字的帧，逐字对《剧本.md》的「画面文字」与提示词声明的内容）"
     )
-    segments = [episode / OUTPUT_DIRECTORY / SEGMENT_DIRECTORY / f"{cut.cut_id}.mp4" for cut in cuts]
-    spans = (
-        [probe_duration(segment) for segment in segments]
-        if all(segment.is_file() for segment in segments)
-        else None
-    )
+    # The same spans render placed everything on; the film's own rate when no spec states one.
+    spans = _film_spans(cuts, delivery.fps or stream["fps"])
     if any(cut.screen_texts or cut.sound_effects for cut in cuts):
         measurements.update(_placements_for_sampling(cuts, spans))
     if any(cut.voices for cut in cuts):

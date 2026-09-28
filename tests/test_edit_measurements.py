@@ -346,6 +346,38 @@ class StillCutCheckTests(unittest.TestCase):
                           head=SPEC_LINE + EXCUSE_TWO)
             self.assertEqual(len(project.findings()), 1, "缺配音文件必须报")
 
+    def test_a_cross_cut_subtitle_ends_with_its_voice_when_the_cut_rounds_to_the_frame(self):
+        # 0.52 s at 24 fps is 12 frames, 0.50 s. The line and its subtitle both run 5 s from there.
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png",
+                            ["- 配音：0.00 media/line.wav", "- 字幕 1：0.00-5.00 可我不懂音乐"], end=0.52),
+                still_block(2, "SHOT-2 · media/2.jpg", end=6.0),
+            )
+            delivery, cuts, _ = project.parse()
+            spans = edit._film_spans(cuts, delivery.fps)
+            self.assertEqual(spans, [0.5, 6.0])
+            (cue,) = edit._subtitle_cues(cuts, spans)
+            ((_, voice_end, _, _),) = edit._voice_spans(
+                cuts, {"media/line.wav": edit.Audible(5.0, 0.0, 5.0)}, spans)
+            self.assertAlmostEqual(cue[1], 5.0)
+            self.assertAlmostEqual(cue[1], voice_end)
+            self.assertEqual(project.findings(sounds={"line.wav": edit.Audible(5.0, 0.0, 5.0)}), [])
+
+    def test_the_film_end_is_where_the_rounded_cuts_end(self):
+        # Ten 0.52 s stills: 5.0 s of film at 24 fps (12 frames each), 5.2 s at 25 fps (13 frames).
+        blocks = [still_block(n, "SHOT-1 · media/1.png", ["- 配音：0.00 media/line.wav"] if n == 1 else [],
+                              end=0.52) for n in range(1, 11)]
+        sounds = {"line.wav": edit.Audible(5.2, 0.0, 5.2)}
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            for rate, expected in ((24, 1), (25, 0)):
+                with self.subTest(fps=rate):
+                    project.write(*blocks, head=f"- 画幅与帧率：180×320 · {rate}fps\n" + EXCUSE_TWO)
+                    findings = project.findings(sounds=sounds)
+                    self.assertEqual(len(findings), expected, findings)
+
     def test_a_subtitle_may_cross_its_cut_but_not_the_film_end_or_another_subtitle(self):
         cases = {
             "runs on over the next cut": (["- 字幕 1：1.50-2.80 可我不懂音乐"], ["- 字幕：无"], 0),
