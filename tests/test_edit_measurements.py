@@ -180,6 +180,26 @@ class StillCutParsingTests(unittest.TestCase):
 
 
 class StillCutCheckTests(unittest.TestCase):
+    def test_effect_offset_must_leave_some_source_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            for offset, refused in ((2, True), (1, True), (0.99, False)):
+                with self.subTest(offset=offset):
+                    project.write(
+                        still_block(1, "SHOT-1 · media/1.png", [
+                            f"- 音效：0.00-2.00 media/line.wav（起点：{offset}）"]),
+                        still_block(2, "SHOT-2 · media/2.jpg"),
+                    )
+                    delivery, cuts, unused = project.parse()
+                    with patch.object(edit, "probe_duration", return_value=1), patch.object(
+                        edit, "probe_stream", return_value={}
+                    ):
+                        findings = edit.check_cuts(project.episode, cuts, project.root,
+                                                   probe=True, unused=unused, delivery=delivery)
+                    self.assertEqual(bool(findings), refused, findings)
+                    if refused:
+                        self.assertTrue(any("音效起点" in item for item in findings), findings)
+
     def test_a_still_starts_at_zero_lasts_long_enough_and_needs_a_delivery_frame(self):
         cases = {
             "late in-point": (still_block(1, "SHOT-1 · media/1.png", start=0.5, end=2.0), SPEC_LINE),

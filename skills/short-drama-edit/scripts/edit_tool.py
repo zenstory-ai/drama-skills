@@ -1265,11 +1265,22 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效时间超出本段区间"
                     f": {effect.start:g}-{effect.end:g}"
                 )
-            if _resolve_media(episode, project_root, effect.path) is None:
+            effect_media = _resolve_media(episode, project_root, effect.path)
+            if effect_media is None:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在或不在项目目录内: "
                     f"{effect.path}"
                 )
+            elif probe and effect.offset > 0:
+                try:
+                    available_sound = probe_duration(effect_media)
+                    if effect.offset >= available_sound:
+                        findings.append(
+                            f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效起点 "
+                            f"{effect.offset:g} 必须小于 {effect.path} 的实际时长 {available_sound:g}"
+                        )
+                except EditError as error:
+                    findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效读不出: {error}")
         for voice in cut.voices:
             if _resolve_media(episode, project_root, voice.path) is None:
                 voiced = False
