@@ -142,7 +142,7 @@ scene-plan 文件。
 4. `check` 通过后 `render`，再 `verify`。
 
 写法和每一镜的下落规则见[静帧段](../skills/short-drama-edit/references/still-cuts.md)。
-视频与静帧可以混剪，比如某几镜的视频不可用时先用关键帧顶上。
+视频与静帧可以混剪，但只在创作者选了静帧时，见[什么时候用](../skills/short-drama-edit/references/still-cuts.md#什么时候用)。
 
 ## 9. 审查与交付（按需）
 
