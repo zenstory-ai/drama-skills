@@ -129,6 +129,59 @@ class CheckerTests(unittest.TestCase):
                 errors = checker.validate_episode(bound_episode(root, audio_line=line), root)
                 self.assertTrue(any(expected in error for error in errors), errors)
 
+    def test_a_wrapped_dialogue_paragraph_is_one_line(self) -> None:
+        # The screenplay index reads a dialogue paragraph across physical lines,
+        # so a verbatim quote of the whole line is 江晨 speaking.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = bound_episode(root)
+            screenplay = episode / "剧本.md"
+            screenplay.write_text(
+                screenplay.read_text(encoding="utf-8").replace(
+                    "江晨：下周榜首，是我们团。", "江晨：下周榜首，\n是我们团。", 1
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(checker.validate_episode(episode, root), [])
+
+    def test_a_line_two_people_share_is_attributed_or_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = bound_episode(root)
+            screenplay = episode / "剧本.md"
+            screenplay.write_text(
+                screenplay.read_text(encoding="utf-8").replace(
+                    "江晨：下周榜首，是我们团。",
+                    "江晨：下周榜首，是我们团。\n\n周薄森：下周榜首，是我们团。",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            errors = checker.validate_episode(episode, root)
+            self.assertTrue(
+                any("也是周薄森的台词" in error for error in errors), errors
+            )
+
+            # Naming the speaker in the clause that introduces the quote
+            # attributes it: 江晨 speaks, and 周薄森 does not.
+            video = episode / "视频提示词.md"
+            _edit_section(
+                video,
+                MOTION,
+                "He says in Chinese, steady and forceful,",
+                "Jiangchen says in Chinese, steady and forceful,",
+            )
+            self.assertEqual(checker.validate_episode(episode, root), [])
+            _edit_section(video, MOTION, "角色：江晨", "角色：周薄森")
+            errors = checker.validate_episode(episode, root)
+            self.assertTrue(
+                any(
+                    "人物「周薄森」在本镜可复制提示词里没有说出" in error
+                    for error in errors
+                ),
+                errors,
+            )
+
     def test_the_binding_must_match_the_characters_recorded_voice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

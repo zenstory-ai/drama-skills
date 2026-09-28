@@ -96,13 +96,19 @@ VOICE_RECORD_RE = re.compile(
 VOICE_RECORD_PATH_RE = re.compile(
     r"([^（；\n]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))(?=（|$)", re.IGNORECASE
 )
-# `角色（提示）：台词`, optionally tagged [VO] or [OS] -- the screenplay's own
-# dialogue grammar. Only speakers that are 人物 entries are ever looked up.
-DIALOGUE_LINE_RE = re.compile(
-    r"^(?:\[(?:VO|OS)\][ \t]*)?([^\s：（）:\[\]#>*-][^\s：（）:\[\]#]{0,39})"
-    r"(?:（[^）\n]*）)?：(.+)$",
-    re.MULTILINE,
+# The screenplay's dialogue grammar, mirrored from the write skill's
+# screenplay_index.py (DIALOGUE_RE, and TAG_RE + VOICE_TAG_BODY_RE for [VO] and
+# [OS]). Each is matched against a whole paragraph, so a line that wraps onto
+# the next physical line is still one line of dialogue.
+SCREENPLAY_DIALOGUE_RE = re.compile(
+    r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
+    r"(?:（[^（）\r\n]+）)?：(?P<text>\S[\s\S]*)$"
 )
+SCREENPLAY_VOICE_TAG_RE = re.compile(
+    r"^\[(?:VO|OS)\]\s*(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<text>\S[\s\S]*)$"
+)
+# Where the clause that introduces a quote begins.
+CLAUSE_BREAK_RE = re.compile(r"[。！？；.!?;]")
 # `EP001-SC001` is the documented shape, but a project that scopes ids by season
 # writes `S01-EP001-SC001`. Both are one stable scene id, so the pattern takes
 # any hyphenated prefix rather than exactly one segment.
@@ -481,35 +487,98 @@ def _check_project_file(
 
 def _han_key(value: str) -> str:
     """Only the Han characters, so quoting and language tags do not decide identity."""
-    return "".join(re.findall(r"[㐀-鿿]+", value))
+    return "".join(re.findall(r"[\u3400-\u9fff]+", value))
 
 
-def _dialogue_by_speaker(screenplay: str) -> dict[str, list[str]]:
-    lines: dict[str, list[str]] = {}
-    for match in DIALOGUE_LINE_RE.finditer(screenplay):
-        key = _han_key(match.group(2))
-        if key:
-            lines.setdefault(match.group(1).strip(), []).append(key)
-    return lines
+class SpokenLine(NamedTuple):
+    """One dialogue paragraph of 剧本.md: its scene, speaker and Han text."""
+
+    scene: Optional[str]
+    speaker: str
+    key: str
 
 
-def _speaks_in(prompt: Optional[str], lines: list[str]) -> bool:
-    """Does the copyable body deliver at least one of this speaker's lines?
+def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
+    """Every dialogue paragraph, read the way screenplay_index.py reads it.
 
-    Dialogue reaches the body quoted and verbatim (VID-25), whatever else the
-    dialect wraps around it. A short line such as 「是。」 has to match a whole
-    line, or any one-character quote would count as anybody's.
+    A paragraph runs until a blank line, a heading or a comment. A later line
+    that is itself dialogue- or tag-shaped means two blocks are missing their
+    separator; the index rejects that paragraph, so it proves nothing here.
+    """
+    found: list[SpokenLine] = []
+    scene: Optional[str] = None
+    paragraph: list[str] = []
+
+    def flush() -> None:
+        if not paragraph:
+            return
+        text = "\n".join(paragraph)
+        paragraph.clear()
+        if any(
+            line.startswith("[") or SCREENPLAY_DIALOGUE_RE.fullmatch(line)
+            for line in text.splitlines()[1:]
+        ):
+            return
+        match = SCREENPLAY_VOICE_TAG_RE.fullmatch(text) or SCREENPLAY_DIALOGUE_RE.fullmatch(
+            text
+        )
+        if match is not None and _han_key(match.group("text")):
+            found.append(
+                SpokenLine(scene, match.group("speaker"), _han_key(match.group("text")))
+            )
+
+    for raw in screenplay.splitlines():
+        stripped = raw.strip()
+        if stripped and not stripped.startswith(("#", "<!--")):
+            paragraph.append(stripped)
+            continue
+        flush()
+        if stripped.startswith("#"):
+            heading = SCENE_HEADING_RE.match(stripped)
+            scene = heading.group(1) if heading else None
+    flush()
+    return found
+
+
+def _quote_speakers(
+    prompt: Optional[str], lines: list[SpokenLine], names: dict[str, list[str]]
+) -> list[tuple[str, frozenset]]:
+    """Each quote in the copyable body with the speakers it can belong to.
+
+    Dialogue reaches the body quoted and verbatim (VID-25), so the screenplay
+    says whose line it is. A short quote such as 「是。」 has to match a whole
+    line, or any one-character quote would count as anybody's. When two
+    speakers share the line, the clause that introduces the quote decides it
+    only if it names exactly one of them; otherwise the quote stays ambiguous.
     """
     if prompt is None:
-        return False
-    for match in SPOKEN_SPAN_RE.finditer(prompt.replace("\n", "")):
+        return []
+    joined = prompt.replace("\n", "")
+    result: list[tuple[str, frozenset]] = []
+    previous_end = 0
+    for match in SPOKEN_SPAN_RE.finditer(joined):
         span = next((group for group in match.groups() if group), "")
         key = _han_key(span) if len(span) <= 200 else ""
-        if key and any(
-            key == line or (len(key) >= 4 and key in line) for line in lines
-        ):
-            return True
-    return False
+        candidates = frozenset(
+            line.speaker
+            for line in lines
+            if key and (key == line.key or (len(key) >= 4 and key in line.key))
+        )
+        if len(candidates) > 1:
+            lead = joined[previous_end : match.start()]
+            breaks = list(CLAUSE_BREAK_RE.finditer(lead))
+            clause = lead[breaks[-1].end() :] if breaks else lead
+            named = frozenset(
+                speaker
+                for speaker in candidates
+                if any(name in clause for name in names.get(speaker, [speaker]))
+            )
+            if len(named) == 1:
+                candidates = named
+        if candidates:
+            result.append((span, candidates))
+        previous_end = match.end()
+    return result
 
 
 def _voice_records(visual: str) -> dict[str, str]:
@@ -532,7 +601,9 @@ class VoiceContext(NamedTuple):
 
     characters: frozenset
     records: dict[str, str]
-    dialogue: dict[str, list[str]]
+    dialogue: list[SpokenLine]
+    # Every name a clause may use for a 人物 entry: its name and 画面代称.
+    names: dict[str, list[str]]
 
 
 def _audio_references(
@@ -544,10 +615,14 @@ def _audio_references(
     image_slots: list[str],
     prompt: Optional[str],
     voices: VoiceContext,
+    scenes: list[str],
 ) -> None:
     """Validate one MOTION's 参考音频 line against the character it names."""
     if _is_none(value):
         return
+    # A line said in another scene is not evidence for this shot.
+    in_scope = [line for line in voices.dialogue if not scenes or line.scene in scenes]
+    quotes = _quote_speakers(prompt, in_scope, voices.names)
     plain = value.strip()
     matches = list(AUDIO_REF_RE.finditer(plain))
     cursor = 0
@@ -576,7 +651,7 @@ def _audio_references(
             errors.append(
                 f"{owner}: 参考音频用途只能是{AUDIO_PURPOSE}: {slot}（{purpose.strip()}）"
             )
-        if not re.search(r"[一-鿿]", label):
+        if not re.search(r"[\u4e00-\u9fff]", label):
             errors.append(f"{owner}: REF 缺少中文名称: {slot}")
         allowed = {item.strip() for item in re.split(r"[、,，]", may)}
         prohibited = {item.strip() for item in re.split(r"[、,，]", must)}
@@ -587,7 +662,19 @@ def _audio_references(
                 f"{owner}: 参考音频的角色不是《视觉设定.md》里的人物条目: {name}"
             )
             continue
-        if not _speaks_in(prompt, voices.dialogue.get(name, [])):
+        shared = [span for span, speakers in quotes if name in speakers]
+        if any(speakers == {name} for _, speakers in quotes):
+            pass
+        elif shared:
+            others = sorted(
+                {s for _, speakers in quotes if name in speakers for s in speakers} - {name}
+            )
+            errors.append(
+                f"{owner}: 引文「{_excerpt(shared[0], 24)}」在《剧本.md》里也是"
+                f"{'、'.join(others)}的台词，看不出是不是人物「{name}」在说；"
+                "在引文前的分句里点名说话人，或引一句只属于他的台词"
+            )
+        else:
             errors.append(
                 f"{owner}: 人物「{name}」在本镜可复制提示词里没有说出《剧本.md》记在其名下的台词；"
                 "不说话的人物不绑定参考音频"
@@ -1307,7 +1394,12 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
             entry.name for entry in visual_entries if entry.category == "人物"
         ),
         records=_voice_records(visual),
-        dialogue=_dialogue_by_speaker(screenplay),
+        dialogue=_screenplay_dialogue(screenplay),
+        names={
+            entry.name: _unique([entry.name, *entry.designators])
+            for entry in visual_entries
+            if entry.category == "人物"
+        },
     )
     other_headings = {
         match.group(2).strip(): match.group(1).strip()
@@ -1414,9 +1506,8 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
     for shot_id, shot_body in shots.items():
         fields = _fields(shot_body, owner=shot_id, errors=errors)
         source_value = fields.get("来源", "")
-        claimed_scenes.update(
-            _shot_sources(source_value, shot_id, scenes, errors)
-        )
+        shot_scenes = _shot_sources(source_value, shot_id, scenes, errors)
+        claimed_scenes.update(shot_scenes)
         shot_seconds = _declared_seconds(_plain(fields.get("时长", "")))
         motion_seconds = _declared_seconds(motion_duration.get(shot_id, ""))
         if (
@@ -1534,6 +1625,7 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
                 ],
                 prompt=copyable_prompt,
                 voices=voices,
+                scenes=shot_scenes,
             )
 
         if _has_pending_references(shot_input):
