@@ -1521,7 +1521,10 @@ def render(
             "".join(f"file '{segment.as_posix()}'\n" for segment in segments), encoding="utf-8"
         )
         joined = output_root / "成片-未混音.mp4"
-        _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        # AAC encoder priming starts before zero. Keep that timestamp rather
+        # than shifting the video by one audio packet (and duplicating a frame
+        # when downstream tools decode at the delivery frame rate).
+        _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-copyts",
               "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
 
         effects: list[Placed] = []

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import math
 import re
 import shutil
@@ -551,6 +552,15 @@ class StillRenderTests(unittest.TestCase):
             report = edit.render(project.episode, project.root, cuts, delivery, burn_subtitles=False)
             measured = edit.verify(project.episode, cuts, delivery, project.root)
             film = Path(report["成片"])
+            timestamps = json.loads(subprocess.check_output(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames",
+                 "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", str(film)],
+                text=True,
+            ))["frames"]
+            self.assertEqual(len(timestamps), 4 * self.FPS)
+            self.assertAlmostEqual(float(timestamps[0]["best_effort_timestamp_time"]), 0, places=5)
+            self.assertAlmostEqual(float(timestamps[2 * self.FPS]["best_effort_timestamp_time"]),
+                                   2, places=5)
             raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(film), "-f", "rawvideo",
                                   "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
             size = self.WIDTH * self.HEIGHT
