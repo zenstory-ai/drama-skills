@@ -5,8 +5,9 @@ Three subcommands, deliberately separated so a report can never borrow one's
 evidence for another's claim:
 
 ``check``   parse and cross-check ``剪辑单.md`` against the project. No rendering.
-``render``  cut, join, mix sound effects, burn subtitles and screen text, and
-            normalize loudness into 制作成果/成片/.
+``render``  cut video and draw stills, join, mix sound effects and voice lines,
+            burn subtitles and screen text, and normalize loudness into
+            制作成果/成片/.
 ``verify``  measure an already-rendered film and print the numbers.
 
 ``verify`` prints measurements, never verdicts. Whether the film is any good is
@@ -24,7 +25,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, NamedTuple, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, NamedTuple, Optional, Sequence, Union
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -81,8 +82,28 @@ FIELD = re.compile(r"^-\s*([^：]+)：\s*(.*)$")
 UNUSED_LINE = re.compile(r"^-\s*未采用镜头：\s*(.*)$")
 # A source line is "MOTION-... · relative/path". The separator is the same
 # middle dot the storyboard uses for reference slots, so the two documents read
-# alike; a plain slash would collide with the path itself.
-SOURCE = re.compile(r"^(MOTION-\S+)\s*·\s*(.+?)\s*$")
+# alike; a plain slash would collide with the path itself. A still cut -- the
+# static 漫剧 route, keyframes and voiceover -- names the storyboard shot or the
+# image prompt its picture answers to instead.
+SOURCE = re.compile(r"^((?:MOTION|SHOT|IMG)-\S+)\s*·\s*(.+?)\s*$")
+IMAGE_DOCUMENT = "图片提示词.md"
+IMAGE_HEADING = re.compile(r"^##\s+(IMG-[^\s·]+)")
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+# A still holds the screen for as long as it is written to; shorter than this
+# it reads as a flash frame rather than a shot.
+STILL_MINIMUM = 0.50
+# 「运镜：推近 8%」 moves the frame across a still. Past 30% the picture is
+# being re-framed, not moved, and the upscale starts to show.
+CAMERA_MOVES = ("推近", "拉远", "左移", "右移", "上移", "下移")
+CAMERA_MOVE = re.compile(r"^(" + "|".join(CAMERA_MOVES) + r")\s*([0-9]+)\s*[%％]$")
+CAMERA_HOLD = "固定"
+CAMERA_MOVE_LIMITS = (1, 30)
+# The silent track under a still when there is no video audio to match.
+STILL_AUDIO = (48000, "stereo")
+# 「配音 N：<起> <文件>」 places a whole voice file, so its end is the file's.
+VOICE_FIELD = re.compile(r"^配音(?:\s*(\d+))?$")
+VOICE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
+VOICE_OVERRUN = 0.05
 SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 # One shot can carry several lines: an exchange of three is one shot, not three.
 # Numbered fields keep them ordered and let each one state its own window.
@@ -213,9 +234,25 @@ class SoundEffect(NamedTuple):
     gain_db: float = 0.0
 
 
+class CameraMove(NamedTuple):
+    """「运镜」 on a still: 固定, or a push, pull or pan of `amount` percent."""
+
+    kind: str = CAMERA_HOLD
+    amount: int = 0
+
+
+class Voice(NamedTuple):
+    """One 「配音」 line: the whole file, from `start` seconds into the cut."""
+
+    start: float
+    path: str
+    gain_db: float = 0.0
+
+
 class Cut(NamedTuple):
     cut_id: str
     title: str
+    # The source ID: MOTION-... for a video cut, SHOT-... or IMG-... for a still.
     motion: str
     media: str
     start: float
@@ -228,6 +265,13 @@ class Cut(NamedTuple):
     sound_effects: tuple[SoundEffect, ...] = ()
     # 「画面：不校」: neither a stated nor an automatic correction.
     untouched: bool = False
+    # Stills only; None on a video cut.
+    move: Optional[CameraMove] = None
+    voices: tuple[Voice, ...] = ()
+
+    @property
+    def still(self) -> bool:
+        return not self.motion.startswith("MOTION-")
 
 
 class Delivery(NamedTuple):
@@ -369,6 +413,7 @@ def _repeated_field(name: str, cut_id: str, line: int) -> str:
     where = f"{CUT_LIST_NAME}:{line}: {cut_id} 的「{name}」写了两遍"
     for pattern, label in (
         (SUBTITLE_FIELD, "字幕"), (SCREEN_TEXT_FIELD, "画面文字"), (SOUND_EFFECT_FIELD, "音效"),
+        (VOICE_FIELD, "配音"),
     ):
         if pattern.match(name):
             return f"{where}；一段有多条{label}时全部编号，且编号不重复：「{label} 1」「{label} 2」…"
@@ -390,7 +435,15 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
     if not source:
         raise EditError(
             f"{CUT_LIST_NAME}:{source_line}: {cut_id} 的来源要写成 "
-            f"「MOTION-... · 项目相对路径」，当前是 {source_raw!r}"
+            f"「MOTION-... · 项目相对路径」，静帧写「SHOT-... · 图片路径」或「IMG-... · 图片路径」，"
+            f"当前是 {source_raw!r}"
+        )
+    still = not source.group(1).startswith("MOTION-")
+    if still != (Path(source.group(2)).suffix.lower() in IMAGE_SUFFIXES):
+        raise EditError(
+            f"{CUT_LIST_NAME}:{source_line}: {cut_id} 的来源 {source.group(1)} 与文件类型不符；"
+            "视频素材写 MOTION-...，静帧（" + "/".join(sorted(IMAGE_SUFFIXES))
+            + "）写 SHOT-... 或 IMG-..."
         )
     start_raw, start_line = required("入点")
     end_raw, end_line = required("出点")
@@ -432,7 +485,35 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         screen_texts=_parse_screen_texts(fields, cut_id=cut_id, line=line),
         sound_effects=_parse_sound_effects(fields, cut_id=cut_id, line=line),
         untouched=untouched,
+        move=_parse_move(fields, cut_id=cut_id, still=still),
+        voices=_parse_voices(fields, cut_id=cut_id, line=line),
     )
+
+
+def _parse_move(
+    fields: dict[str, tuple[str, int]], *, cut_id: str, still: bool
+) -> Optional[CameraMove]:
+    """Read 「运镜：固定|推近 <n>%|拉远|左移|右移|上移|下移」. Stills only; default 固定."""
+
+    raw = fields.get("运镜")
+    if raw is None:
+        return CameraMove() if still else None
+    value, where = raw[0].strip(), raw[1]
+    if not still:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{where}: {cut_id} 是视频段，「运镜」只写在静帧段上；"
+            "视频的运镜在生成时就定了"
+        )
+    if value == CAMERA_HOLD:
+        return CameraMove()
+    found = CAMERA_MOVE.match(value)
+    low, high = CAMERA_MOVE_LIMITS
+    if not found or not low <= int(found.group(2)) <= high:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{where}: {cut_id} 的运镜要写成「{CAMERA_HOLD}」或"
+            f"「{'/'.join(CAMERA_MOVES)} <{low}–{high}>%」，当前是 {value!r}"
+        )
+    return CameraMove(found.group(1), int(found.group(2)))
 
 
 def _field_entries(
@@ -544,6 +625,22 @@ def _parse_screen_texts(
     return tuple(texts)
 
 
+def _gain(value: str, label: str, *, cut_id: str, where: int) -> tuple[str, float]:
+    """Split a trailing 「（增益：<dB>）」 off a sound line: (rest, dB), 0 when unstated."""
+
+    stated = GAIN.search(value)
+    if not stated:
+        return value, 0.0
+    gain = float(stated.group(1))
+    low, high = GAIN_LIMITS
+    if not low <= gain <= high:
+        raise EditError(
+            f"{CUT_LIST_NAME}:{where}: {cut_id} 的「{label}」增益 {gain:g} dB "
+            f"超出 {low:g} 到 {high:g}"
+        )
+    return value[: stated.start()], gain
+
+
 def _parse_sound_effects(
     fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
 ) -> tuple[SoundEffect, ...]:
@@ -554,17 +651,7 @@ def _parse_sound_effects(
     for index, value, where in entries:
         if value.strip() == "无":
             continue
-        gain = 0.0
-        stated = GAIN.search(value)
-        if stated:
-            value = value[: stated.start()]
-            gain = float(stated.group(1))
-            low, high = GAIN_LIMITS
-            if not low <= gain <= high:
-                raise EditError(
-                    f"{CUT_LIST_NAME}:{where}: {cut_id} 的「音效 {index}」增益 {gain:g} dB "
-                    f"超出 {low:g} 到 {high:g}"
-                )
+        value, gain = _gain(value, f"音效 {index}", cut_id=cut_id, where=where)
         found = SUBTITLE_CUE.match(value)
         if not found:
             raise EditError(
@@ -573,6 +660,27 @@ def _parse_sound_effects(
             )
         effects.append(SoundEffect(float(found.group(1)), float(found.group(2)), found.group(3), gain))
     return tuple(effects)
+
+
+def _parse_voices(
+    fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
+) -> tuple[Voice, ...]:
+    """Read 「配音 N：<起> <文件>（增益：<dB>）」 lines. The file plays whole."""
+
+    _, entries = _field_entries(fields, VOICE_FIELD, "配音", cut_id=cut_id, line=line)
+    voices: list[Voice] = []
+    for index, value, where in entries:
+        if value.strip() == "无":
+            continue
+        value, gain = _gain(value, f"配音 {index}", cut_id=cut_id, where=where)
+        found = VOICE.match(value)
+        if not found:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「配音 {index}」要写成"
+                "「<起> <项目相对路径>」，从起点放完整个文件"
+            )
+        voices.append(Voice(float(found.group(1)), found.group(2), gain))
+    return tuple(voices)
 
 
 def _parse_subtitles(
@@ -688,22 +796,159 @@ def probe_stream(media: Path) -> dict[str, Any]:
     }
 
 
-def _unaccounted_shots(known: set[str], cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
-    """Require each source to be used or explicitly omitted with a reason."""
+def _excused(unused: Sequence[str]) -> set[str]:
+    """IDs listed under 「未采用镜头」 with a non-empty reason."""
 
-    used = {cut.motion for cut in cuts}
     excused = set()
     for note in unused:
-        match = re.fullmatch(r"(MOTION-[\w-]+)\s*[（(]理由[：:]\s*(.+?)[）)]", note.strip())
+        match = re.fullmatch(
+            r"((?:MOTION|SHOT|IMG)-[\w-]+)\s*[（(]理由[：:]\s*(.+?)[）)]", note.strip()
+        )
         if match and match.group(2).strip():
             excused.add(match.group(1))
-    missing = sorted(known - used - excused)
+    return excused
+
+
+def probe_audio(media: Path) -> Optional[tuple[int, str]]:
+    """(sample rate, channel layout) of the first audio stream; None when it has none."""
+
+    probe = _require("ffprobe")
+    result = subprocess.run(
+        [probe, "-v", "error", "-select_streams", "a:0", "-show_entries",
+         "stream=sample_rate,channels,channel_layout", "-of", "json", str(media)],
+        capture_output=True, text=True, check=False,
+    )
+    streams = json.loads(result.stdout or "{}").get("streams") if result.returncode == 0 else None
+    if not streams:
+        return None
+    stream = streams[0]
+    layout = stream.get("channel_layout") or ("mono" if stream.get("channels") == 1 else "stereo")
+    return int(stream.get("sample_rate") or STILL_AUDIO[0]), layout
+
+
+def _unaccounted_shots(
+    known: set[str],
+    cuts: Sequence[Cut],
+    unused: Sequence[str],
+    *,
+    accounted: Iterable[str] = (),
+) -> list[str]:
+    """Require each source to be used, accounted for another way, or omitted with a reason."""
+
+    used = {cut.motion for cut in cuts} | set(accounted)
+    missing = sorted(known - used - _excused(unused))
     if not missing:
         return []
     return [
         f"{CUT_LIST_NAME}: 以下镜头未采用，且缺少「未采用镜头」及理由："
         + "、".join(missing)
     ]
+
+
+def _headings(path: Path, heading: re.Pattern[str]) -> Optional[set[str]]:
+    """The IDs a document declares as `##` headings; None when it does not exist."""
+
+    if not path.is_file():
+        return None
+    return {
+        match.group(1)
+        for match in map(heading.match, path.read_text(encoding="utf-8").splitlines())
+        if match
+    }
+
+
+def _motion_shots(episode: Path) -> dict[str, str]:
+    """`{MOTION-...: SHOT-...}` from each video prompt's 「分镜」 line."""
+
+    fields = _heading_fields(episode / MOTION_DOCUMENT, MOTION_HEADING, "分镜")
+    return {
+        motion: found.group(0)
+        for motion, value in fields.items()
+        for found in [SHOT_REFERENCE.search(value)]
+        if found
+    }
+
+
+def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
+    """Each source ID exists in its document, and each shot is in the film or excused.
+
+    Video prompts are held to coverage when the list has a video cut, storyboard
+    shots when it has a SHOT- still. Across the two, a shot counts once however
+    it reached the film: a MOTION whose storyboard shot went in as a still is
+    accounted for, and so is a SHOT whose MOTION was used or excused.
+    """
+
+    findings: list[str] = []
+    documents = (
+        ("MOTION-", MOTION_DOCUMENT, MOTION_HEADING),
+        ("SHOT-", STORYBOARD_DOCUMENT, SHOT_HEADING),
+        ("IMG-", IMAGE_DOCUMENT, IMAGE_HEADING),
+    )
+    known: dict[str, Optional[set[str]]] = {}
+    for prefix, name, heading in documents:
+        using = [cut for cut in cuts if cut.motion.startswith(prefix)]
+        declared = known[prefix] = _headings(episode / name, heading) if using else None
+        if not using:
+            continue
+        if declared is None:
+            findings.append(f"没有 {episode / name}，来源 {prefix[:-1]} 无法核对")
+            continue
+        findings.extend(
+            f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
+            f"{cut.motion} 不在《{name}》中"
+            for cut in using if cut.motion not in declared
+        )
+
+    shot_of = _motion_shots(episode)
+    used = {cut.motion for cut in cuts}
+    motions, shots = known["MOTION-"], known["SHOT-"]
+    if motions is not None:
+        findings.extend(_unaccounted_shots(
+            motions, cuts, unused, accounted={m for m in motions if shot_of.get(m) in used},
+        ))
+    if shots is not None:
+        findings.extend(_unaccounted_shots(
+            shots, cuts, unused,
+            accounted={shot_of[m] for m in used | _excused(unused) if m in shot_of},
+        ))
+    return findings
+
+
+def _voice_lengths(episode: Path, project_root: Path, cuts: Sequence[Cut]) -> dict[str, float]:
+    """Seconds of every 「配音」 file, keyed as written. Raises when one cannot be read."""
+
+    lengths: dict[str, float] = {}
+    for cut in cuts:
+        for voice in cut.voices:
+            if voice.path in lengths:
+                continue
+            media = _resolve_media(episode, project_root, voice.path)
+            if media is None:
+                raise EditError(f"配音文件不存在: {voice.path}")
+            lengths[voice.path] = probe_duration(media)
+    return lengths
+
+
+def _voice_findings(cut: Cut, lengths: dict[str, float]) -> list[str]:
+    """A voice line ends inside its cut, and two lines in one cut never talk over each other."""
+
+    where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
+    span = cut.end - cut.start
+    placed = sorted(
+        (voice.start, voice.start + lengths[voice.path], voice.path) for voice in cut.voices
+    )
+    findings = [
+        f"{where} 的配音 {path} 从 {start:.2f} 秒起放 {end - start:.2f} 秒，到 {end:.2f} 秒，"
+        f"超出本段时长 {span:.2f}；加长这一段或提前起点"
+        for start, end, path in placed
+        if end > span + VOICE_OVERRUN
+    ]
+    findings.extend(
+        f"{where} 的配音重叠：{path}（{start:.2f}-{end:.2f}）与 {other}（{later:.2f} 起）"
+        for (start, end, path), (later, _, other) in zip(placed, placed[1:])
+        if later < end - TOLERANCE
+    )
+    return findings
 
 
 def check_cuts(
@@ -713,6 +958,7 @@ def check_cuts(
     *,
     probe: bool,
     unused: Sequence[str] = (),
+    delivery: Optional[Delivery] = None,
 ) -> list[str]:
     """Every mechanical cross-check the cut list can be held to. Returns findings."""
 
@@ -727,25 +973,17 @@ def check_cuts(
             findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: CUT ID 重复: {cut.cut_id}")
         seen.add(cut.cut_id)
 
-    motion_path = episode / MOTION_DOCUMENT
-    if motion_path.is_file():
-        known = {
-            match.group(1)
-            for match in (
-                MOTION_HEADING.match(line)
-                for line in motion_path.read_text(encoding="utf-8").splitlines()
+    findings.extend(_source_findings(episode, cuts, unused))
+    # Stills are drawn at the delivery frame; video in the same film must match it.
+    spec: Optional[tuple[Any, Any, float]] = None
+    if any(cut.still for cut in cuts):
+        if delivery is None or delivery.frame_size is None or delivery.fps is None:
+            findings.append(
+                f"{CUT_LIST_NAME}: 有静帧段时，交付规格必须写「画幅与帧率」"
+                "（如 1080×1920 · 24fps）；静帧按它出画"
             )
-            if match
-        }
-        for cut in cuts:
-            if cut.motion not in known:
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的来源 "
-                    f"{cut.motion} 不在《{MOTION_DOCUMENT}》中"
-                )
-        findings.extend(_unaccounted_shots(known, cuts, unused))
-    else:
-        findings.append(f"没有 {motion_path}，来源 MOTION 无法核对")
+        else:
+            spec = (*delivery.frame_size, round(delivery.fps, 3))
 
     screenplay = ""
     screenplay_path = episode / SCREENPLAY_DOCUMENT
@@ -766,11 +1004,28 @@ def check_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 - 入点 = "
                 f"{span:.2f}，与「时长：{cut.declared:.2f}」不符"
             )
+        if cut.still and abs(cut.start) > TOLERANCE:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，入点必须是 0.00，"
+                "出点等于时长"
+            )
+        if cut.still and cut.declared < STILL_MINIMUM - TOLERANCE:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，时长 "
+                f"{cut.declared:.2f} 短于 {STILL_MINIMUM:.2f} 秒"
+            )
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             findings.append(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在: {cut.media}"
             )
+        elif probe and cut.still:
+            try:
+                probe_stream(media)
+            except EditError as error:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的图片读不出: {error}"
+                )
         elif probe:
             stream = probe_stream(media)
             available = stream["duration"]
@@ -782,6 +1037,12 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
                     f"{current_format} 与首段 {media_format} 不一致；"
                     "先在外部统一素材规格，再更新来源路径与入出点"
+                )
+            if spec is not None and current_format != spec:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
+                    f"{current_format} 与交付规格 {spec} 不一致；静帧按交付规格出画，"
+                    "同一条片里的视频段须与之相同"
                 )
             if cut.end > available + TOLERANCE:
                 findings.append(
@@ -812,6 +1073,24 @@ def check_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在: "
                     f"{effect.path}"
                 )
+        voiced = True
+        for voice in cut.voices:
+            if not 0 <= voice.start < span:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音起点超出本段区间"
+                    f": {voice.start:g}"
+                )
+            if _resolve_media(episode, project_root, voice.path) is None:
+                voiced = False
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在: "
+                    f"{voice.path}"
+                )
+        if probe and voiced and cut.voices:
+            try:
+                findings.extend(_voice_findings(cut, _voice_lengths(episode, project_root, [cut])))
+            except EditError as error:
+                findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} {error}")
 
     findings.extend(_screen_text_findings(cuts, screenplay))
     findings.extend(_overlap_findings(cuts))
@@ -876,22 +1155,26 @@ def _stale_window_findings(
             any(subtitle[0] is not None for subtitle in cut.subtitles)
             or cut.screen_texts
             or cut.sound_effects
+            or cut.voices
         )
         if not timed:
             continue
-        media = _resolve_media(episode, project_root, cut.media)
-        if media is None:
-            continue
-        try:
-            changed = media.stat().st_mtime
-        except OSError:
-            continue
-        if changed > authored + 1.0:
-            findings.append(
-                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材比剪辑单新"
-                f"（{cut.media}）；这一段的字幕、画面文字与音效时间是按旧素材反推的，"
-                "重出之后必须重测再改，不能沿用"
-            )
+        # A still's timings were measured on its voice files, not on the picture.
+        written = [voice.path for voice in cut.voices] + ([] if cut.still else [cut.media])
+        for relative in written:
+            media = _resolve_media(episode, project_root, relative)
+            if media is None:
+                continue
+            try:
+                changed = media.stat().st_mtime
+            except OSError:
+                continue
+            if changed > authored + 1.0:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材比剪辑单新"
+                    f"（{relative}）；这一段的字幕、画面文字与音效时间是按旧素材反推的，"
+                    "重出之后必须重测再改，不能沿用"
+                )
     return findings
 
 
@@ -946,10 +1229,18 @@ def render(
 
     def measure(cut: Cut) -> Optional[ChannelStats]:
         media = _resolve_media(episode, project_root, cut.media)
-        return None if media is None else _channel_stats(ffmpeg, media, cut.start, cut.end - cut.start)
+        if media is None:
+            return None
+        if cut.still:
+            return None if delivery.frame_size is None else _still_stats(
+                ffmpeg, media, delivery.frame_size
+            )
+        return _channel_stats(ffmpeg, media, cut.start, cut.end - cut.start)
 
     scenes = _scene_keys(episode, cuts)
     pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
+    silence = _still_audio(episode, project_root, cuts, delivery)
+    voiced = _with_voices(cuts, _voice_lengths(episode, project_root, cuts))
 
     segments: list[Path] = []
     spans: list[float] = []
@@ -958,12 +1249,15 @@ def render(
         if media is None:
             raise EditError(f"{cut.cut_id} 的素材不存在: {cut.media}")
         segment = segments_root / f"{cut.cut_id}.mp4"
-        command = [
-            ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-            "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
-        ]
-        if match:
-            command += ["-vf", match]
+        if cut.still:
+            command = _still_command(ffmpeg, media, cut, delivery, silence, match)
+        else:
+            command = [
+                ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", f"{cut.start:.3f}", "-t", f"{cut.end - cut.start:.3f}", "-i", str(media),
+            ]
+            if match:
+                command += ["-vf", match]
         command += [
             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", str(segment),
@@ -982,10 +1276,10 @@ def render(
               "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
 
         effects: list[tuple[float, float, Path, float]] = []
-        for start, duration, written, gain in _placed_sound_effects(cuts, spans):
+        for start, duration, written, gain in _placed_sound_effects(voiced, spans):
             resolved = _resolve_media(episode, project_root, written)
             if resolved is None:
-                raise EditError(f"音效文件不存在: {written}")
+                raise EditError(f"音效或配音文件不存在: {written}")
             effects.append((start, duration, resolved, gain))
         if effects:
             # Mixed into its own file first, so the loudness pass below measures
@@ -1077,11 +1371,106 @@ def render(
         "叠层": str(overlay_path) if overlay_path else None,
         "字幕渲染": renderer if subtitle_path else None,
         "画面文字": len(layers),
-        "音效": len(effects),
+        "音效": sum(len(cut.sound_effects) for cut in cuts),
+        "配音": sum(len(cut.voices) for cut in cuts),
+        "静帧段": sum(cut.still for cut in cuts),
         "自动接镜": _shot_match_report(auto, scenes, enabled=delivery.shot_match),
         "段数": len(segments),
         "各段时长之和": round(sum(cut.end - cut.start for cut in cuts), 2),
     }
+
+
+def _still_audio(
+    episode: Path, project_root: Path, cuts: Sequence[Cut], delivery: Delivery
+) -> tuple[int, str]:
+    """The silent track's (sample rate, layout): the first video cut's, else 48 kHz stereo.
+
+    Segments are joined by stream copy, so a still's silence must be encoded
+    like the video audio beside it or the joined track decodes wrong from the
+    first still on.
+    """
+
+    if not any(cut.still for cut in cuts):
+        return STILL_AUDIO
+    if delivery.frame_size is None or delivery.fps is None:
+        raise EditError("有静帧段时，交付规格必须写「画幅与帧率」；静帧按它出画")
+    for cut in cuts:
+        media = None if cut.still else _resolve_media(episode, project_root, cut.media)
+        if media is not None:
+            return probe_audio(media) or STILL_AUDIO
+    return STILL_AUDIO
+
+
+def _still_filter(move: CameraMove, width: int, height: int, frames: int) -> str:
+    """Cover-fit a still to the frame and move across it on an eased curve.
+
+    The move is a window over the fitted picture, `1/zoom` of it on each side,
+    whose corners `perspective` samples per frame at sub-pixel positions.
+    zoompan and crop place the window on whole pixels, which is what makes a
+    slow push judder. Measured on 1080×1920 renders, the frame-to-frame motion
+    of a push wavered 0.34 px rms with zoompan, 0.14 px with zoompan at 4×
+    internal scale and 0.10 px here; of a pan, 0.84, 0.23 and 0.11 px. This
+    route also renders no slower than the 4× one.
+    """
+
+    fitted = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop={width}:{height},setsar=1"
+    )
+    if move.kind == CAMERA_HOLD:
+        return fitted
+    # Cosine ease in and out: the move starts and settles without a jolt.
+    eased = f"(1-cos(PI*on/{max(frames - 1, 1)}))/2"
+    reach = move.amount / 100
+    zoom = {
+        "推近": f"(1+{reach}*{eased})",
+        "拉远": f"(1+{reach}*(1-{eased}))",
+    }.get(move.kind, f"{1 + reach}")
+    across, down = f"(W/{zoom})", f"(H/{zoom})"
+    room_x, room_y = f"(W-{across})", f"(H-{down})"
+    # A camera move: 左移 slides the window left, so the picture drifts right.
+    x = {"左移": f"{room_x}*(1-{eased})", "右移": f"{room_x}*{eased}"}.get(move.kind, f"{room_x}/2")
+    y = {"上移": f"{room_y}*(1-{eased})", "下移": f"{room_y}*{eased}"}.get(move.kind, f"{room_y}/2")
+    corners = ((x, y), (f"{x}+{across}", y), (x, f"{y}+{down}"), (f"{x}+{across}", f"{y}+{down}"))
+    points = ":".join(f"x{i}='{cx}':y{i}='{cy}'" for i, (cx, cy) in enumerate(corners))
+    return f"{fitted},perspective={points}:interpolation=cubic:eval=frame"
+
+
+def _still_command(
+    ffmpeg: str,
+    image: Path,
+    cut: Cut,
+    delivery: Delivery,
+    silence: tuple[int, str],
+    match: str,
+) -> list[str]:
+    """The input half of a still segment's command: picture, move, correction and silence."""
+
+    assert delivery.frame_size is not None and delivery.fps is not None
+    width, height = delivery.frame_size
+    frames = max(1, round(cut.declared * delivery.fps))
+    seconds = frames / delivery.fps
+    chain = _still_filter(cut.move or CameraMove(), width, height, frames)
+    rate, layout = silence
+    return [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-loop", "1", "-framerate", f"{delivery.fps:g}", "-i", str(image),
+        "-f", "lavfi", "-t", f"{seconds:.3f}", "-i", f"anullsrc=r={rate}:cl={layout}",
+        "-vf", ",".join(filter(None, [chain, match])),
+        "-map", "0:v", "-map", "1:a", "-frames:v", str(frames), "-t", f"{seconds:.3f}",
+    ]
+
+
+def _with_voices(cuts: Sequence[Cut], lengths: dict[str, float]) -> list[Cut]:
+    """Voice lines as sound effects that run their whole file, so one mix places both."""
+
+    return [
+        cut._replace(sound_effects=cut.sound_effects + tuple(
+            SoundEffect(voice.start, voice.start + lengths[voice.path], voice.path, voice.gain_db)
+            for voice in cut.voices
+        ))
+        for cut in cuts
+    ]
 
 
 def _shot_match_filter(cut: Cut) -> str:
@@ -1127,16 +1516,17 @@ def _heading_fields(path: Path, heading: re.Pattern[str], field: str) -> dict[st
 def _scene_keys(episode: Path, cuts: Sequence[Cut]) -> list[Optional[tuple[str, ...]]]:
     """Each cut's scene: MOTION → its 分镜 SHOT → the scene IDs that SHOT's 来源 names.
 
-    A shot drawing on two scenes keys on both, so it matches neither neighbour.
-    None where the chain breaks; such a cut is never matched.
+    A SHOT- still starts at the SHOT. A shot drawing on two scenes keys on both,
+    so it matches neither neighbour. None where the chain breaks (an IMG- still
+    names no shot); such a cut is never matched.
     """
 
-    shots = _heading_fields(episode / MOTION_DOCUMENT, MOTION_HEADING, "分镜")
+    shots = _motion_shots(episode)
     sources = _heading_fields(episode / STORYBOARD_DOCUMENT, SHOT_HEADING, "来源")
     keys: list[Optional[tuple[str, ...]]] = []
     for cut in cuts:
-        shot = SHOT_REFERENCE.search(shots.get(cut.motion, ""))
-        scenes = tuple(SCENE_ID.findall(sources.get(shot.group(0), ""))) if shot else ()
+        shot = cut.motion if cut.motion.startswith("SHOT-") else shots.get(cut.motion)
+        scenes = tuple(SCENE_ID.findall(sources.get(shot, ""))) if shot else ()
         keys.append(scenes or None)
     return keys
 
@@ -1265,11 +1655,30 @@ def _channel_stats(
 ) -> Optional[ChannelStats]:
     """Per-channel mean and spread of one cut's source range, sampled small."""
 
+    return _sampled_stats([
+        ffmpeg, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+        "-i", str(media), "-vf", SHOT_MATCH_SAMPLE,
+    ])
+
+
+def _still_stats(ffmpeg: str, image: Path, frame_size: tuple[int, int]) -> Optional[ChannelStats]:
+    """Per-channel mean and spread of a still as the frame shows it, cover-fitted.
+
+    An image has no timeline: `fps` drops its only frame, and a seek on a JPEG
+    returns none, so it is read once, whole.
+    """
+
+    width, height = frame_size
+    return _sampled_stats([
+        ffmpeg, "-v", "error", "-i", str(image), "-vf",
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},scale=64:-2",
+    ])
+
+
+def _sampled_stats(command: list[str]) -> Optional[ChannelStats]:
     result = subprocess.run(
-        [ffmpeg, "-v", "error", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-         "-i", str(media), "-vf", SHOT_MATCH_SAMPLE,
-         "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
-        capture_output=True, check=False,
+        command + ["-pix_fmt", "rgb24", "-f", "rawvideo", "-"], capture_output=True, check=False
     )
     if result.returncode != 0 or len(result.stdout) < 3:
         return None
@@ -1872,7 +2281,9 @@ def _segment_colours(ffmpeg: str, output_root: Path, cuts: Sequence[Cut]) -> lis
     return rows
 
 
-def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, Any]:
+def verify(
+    episode: Path, cuts: Sequence[Cut], delivery: Delivery, project_root: Optional[Path] = None
+) -> dict[str, Any]:
     """Measure the rendered film. Every entry is a number or an honest 未测."""
 
     ffmpeg = _require("ffmpeg")
@@ -1921,6 +2332,10 @@ def verify(episode: Path, cuts: Sequence[Cut], delivery: Delivery) -> dict[str, 
     )
     if any(cut.screen_texts or cut.sound_effects for cut in cuts):
         measurements.update(_placements_for_sampling(cuts, spans))
+    if any(cut.voices for cut in cuts):
+        measurements["配音落点"] = _voice_placements(
+            episode, project_root or episode, cuts, spans
+        )
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
     measurements.update(_frame_report(
         _grey_frames(ffmpeg, final), stream["fps"], cuts, spans, _scene_keys(episode, cuts)
@@ -2073,11 +2488,30 @@ def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float
             }
             for layer in placed
         ],
-        "音效落点": [
-            {"起": round(start, 2), "止": round(start + duration, 2), "文件": written}
-            for start, duration, written, _ in _placed_sound_effects(cuts, spans)
-        ],
+        "音效落点": _sound_placements(cuts, spans),
     }
+
+
+def _sound_placements(cuts: Sequence[Cut], spans: Sequence[float]) -> list[dict[str, Any]]:
+    return [
+        {"起": round(start, 2), "止": round(start + duration, 2), "文件": written}
+        for start, duration, written, _ in _placed_sound_effects(cuts, spans)
+    ]
+
+
+def _voice_placements(
+    episode: Path, project_root: Path, cuts: Sequence[Cut], spans: Optional[Sequence[float]]
+) -> Union[list[dict[str, Any]], str]:
+    """Where each 「配音」 line starts and ends in the film, for listening back."""
+
+    if spans is None:
+        return "未测（分段缺失，无法换算成片时间）"
+    try:
+        lengths = _voice_lengths(episode, project_root, cuts)
+    except EditError as error:
+        return f"未测（{error}）"
+    voices_only = [cut._replace(sound_effects=()) for cut in cuts]
+    return _sound_placements(_with_voices(voices_only, lengths), spans)
 
 
 def _matches_frame_size(delivery: Delivery, stream: dict[str, Any]) -> Any:
@@ -2149,7 +2583,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if arguments.command == "check":
             findings = check_cuts(
                 episode, cuts, project_root,
-                probe=_which("ffprobe") is not None, unused=unused,
+                probe=_which("ffprobe") is not None, unused=unused, delivery=delivery,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -2159,12 +2593,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "findings": findings,
             }
             if _which("ffprobe") is None:
-                payload["未测"] = ["区间是否超过素材实际时长（PATH 上没有 ffprobe）"]
+                payload["未测"] = [
+                    "区间是否超过素材实际时长、配音是否超出本段或互相重叠（PATH 上没有 ffprobe）"
+                ]
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
             findings = check_cuts(
-                episode, cuts, project_root, probe=True, unused=unused
+                episode, cuts, project_root, probe=True, unused=unused, delivery=delivery
             )
             if findings:
                 _emit({"findings": findings, "已渲染": False})
@@ -2177,7 +2613,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 remotion_concurrency=arguments.remotion_concurrency,
             ))
             return 0
-        _emit(verify(episode, cuts, delivery))
+        _emit(verify(episode, cuts, delivery, project_root))
         return 0
     except EditError as error:
         print(str(error), file=sys.stderr)
