@@ -2230,7 +2230,8 @@ STILL_CUT_LIST = """# EP001 剪辑单
 - 时长：2.50
 - 取舍：入点=起；出点=止
 - 声音：配音
-- 运镜：推近 6%
+- 运镜：推近 2.5%/秒
+- 环境声：-0.40 制作成果/audio/S_room.mp3（增益：+3）
 - 字幕 1：0.10-1.20 火箭军？（重点：火箭军）
 - 配音 1：0.10 制作成果/audio/L01.mp3（增益：-2）
 - 配音 2：1.30 制作成果/audio/L02.mp3（起点：0.15；增益：+1.5）
@@ -2244,6 +2245,7 @@ STILL_CUT_LIST = """# EP001 剪辑单
 - 时长：1.50
 - 取舍：入点=起；出点=止
 - 声音：环境
+- 环境声：0.50 无
 - 配音：-0.60 制作成果/audio/L04.mp3
 """
 REVIEW = """# EP001 审查
@@ -2447,8 +2449,14 @@ class CreatorViewsTests(unittest.TestCase):
                 )
                 self.assertEqual(mine["still"], cut.still)
                 self.assertEqual(
-                    None if mine["move"] is None else (mine["move"]["kind"], mine["move"]["amount"]),
+                    None if mine["move"] is None
+                    else (mine["move"]["kind"], mine["move"]["amount"], mine["move"].get("rate")),
                     None if cut.move is None else tuple(cut.move),
+                )
+                self.assertEqual(
+                    None if mine["bed"] is None
+                    else (mine["bed"]["s"], mine["bed"]["path"], mine["bed"]["gain"], mine["bed"]["from"]),
+                    None if cut.bed is None else tuple(cut.bed),
                 )
                 self.assertEqual(
                     [(v["s"], v["path"], v["gain"], v["from"]) for v in mine["voices"]],

@@ -408,6 +408,8 @@ CUT_HEADING_RE = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
 CUT_FIELD_RE = re.compile(r"^-\s*([^：]+)：\s*(.*)$")
 SOURCE_RE = re.compile(r"^((?:MOTION|SHOT|IMG)-\S+)\s*·\s*(.+?)\s*$")
 MOVE_RE = re.compile(r"^(推近|拉远|左移|右移|上移|下移)\s*([0-9]+)\s*[%％]$")
+MOVE_RATE_RE = re.compile(r"^(推近|拉远|左移|右移|上移|下移)\s*([0-9]+(?:\.[0-9]+)?)\s*[%％]\s*[/／]\s*秒$")
+BED_RE = re.compile(r"^\s*(?:(-?[0-9]+(?:\.[0-9]+)?)\s+)?(.+?)\s*$")
 VOICE_RE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
 WINDOW_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 CUE_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
@@ -575,13 +577,32 @@ def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
     return voices
 
 
+def _bed(fields: dict[str, str]) -> Optional[dict[str, Any]]:
+    """A 「环境声」 line: where it starts in its cut and what loops; path None is 「无」."""
+
+    if "环境声" not in fields:
+        return None
+    value, gain, offset = _options(fields["环境声"])
+    found = BED_RE.match(value)
+    if not found:
+        return None
+    path = found.group(2)
+    return {"s": float(found.group(1) or 0.0), "path": None if path == "无" else path, "gain": gain, "from": offset}
+
+
 def _move(fields: dict[str, str], still: bool) -> Optional[dict[str, Any]]:
     """A still's 「运镜」; 固定 when unwritten or unreadable, None on a video cut."""
 
     if not still:
         return None
-    found = MOVE_RE.match(fields.get("运镜", "").strip())
-    return {"kind": found.group(1), "amount": int(found.group(2))} if found else {"kind": "固定", "amount": 0}
+    written = fields.get("运镜", "").strip()
+    paced = MOVE_RATE_RE.match(written)
+    if paced:
+        return {"kind": paced.group(1), "amount": 0, "rate": float(paced.group(2))}
+    found = MOVE_RE.match(written)
+    if found:
+        return {"kind": found.group(1), "amount": int(found.group(2)), "rate": None}
+    return {"kind": "固定", "amount": 0, "rate": None}
 
 
 def _seconds(value: Optional[str]) -> Optional[float]:
@@ -633,7 +654,7 @@ def parse_cut_list(text: str) -> dict[str, Any]:
             "media": source.group(2), "in": start, "out": end, "sec": declared,
             "at": round(cursor, 3),
             "subs": _subtitles(fields), "texts": _screen_texts(fields), "sfx": _sound_effects(fields),
-            "voices": _voices(fields),
+            "voices": _voices(fields), "bed": _bed(fields),
         })
         cursor += declared
     if not cuts:

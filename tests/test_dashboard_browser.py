@@ -259,7 +259,8 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
         # The last cut's line is a J-cut: it is heard before its picture starts.
         cut_left = page.locator(".tl-cut").nth(2).evaluate("node => node.getBoundingClientRect().left")
         self.assertLess(lefts[-1], cut_left)
-        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("静帧 · 推近 6%")
+        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("静帧 · 推近 2.5%/秒")
+        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("S_room.mp3")
         expect(page.locator("#r-CUT-EP001-003")).to_contain_text("静帧 · 固定")
         expect(page.locator("#r-CUT-EP001-002")).to_contain_text("L02.mp3")
 

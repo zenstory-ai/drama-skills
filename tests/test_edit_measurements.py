@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import re
 import shutil
 import subprocess
@@ -79,6 +80,7 @@ class EditMeasurementsTests(unittest.TestCase):
 
 
 STORYBOARD = "## SHOT-1 · 甲\n- 来源：EP001-SC001\n\n## SHOT-2 · 乙\n- 来源：EP001-SC001\n"
+S1, S2 = ("EP001-SC001",), ("EP001-SC002",)
 SPEC_LINE = "- 画幅与帧率：180×320 · 24fps\n"
 EXCUSE_TWO = "- 未采用镜头：SHOT-2（理由：叙事取舍）\n"
 
@@ -156,6 +158,10 @@ class StillCutParsingTests(unittest.TestCase):
             "move of nothing": ("SHOT-1 · media/1.png", ["- 运镜：左移 0%"]),
             "unknown move": ("SHOT-1 · media/1.png", ["- 运镜：旋转 10%"]),
             "move without amount": ("SHOT-1 · media/1.png", ["- 运镜：推近"]),
+            "rate of nothing": ("SHOT-1 · media/1.png", ["- 运镜：推近 0%/秒"]),
+            "rate too fast": ("SHOT-1 · media/1.png", ["- 运镜：推近 12%/秒"]),
+            "rate per minute": ("SHOT-1 · media/1.png", ["- 运镜：推近 2.5%/分"]),
+            "bed as a window": ("SHOT-1 · media/1.png", ["- 环境声：0.00-2.00 media/line.wav"]),
             "voice as a window": ("SHOT-1 · media/1.png", ["- 配音：0.20-1.40 media/line.wav"]),
             "voice gain too loud": ("SHOT-1 · media/1.png", ["- 配音：0.20 media/line.wav（增益：+9）"]),
             "voice plain and numbered": ("SHOT-1 · media/1.png", [
@@ -259,6 +265,95 @@ class StillCutCheckTests(unittest.TestCase):
                     findings = edit.check_cuts(project.episode, cuts, project.root, probe=True,
                                                unused=unused, delivery=delivery)
                 self.assertEqual(len(findings), expected, findings)
+
+    def test_a_move_can_be_written_as_a_speed_and_is_held_to_its_reach(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 运镜：推近 2.5%/秒"]),
+                          still_block(2, "SHOT-2 · media/2.jpg", ["- 运镜：右移 1.2％／秒"]))
+            _, cuts, _ = project.parse()
+            self.assertEqual([cut.move for cut in cuts],
+                             [edit.CameraMove("推近", 0, 2.5), edit.CameraMove("右移", 0, 1.2)])
+            self.assertEqual(project.findings(), [])
+            # 10%/s over a 4 s cut is a 40% push: past the 30% a still can take.
+            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 运镜：推近 10%/秒"], end=4.0),
+                          head=SPEC_LINE + EXCUSE_TWO)
+            (finding,) = project.findings()
+            self.assertIn("40%", finding)
+
+    def test_a_move_ramps_only_where_it_starts_or_stops_from_rest(self):
+        def cut(move, cut_id):
+            return edit.Cut(cut_id, "段", "SHOT-1", "a.png", 0.0, 2.0, 2.0, (), {}, 1, move=move)
+
+        rate = lambda kind: edit.CameraMove(kind, 0, 2.5)  # noqa: E731
+        cuts = [
+            cut(rate("推近"), "A"), cut(rate("推近"), "B"),    # one move through the cut
+            cut(rate("左移"), "C"),                            # another direction
+            cut(edit.CameraMove("推近", 5), "D"),              # the distance form eases both ends
+            cut(edit.CameraMove(), "E"),                       # held
+            cut(rate("推近"), "F"), cut(rate("推近"), "G"),    # F ends a scene, G starts the next
+            cut(rate("推近"), "H"),                            # no scene known
+        ]
+        scenes = [S1, S1, S1, S1, S1, S1, S2, None]
+        self.assertEqual(edit._move_ease(cuts, scenes), [
+            (True, False), (False, True), (True, True), (True, True), (True, True),
+            (True, True), (True, True), (True, True),
+        ])
+
+    def test_speed_jumps_and_reversals_inside_a_scene_are_noticed_not_refused(self):
+        def cut(move, cut_id):
+            return edit.Cut(cut_id, "段", "SHOT-1", "a.png", 0.0, 2.0, 2.0, (), {}, 1, move=move)
+
+        rate = lambda kind, speed=2.5: edit.CameraMove(kind, 0, speed)  # noqa: E731
+        cases = {
+            "steady": ([rate("推近"), rate("推近", 3.0)], [S1, S1], 0),
+            "percent at the same speed": ([edit.CameraMove("推近", 5), rate("推近")], [S1, S1], 0),
+            "speed jump": ([rate("推近"), rate("推近", 4.0)], [S1, S1], 1),
+            "push then pull": ([rate("推近"), rate("拉远")], [S1, S1], 1),
+            "left then right": ([edit.CameraMove("左移", 5), edit.CameraMove("右移", 5)], [S1, S1], 1),
+            "across a scene change": ([rate("推近"), rate("拉远", 6.0)], [S1, S2], 0),
+            "held between": ([rate("推近"), edit.CameraMove(), rate("拉远")], [S1, S1, S1], 0),
+        }
+        for name, (moves, scenes, expected) in cases.items():
+            with self.subTest(name):
+                cuts = [cut(move, f"CUT-{i}") for i, move in enumerate(moves, start=1)]
+                notices = edit.move_notices(cuts, scenes, [2.0] * len(cuts))
+                self.assertEqual(len(notices), expected, notices)
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 运镜：推近 2%/秒"]),
+                          still_block(2, "SHOT-2 · media/2.jpg", ["- 运镜：推近 4%/秒"]))
+            argv = ["check", str(project.episode), "--project-root", str(project.root)]
+            with patch.object(edit, "_which", return_value=None), patch.object(edit, "_emit") as emit:
+                self.assertEqual(edit.main(argv), 0, "提醒不挡渲染")
+            payload = emit.call_args.args[0]
+            self.assertEqual((payload["findings"], len(payload["提醒"])), ([], 1))
+
+    def test_a_room_bed_runs_from_its_line_to_the_next_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", ["- 环境声：media/line.wav"]),
+                still_block(2, "SHOT-2 · media/2.jpg"),
+                still_block(3, "SHOT-1 · media/1.png", ["- 环境声：-0.40 media/reply.wav（增益：+3）"]),
+                still_block(4, "SHOT-2 · media/2.jpg", ["- 环境声：0.50 无"]),
+            )
+            _, cuts, _ = project.parse()
+            self.assertEqual([cut.bed for cut in cuts], [
+                edit.Bed(0.0, "media/line.wav"), None, edit.Bed(-0.4, "media/reply.wav", 3.0), edit.Bed(0.5, None),
+            ])
+            self.assertEqual(project.findings(), [])
+            beds = edit._placed_beds(cuts, [2.0] * 4)
+            # The office runs to CUT-3's start; the next room comes in 0.4 s under it and stops at 6.5 s.
+            self.assertEqual([(b.path, round(b.start, 2), round(b.start + b.duration, 2), b.loop) for b in beds],
+                             [("media/line.wav", 0.0, 4.0, True), ("media/reply.wav", 3.6, 6.5, True)])
+            for name, block in {
+                "first cut reaching back": still_block(1, "SHOT-1 · media/1.png", ["- 环境声：-0.20 media/line.wav"]),
+                "missing file": still_block(1, "SHOT-1 · media/1.png", ["- 环境声：media/none.wav"]),
+            }.items():
+                with self.subTest(name):
+                    project.write(block, head=SPEC_LINE + EXCUSE_TWO)
+                    self.assertEqual(len(project.findings()), 1, project.findings())
 
     def test_one_keyframe_may_serve_several_cuts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -612,3 +707,59 @@ class StillRenderTests(unittest.TestCase):
         self.assertGreater(tail, -25, "配音的最后 0.15 秒被按画面取整截掉了")
         (line,) = measured["配音落点"]
         self.assertAlmostEqual(line["止"] - line["起"], 5.0, delta=0.05)
+
+    def test_a_scene_moves_on_through_its_cuts_over_an_unbroken_room(self):
+        # Two 2 s stills in one scene, both panning left. The picture is dark on
+        # its left, so the frame's mean brightness falls as fast as the pan goes.
+        continuous = self.render_pan("- 运镜：左移 5%/秒", bed=True)
+        eased = self.render_pan("- 运镜：左移 9%")
+        cut = 2 * self.FPS
+        for name, (luma, _) in (("rate", continuous), ("percent", eased)):
+            steps = [abs(b - a) for a, b in zip(luma, luma[1:])]
+            cruise = sum(steps[18:28]) / 10
+            near = (sum(steps[cut - 4:cut - 1]) / 3, sum(steps[cut:cut + 3]) / 3)
+            with self.subTest(name):
+                if name == "rate":
+                    self.assertGreater(min(near), 0.6 * cruise, f"切点两侧不该停下来: {near} vs {cruise}")
+                else:
+                    self.assertLess(max(near), 0.3 * cruise, "百分比写法两头缓停（对照）")
+        # The room bed loops a 1 s tone across the cut with no dip.
+        levels = continuous[1]
+        at_cut = min(levels[195:206])
+        self.assertGreater(at_cut, max(levels[50:60]) - 3, f"环境声在切点处掉了: {levels[195:206]}")
+        self.assertGreater(levels[350], max(levels[50:60]) - 3, "环境声应循环到第二段")
+
+    def render_pan(self, move, bed=False):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=white:size=400x300", "-vf",
+                                    "drawbox=x=0:y=0:w=200:h=300:color=black:t=fill",
+                                    "-frames:v", "1", str(media / "1.png")], check=True)
+            # 300 whole cycles: the loop has no seam.
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=300:duration=1",
+                                    str(media / "line.wav")], check=True)
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", [move] + (["- 环境声：media/line.wav"] if bed else [])),
+                still_block(2, "SHOT-2 · media/1.png", [move]),
+            )
+            delivery, cuts, unused = project.parse()
+            self.assertEqual(edit.check_cuts(project.episode, cuts, project.root, probe=True,
+                                             unused=unused, delivery=delivery), [])
+            film = Path(edit.render(project.episode, project.root, cuts, delivery,
+                                    burn_subtitles=False)["成片"])
+            raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(film), "-f", "rawvideo",
+                                  "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
+            size = self.WIDTH * self.HEIGHT
+            luma = [sum(raw[at:at + size]) / size for at in range(0, len(raw), size)]
+            pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", str(film), "-ac", "1", "-ar", "8000",
+                                  "-f", "s16le", "-"], capture_output=True, check=True).stdout
+        samples = [int.from_bytes(pcm[at:at + 2], "little", signed=True) for at in range(0, len(pcm) - 1, 2)]
+        # dB per 10 ms window.
+        levels = []
+        for at in range(0, len(samples) - 80, 80):
+            window = samples[at:at + 80]
+            power = sum(value * value for value in window) / len(window)
+            levels.append(10 * (math.log10(power) if power > 0 else -12))
+        return luma, levels

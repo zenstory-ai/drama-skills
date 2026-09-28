@@ -97,8 +97,24 @@ STILL_MINIMUM = 0.50
 # being re-framed, not moved, and the upscale starts to show.
 CAMERA_MOVES = ("推近", "拉远", "左移", "右移", "上移", "下移")
 CAMERA_MOVE = re.compile(r"^(" + "|".join(CAMERA_MOVES) + r")\s*([0-9]+)\s*[%％]$")
+# 「推近 2.5%/秒」: a speed rather than a distance, so a scene's cuts can share
+# one and the move runs on through the cut instead of settling at every one.
+CAMERA_RATE = re.compile(
+    r"^(" + "|".join(CAMERA_MOVES) + r")\s*([0-9]+(?:\.[0-9]+)?)\s*[%％]\s*[/／]\s*秒$"
+)
 CAMERA_HOLD = "固定"
 CAMERA_MOVE_LIMITS = (1, 30)
+CAMERA_RATE_LIMITS = (0.1, 10.0)
+# A move that starts or stops from rest ramps its speed over this long.
+CAMERA_EASE = 0.5
+CAMERA_OPPOSITES = {"推近": "拉远", "拉远": "推近", "左移": "右移", "右移": "左移", "上移": "下移", "下移": "上移"}
+# Adjacent moves in one scene whose speeds differ by more than this read as a lurch.
+CAMERA_SPEED_NOTICE = 0.30
+# 「环境声：[<起>] <文件>」 lays a room under the film from this cut on, looping the
+# file, until the next 环境声 line (「无」 stops it).
+BED_FIELD = "环境声"
+BED = re.compile(r"^\s*(?:(-?[0-9]+(?:\.[0-9]+)?)\s+)?(.+?)\s*$")
+BED_FADE = 0.3
 # The silent track under a still when there is no video audio to match.
 STILL_AUDIO = (48000, "stereo")
 # 「配音 N：<起> <文件>」 plays a voice file to its end, from its cut's start plus
@@ -250,10 +266,33 @@ class SoundEffect(NamedTuple):
 
 
 class CameraMove(NamedTuple):
-    """「运镜」 on a still: 固定, or a push, pull or pan of `amount` percent."""
+    """「运镜」 on a still: 固定, a push, pull or pan of `amount` percent, or at `rate` %/s."""
 
     kind: str = CAMERA_HOLD
-    amount: int = 0
+    amount: float = 0
+    rate: Optional[float] = None
+
+
+class Bed(NamedTuple):
+    """One 「环境声」 line: from `start` seconds into its cut, `path` looping; None is 「无」."""
+
+    start: float
+    path: Optional[str]
+    gain_db: float = 0.0
+    offset: float = 0.0
+
+
+class Placed(NamedTuple):
+    """A sound laid on the film: output start and length, the file, and how it is played."""
+
+    start: float
+    duration: float
+    path: str
+    gain_db: float = 0.0
+    offset: float = 0.0
+    loop: bool = False
+    fade_in: float = 0.0
+    fade_out: float = 0.05
 
 
 class Voice(NamedTuple):
@@ -292,6 +331,7 @@ class Cut(NamedTuple):
     # Stills only; None on a video cut.
     move: Optional[CameraMove] = None
     voices: tuple[Voice, ...] = ()
+    bed: Optional[Bed] = None
 
     @property
     def still(self) -> bool:
@@ -511,7 +551,25 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         untouched=untouched,
         move=_parse_move(fields, cut_id=cut_id, still=still),
         voices=_parse_voices(fields, cut_id=cut_id, line=line),
+        bed=_parse_bed(fields, cut_id=cut_id),
     )
+
+
+def _parse_bed(fields: dict[str, tuple[str, int]], *, cut_id: str) -> Optional[Bed]:
+    """Read 「环境声：[<起>] <文件>（起点：<秒>；增益：<dB>）」 or 「环境声：[<起>] 无」."""
+
+    raw = fields.get(BED_FIELD)
+    if raw is None:
+        return None
+    value, gain, offset = _sound_options(raw[0], BED_FIELD, cut_id=cut_id, where=raw[1])
+    found = BED.match(value)
+    # A bed has a start, not a window: it runs until the next 环境声 line.
+    if not found or SUBTITLE_CUE.match(value):
+        raise EditError(
+            f"{CUT_LIST_NAME}:{raw[1]}: {cut_id} 的「环境声」要写成「[<起>] <项目相对路径>」或「[<起>] 无」"
+        )
+    path = found.group(2)
+    return Bed(float(found.group(1) or 0.0), None if path == "无" else path, gain, offset)
 
 
 def _parse_move(
@@ -530,12 +588,21 @@ def _parse_move(
         )
     if value == CAMERA_HOLD:
         return CameraMove()
+    paced = CAMERA_RATE.match(value)
+    if paced:
+        low, high = CAMERA_RATE_LIMITS
+        rate = float(paced.group(2))
+        if not low <= rate <= high:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的运镜速度 {rate:g}%/秒 超出 {low:g}–{high:g}"
+            )
+        return CameraMove(paced.group(1), 0, rate)
     found = CAMERA_MOVE.match(value)
     low, high = CAMERA_MOVE_LIMITS
     if not found or not low <= int(found.group(2)) <= high:
         raise EditError(
-            f"{CUT_LIST_NAME}:{where}: {cut_id} 的运镜要写成「{CAMERA_HOLD}」或"
-            f"「{'/'.join(CAMERA_MOVES)} <{low}–{high}>%」，当前是 {value!r}"
+            f"{CUT_LIST_NAME}:{where}: {cut_id} 的运镜要写成「{CAMERA_HOLD}」、"
+            f"「{'/'.join(CAMERA_MOVES)} <{low}–{high}>%」或「… <速度>%/秒」，当前是 {value!r}"
         )
     return CameraMove(found.group(1), int(found.group(2)))
 
@@ -1215,6 +1282,22 @@ def check_cuts(
     fps = delivery.fps if delivery is not None and delivery.fps else (media_format or (0, 0, 0.0))[2]
     lengths = _film_spans(cuts, fps)
     for index, cut in enumerate(cuts):
+        where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
+        if cut.move is not None and cut.move.rate is not None:
+            reach = cut.move.rate * lengths[index]
+            if reach > CAMERA_MOVE_LIMITS[1]:
+                findings.append(
+                    f"{where} 的运镜 {cut.move.rate:g}%/秒 走完这一段是 {reach:.0f}%，"
+                    f"超过 {CAMERA_MOVE_LIMITS[1]}%；放慢或缩短这一段"
+                )
+        if cut.bed is not None:
+            earliest = -lengths[index - 1] if index else 0.0
+            if not earliest - TOLERANCE <= cut.bed.start < cut.end - cut.start:
+                findings.append(
+                    f"{where} 的环境声起点 {cut.bed.start:g} 要在 {earliest:g}（上一段开头）到本段结尾之间"
+                )
+            if cut.bed.path is not None and _resolve_media(episode, project_root, cut.bed.path) is None:
+                findings.append(f"{where} 的环境声文件不存在或不在项目目录内: {cut.bed.path}")
         for voice in cut.voices:
             # A J-cut reaches back at most to the previous cut's start.
             earliest = -lengths[index - 1] if index else 0.0
@@ -1391,14 +1474,15 @@ def render(
     fps = _film_fps(episode, project_root, cuts, delivery, probe=True)
     spans = _film_spans(cuts, fps)
 
+    eases = _move_ease(cuts, scenes)
     segments: list[Path] = []
-    for cut, match, length in zip(cuts, pictures, spans):
+    for cut, match, length, ease in zip(cuts, pictures, spans, eases):
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             raise EditError(f"{cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}")
         segment = segments_root / f"{cut.cut_id}.mp4"
         if cut.still:
-            command = _still_command(ffmpeg, media, cut, delivery, silence, match, length)
+            command = _still_command(ffmpeg, media, cut, delivery, silence, match, length, ease)
         else:
             # Read enough source for the whole frames the film gives this cut.
             span = max(cut.end - cut.start, length)
@@ -1440,13 +1524,16 @@ def render(
         _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
               "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined)])
 
-        effects: list[tuple[float, float, Path, float, float]] = []
-        placed = _placed_sound_effects(cuts, spans) + _placed_voices(cuts, sounds, spans)
-        for start, duration, written, gain, offset in placed:
-            resolved = _resolve_media(episode, project_root, written)
+        effects: list[Placed] = []
+        placed = (
+            _placed_sound_effects(cuts, spans) + _placed_voices(cuts, sounds, spans)
+            + _placed_beds(cuts, spans)
+        )
+        for sound in placed:
+            resolved = _resolve_media(episode, project_root, sound.path)
             if resolved is None:
-                raise EditError(f"音效或配音文件不存在或不在项目目录内: {written}")
-            effects.append((start, duration, resolved, gain, offset))
+                raise EditError(f"音效、配音或环境声文件不存在或不在项目目录内: {sound.path}")
+            effects.append(sound._replace(path=str(resolved)))
         if effects:
             # Mixed into its own file first, so the loudness pass below measures
             # the film the audience hears rather than the one before the chimes.
@@ -1539,6 +1626,7 @@ def render(
         "画面文字": len(layers),
         "音效": sum(len(cut.sound_effects) for cut in cuts),
         "配音": sum(len(cut.voices) for cut in cuts),
+        "环境声": len(_placed_beds(cuts, spans)),
         "静帧段": sum(cut.still for cut in cuts),
         "自动接镜": _shot_match_report(auto, scenes, enabled=delivery.shot_match),
         "段数": len(segments),
@@ -1567,7 +1655,67 @@ def _silent_track(
     return STILL_AUDIO
 
 
-def _still_filter(move: CameraMove, width: int, height: int, frames: int) -> str:
+def _move_ease(
+    cuts: Sequence[Cut], scenes: Sequence[Optional[tuple[str, ...]]]
+) -> list[tuple[bool, bool]]:
+    """(ease in, ease out) per cut: a move ramps only where it starts or stops from rest.
+
+    Two adjacent rate moves (「%/秒」) in the same direction and the same scene
+    run straight through the cut between them: the camera does not stop at the
+    join. A move eases in where the cut before it is in another scene, is 固定,
+    or moves some other way, and eases out likewise. The percentage form always
+    eases at both ends: it states where the move ends, not how fast it goes.
+    """
+
+    def continues(earlier: int, later: int) -> bool:
+        first, second = cuts[earlier].move, cuts[later].move
+        return (
+            first is not None and second is not None
+            and first.rate is not None and second.rate is not None
+            and first.kind == second.kind != CAMERA_HOLD
+            and scenes[earlier] is not None and scenes[earlier] == scenes[later]
+        )
+
+    last = len(cuts) - 1
+    return [
+        (not (index and continues(index - 1, index)), not (index < last and continues(index, index + 1)))
+        for index in range(len(cuts))
+    ]
+
+
+def _move_progress(
+    move: CameraMove, frames: int, fps: float, ease: tuple[bool, bool]
+) -> tuple[str, float]:
+    """How far the move has gone at output frame `on`, in percent, and how far it goes in all.
+
+    A rate move cruises at its speed and ramps (a half cosine, CAMERA_EASE long)
+    only at the ends `ease` names, so where it does not ease its speed at the
+    cut equals the next cut's. The percentage form eases over the whole cut.
+    """
+
+    last = max(frames - 1, 1)
+    if move.rate is None:
+        return f"({move.amount}*(1-cos(PI*on/{last}))/2)", float(move.amount)
+    span = last / fps
+    ramp_in = min(CAMERA_EASE, span / 2) if ease[0] else 0.0
+    ramp_out = min(CAMERA_EASE, span / 2) if ease[1] else 0.0
+    t = f"(on/{fps:g})"
+    terms = [t]
+    # Distance lost to each ramp so far: the integral of (1 - speed / cruise).
+    if ramp_in:
+        a = f"min({t},{ramp_in:.6f})"
+        terms.append(f"-({a}+{ramp_in / 3.141592653589793:.6f}*sin(PI*{a}/{ramp_in:.6f}))/2")
+    if ramp_out:
+        b = f"max(0,{t}-{span - ramp_out:.6f})"
+        terms.append(f"-({b}-{ramp_out / 3.141592653589793:.6f}*sin(PI*{b}/{ramp_out:.6f}))/2")
+    total = move.rate * (span - ramp_in / 2 - ramp_out / 2)
+    return f"({move.rate:g}*({''.join(terms)}))", total
+
+
+def _still_filter(
+    move: CameraMove, width: int, height: int, frames: int,
+    fps: float = 24.0, ease: tuple[bool, bool] = (True, True),
+) -> str:
     """Cover-fit a still to the frame and move across it on an eased curve.
 
     The move is a window over the fitted picture, `1/zoom` of it on each side,
@@ -1585,13 +1733,14 @@ def _still_filter(move: CameraMove, width: int, height: int, frames: int) -> str
     )
     if move.kind == CAMERA_HOLD:
         return fitted
-    # Cosine ease in and out: the move starts and settles without a jolt.
-    eased = f"(1-cos(PI*on/{max(frames - 1, 1)}))/2"
-    reach = move.amount / 100
+    gone, total = _move_progress(move, frames, fps, ease)
+    reach = total / 100
+    # Share of the move done, 0 to 1.
+    eased = f"({gone}/{total:.6f})" if total > 0 else "0"
     zoom = {
-        "推近": f"(1+{reach}*{eased})",
-        "拉远": f"(1+{reach}*(1-{eased}))",
-    }.get(move.kind, f"{1 + reach}")
+        "推近": f"(1+{reach:.6f}*{eased})",
+        "拉远": f"(1+{reach:.6f}*(1-{eased}))",
+    }.get(move.kind, f"{1 + reach:.6f}")
     across, down = f"(W/{zoom})", f"(H/{zoom})"
     room_x, room_y = f"(W-{across})", f"(H-{down})"
     # A camera move: 左移 slides the window left, so the picture drifts right.
@@ -1610,6 +1759,7 @@ def _still_command(
     silence: tuple[int, str],
     match: str,
     seconds: float,
+    ease: tuple[bool, bool] = (True, True),
 ) -> list[str]:
     """The input half of a still segment's command: picture, move, correction and silence.
 
@@ -1619,7 +1769,7 @@ def _still_command(
     assert delivery.frame_size is not None and delivery.fps is not None
     width, height = delivery.frame_size
     frames = max(1, round(seconds * delivery.fps))
-    chain = _still_filter(cut.move or CameraMove(), width, height, frames)
+    chain = _still_filter(cut.move or CameraMove(), width, height, frames, delivery.fps, ease)
     rate, layout = silence
     return [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
@@ -1632,7 +1782,7 @@ def _still_command(
 
 def _placed_voices(
     cuts: Sequence[Cut], sounds: dict[str, Audible], spans: Sequence[float]
-) -> list[tuple[float, float, str, float, float]]:
+) -> list[Placed]:
     """Each voice line in the form `_placed_sound_effects` gives, for the same mix.
 
     Its start follows the rendered cut positions, like an effect's. Its length
@@ -1643,8 +1793,8 @@ def _placed_voices(
     """
 
     return [
-        (max(0.0, _at(cut, cursor, length, voice.start)), sounds[voice.path].duration - voice.offset,
-         voice.path, voice.gain_db, voice.offset)
+        Placed(max(0.0, _at(cut, cursor, length, voice.start)), sounds[voice.path].duration - voice.offset,
+               voice.path, voice.gain_db, voice.offset)
         for cut, cursor, length in _timeline(cuts, spans)
         for voice in cut.voices
     ]
@@ -1706,6 +1856,39 @@ def _scene_keys(episode: Path, cuts: Sequence[Cut]) -> list[Optional[tuple[str, 
         scenes = tuple(SCENE_ID.findall(sources.get(shot, ""))) if shot else ()
         keys.append(scenes or None)
     return keys
+
+
+def move_notices(
+    cuts: Sequence[Cut], scenes: Sequence[Optional[tuple[str, ...]]], lengths: Sequence[float]
+) -> list[str]:
+    """Joins inside one scene that will read as a jolt: a speed jump or a reversed move.
+
+    Not errors: a deliberate change of pace is the creator's to make.
+    """
+
+    def speed(cut: Cut, length: float) -> Optional[float]:
+        move = cut.move
+        if move is None or move.kind == CAMERA_HOLD:
+            return None
+        return move.rate if move.rate is not None else move.amount / length if length else None
+
+    notices: list[str] = []
+    for index in range(1, len(cuts)):
+        before, after = cuts[index - 1], cuts[index]
+        if scenes[index - 1] is None or scenes[index - 1] != scenes[index]:
+            continue
+        first, second = speed(before, lengths[index - 1]), speed(after, lengths[index])
+        if first is None or second is None or before.move is None or after.move is None:
+            continue
+        pair = f"{before.cut_id}（{before.move.kind} 约 {first:.1f}%/秒）→ {after.cut_id}（{after.move.kind} 约 {second:.1f}%/秒）"
+        if CAMERA_OPPOSITES[before.move.kind] == after.move.kind:
+            notices.append(f"{pair}：同一场里镜头来回反向，切过去像晃了一下；改成同向，或让其中一段固定")
+        elif max(first, second) > (1 + CAMERA_SPEED_NOTICE) * min(first, second):
+            notices.append(
+                f"{pair}：同一场里运镜速度差了 {max(first, second) / min(first, second) - 1:.0%}，"
+                "切过去像换了一台机器；同一场用一个速度，写成「%/秒」最省事"
+            )
+    return notices
 
 
 def _scene_runs(scenes: Sequence[Optional[tuple[str, ...]]]) -> list[list[int]]:
@@ -2305,31 +2488,56 @@ def _screen_text_layers(
     return layers
 
 
-def _placed_sound_effects(
-    cuts: Sequence[Cut], spans: Sequence[float]
-) -> list[tuple[float, float, str, float, float]]:
-    """Each effect as (output start, duration, path as written, gain dB, 起点 in the file)."""
+def _placed_sound_effects(cuts: Sequence[Cut], spans: Sequence[float]) -> list[Placed]:
+    """Each effect in output seconds, with its path as written."""
 
     return [
-        (max(0.0, _at(cut, cursor, length, effect.start)),
-         _at(cut, cursor, length, effect.end) - _at(cut, cursor, length, effect.start),
-         effect.path, effect.gain_db, effect.offset)
+        Placed(max(0.0, _at(cut, cursor, length, effect.start)),
+               _at(cut, cursor, length, effect.end) - _at(cut, cursor, length, effect.start),
+               effect.path, effect.gain_db, effect.offset)
         for cut, cursor, length in _timeline(cuts, spans)
         for effect in cut.sound_effects
     ]
 
 
+def _placed_beds(cuts: Sequence[Cut], spans: Sequence[float]) -> list[Placed]:
+    """Each 「环境声」 run, looping its file with no break at the cuts it spans.
+
+    A run starts at its line's cut plus 起 and lasts until the next 环境声 line:
+    to that line's cut start, or to its 起 when that is later. A negative 起
+    therefore overlaps the two rooms across the cut, a sound bridge. It fades
+    only at its own two ends.
+    """
+
+    lines = [
+        (_at(cut, cursor, length, cut.bed.start), cursor, cut.bed)
+        for cut, cursor, length in _timeline(cuts, spans) if cut.bed is not None
+    ]
+    total = sum(spans)
+    placed: list[Placed] = []
+    for index, (start, _, bed) in enumerate(lines):
+        if bed.path is None:
+            continue
+        end = total if index + 1 == len(lines) else max(lines[index + 1][0], lines[index + 1][1])
+        start = max(0.0, start)
+        if end - start > TOLERANCE:
+            placed.append(Placed(start, end - start, bed.path, bed.gain_db, bed.offset,
+                                 loop=True, fade_in=BED_FADE, fade_out=BED_FADE))
+    return placed
+
+
 def _sound_effect_command(
     ffmpeg: str,
     film: Path,
-    effects: Sequence[tuple[float, float, Path, float, float]],
+    effects: Sequence[Union[Placed, tuple[Any, ...]]],
     output: Path,
 ) -> list[str]:
-    """Lay each effect into the film's own audio at its output time.
+    """Lay each effect, voice and bed into the film's own audio at its output time.
 
     `normalize=0` keeps the dialogue at its level: amix's default divides every
     input by the input count, and the film would get quieter each time a chime
-    is added. A short fade closes each effect so a trimmed tail does not click.
+    is added. A short fade closes each sound so a trimmed tail does not click;
+    a bed loops its file and fades in and out only at its own ends.
     """
 
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(film)]
@@ -2337,14 +2545,17 @@ def _sound_effect_command(
     # stereo costs it 3 dB, and the effects are converted to match instead.
     stages = ["[0:a]aformat=sample_rates=48000[a0]"]
     labels = ["[a0]"]
-    for index, (start, duration, media, gain, offset) in enumerate(effects, start=1):
-        command += ["-i", str(media)]
-        fade = min(0.05, duration / 2)
+    for index, raw in enumerate(effects, start=1):
+        sound = Placed(*raw)
+        command += (["-stream_loop", "-1"] if sound.loop else []) + ["-i", str(sound.path)]
+        fade_in = min(sound.fade_in, sound.duration / 2)
+        fade_out = min(sound.fade_out, sound.duration / 2)
         stages.append(
-            f"[{index}:a]atrim=start={offset:.3f}:duration={duration:.3f},asetpts=PTS-STARTPTS,"
-            f"afade=t=out:st={duration - fade:.3f}:d={fade:.3f},volume={gain:g}dB,"
+            f"[{index}:a]atrim=start={sound.offset:.3f}:duration={sound.duration:.3f},asetpts=PTS-STARTPTS,"
+            + (f"afade=t=in:st=0:d={fade_in:.3f}," if fade_in else "")
+            + f"afade=t=out:st={sound.duration - fade_out:.3f}:d={fade_out:.3f},volume={sound.gain_db:g}dB,"
             "aformat=sample_rates=48000,"
-            f"adelay={round(start * 1000)}:all=1[s{index}]"
+            f"adelay={round(sound.start * 1000)}:all=1[s{index}]"
         )
         labels.append(f"[s{index}]")
     stages.append(
@@ -2545,6 +2756,12 @@ def verify(
     spans = _film_spans(cuts, delivery.fps or stream["fps"])
     if any(cut.screen_texts or cut.sound_effects for cut in cuts):
         measurements.update(_placements_for_sampling(cuts, spans))
+    beds = _placed_beds(cuts, spans)
+    if beds:
+        measurements["环境声落点"] = [
+            {"起": round(bed.start, 2), "止": round(bed.start + bed.duration, 2), "文件": bed.path}
+            for bed in beds
+        ]
     if any(cut.voices for cut in cuts):
         measurements["配音落点"] = _voice_placements(
             episode, project_root or episode, cuts, spans
@@ -2708,7 +2925,7 @@ def _placements_for_sampling(cuts: Sequence[Cut], spans: Optional[Sequence[float
 def _sound_placements(cuts: Sequence[Cut], spans: Sequence[float]) -> list[dict[str, Any]]:
     return [
         {"起": round(start, 2), "止": round(start + duration, 2), "文件": written}
-        for start, duration, written, _, _ in _placed_sound_effects(cuts, spans)
+        for start, duration, written, *_ in _placed_sound_effects(cuts, spans)
     ]
 
 
@@ -2808,6 +3025,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "未采用镜头": unused,
                 "findings": findings,
             }
+            notices = move_notices(cuts, _scene_keys(episode, cuts), _film_spans(cuts, delivery.fps))
+            if notices:
+                payload["提醒"] = notices
             unmeasured = []
             if _which("ffprobe") is None:
                 unmeasured.append("区间是否超过素材实际时长（PATH 上没有 ffprobe）")

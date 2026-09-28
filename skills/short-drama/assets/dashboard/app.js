@@ -971,7 +971,7 @@ function placeholderSVG(shot) {
 /* ================================================================ episode context */
 
 /** A still's 「运镜」 as the cut list writes it: 固定, or 推近 6%. */
-const moveLabel = (cut) => (!cut.move || cut.move.kind === "固定" ? "固定" : `${cut.move.kind} ${cut.move.amount}%`);
+const moveLabel = (cut) => (!cut.move || cut.move.kind === "固定" ? "固定" : cut.move.rate != null ? `${cut.move.kind} ${cut.move.rate}%/秒` : `${cut.move.kind} ${cut.move.amount}%`);
 
 function context(E) {
   const shots = E.board?.shots || [];
@@ -1445,7 +1445,7 @@ function viewFilm(row, E, arg, q) {
   const rows = C.cuts.map((cut) => `<tr data-cut="${esc(cut.id)}" id="r-${esc(cut.id)}"><td class="mono">${esc(cut.n)}</td><td><b>${esc(cut.title)}</b><div class="muted small">${cut.still ? `<span class="pill">静帧 · ${esc(moveLabel(cut))}</span> ` : ""}${C.shot[cut.shot] ? `<a href="#/${esc(row.id)}/board/${esc(cut.shot)}">镜 ${esc(sceneShort(cut.shot))}</a> · ` : ""}<span class="mono">${fmt(cut.at)}</span></div></td>
     <td class="mono hide-m">${cut.in.toFixed(2)}–${cut.out.toFixed(2)}</td><td class="mono">${esc(num(cut.sec))}s</td>
     <td>${cut.subs.map((sub) => `<span class="subline">${highlight(sub.text, sub.keys)}</span>`).join("") || '<span class="muted">—</span>'}${cut.texts.map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</td>
-    <td class="hide-m">${cut.voices.map((voice) => `<span class="pill id">${icon("voice")}${esc(voice.path.split("/").at(-1))}</span>`).join("")}${cut.sfx.map((sfx) => `<span class="pill id">${icon("sfx")}${esc(sfx.path.split("/").at(-1))}</span>`).join("")}</td></tr>`).join("");
+    <td class="hide-m">${cut.bed?.path ? `<span class="pill id">环境声 · ${esc(cut.bed.path.split("/").at(-1))}</span>` : ""}${cut.voices.map((voice) => `<span class="pill id">${icon("voice")}${esc(voice.path.split("/").at(-1))}</span>`).join("")}${cut.sfx.map((sfx) => `<span class="pill id">${icon("sfx")}${esc(sfx.path.split("/").at(-1))}</span>`).join("")}</td></tr>`).join("");
   const film = E.media.film;
   const ask = CL ? `请按 ${row.id} 的剪辑单.md 渲染成片。` : "";
   return `<div class="wrap" data-view="film">${header}${problemNotices(E)}<div class="film">

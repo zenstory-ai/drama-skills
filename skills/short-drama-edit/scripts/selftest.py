@@ -499,7 +499,7 @@ def check_still_cuts() -> None:
         )
         (episode / "剪辑单.md").write_text(still, encoding="utf-8")
         delivery, cuts, unused = parse_cut_list(episode / "剪辑单.md")
-        require(cuts[0].still and cuts[0].move == ("推近", 8), f"静帧与运镜没有解析出来: {cuts[0]}")
+        require(cuts[0].still and cuts[0].move[:2] == ("推近", 8), f"静帧与运镜没有解析出来: {cuts[0]}")
         require(len(cuts[0].voices) == 1, "配音没有解析出来")
         findings = check_cuts(episode, cuts, root, probe=False, unused=unused, delivery=delivery)
         require(
