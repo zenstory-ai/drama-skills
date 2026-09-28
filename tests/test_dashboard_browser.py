@@ -18,6 +18,8 @@ except ImportError:  # pragma: no cover - exercised by dependency-free local run
 
 from tests.test_dashboard_server import (
     EXAMPLE,
+    PIXEL,
+    STILL_CUT_LIST,
     create_server,
     make_creator_project,
     make_project,
@@ -237,6 +239,30 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
         self.go(page, "#/EP001/film/clips")
         tiles = page.locator("[data-shot-tile]")
         self.assertEqual(tiles.evaluate_all("nodes => nodes.filter((node) => node.dataset.hasClip === '1').map((node) => node.dataset.shotTile)"), ["SHOT-EP001-001"])
+
+    def test_film_view_marks_still_cuts_and_lays_voice_lines_on_their_own_track(self) -> None:
+        episode = self.project / "剧集/EP003"
+        (episode / "剪辑单.md").write_text(STILL_CUT_LIST, encoding="utf-8")
+        (episode / "制作成果/images").mkdir(parents=True)
+        (episode / "制作成果/images/002.png").write_bytes(PIXEL)
+        self.addCleanup(lambda: (episode / "剪辑单.md").unlink())
+        page = self.open(route="#/EP003/film")
+        expect(page.locator(".tl-cut")).to_have_count(3)
+        self.assertEqual(
+            page.locator(".tl-cut").evaluate_all("nodes => nodes.map((node) => node.classList.contains('still'))"),
+            [False, True, True],
+        )
+        expect(page.locator(".tl-voice")).to_have_count(4)
+        expect(page.locator(".tl-sfx:not(.tl-voice)")).to_have_count(1)
+        lefts = page.locator(".tl-voice").evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().left)")
+        self.assertEqual(lefts, sorted(lefts))
+        # The last cut's line is a J-cut: it is heard before its picture starts.
+        cut_left = page.locator(".tl-cut").nth(2).evaluate("node => node.getBoundingClientRect().left")
+        self.assertLess(lefts[-1], cut_left)
+        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("静帧 · 推近 2.5%/秒")
+        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("S_room.mp3")
+        expect(page.locator("#r-CUT-EP001-003")).to_contain_text("静帧 · 固定")
+        expect(page.locator("#r-CUT-EP001-002")).to_contain_text("L02.mp3")
 
     def test_review_findings_link_to_where_they_are(self) -> None:
         page = self.open(route="#/EP001/review")

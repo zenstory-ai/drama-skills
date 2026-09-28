@@ -149,6 +149,17 @@ REFERENCE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A MOTION's `- 参考音频：` line: the speaking character's accepted voice. It
+# compiles to role `reference_audio` after the picture bindings, so the audio
+# 顺序 stays the provider's own audio numbering (`@音频N`, `<Audio N>`).
+AUDIO_REFERENCE_ROLE = "reference_audio"
+AUDIO_REFERENCE_LINE_RE = re.compile(
+    r"(REF-[A-Z0-9][A-Z0-9-]{0,79})（顺序：([1-9]\d*)）· "
+    r"([^；\n]+?\.(?:wav|mp3|m4a|aac|flac))《([^》\n]+)》"
+    r"（用途：[^；）\n]+；角色：([^；）\n]+)；控制：([^；）\n]+)；不得控制：([^）\n]+)）",
+    re.IGNORECASE,
+)
+
 
 class ConfirmationRequiredError(RuntimeError):
     """The exact current job has not been explicitly confirmed."""
@@ -705,7 +716,7 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for index, binding in enumerate(value, 1):
         label = f"reference_bindings[{index}]"
-        if not isinstance(binding, Mapping) or set(binding) != {
+        if not isinstance(binding, Mapping) or set(binding) - {"character"} != {
             "slot_id",
             "order",
             "path",
@@ -732,6 +743,12 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
             raise ValueError(f"{label} label must contain Chinese text")
         if not isinstance(role, str) or not role.strip() or len(role) > 80:
             raise ValueError(f"{label} role is invalid")
+        character = binding.get("character")
+        if "character" in binding and (
+            role != AUDIO_REFERENCE_ROLE or not isinstance(character, str)
+            or not character.strip() or len(character) > 200
+        ):
+            raise ValueError(f"{label} character is invalid")
         may_control = _scope_list(
             binding.get("may_control"), label=f"{label}.may_control"
         )
@@ -749,6 +766,7 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
                 "path": _relative_path(binding.get("path")),
                 "label": raw_label.strip(),
                 "role": role.strip(),
+                **({"character": character.strip()} if isinstance(character, str) else {}),
                 "may_control": may_control,
                 "must_not_control": must_not_control,
             }
@@ -817,12 +835,25 @@ def _contains_plan_token(value: str) -> bool:
     return "plan-" in value.casefold()
 
 
+def _field_values(section: str, field_name: str) -> list[str]:
+    """Every value of one `- 字段：值` field, read the way the creator checker reads it.
+
+    `- **参考音频**：…` is the same field to a human and to
+    creator_markdown_check.py; reading it any other way here would let the
+    checker validate a binding that production then silently omits.
+    """
+    values = []
+    for key, value in re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE):
+        key = re.sub(r"^(?:\*\*|__|\*|_)(.+?)(?:\*\*|__|\*|_)$", r"\1", key.strip())
+        if key == field_name:
+            values.append(value)
+    return values
+
+
 def _markdown_reference_bindings(
     section: str, *, field_name: str, creator_supplied_ok: bool = False
 ) -> list[dict[str, Any]]:
-    lines = re.findall(
-        rf"^- {re.escape(field_name)}：(.+)$", section, re.MULTILINE
-    )
+    lines = _field_values(section, field_name)
     if not lines:
         raise ValueError(f"source entry has no {field_name} declaration")
     if len(lines) != 1:
@@ -879,6 +910,45 @@ def _markdown_reference_bindings(
     ]
 
 
+def _markdown_audio_bindings(section: str) -> list[dict[str, Any]]:
+    """The MOTION's 参考音频 slots in audio order; empty when there is none."""
+    lines = _field_values(section, "参考音频")
+    if not lines:
+        return []
+    if len(lines) != 1:
+        raise ValueError("source entry has duplicate 参考音频 declarations")
+    value = lines[0].strip()
+    if not _contains_ref_token(value) and re.fullmatch(r"无(?:（[^）\n]+）)?。?", value):
+        return []
+    matches = list(AUDIO_REFERENCE_LINE_RE.finditer(value))
+    cursor = 0
+    for index, match in enumerate(matches):
+        if value[cursor : match.start()] != ("" if index == 0 else "；"):
+            matches = []
+            break
+        cursor = match.end()
+    if not matches or value[cursor:] not in {"", "。"}:
+        raise ValueError("source entry 参考音频 declaration is invalid")
+    bindings = sorted(
+        (
+            {
+                "slot_id": match.group(1),
+                "order": int(match.group(2)),
+                "path": _relative_path(match.group(3)),
+                "label": match.group(4).strip(),
+                "character": match.group(5).strip(),
+                "may_control": _scope_items(match.group(6)),
+                "must_not_control": _scope_items(match.group(7)),
+            }
+            for match in matches
+        ),
+        key=lambda binding: binding["order"],
+    )
+    if [binding["order"] for binding in bindings] != list(range(1, len(bindings) + 1)):
+        raise ValueError("source entry 参考音频 order must be contiguous from 1")
+    return bindings
+
+
 def _verify_markdown_source(
     root: Path,
     *,
@@ -902,6 +972,25 @@ def _verify_markdown_source(
         # reference field records creative intent, not this job's inputs.
         creator_supplied_ok=source_path.name == "分镜.md",
     )
+    # Voices follow the pictures, so neither numbering moves the other. A
+    # declared voice missing from the job fails here instead of being dropped
+    # on the way to the provider.
+    audio = (
+        _markdown_audio_bindings(section)
+        if source_path.name == "视频提示词.md"
+        else []
+    )
+    declared = declared + [
+        {**binding, "order": len(declared) + binding["order"]} for binding in audio
+    ]
+    audio_slots = {binding["slot_id"] for binding in audio}
+    for binding in bindings:
+        if (binding["slot_id"] in audio_slots) != (
+            binding["role"] == AUDIO_REFERENCE_ROLE
+        ):
+            raise ValueError(
+                "a 参考音频 slot binds role reference_audio, and only it does"
+            )
     comparable = [
         {key: binding[key] for key in (
             "slot_id",
@@ -913,6 +1002,9 @@ def _verify_markdown_source(
         )}
         for binding in bindings
     ]
+    for binding, comparison in zip(bindings, comparable):
+        if "character" in binding:
+            comparison["character"] = binding["character"]
     if declared != comparable:
         raise ValueError("job reference bindings do not match the selected source entry")
 
@@ -1236,14 +1328,18 @@ def _inputs_current(root: Path, job: Mapping[str, Any]) -> bool:
         return False
 
 
-def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str], int]:
+def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str], int, frozenset[str] | None]:
     resolved = config_path.expanduser().resolve()
     if resolved.is_relative_to(root):
         raise ValueError("adapter config must live outside the project")
     document = json.loads(resolved.read_text(encoding="utf-8"))
     adapters = document.get("adapters") if isinstance(document, Mapping) else None
     selected = adapters.get(profile) if isinstance(adapters, Mapping) else None
-    if not isinstance(selected, Mapping) or set(selected) - {"command", "timeout_seconds"}:
+    if not isinstance(selected, Mapping) or set(selected) - {
+        "command",
+        "timeout_seconds",
+        "reference_roles",
+    }:
         raise ValueError(f"adapter profile is missing or invalid: {profile}")
     command = _string_list(selected.get("command"), label="adapter command", limit=32)
     if not command or any(not part for part in command):
@@ -1251,7 +1347,39 @@ def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str
     timeout = selected.get("timeout_seconds", 300)
     if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= MAX_TIMEOUT_SECONDS:
         raise ValueError(f"adapter timeout must be 1-{MAX_TIMEOUT_SECONDS} seconds")
-    return command, timeout
+    roles = selected.get("reference_roles")
+    declared = (
+        frozenset(_string_list(roles, label="adapter reference_roles"))
+        if roles is not None
+        else None
+    )
+    return command, timeout, declared
+
+
+def _require_adapter_roles(
+    job: Mapping[str, Any], declared: frozenset[str] | None
+) -> None:
+    """Refuse, before anything is submitted, a role the target model cannot take.
+
+    A profile may list the `reference_roles` its configured model accepts. A
+    voice reference always needs that declaration: a model without the input
+    can drop it without an error, and the drift is only heard in the take.
+    """
+    unsupported = sorted(
+        {
+            str(binding["role"])
+            for binding in job.get("reference_bindings", [])
+            if (declared is not None and binding["role"] not in declared)
+            or (declared is None and binding["role"] == AUDIO_REFERENCE_ROLE)
+        }
+    )
+    if unsupported:
+        raise ValueError(
+            f"adapter profile {job['adapter']} does not declare reference_roles "
+            + ", ".join(unsupported)
+            + "; nothing was submitted. Declare them only if this profile's model "
+            "accepts them, or remove the binding (参考音频) from the source entry"
+        )
 
 
 def _generic_adapter_error(
@@ -1599,7 +1727,8 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
             if _active_run(root, job_id) is not None:
                 raise RuntimeError("this job is already running")
             job = _read_job(root, job_id)
-            command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
+            command, timeout, roles = _load_adapter(adapter_config, str(job["adapter"]), root)
+            _require_adapter_roles(job, roles)
             try:
                 receipt = _metadata_read_json(
                     root,
@@ -1738,7 +1867,7 @@ def collect_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, A
         output_root.mkdir(parents=True)
         with _project_lock(root):
             job = _read_job(root, job_id)
-            command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
+            command, timeout, _ = _load_adapter(adapter_config, str(job["adapter"]), root)
             target_run = None
             for run in reversed(_read_run_history(root, job_id)):
                 if run.get("status") == "succeeded":

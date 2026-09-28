@@ -19,10 +19,11 @@ Status: implemented
 **自动接镜**（`edit_tool.py`）
 
 - 场景由 `_scene_keys` 追出：CUT 的 `MOTION-...` → `视频提示词.md` 该条的「分镜」→ `分镜.md` 该 SHOT 的「来源」里的场景 ID
-  （`SCENE_ID`）。跨场次的镜头以全部 ID 为键，追不到的为 None。
+  （`SCENE_ID`）；`SHOT-...` 静帧段直接从该 SHOT 起追，`IMG-...` 静帧段为 None
+  （见 [剪辑单的静帧段、运镜与配音](2026-09-28-edit-still-cuts.md)）。跨场次的镜头以全部 ID 为键，追不到的为 None。
 - `_scene_runs` 取相邻且同键的连续段为一组；插叙的同一场景是不同组，None 不入组。
 - `_plan_shot_match`：组内既没写校正、也没写 `画面：不校` 的段才参与；这样的段不足两个的组不测量。
-  `_channel_stats` 按 `fps=4,scale=64:-2` 取样该段源区间，算 RGB 各通道的均值与标准差；
+  `_channel_stats` 按 `fps=4,scale=64:-2` 取样该段源区间（静帧段由 `_still_stats` 读整张图铺满交付画幅后的样子），算 RGB 各通道的均值与标准差；
   组内取中位数作参照，`_match_toward` 让均值与标准差各走 `SHOT_MATCH_STRENGTH = 0.7` 的距离，
   增益夹在 0.6–1.6，偏移按夹过的增益算，使均值仍落在目标上。滤镜是 `format=rgb24` 之后的一个 `lutrgb`，每通道 `val*增益+偏移`：
   统计量是在 0–255 上量的，10 位素材不先转 8 位时 `lutrgb` 按每通道 16 位查表，偏移几乎不起作用。
@@ -35,7 +36,7 @@ Status: implemented
 **verify 的逐帧报告**
 
 - `_grey_frames` 把成片按 90×160 灰度逐帧解出。
-- `_cut_jumps`：按分段实测时长累计出切点，报告切点后第一帧与前一帧的平均亮度差，标「同场 / 换场 / 未知」；
+- `_cut_jumps`：按 `_film_spans` 的整帧时长累计出切点，报告切点后第一帧与前一帧的平均亮度差，标「同场 / 换场 / 未知」；
   绝对值超过 `CUT_JUMP_NOTICE = 20` 的写进「请逐帧查看」。
 - `_suspect_frames`：与前后两帧的平均绝对差都超过 8、而前后两帧彼此的差不到其中较小者一半的帧。
   硬切只与一侧不同，匀速快动作的前后两帧彼此差得更多，都不会被列出。

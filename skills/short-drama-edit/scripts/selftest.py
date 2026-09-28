@@ -478,6 +478,53 @@ def check_screen_text_and_effects() -> None:
         require(any("[画面文字]" in item for item in findings), f"编造的画面文字没抓到: {findings}")
 
 
+def check_still_cuts() -> None:
+    """The static route: keyframes with a camera move and voice lines, every shot accounted for."""
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        episode = build(root, CUT_LIST)
+        (episode / "分镜.md").write_text(
+            "## SHOT-EP001-010 · 甲\n\n## SHOT-EP001-011 · 乙\n", encoding="utf-8"
+        )
+        for name in ("010.png", "line.wav"):
+            (episode / "media" / name).write_bytes(b"")
+        still = (
+            "- 画幅与帧率：1080×1920 · 24fps\n\n"
+            "## CUT-EP001-001 · 定格\n\n"
+            "- 来源：SHOT-EP001-010 · media/010.png\n"
+            "- 入点：0.00\n- 出点：2.00\n- 时长：2.00\n"
+            "- 取舍：入点=起；出点=止\n- 声音：配音\n"
+            "- 运镜：推近 8%\n- 配音：0.30 media/line.wav\n"
+        )
+        (episode / "剪辑单.md").write_text(still, encoding="utf-8")
+        delivery, cuts, unused = parse_cut_list(episode / "剪辑单.md")
+        require(cuts[0].still and cuts[0].move[:2] == ("推近", 8), f"静帧与运镜没有解析出来: {cuts[0]}")
+        require(len(cuts[0].voices) == 1, "配音没有解析出来")
+        findings = check_cuts(episode, cuts, root, probe=False, unused=unused, delivery=delivery)
+        require(
+            any("SHOT-EP001-011" in item for item in findings),
+            f"用了 SHOT 静帧之后，没用也没写进未采用的镜头必须报: {findings}",
+        )
+
+        # A line can start inside its file and before its picture (a J-cut).
+        (episode / "剪辑单.md").write_text(
+            still.replace("- 配音：0.30 media/line.wav", "- 配音：-0.40 media/line.wav（增益：-2；起点：0.10）"),
+            encoding="utf-8",
+        )
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        voice = cuts[0].voices[0]
+        require((voice.start, voice.gain_db, voice.offset) == (-0.4, -2.0, 0.1), f"起点与增益没有解析出来: {voice}")
+
+        (episode / "剪辑单.md").write_text(still + "- 运镜：旋转 8%\n", encoding="utf-8")
+        try:
+            parse_cut_list(episode / "剪辑单.md")
+        except EditError:
+            pass
+        else:
+            raise AssertionError("运镜写了两遍应当被拒绝")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
@@ -547,6 +594,7 @@ def main() -> int:
     check_ass_escaping()
     check_multi_subtitle()
     check_screen_text_and_effects()
+    check_still_cuts()
     check_stale_window()
     check_missing_shots_are_reported()
     check_grain_is_a_delivery_wide_decision()

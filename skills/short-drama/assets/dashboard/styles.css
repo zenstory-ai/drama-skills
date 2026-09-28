@@ -570,6 +570,8 @@ a.shotref:hover { color: var(--zs-signal-ink); border-color: var(--zs-signal); }
 .tl-sub.vo { border-left-style: dashed; }
 .tl-txt { position: absolute; top: 6px; bottom: 6px; border-radius: var(--zs-radius-xs); box-shadow: inset 0 0 0 1px var(--zs-panel-edge); background: var(--zs-panel); color: var(--zs-panel-ink); font: var(--zs-text-10)/18px var(--zs-mono); padding: 0 5px; white-space: nowrap; overflow: hidden; }
 .tl-sfx { position: absolute; top: 8px; width: 12px; height: 12px; transform: translateX(-6px) rotate(45deg); background: var(--zs-signal); border-radius: 2px; }
+.tl-cut.still { background-image: repeating-linear-gradient(135deg, transparent 0 5px, var(--zs-line) 5px 6px); }
+.tl-voice { background: var(--zs-accent); border-radius: 50%; transform: translateX(-6px); }
 .sfx-l { position: absolute; top: 7px; font: var(--zs-text-10) var(--zs-mono); color: var(--zs-ink-500); white-space: nowrap; }
 .tl-head { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--zs-accent); pointer-events: none; z-index: 3; }
 .tl-head::before { content: ""; position: absolute; top: 0; left: -4px; border: 5px solid transparent; border-top-color: var(--zs-accent); }
