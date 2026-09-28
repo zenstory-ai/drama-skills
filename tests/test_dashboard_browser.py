@@ -252,10 +252,13 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
             page.locator(".tl-cut").evaluate_all("nodes => nodes.map((node) => node.classList.contains('still'))"),
             [False, True, True],
         )
-        expect(page.locator(".tl-voice")).to_have_count(3)
+        expect(page.locator(".tl-voice")).to_have_count(4)
         expect(page.locator(".tl-sfx:not(.tl-voice)")).to_have_count(1)
         lefts = page.locator(".tl-voice").evaluate_all("nodes => nodes.map((node) => node.getBoundingClientRect().left)")
         self.assertEqual(lefts, sorted(lefts))
+        # The last cut's line is a J-cut: it is heard before its picture starts.
+        cut_left = page.locator(".tl-cut").nth(2).evaluate("node => node.getBoundingClientRect().left")
+        self.assertLess(lefts[-1], cut_left)
         expect(page.locator("#r-CUT-EP001-002")).to_contain_text("静帧 · 推近 6%")
         expect(page.locator("#r-CUT-EP001-003")).to_contain_text("静帧 · 固定")
         expect(page.locator("#r-CUT-EP001-002")).to_contain_text("L02.mp3")

@@ -2233,8 +2233,8 @@ STILL_CUT_LIST = """# EP001 剪辑单
 - 运镜：推近 6%
 - 字幕 1：0.10-1.20 火箭军？（重点：火箭军）
 - 配音 1：0.10 制作成果/audio/L01.mp3（增益：-2）
-- 配音 2：1.30 制作成果/audio/L02.mp3
-- 音效：0.00-1.00 制作成果/audio/S_laugh.mp3
+- 配音 2：1.30 制作成果/audio/L02.mp3（起点：0.15；增益：+1.5）
+- 音效：0.00-1.00 制作成果/audio/S_laugh.mp3（增益：-4；起点：1.40）
 
 ## CUT-EP001-003 · 办公室
 
@@ -2244,6 +2244,7 @@ STILL_CUT_LIST = """# EP001 剪辑单
 - 时长：1.50
 - 取舍：入点=起；出点=止
 - 声音：环境
+- 配音：-0.60 制作成果/audio/L04.mp3
 """
 REVIEW = """# EP001 审查
 
@@ -2441,8 +2442,8 @@ class CreatorViewsTests(unittest.TestCase):
                     [(t.start, t.end, t.style, t.items, t.countdown, t.resume, t.rarities) for t in cut.screen_texts],
                 )
                 self.assertEqual(
-                    [(x["s"], x["e"], x["path"], x["gain"]) for x in mine["sfx"]],
-                    [(x.start, x.end, x.path, x.gain_db) for x in cut.sound_effects],
+                    [(x["s"], x["e"], x["path"], x["gain"], x["from"]) for x in mine["sfx"]],
+                    [tuple(effect) for effect in cut.sound_effects],
                 )
                 self.assertEqual(mine["still"], cut.still)
                 self.assertEqual(
@@ -2450,7 +2451,7 @@ class CreatorViewsTests(unittest.TestCase):
                     None if cut.move is None else tuple(cut.move),
                 )
                 self.assertEqual(
-                    [(v["s"], v["path"], v["gain"]) for v in mine["voices"]],
+                    [(v["s"], v["path"], v["gain"], v["from"]) for v in mine["voices"]],
                     [tuple(voice) for voice in cut.voices],
                 )
 

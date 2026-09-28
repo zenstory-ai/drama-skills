@@ -408,7 +408,7 @@ CUT_HEADING_RE = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
 CUT_FIELD_RE = re.compile(r"^-\s*([^：]+)：\s*(.*)$")
 SOURCE_RE = re.compile(r"^((?:MOTION|SHOT|IMG)-\S+)\s*·\s*(.+?)\s*$")
 MOVE_RE = re.compile(r"^(推近|拉远|左移|右移|上移|下移)\s*([0-9]+)\s*[%％]$")
-VOICE_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
+VOICE_RE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
 WINDOW_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 CUE_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
 KEYWORDS_RE = re.compile(r"[（(]重点[：:]\s*(.+?)\s*[）)]\s*$")
@@ -418,7 +418,8 @@ SCREEN_TEXT_RE = re.compile(
 )
 COUNTDOWN_RE = re.compile(r"[（(]倒计时[：:]\s*([0-9]+(?:\.[0-9]+)?|接续)\s*[）)]\s*$")
 RARITY_RE = re.compile(r"[（(](传说|史诗|稀有)[）)]$")
-GAIN_RE = re.compile(r"[（(]增益[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*(?:dB)?\s*[）)]\s*$", re.I)
+OPTIONS_RE = re.compile(r"[（(]\s*((?:起点|增益)[：:][^（）()]*)[）)]\s*$")
+OPTION_RE = re.compile(r"^(起点|增益)[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*(?:dB)?$", re.I)
 NUMBERED_RE = {
     "字幕": re.compile(r"^字幕(?:\s*(\d+))?$"),
     "画面文字": re.compile(r"^画面文字(?:\s*(\d+))?$"),
@@ -537,17 +538,29 @@ def _sound_effects(fields: dict[str, str]) -> list[dict[str, Any]]:
     for value in _entries(fields, "音效")[1]:
         if value.strip() == "无":
             continue
-        value, gain = _gain(value)
+        value, gain, offset = _options(value)
         found = CUE_RE.match(value)
         if not found:
             continue
-        effects.append({"s": float(found.group(1)), "e": float(found.group(2)), "path": found.group(3), "gain": gain})
+        effects.append({
+            "s": float(found.group(1)), "e": float(found.group(2)), "path": found.group(3),
+            "gain": gain, "from": offset,
+        })
     return effects
 
 
-def _gain(value: str) -> tuple[str, float]:
-    stated = GAIN_RE.search(value)
-    return (value[: stated.start()], float(stated.group(1))) if stated else (value, 0.0)
+def _options(value: str) -> tuple[str, float, float]:
+    """Split 「（起点：<秒>；增益：<dB>）」 off a sound line: (rest, gain, 起点)."""
+
+    stated = OPTIONS_RE.search(value)
+    if not stated:
+        return value, 0.0, 0.0
+    options = {}
+    for part in re.split(r"[；;]", stated.group(1)):
+        found = OPTION_RE.match(part.strip())
+        if found:
+            options[found.group(1)] = float(found.group(2))
+    return value[: stated.start()], options.get("增益", 0.0), options.get("起点", 0.0)
 
 
 def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
@@ -555,10 +568,10 @@ def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
     for value in _entries(fields, "配音")[1]:
         if value.strip() == "无":
             continue
-        value, gain = _gain(value)
+        value, gain, offset = _options(value)
         found = VOICE_RE.match(value)
         if found:
-            voices.append({"s": float(found.group(1)), "path": found.group(2), "gain": gain})
+            voices.append({"s": float(found.group(1)), "path": found.group(2), "gain": gain, "from": offset})
     return voices
 
 

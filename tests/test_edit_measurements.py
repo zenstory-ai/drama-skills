@@ -111,14 +111,14 @@ class StillProject:
     def parse(self):
         return edit.parse_cut_list(self.episode / edit.CUT_LIST_NAME)
 
-    def findings(self, *, voice_seconds=None):
+    def findings(self, *, sounds=None):
         delivery, cuts, unused = self.parse()
-        if voice_seconds is None:
+        if sounds is None:
             return edit.check_cuts(self.episode, cuts, self.root, probe=False,
                                    unused=unused, delivery=delivery)
-        # The only media fact the voice rules need is each file's length.
+        # The only media fact the voice rules need is where each file is audible.
         with patch.object(edit, "probe_stream", return_value={}), patch.object(
-            edit, "probe_duration", side_effect=lambda media: voice_seconds[media.name]
+            edit, "probe_audible", side_effect=lambda media: sounds[media.name]
         ):
             return edit.check_cuts(self.episode, cuts, self.root, probe=True,
                                    unused=unused, delivery=delivery)
@@ -260,26 +260,85 @@ class StillCutCheckTests(unittest.TestCase):
                                                unused=unused, delivery=delivery)
                 self.assertEqual(len(findings), expected, findings)
 
-    def test_voice_lines_end_inside_their_cut_and_never_overlap(self):
-        lengths = {"line.wav": 1.2, "reply.wav": 0.6}
+    def test_voice_lines_are_held_to_the_film_not_to_their_cut(self):
+        # Two 2-second stills, a 4-second film. line.wav is heard 0.2-1.2 of
+        # its 1.4 s; reply.wav 0.2-0.5 of its 0.8 s.
+        sounds = {"line.wav": edit.Audible(1.4, 0.2, 1.2), "reply.wav": edit.Audible(0.8, 0.2, 0.5)}
         cases = {
-            "fits": (["- 配音：0.80 media/line.wav"], 0),
-            "within the 0.05 s allowance": (["- 配音：0.84 media/line.wav"], 0),
-            "runs past the cut": (["- 配音：0.90 media/line.wav"], 1),
-            "talks over the first": (["- 配音 1：0.00 media/line.wav", "- 配音 2：1.00 media/reply.wav"], 1),
-            "one after the other": (["- 配音 1：0.00 media/line.wav", "- 配音 2：1.30 media/reply.wav"], 0),
-            "starts after the cut": (["- 配音：2.10 media/reply.wav"], 2),
+            "runs on over the next cut": ([" 配音：1.50 media/line.wav"], [], 0),
+            "is still talking when the film ends": ([], [" 配音：1.20 media/line.wav"], 1),
+            "only its silent tail passes the end": ([], [" 配音：0.80 media/line.wav"], 0),
+            "is talked over from the next cut": (
+                [" 配音：1.50 media/line.wav"], [" 配音：0.30 media/reply.wav"], 1),
+            "sits tight where only the silences overlap": (
+                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/reply.wav"], [], 0),
+            "starts over the previous cut (J-cut)": ([], [" 配音：-0.50 media/reply.wav"], 0),
+            "reaches back past the previous cut": ([], [" 配音：-2.50 media/reply.wav"], 1),
+            "reaches back from the first cut": ([" 配音：-0.20 media/reply.wav"], [], 1),
+            "starts after its cut": ([" 配音：2.10 media/reply.wav"], [], 1),
+            "is pulled earlier by its in-point": (
+                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/line.wav（起点：0.20）"], [], 1),
+            "starts past everything audible": ([" 配音：0.00 media/line.wav（起点：1.30）"], [], 1),
         }
         with tempfile.TemporaryDirectory() as directory:
             project = StillProject(Path(directory))
-            head = SPEC_LINE + EXCUSE_TWO
-            for name, (lines, expected) in cases.items():
+            for name, (first, second, expected) in cases.items():
                 with self.subTest(name):
-                    project.write(still_block(1, "SHOT-1 · media/1.png", lines), head=head)
-                    findings = project.findings(voice_seconds=lengths)
+                    project.write(
+                        still_block(1, "SHOT-1 · media/1.png", ["-" + line for line in first]),
+                        still_block(2, "SHOT-2 · media/2.jpg", ["-" + line for line in second]),
+                    )
+                    findings = project.findings(sounds=sounds)
                     self.assertEqual(len(findings), expected, findings)
-            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.20 media/none.wav"]), head=head)
+            project.write(still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.20 media/none.wav"]),
+                          head=SPEC_LINE + EXCUSE_TWO)
             self.assertEqual(len(project.findings()), 1, "缺配音文件必须报")
+
+    def test_a_subtitle_may_cross_its_cut_but_not_the_film_end_or_another_subtitle(self):
+        cases = {
+            "runs on over the next cut": (["- 字幕 1：1.50-2.80 可我不懂音乐"], ["- 字幕：无"], 0),
+            "runs past the film end": ([], ["- 字幕 1：1.50-2.20 可我不懂音乐"], 1),
+            "starts after its own cut": (["- 字幕 1：2.10-2.80 可我不懂音乐"], [], 1),
+            "meets the next cut's subtitle": (
+                ["- 字幕 1：1.50-2.80 可我不懂音乐"], ["- 字幕 1：0.50-1.00 五天？够了"], 1),
+            "meets a whole-cut subtitle": (["- 字幕 1：1.50-2.80 可我不懂音乐"], ["- 字幕：五天？够了"], 1),
+            "hands over cleanly": (
+                ["- 字幕 1：1.50-2.80 可我不懂音乐"], ["- 字幕 1：0.80-1.60 五天？够了"], 0),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            for name, (first, second, expected) in cases.items():
+                with self.subTest(name):
+                    project.write(still_block(1, "SHOT-1 · media/1.png", first),
+                                  still_block(2, "SHOT-2 · media/2.jpg", second))
+                    self.assertEqual(len(project.findings()), expected, project.findings())
+
+    def test_sound_lines_take_an_in_point_and_a_gain_in_either_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png", [
+                "- 配音：0.20 media/line.wav（起点：0.15；增益：-3 dB）",
+                "- 音效：0.00-0.60 media/reply.wav（增益：+2；起点：1.40）",
+            ]), head=SPEC_LINE + EXCUSE_TWO)
+            _, cuts, _ = project.parse()
+            self.assertEqual(cuts[0].voices, (edit.Voice(0.2, "media/line.wav", -3.0, 0.15),))
+            self.assertEqual(cuts[0].sound_effects, (edit.SoundEffect(0.0, 0.6, "media/reply.wav", 2.0, 1.4),))
+            for refused in ("（起点：-1）", "（起点：1；起点：2）", "（起点：1 dB）", "（增益：-50）",
+                            "（起点：1，增益：2）"):
+                with self.subTest(refused):
+                    project.write(still_block(1, "SHOT-1 · media/1.png", [
+                        f"- 配音：0.20 media/line.wav{refused}"]))
+                    with self.assertRaises(edit.EditError):
+                        project.parse()
+
+    def test_the_audible_span_skips_padding_and_breath_below_the_floor(self):
+        rate = 1000
+        samples = [0] * 300 + [1000, -1000] * 250 + [5, -5] * 200
+        sound = edit._audible_span(samples, rate)
+        self.assertAlmostEqual(sound.duration, 1.2)
+        self.assertAlmostEqual(sound.head, 0.30, delta=edit.AUDIBLE_WINDOW)
+        self.assertAlmostEqual(sound.tail, 0.80, delta=edit.AUDIBLE_WINDOW)
+        self.assertEqual(edit._audible_span([0] * 500, rate), edit.Audible(0.5, 0.0, 0.0))
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
@@ -340,3 +399,54 @@ class StillRenderTests(unittest.TestCase):
         self.assertEqual([row["文件"] for row in measured["配音落点"]], ["media/line.wav"])
         self.assertEqual(set(report["自动接镜"]), {"CUT-1", "CUT-2"}, "同场静帧也参与自动接镜")
         self.assertEqual(measured["疑似坏帧"], [])
+
+    def test_a_voice_line_runs_over_the_next_cut_and_an_effect_starts_inside_its_file(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            for name in ("1.png", "2.jpg"):
+                subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=gray:size=180x320",
+                                        "-frames:v", "1", str(media / name)], check=True)
+            # A 1.2 s low voice, and a high beep that sits a second into its file.
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=300:duration=1.2",
+                                    str(media / "line.wav")], check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=3000:duration=1.3",
+                                    "-af", "volume=enable='lt(t,1)':volume=0",
+                                    str(media / "reply.wav")], check=True)
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", ["- 配音：1.00 media/line.wav"], end=1.5),
+                still_block(2, "SHOT-2 · media/2.jpg",
+                            ["- 音效：0.80-1.20 media/reply.wav（起点：1.00）"], end=1.5),
+            )
+            delivery, cuts, unused = project.parse()
+            self.assertEqual(edit.check_cuts(project.episode, cuts, project.root, probe=True,
+                                             unused=unused, delivery=delivery), [])
+            report = edit.render(project.episode, project.root, cuts, delivery, burn_subtitles=False)
+            measured = edit.verify(project.episode, cuts, delivery, project.root)
+            film = Path(report["成片"])
+
+            def peak(start, length, band):
+                # Filtered, then trimmed: cutting a tone mid-cycle before the
+                # filter, or seeking the AAC input, clicks across every band.
+                result = subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-i", str(film), "-af",
+                     f"{band},atrim={start}:{start + length},volumedetect", "-f", "null", "-"],
+                    capture_output=True, text=True)
+                return float(re.search(r"max_volume: (\S+) dB", result.stderr).group(1))
+
+            low, high = "lowpass=f=800,lowpass=f=800", "highpass=f=2000,highpass=f=2000"
+            voice_in_second_cut = peak(1.6, 0.5, low)
+            voice_after_it_ends = peak(2.65, 0.35, low)
+            beep_where_placed = peak(2.35, 0.2, high)
+            beep_before = peak(1.6, 0.5, high)
+
+        # The line starts 1.0 s into CUT-1 and is still heard well inside CUT-2.
+        self.assertGreater(voice_in_second_cut, -25)
+        self.assertLess(voice_after_it_ends, -50)
+        # 起点 skipped the beep's silent second: it lands at 1.5 + 0.8, not a second later.
+        self.assertGreater(beep_where_placed, -25)
+        self.assertLess(beep_before, -50)
+        (line,) = measured["配音落点"]
+        self.assertEqual((line["段"], line["起"]), ("CUT-1", 1.0))
+        self.assertAlmostEqual(line["止"], 2.2, delta=0.05)

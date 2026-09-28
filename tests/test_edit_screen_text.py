@@ -444,7 +444,7 @@ class SoundEffectTests(unittest.TestCase):
             subprocess.run(quiet + ["-f", "lavfi", "-i", "sine=frequency=1760:duration=2",
                                     str(chime)], check=True)
             subprocess.run(edit._sound_effect_command(
-                "ffmpeg", film, [(1.5, 0.6, chime, -6.0)], mixed), check=True)
+                "ffmpeg", film, [(1.5, 0.6, chime, -6.0, 0.0)], mixed), check=True)
 
             def level(media, start, length, band="highpass=f=1200,highpass=f=1200"):
                 result = subprocess.run(

@@ -507,6 +507,15 @@ def check_still_cuts() -> None:
             f"用了 SHOT 静帧之后，没用也没写进未采用的镜头必须报: {findings}",
         )
 
+        # A line can start inside its file and before its picture (a J-cut).
+        (episode / "剪辑单.md").write_text(
+            still.replace("- 配音：0.30 media/line.wav", "- 配音：-0.40 media/line.wav（增益：-2；起点：0.10）"),
+            encoding="utf-8",
+        )
+        _, cuts, _ = parse_cut_list(episode / "剪辑单.md")
+        voice = cuts[0].voices[0]
+        require((voice.start, voice.gain_db, voice.offset) == (-0.4, -2.0, 0.1), f"起点与增益没有解析出来: {voice}")
+
         (episode / "剪辑单.md").write_text(still + "- 运镜：旋转 8%\n", encoding="utf-8")
         try:
             parse_cut_list(episode / "剪辑单.md")
