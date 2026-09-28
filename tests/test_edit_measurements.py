@@ -689,6 +689,46 @@ class StillRenderTests(unittest.TestCase):
         self.assertLess(before, -50)
         self.assertAlmostEqual(seconds, 2.0 * len(order), delta=0.15)
 
+    def test_mixed_video_audio_formats_keep_the_timeline_and_pitch(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            for number, rate, channels in ((1, 44100, 1), (2, 48000, 2)):
+                subprocess.run(quiet + [
+                    "-f", "lavfi", "-i", "color=c=gray:size=180x320:rate=24:duration=1",
+                    "-f", "lavfi", "-i", f"sine=frequency=1000:sample_rate={rate}:duration=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    "-ac", str(channels), str(media / f"{number}.mp4"),
+                ], check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=gray:size=180x320",
+                                    "-frames:v", "1", str(media / "1.png")], check=True)
+            (project.episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n", encoding="utf-8")
+            project.write(
+                still_block(1, "MOTION-1 · media/1.mp4", end=1),
+                still_block(2, "SHOT-1 · media/1.png", end=1),
+                still_block(3, "MOTION-2 · media/2.mp4", end=1),
+            )
+            delivery, cuts, unused = project.parse()
+            self.assertEqual(edit.check_cuts(project.episode, cuts, project.root, probe=True,
+                                             unused=unused, delivery=delivery), [])
+            film = edit.render(project.episode, project.root, cuts, delivery,
+                               burn_subtitles=False)["成片"]
+            streams = json.loads(subprocess.check_output([
+                "ffprobe", "-v", "error", "-show_streams", "-of", "json", film,
+            ], text=True))["streams"]
+            for stream in streams:
+                self.assertAlmostEqual(float(stream["duration"]), 3, delta=0.05)
+            pcm = subprocess.check_output([
+                "ffmpeg", "-v", "error", "-i", film, "-af", "atrim=2.2:2.8",
+                "-ac", "1", "-ar", "8000", "-f", "s16le", "-",
+            ])
+            samples = [int.from_bytes(pcm[at:at + 2], "little", signed=True)
+                       for at in range(0, len(pcm), 2)]
+            crossings = sum(a <= 0 < b for a, b in zip(samples, samples[1:]))
+            self.assertAlmostEqual(crossings / (len(samples) / 8000), 1000, delta=15)
+
     def test_a_voice_plays_whole_when_its_cut_rounds_to_the_frame(self):
         # 0.52 s at 24 fps renders as 12 frames, 0.50 s. The voice that starts
         # there and runs 5 s over the next cut must still play all 5 s.

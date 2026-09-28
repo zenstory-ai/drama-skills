@@ -1502,6 +1502,7 @@ def render(
                 command += ["-frames:v", str(round(length * fps)), "-t", f"{length:.6f}"]
         command += [
             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-ar", str(silence[0]), "-channel_layout", silence[1],
             "-c:a", "aac", "-b:a", "192k", str(segment),
         ]
         _run(command)
@@ -1640,10 +1641,10 @@ def render(
 def _silent_track(
     episode: Path, project_root: Path, cuts: Sequence[Cut], delivery: Delivery
 ) -> tuple[int, str]:
-    """(sample rate, layout) for segments that bring no sound: stills and silent clips.
+    """Shared (sample rate, layout) for every rendered segment.
 
     Segments are joined by stream copy, so every segment needs an audio track
-    and the silence must be encoded like the first video audio beside it: a
+    encoded like the first video audio beside it, including audible clips: a
     segment without one shifts every sound after it, and a mismatched one
     decodes wrong. 48 kHz stereo when no clip has sound.
     """
