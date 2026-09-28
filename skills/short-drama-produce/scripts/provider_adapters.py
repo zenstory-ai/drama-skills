@@ -256,6 +256,12 @@ def _prompt_with_reference_contract(
             or not all(isinstance(item, str) and item.strip() for item in must_not_control)
         ):
             raise ValueError("reference binding semantics are invalid")
+        character = binding.get("character")
+        if character is not None:
+            if role != "reference_audio" or not isinstance(character, str) or not character.strip():
+                raise ValueError("reference audio character is invalid")
+            # The source's explicit speaker wins over the free-form asset label.
+            label = f"{character.strip()}音色参考"
         values = {
             "order": index,
             "reference": reference_tokens[index - 1] if reference_tokens else str(index),

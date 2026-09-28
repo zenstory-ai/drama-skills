@@ -60,8 +60,10 @@
   closed there rather than having a role guessed for it.
   A `MOTION-*` entry's `参考音频` line binds after the pictures: its slots follow
   the `输入参考图` bindings in audio `顺序`, continuing the job's `order`, each with
-  role `reference_audio`. Only those slots may use that role. Leaving a declared
-  voice out of the job fails `prepare`.
+  role `reference_audio` and `character` copied exactly from its `角色` field. Only those
+  slots may use that role. Leaving a declared voice or its character out, or swapping
+  characters, fails `prepare`. Adapters must preserve this character binding; bundled
+  compilers derive the voice label from `character`, not the free-form asset `label`.
 - `references`: zero to sixteen current project files actually sent to production.
   It may be omitted when `reference_bindings` is present, in which case the paths
   are derived in binding order. If both are present, they must match exactly.

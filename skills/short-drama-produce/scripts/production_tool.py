@@ -156,7 +156,7 @@ AUDIO_REFERENCE_ROLE = "reference_audio"
 AUDIO_REFERENCE_LINE_RE = re.compile(
     r"(REF-[A-Z0-9][A-Z0-9-]{0,79})（顺序：([1-9]\d*)）· "
     r"([^；\n]+?\.(?:wav|mp3|m4a|aac|flac))《([^》\n]+)》"
-    r"（用途：[^；）\n]+；角色：[^；）\n]+；控制：([^；）\n]+)；不得控制：([^）\n]+)）",
+    r"（用途：[^；）\n]+；角色：([^；）\n]+)；控制：([^；）\n]+)；不得控制：([^）\n]+)）",
     re.IGNORECASE,
 )
 
@@ -716,7 +716,7 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for index, binding in enumerate(value, 1):
         label = f"reference_bindings[{index}]"
-        if not isinstance(binding, Mapping) or set(binding) != {
+        if not isinstance(binding, Mapping) or set(binding) - {"character"} != {
             "slot_id",
             "order",
             "path",
@@ -743,6 +743,12 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
             raise ValueError(f"{label} label must contain Chinese text")
         if not isinstance(role, str) or not role.strip() or len(role) > 80:
             raise ValueError(f"{label} role is invalid")
+        character = binding.get("character")
+        if "character" in binding and (
+            role != AUDIO_REFERENCE_ROLE or not isinstance(character, str)
+            or not character.strip() or len(character) > 200
+        ):
+            raise ValueError(f"{label} character is invalid")
         may_control = _scope_list(
             binding.get("may_control"), label=f"{label}.may_control"
         )
@@ -760,6 +766,7 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
                 "path": _relative_path(binding.get("path")),
                 "label": raw_label.strip(),
                 "role": role.strip(),
+                **({"character": character.strip()} if isinstance(character, str) else {}),
                 "may_control": may_control,
                 "must_not_control": must_not_control,
             }
@@ -929,8 +936,9 @@ def _markdown_audio_bindings(section: str) -> list[dict[str, Any]]:
                 "order": int(match.group(2)),
                 "path": _relative_path(match.group(3)),
                 "label": match.group(4).strip(),
-                "may_control": _scope_items(match.group(5)),
-                "must_not_control": _scope_items(match.group(6)),
+                "character": match.group(5).strip(),
+                "may_control": _scope_items(match.group(6)),
+                "must_not_control": _scope_items(match.group(7)),
             }
             for match in matches
         ),
@@ -994,6 +1002,9 @@ def _verify_markdown_source(
         )}
         for binding in bindings
     ]
+    for binding, comparison in zip(bindings, comparable):
+        if "character" in binding:
+            comparison["character"] = binding["character"]
     if declared != comparable:
         raise ValueError("job reference bindings do not match the selected source entry")
 

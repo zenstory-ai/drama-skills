@@ -605,7 +605,7 @@ def _quote_speakers(
     return result
 
 
-def _voice_records(visual: str) -> dict[str, str]:
+def _voice_records(visual: str, errors: list[str]) -> dict[str, str]:
     """Each 人物 entry's `- 声音参考：` value, keyed by the entry name."""
     headings = list(re.finditer(r"^## [^\n]*$", visual, re.MULTILINE))
     records: dict[str, str] = {}
@@ -615,7 +615,9 @@ def _voice_records(visual: str) -> dict[str, str]:
             continue
         end = headings[index + 1].start() if index + 1 < len(headings) else None
         declared = VOICE_RECORD_RE.findall(visual[heading.end() : end])
-        if declared:
+        if len(declared) > 1:
+            errors.append(f"视觉设定.md: 人物「{entry.group(2).strip()}」的声音参考重复，只能登记一条")
+        elif declared:
             records[entry.group(2).strip()] = _plain(declared[0])
     return records
 
@@ -681,6 +683,8 @@ def _audio_references(
         prohibited = {item.strip() for item in re.split(r"[、,，]", must)}
         if "" in allowed or "" in prohibited or allowed & prohibited:
             errors.append(f"{owner}: REF 控制与不得控制范围冲突: {slot}")
+        if not {"台词", "语气", "情绪"} <= prohibited:
+            errors.append(f"{owner}: 参考音频不得控制至少包含台词、语气、情绪: {slot}")
         if name not in voices.characters:
             errors.append(
                 f"{owner}: 参考音频的角色不是《视觉设定.md》里的人物条目: {name}"
@@ -1417,7 +1421,7 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         characters=frozenset(
             entry.name for entry in visual_entries if entry.category == "人物"
         ),
-        records=_voice_records(visual),
+        records=_voice_records(visual, errors),
         dialogue=_screenplay_dialogue(screenplay),
         names={
             entry.name: _unique([entry.name, *entry.designators])

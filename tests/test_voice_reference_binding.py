@@ -94,6 +94,22 @@ class CheckerTests(unittest.TestCase):
             root = Path(directory)
             self.assertEqual(checker.validate_episode(bound_episode(root), root), [])
 
+    def test_voice_scope_and_unique_record_are_required(self) -> None:
+        for scope in ("构图", "台词、语气", "台词、情绪", "语气、情绪"):
+            with self.subTest(scope=scope), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                episode = bound_episode(root, audio_line=AUDIO_LINE.replace("台词、语气、情绪", scope))
+                errors = checker.validate_episode(episode, root)
+                self.assertTrue(any("不得控制至少包含" in error for error in errors), errors)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = bound_episode(root)
+            visual = episode / "视觉设定.md"
+            visual.write_text(visual.read_text(encoding="utf-8").replace(
+                VOICE_RECORD, VOICE_RECORD + "\n- 声音参考：输入/声音/另一个.wav"), encoding="utf-8")
+            errors = checker.validate_episode(episode, root)
+            self.assertTrue(any("声音参考重复" in error for error in errors), errors)
+
     def test_a_recorded_path_with_a_space_is_still_the_characters_voice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -269,6 +285,7 @@ class ProductionTests(unittest.TestCase):
                     "path": VOICE_PATH,
                     "label": "江晨音色参考",
                     "role": "reference_audio",
+                    "character": "江晨",
                     "may_control": ["音色", "音区"],
                     "must_not_control": ["台词", "语气", "情绪"],
                 }
@@ -323,6 +340,33 @@ class ProductionTests(unittest.TestCase):
             # Audio is numbered on its own: the first voice is @音频1, not @音频2.
             self.assertIn("参考 @音频1（江晨音色参考）", body["content"][0]["text"])
             self.assertIn("参考 @图片1（江晨定妆照）", body["content"][0]["text"])
+
+    def test_character_binding_survives_a_misleading_label(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.project(directory, audio_line=AUDIO_LINE.replace("江晨音色参考", "周薄森音色参考"))
+            path = self.job(root)
+            job = json.loads(path.read_text(encoding="utf-8"))
+            job["reference_bindings"][1]["label"] = "周薄森音色参考"
+            path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+            preview = production_tool.prepare_job(root, path)
+            self.assertEqual(preview["reference_bindings"][1]["character"], "江晨")
+            body = provider_adapters.compile_seedance_payload(
+                preview, model="configured-model",
+                reference_urls=["https://example.test/look.png", "https://example.test/voice.wav"],
+                reference_roles=["reference_image", "reference_audio"],
+            )
+            compiled = body["content"][0]["text"]
+            self.assertIn("@音频1（江晨音色参考）", compiled)
+            self.assertNotIn("周薄森音色参考", compiled)
+            for wrong in (None, "周薄森"):
+                with self.subTest(character=wrong):
+                    if wrong is None:
+                        job["reference_bindings"][1].pop("character", None)
+                    else:
+                        job["reference_bindings"][1]["character"] = wrong
+                    path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "do not match the selected source entry"):
+                        production_tool.prepare_job(root, path)
 
     def test_a_declared_voice_cannot_be_dropped_from_the_job(self) -> None:
         # `- **参考音频**：` is the same field to the checker, so production must
