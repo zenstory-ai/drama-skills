@@ -58,6 +58,10 @@
   `reference_video`, `reference_audio` for MiniMax, and the three `reference_*`
   values for Seedance. A video job carrying references without bindings fails
   closed there rather than having a role guessed for it.
+  A `MOTION-*` entry's `参考音频` line binds after the pictures: its slots follow
+  the `输入参考图` bindings in audio `顺序`, continuing the job's `order`, each with
+  role `reference_audio`. Only those slots may use that role. Leaving a declared
+  voice out of the job fails `prepare`.
 - `references`: zero to sixteen current project files actually sent to production.
   It may be omitted when `reference_bindings` is present, in which case the paths
   are derived in binding order. If both are present, they must match exactly.
@@ -98,6 +102,12 @@ Keep this file outside the project:
 
 `command` is an argv array, never a shell string. Timeout is 1–3600 seconds. Do not put credentials in this file;
 let the adapter read its environment or operating-system credential store.
+
+A profile may add `"reference_roles": [...]`, the roles its configured model accepts. When present,
+`run` refuses any binding whose role is not listed. A `reference_audio` binding always needs it:
+a model without an audio input can drop the voice without an error. Either way `run` stops before
+the confirmation is spent or the adapter starts. List `reference_audio` only for a model you know
+accepts reference audio.
 
 ## Capability sources
 

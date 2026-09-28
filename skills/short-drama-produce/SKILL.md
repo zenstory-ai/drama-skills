@@ -25,6 +25,9 @@ license: MIT
 （MiniMax 为 `first_frame`/`last_frame`/`reference_image`/`reference_video`/`reference_audio`，
 Seedance 为三个 `reference_*`）；带参考图却没有绑定的 job 会直接失败，不替它猜一个 role。
 本地图片由内置 adapter 按 base64 data URI 直接送出，不需要自建上传服务。
+`MOTION-*` 的「参考音频」行同样逐条进 `reference_bindings`，排在图片之后、role 固定为 `reference_audio`；
+adapter profile 没有声明接受 `reference_audio` 时 `run` 在提交前失败，见
+[adapter-contract.md](references/adapter-contract.md#adapter-config)。
 条目的「输入参考图」写成 `PLAN-...` 时，那些图片在创作者自己的工具里，项目内没有文件可送：
 `prepare` 直接失败并说明先把真实文件放进项目、改写成 `REF-...`，不拿计划当输入，也不静默丢掉参考。
 `references` 可以省略并由绑定顺序生成，也可以作为相同顺序的显式镜像。输出放在

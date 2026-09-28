@@ -65,6 +65,42 @@ REF_PURPOSES = (
     "结束帧",
     "风格",
 )
+# A character's voice travels on its own line, `- 参考音频：`, never inside
+# 输入参考图: the picture slots number `@图片N`/`<Picture N>`/`图N` and the audio
+# slots number `@音频N`/`<Audio N>`/`音频N`, each from 1, so mixing them in one
+# field would renumber every picture after the first voice.
+AUDIO_SUFFIXES = ("wav", "mp3", "m4a", "aac", "flac")
+AUDIO_REF_RE = re.compile(
+    r"(REF-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
+    r"([^；\n]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))《([^》\n]+)》"
+    r"（用途：([^；）\n]+)；角色：([^；）\n]+)；控制：([^；）]+)；不得控制：([^）]+)）",
+    re.IGNORECASE,
+)
+AUDIO_PURPOSE = "音色"
+AUDIO_SYNTAX = (
+    "REF-<槽位>（顺序：<n>）· <音频路径>《<中文名>》"
+    "（用途：音色；角色：<人物名>；控制：<范围>；不得控制：<范围>）"
+)
+# An audio file or 用途：音色 in a picture field is a voice binding written in
+# the wrong place; the generic "broken REF syntax" would not say where it goes.
+AUDIO_IN_IMAGE_FIELD_RE = re.compile(
+    r"\.(?:" + "|".join(AUDIO_SUFFIXES) + r"|opus)《|用途：音色", re.IGNORECASE
+)
+# Where 《视觉设定.md》 records a character's accepted voice reference: one
+# line under that 人物 entry, path first.
+VOICE_RECORD_RE = re.compile(
+    r"^[ \t　]*[-*+][ \t　]*声音参考[：:](.*)$", re.MULTILINE
+)
+VOICE_RECORD_PATH_RE = re.compile(
+    r"([^（；\s]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))(?=（|$)", re.IGNORECASE
+)
+# `角色（提示）：台词`, optionally tagged [VO] or [OS] -- the screenplay's own
+# dialogue grammar. Only speakers that are 人物 entries are ever looked up.
+DIALOGUE_LINE_RE = re.compile(
+    r"^(?:\[(?:VO|OS)\][ \t]*)?([^\s：（）:\[\]#>*-][^\s：（）:\[\]#]{0,39})"
+    r"(?:（[^）\n]*）)?：(.+)$",
+    re.MULTILINE,
+)
 # `EP001-SC001` is the documented shape, but a project that scopes ids by season
 # writes `S01-EP001-SC001`. Both are one stable scene id, so the pattern takes
 # any hyphenated prefix rather than exactly one segment.
@@ -334,6 +370,12 @@ def _references(
     """Validate one 输入参考图/参考 declaration; return the slot kinds it uses."""
     if _is_none(value):
         return frozenset()
+    if AUDIO_IN_IMAGE_FIELD_RE.search(value):
+        errors.append(
+            f"{owner}: 输入参考图只收图片；角色音色参考写在《视频提示词.md》"
+            "该 MOTION 的「- 参考音频：」行"
+        )
+        return frozenset()
     reference_value = PENDING_REFERENCE_SUFFIX_RE.sub("", value.strip())
     matches = _slot_matches(reference_value)
     cursor = 0
@@ -405,16 +447,7 @@ def _references(
         slot, raw_locator, label = group[0], group[2], group[3]
         may_control, must_not_control = group[5], group[6]
         if kind == "REF":
-            if not _portable_path(raw_locator):
-                errors.append(
-                    f"{owner}: REF 路径不是安全的项目相对路径: {raw_locator}"
-                )
-            else:
-                reference_path = project_root / raw_locator
-                if not _inside(reference_path, project_root):
-                    errors.append(f"{owner}: REF 路径越出项目根目录: {raw_locator}")
-                elif not reference_path.is_file():
-                    errors.append(f"{owner}: REF 文件不存在: {raw_locator}")
+            _check_project_file(raw_locator, owner, project_root, errors)
         else:
             _plan_locator(
                 raw_locator, label, owner, slot, purposes[index], entries, errors
@@ -428,6 +461,152 @@ def _references(
         if "" in allowed or "" in prohibited or allowed & prohibited:
             errors.append(f"{owner}: {kind} 控制与不得控制范围冲突: {slot}")
     return kinds
+
+
+def _check_project_file(
+    locator: str, owner: str, project_root: Path, errors: list[str]
+) -> None:
+    """A REF locator names a readable file inside the project, or it is a defect."""
+    if not _portable_path(locator):
+        errors.append(f"{owner}: REF 路径不是安全的项目相对路径: {locator}")
+        return
+    reference_path = project_root / locator
+    if not _inside(reference_path, project_root):
+        errors.append(f"{owner}: REF 路径越出项目根目录: {locator}")
+    elif not reference_path.is_file():
+        errors.append(f"{owner}: REF 文件不存在: {locator}")
+
+
+def _han_key(value: str) -> str:
+    """Only the Han characters, so quoting and language tags do not decide identity."""
+    return "".join(re.findall(r"[㐀-鿿]+", value))
+
+
+def _dialogue_by_speaker(screenplay: str) -> dict[str, list[str]]:
+    lines: dict[str, list[str]] = {}
+    for match in DIALOGUE_LINE_RE.finditer(screenplay):
+        key = _han_key(match.group(2))
+        if key:
+            lines.setdefault(match.group(1).strip(), []).append(key)
+    return lines
+
+
+def _speaks_in(prompt: Optional[str], lines: list[str]) -> bool:
+    """Does the copyable body deliver at least one of this speaker's lines?
+
+    Dialogue reaches the body quoted and verbatim (VID-25), whatever else the
+    dialect wraps around it. A short line such as 「是。」 has to match a whole
+    line, or any one-character quote would count as anybody's.
+    """
+    if prompt is None:
+        return False
+    for match in SPOKEN_SPAN_RE.finditer(prompt.replace("\n", "")):
+        span = next((group for group in match.groups() if group), "")
+        key = _han_key(span) if len(span) <= 200 else ""
+        if key and any(
+            key == line or (len(key) >= 4 and key in line) for line in lines
+        ):
+            return True
+    return False
+
+
+def _voice_records(visual: str) -> dict[str, str]:
+    """Each 人物 entry's `- 声音参考：` value, keyed by the entry name."""
+    headings = list(re.finditer(r"^## [^\n]*$", visual, re.MULTILINE))
+    records: dict[str, str] = {}
+    for index, heading in enumerate(headings):
+        entry = VISUAL_SETTING_HEADING_RE.match(heading.group(0))
+        if entry is None or entry.group(1) != "人物":
+            continue
+        end = headings[index + 1].start() if index + 1 < len(headings) else None
+        declared = VOICE_RECORD_RE.findall(visual[heading.end() : end])
+        if declared:
+            records[entry.group(2).strip()] = _plain(declared[0])
+    return records
+
+
+class VoiceContext(NamedTuple):
+    """What a MOTION's 参考音频 line is checked against."""
+
+    characters: frozenset
+    records: dict[str, str]
+    dialogue: dict[str, list[str]]
+
+
+def _audio_references(
+    value: str,
+    owner: str,
+    project_root: Path,
+    errors: list[str],
+    *,
+    image_slots: list[str],
+    prompt: Optional[str],
+    voices: VoiceContext,
+) -> None:
+    """Validate one MOTION's 参考音频 line against the character it names."""
+    if _is_none(value):
+        return
+    plain = value.strip()
+    matches = list(AUDIO_REF_RE.finditer(plain))
+    cursor = 0
+    for index, match in enumerate(matches):
+        if plain[cursor : match.start()] != ("" if index == 0 else "；"):
+            matches = []
+            break
+        cursor = match.end()
+    if not matches or plain[cursor:] not in {"", "。"}:
+        errors.append(f"{owner}: 参考音频必须写成 {AUDIO_SYNTAX}，多条用；连接")
+        return
+    slots = [match.group(1) for match in matches]
+    orders = sorted(int(match.group(2)) for match in matches)
+    if len(set(slots)) != len(slots) or set(slots) & set(image_slots):
+        errors.append(f"{owner}: 参考音频槽位重复，或与输入参考图的槽位重名")
+    if orders != list(range(1, len(orders) + 1)):
+        errors.append(f"{owner}: 参考音频顺序必须唯一且从 1 连续编号，与图片分开数")
+    speakers = [match.group(6).strip() for match in matches]
+    for name in sorted({name for name in speakers if speakers.count(name) > 1}):
+        errors.append(f"{owner}: 人物「{name}」绑定了不止一条参考音频")
+    for match in matches:
+        slot, _, locator, label, purpose, _, may, must = match.groups()
+        name = match.group(6).strip()
+        _check_project_file(locator, owner, project_root, errors)
+        if purpose.strip() != AUDIO_PURPOSE:
+            errors.append(
+                f"{owner}: 参考音频用途只能是{AUDIO_PURPOSE}: {slot}（{purpose.strip()}）"
+            )
+        if not re.search(r"[一-鿿]", label):
+            errors.append(f"{owner}: REF 缺少中文名称: {slot}")
+        allowed = {item.strip() for item in re.split(r"[、,，]", may)}
+        prohibited = {item.strip() for item in re.split(r"[、,，]", must)}
+        if "" in allowed or "" in prohibited or allowed & prohibited:
+            errors.append(f"{owner}: REF 控制与不得控制范围冲突: {slot}")
+        if name not in voices.characters:
+            errors.append(
+                f"{owner}: 参考音频的角色不是《视觉设定.md》里的人物条目: {name}"
+            )
+            continue
+        if not _speaks_in(prompt, voices.dialogue.get(name, [])):
+            errors.append(
+                f"{owner}: 人物「{name}」在本镜可复制提示词里没有说出《剧本.md》记在其名下的台词；"
+                "不说话的人物不绑定参考音频"
+            )
+        record = voices.records.get(name)
+        recorded = VOICE_RECORD_PATH_RE.match(record.strip()) if record else None
+        if record is None:
+            errors.append(
+                f"{owner}: 《视觉设定.md》人物「{name}」没有声音参考行；"
+                "先在该人物条目下写「- 声音参考：<项目相对路径>（…）」"
+            )
+        elif recorded is None:
+            errors.append(
+                f"{owner}: 《视觉设定.md》人物「{name}」的声音参考还没有音频路径: "
+                f"{_excerpt(record, 24)}"
+            )
+        elif recorded.group(1) != locator:
+            errors.append(
+                f"{owner}: 参考音频 {slot} 的路径 {locator} 与《视觉设定.md》"
+                f"人物「{name}」登记的声音参考 {recorded.group(1)} 不一致"
+            )
 
 
 def _plan_locator(
@@ -1121,6 +1300,13 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
     claimed_scenes: set = set()
     locks = _continuity_locks(visual, errors)
     visual_entries = _visual_entries(visual, errors)
+    voices = VoiceContext(
+        characters=frozenset(
+            entry.name for entry in visual_entries if entry.category == "人物"
+        ),
+        records=_voice_records(visual),
+        dialogue=_dialogue_by_speaker(screenplay),
+    )
     other_headings = {
         match.group(2).strip(): match.group(1).strip()
         for match in OTHER_SETTING_HEADING_RE.finditer(visual)
@@ -1262,6 +1448,10 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         shot_input = fields.get("输入参考图", "")
         if not shot_input:
             errors.append(f"{shot_id}: 缺少输入参考图字段")
+        if "参考音频" in fields:
+            errors.append(
+                f"{shot_id}: 参考音频写在《视频提示词.md》的 MOTION 条目里，分镜不登记"
+            )
         _references(shot_input, shot_id, project_root, errors, entries)
 
         basis_value = fields.get("视觉依据", "")
@@ -1328,6 +1518,21 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         _references(motion_input, motion_id, project_root, errors, entries)
         if _plain(motion_input) != _plain(shot_input):
             errors.append(f"{motion_id}: 输入参考图与 {shot_id} 不一致")
+        if "参考音频" in motion_fields:
+            _audio_references(
+                motion_fields["参考音频"],
+                motion_id,
+                project_root,
+                errors,
+                image_slots=[
+                    item[3][0]
+                    for item in _slot_matches(
+                        PENDING_REFERENCE_SUFFIX_RE.sub("", motion_input.strip())
+                    )
+                ],
+                prompt=copyable_prompt,
+                voices=voices,
+            )
 
         if _has_pending_references(shot_input):
             errors.append(f"{motion_id}: 仍有待补参考图，不能生成最终视频提示词")
