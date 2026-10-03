@@ -1,0 +1,32 @@
+name: Validate ClawHub inventory
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard-central-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Require reviewed immutable central workflow ref
+        run: |
+          if grep -E -q '^[[:space:]]+(uses: zenstory-ai/\.github/\.github/workflows/clawhub-publish\.yml@ROOT_REPLACE|control_ref: ROOT_REPLACE)$' .github/workflows/{publish,validate}-clawhub.yml; then
+            echo '::error::Replace ROOT_REPLACE with the reviewed central workflow commit SHA.'
+            exit 1
+          fi
+
+  validate:
+    name: ClawHub inventory validation
+    needs: guard-central-ref
+    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@7d9e61a2f42d0e4f83f14fd377230c5936019887
+    with:
+      source_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      policy_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      control_ref: 7d9e61a2f42d0e4f83f14fd377230c5936019887
+      mode: validate
+      manifest_path: .clawhub/publish.json
+      dry_run: true

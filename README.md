@@ -64,6 +64,11 @@ Drama Skills 覆盖 AI 短剧 / 漫剧从点子或原著到成片的全流程：
 
 ## 安装
 
+### ClawHub
+
+ClawHub 分发由仓库中的 [显式发布清单](.clawhub/publish.json) 管理，并通过 [ClawHub](https://clawhub.ai/) 提供发现入口。具体 skill 链接只有在发布者、版本和匿名访问均验证后才会写入本文档，避免把尚不存在的条目当成已上架。
+
+
 前提：你已经在用 Claude Code、Codex 或其他支持 Agent Skill 规范的编程 Agent；下面这条命令需要终端里能运行 `npx`（Node.js）。
 
 ```bash

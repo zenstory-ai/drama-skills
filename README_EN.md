@@ -80,6 +80,11 @@ provider-neutral.
 
 ## Install
 
+### ClawHub
+
+ClawHub distribution is governed by the repository's [explicit publish inventory](.clawhub/publish.json), with discovery through [ClawHub](https://clawhub.ai/). A skill-specific link is added here only after its publisher, version, and anonymous accessibility are verified, so this README never presents a nonexistent listing as live.
+
+
 Prerequisite: you already use Claude Code, Codex or another coding agent that supports the Agent Skill spec; the
 command below needs `npx` (Node.js) in your terminal.
 

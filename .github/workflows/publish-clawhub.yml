@@ -1,0 +1,129 @@
+name: Publish skills to ClawHub
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 */12 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Bootstrap the pinned inventory or reconcile the latest stable release
+        type: choice
+        options: [bootstrap, reconcile]
+        default: bootstrap
+      dry_run:
+        description: Resolve and validate without writing to ClawHub
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: clawhub-writer-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-source:
+    if: >-
+      github.event_name != 'release' ||
+      (github.event.release.draft == false && github.event.release.prerelease == false)
+    runs-on: ubuntu-latest
+    outputs:
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      policy_ref: ${{ steps.source.outputs.policy_ref }}
+      mode: ${{ steps.source.outputs.mode }}
+      dry_run: ${{ steps.source.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Refuse unresolved central workflow reference
+        run: |
+          if grep -E -q '^[[:space:]]+(uses: zenstory-ai/\.github/\.github/workflows/clawhub-publish\.yml@ROOT_REPLACE|control_ref: ROOT_REPLACE)$' .github/workflows/publish-clawhub.yml; then
+            echo '::error::Replace ROOT_REPLACE with the reviewed central workflow commit SHA before enabling writes.'
+            exit 1
+          fi
+      - id: source
+        name: Resolve immutable source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+          REQUESTED_DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bootstrap_sha=$(jq -r '.bootstrapSha' .clawhub/publish.json)
+          mode=reconcile
+          dry_run=false
+
+          if [[ "$EVENT_NAME" == release ]]; then
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            source_ref=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+            mode=release
+          elif [[ "$EVENT_NAME" == workflow_dispatch && "$REQUESTED_MODE" == bootstrap ]]; then
+            source_ref=$bootstrap_sha
+            mode=bootstrap
+            dry_run=$REQUESTED_DRY_RUN
+          else
+            releases=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+            latest_tag=$(jq -r '[.[] | select(.draft == false and .prerelease == false)] | sort_by(.published_at) | last | .tag_name // empty' <<< "$releases")
+            if [[ -n "$latest_tag" ]]; then
+              git fetch --force origin "refs/tags/$latest_tag:refs/tags/$latest_tag"
+              source_ref=$(git rev-parse "refs/tags/$latest_tag^{commit}")
+            else
+              source_ref=$bootstrap_sha
+            fi
+            [[ "$EVENT_NAME" == workflow_dispatch ]] && dry_run=$REQUESTED_DRY_RUN
+          fi
+
+          # A pre-rollout release must never replace a newer approved bootstrap.
+          git fetch origin "$bootstrap_sha"
+          if git merge-base --is-ancestor "$source_ref" "$bootstrap_sha"; then
+            source_ref=$bootstrap_sha
+          elif ! git merge-base --is-ancestor "$bootstrap_sha" "$source_ref"; then
+            echo '::error::Release and bootstrap histories diverged; refusing publication.'
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor "$source_ref" origin/main || {
+            echo '::error::Source is not on the canonical main history.'
+            exit 1
+          }
+
+          # Stable releases carry their own reviewed policy. Only the bootstrap
+          # compatibility floor may use the current reviewed policy snapshot.
+          if git cat-file -e "$source_ref:.clawhub/publish.json" 2>/dev/null; then
+            policy_ref=$source_ref
+          else
+            [[ "$source_ref" == "$bootstrap_sha" ]] || { echo '::error::Stable source has no publication policy.'; exit 1; }
+            policy_ref=$(git rev-parse HEAD)
+            mode=bootstrap
+          fi
+          [[ "$policy_ref" =~ ^[0-9a-f]{40}$ ]] || exit 1
+
+          [[ "$source_ref" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::source_ref is not a 40-character commit SHA'; exit 1; }
+          {
+            echo "source_ref=$source_ref"
+            echo "policy_ref=$policy_ref"
+            echo "mode=$mode"
+            echo "dry_run=$dry_run"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: resolve-source
+    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@7d9e61a2f42d0e4f83f14fd377230c5936019887
+    with:
+      source_ref: ${{ needs.resolve-source.outputs.source_ref }}
+      policy_ref: ${{ needs.resolve-source.outputs.policy_ref }}
+      control_ref: 7d9e61a2f42d0e4f83f14fd377230c5936019887
+      mode: ${{ needs.resolve-source.outputs.mode }}
+      manifest_path: .clawhub/publish.json
+      dry_run: ${{ needs.resolve-source.outputs.dry_run == 'true' }}
+    secrets:
+      CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
