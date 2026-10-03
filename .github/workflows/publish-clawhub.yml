@@ -117,11 +117,11 @@ jobs:
 
   publish:
     needs: resolve-source
-    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@7d9e61a2f42d0e4f83f14fd377230c5936019887
+    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@d77b6785e1d04f608577219aeed6dfdcd93e24b1
     with:
       source_ref: ${{ needs.resolve-source.outputs.source_ref }}
       policy_ref: ${{ needs.resolve-source.outputs.policy_ref }}
-      control_ref: 7d9e61a2f42d0e4f83f14fd377230c5936019887
+      control_ref: d77b6785e1d04f608577219aeed6dfdcd93e24b1
       mode: ${{ needs.resolve-source.outputs.mode }}
       manifest_path: .clawhub/publish.json
       dry_run: ${{ needs.resolve-source.outputs.dry_run == 'true' }}
