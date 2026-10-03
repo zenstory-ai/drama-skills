@@ -39,6 +39,7 @@ ClawHub handoff can be re-dispatched for the same exact tag/source, while its
 existing ownership, rights, version/hash, scan and anonymous-audit gates remain
 authoritative.
 
-Before this branch is pushed, replace every `ROOT_REPLACE` in
-`.github/workflows/release.yml` with the same reviewed full commit SHA from
-`zenstory-ai/.github`. Unpinned placeholders must never reach GitHub.
+The caller currently pins shared source controls to `d098c09a27f8fe58ccf3a13a894ecc3804747b7c`.
+When upgrading controls, change all four references together and pass the
+source-bound pin contract before merging. The separate ClawHub writer pin is
+unchanged and remains independently reviewed.
