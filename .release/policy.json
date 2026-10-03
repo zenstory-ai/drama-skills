@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "repository": "zenstory-ai/drama-skills",
+  "versionFiles": [
+    {
+      "path": "VERSION",
+      "format": "text"
+    }
+  ],
+  "changelog": "CHANGELOG.md",
+  "requiredPaths": [
+    "README.md",
+    "README_EN.md",
+    "skills/short-drama-assets/SKILL.md",
+    "skills/short-drama-develop/SKILL.md",
+    "skills/short-drama-edit/SKILL.md",
+    "skills/short-drama-image-prompts/SKILL.md",
+    "skills/short-drama-novel-analyze/SKILL.md",
+    "skills/short-drama-produce/SKILL.md",
+    "skills/short-drama-review/SKILL.md",
+    "skills/short-drama-storyboard/SKILL.md",
+    "skills/short-drama-video-prompts/SKILL.md",
+    "skills/short-drama-write/SKILL.md",
+    "skills/short-drama/SKILL.md",
+    "VERSION"
+  ],
+  "excludePaths": [
+    ".agents",
+    ".clawhub",
+    ".github",
+    ".release"
+  ],
+  "ciWorkflows": [
+    {
+      "file": "ci.yml",
+      "jobs": [
+        "tests (py3.9)",
+        "tests (py3.10)",
+        "tests (py3.14)",
+        "Dashboard browser regressions",
+        "Windows CRLF installation and dashboard",
+        "lint and types"
+      ]
+    },
+    {
+      "file": "validate-clawhub.yml",
+      "jobs": [
+        "guard-central-ref",
+        "ClawHub inventory validation / distribute"
+      ]
+    }
+  ]
+}

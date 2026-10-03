@@ -1,0 +1,77 @@
+name: Source release
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: source-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Source release
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+    uses: zenstory-ai/.github/.github/workflows/source-release.yml@ROOT_REPLACE
+    with:
+      control_ref: ROOT_REPLACE
+      publish: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+
+  clawhub-handoff:
+    name: Queue exact release for ClawHub
+    needs: release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+      checks: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.release.outputs.source_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: zenstory-ai/.github
+          ref: ROOT_REPLACE
+          path: controls
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Dispatch source-bound ClawHub handoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.release.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: >-
+          python controls/scripts/source_release.py dispatch-clawhub
+          --root source --repository "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA"
+          --tag "$RELEASE_TAG" --control-ref ROOT_REPLACE
+          --output clawhub-handoff.json
+      - name: Record queued outcome (not publication)
+        run: |
+          cat clawhub-handoff.json
+          echo '### ClawHub handoff: CLAWHUB_QUEUED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Dispatch acceptance is not publication or scan approval; the ClawHub audit remains authoritative.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clawhub-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: clawhub-handoff.json
+          if-no-files-found: error
+          retention-days: 14

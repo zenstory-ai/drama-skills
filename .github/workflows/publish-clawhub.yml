@@ -8,10 +8,18 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Bootstrap the pinned inventory or reconcile the latest stable release
+        description: Bootstrap, reconcile, or consume an exact source release
         type: choice
-        options: [bootstrap, reconcile]
+        options: [bootstrap, reconcile, release]
         default: bootstrap
+      release_tag:
+        description: Stable tag required when mode is release
+        type: string
+        required: false
+      source_sha:
+        description: Exact 40-character tag commit required when mode is release
+        type: string
+        required: false
       dry_run:
         description: Resolve and validate without writing to ClawHub
         type: boolean
@@ -54,6 +62,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           REQUESTED_MODE: ${{ inputs.mode }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
           REQUESTED_DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |
@@ -66,6 +76,20 @@ jobs:
             git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
             source_ref=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
             mode=release
+          elif [[ "$EVENT_NAME" == workflow_dispatch && "$REQUESTED_MODE" == release ]]; then
+            [[ "$REQUESTED_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Release handoff requires a stable vX.Y.Z tag.'; exit 1; }
+            [[ "$REQUESTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Release handoff requires an exact 40-character source SHA.'; exit 1; }
+            [[ "$REQUESTED_DRY_RUN" == false ]] || { echo '::error::Release handoff cannot be a dry run.'; exit 1; }
+            git fetch --force origin "refs/tags/$REQUESTED_RELEASE_TAG:refs/tags/$REQUESTED_RELEASE_TAG"
+            tag_sha=$(git rev-parse "refs/tags/$REQUESTED_RELEASE_TAG^{commit}")
+            [[ "$tag_sha" == "$REQUESTED_SOURCE_SHA" ]] || { echo '::error::Requested release tag and source SHA disagree.'; exit 1; }
+            release_json=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$REQUESTED_RELEASE_TAG")
+            [[ $(jq -r '.tag_name' <<< "$release_json") == "$REQUESTED_RELEASE_TAG" ]] || exit 1
+            [[ $(jq -r '.draft' <<< "$release_json") == false && $(jq -r '.prerelease' <<< "$release_json") == false ]] || { echo '::error::ClawHub handoff requires the exact stable published release.'; exit 1; }
+            source_ref=$REQUESTED_SOURCE_SHA
+            RELEASE_TAG=$REQUESTED_RELEASE_TAG
+            mode=release
+            dry_run=false
           elif [[ "$EVENT_NAME" == workflow_dispatch && "$REQUESTED_MODE" == bootstrap ]]; then
             source_ref=$bootstrap_sha
             mode=bootstrap
@@ -84,7 +108,9 @@ jobs:
 
           # A pre-rollout release must never replace a newer approved bootstrap.
           git fetch origin "$bootstrap_sha"
-          if git merge-base --is-ancestor "$source_ref" "$bootstrap_sha"; then
+          if [[ "$EVENT_NAME" == workflow_dispatch && "$REQUESTED_MODE" == release ]]; then
+            : # Exact source-release handoff must retain the requested tag commit.
+          elif git merge-base --is-ancestor "$source_ref" "$bootstrap_sha"; then
             source_ref=$bootstrap_sha
           elif ! git merge-base --is-ancestor "$bootstrap_sha" "$source_ref"; then
             echo '::error::Release and bootstrap histories diverged; refusing publication.'
