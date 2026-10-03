@@ -27,6 +27,6 @@ Status: implemented
 
 ## Verification
 
-本次以 `actionlint` 验证两个 caller 的 YAML 与表达式；另用本地清单审计核对完整目录覆盖、固定 SHA、semver、权利锚点、依赖版本、包内无 symlink 与 38 个候选总数。中央引用已固定为经独立审查、通过 20 项回归测试的 `d77b6785e1d04f608577219aeed6dfdcd93e24b1`；uses 与 control_ref 相同，guard 只匹配 YAML 值，不会匹配自己的命令字符串。真实 GitHub CI 与首次公开分发由组织集成线留证。
+本次以 `actionlint` 验证两个 caller 的 YAML 与表达式；另用本地清单审计核对完整目录覆盖、固定 SHA、semver、权利锚点、依赖版本、包内无 symlink 与 38 个候选总数。中央引用已固定为经独立审查、通过 30 项回归测试的 `7f9ee0e3994037893dc0e829e95ba5f83c526fed`；uses 与 control_ref 相同，guard 只匹配 YAML 值，不会匹配自己的命令字符串。真实 GitHub CI 与首次公开分发由组织集成线留证。
 
 `python3 -B -m unittest discover -s tests -v` 与 `ruff check --no-cache .` 全部通过。
