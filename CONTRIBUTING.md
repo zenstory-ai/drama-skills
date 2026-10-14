@@ -92,13 +92,15 @@ python3 -m unittest tests.test_workflow_evaluation
 
 ## 更新日志
 
-面向创作者可见的改动要写进 `CHANGELOG.md` 的 `[未发布]` 段。按约束力归类：
-`structural_invariant` 与 `reviewed_invariant` 的新增或收紧记为**变更**（可能阻断既有
-产物），`craft_default` 与 `taste_option` 记为**新增**（可被创作者覆盖）。修掉会产生
-错误产出的问题记为**修复**，并写清原表述错在哪。
+面向创作者可见的改动要写进 `CHANGELOG.md` 的 `## [Unreleased]` 段。小节名用 Keep a Changelog
+的六个英文类别（`Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`），
+正文中文。按约束力归类：`structural_invariant` 与 `reviewed_invariant` 的新增或收紧记为
+`Changed`（可能阻断既有产物），`craft_default` 与 `taste_option` 记为 `Added`（可被创作者
+覆盖）。修掉会产生错误产出的问题记为 `Fixed`，并写清原表述错在哪。需要创作者动手的升级
+步骤写成 `*升级*：` 段，第一句就写要做的动作。
 
-只改措辞、补例子或调整排版不必记录。已定位但本次不处理的问题写进**已知缺口**，
-不要留在提交信息里。
+只改措辞、补例子或调整排版不必记录。已定位但本次不修的问题开 issue，不在 CHANGELOG 里
+单列「已知缺口」，也不要只留在提交信息里。
 
 ## 提交约定
 
