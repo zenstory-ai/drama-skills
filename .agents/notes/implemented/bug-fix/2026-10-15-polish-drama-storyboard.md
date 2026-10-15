@@ -31,3 +31,5 @@ Status: implemented
 - `git diff --check` 通过；不执行媒体生成或供应商调用。
 
 独立复核补充：2个P2已修：review-and-fixtures保留SHT08已声明峰值重复例外；完整核对KEY03不可见正面与后文解释后，仅正例IMG控制的编号面改背面材质。
+
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。

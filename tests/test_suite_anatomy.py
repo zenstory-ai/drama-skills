@@ -6,6 +6,7 @@ from typing import Any
 
 SUITE = Path(__file__).resolve().parents[1]
 CORE = SUITE / "skills/short-drama"
+AUTHORING_RECORDS = SUITE / "tests/fixtures/authoring-records"
 
 EXPECTED_SKILLS = {
     "short-drama",
@@ -157,16 +158,12 @@ def is_declaration(record: Any) -> bool:
     }
 
 
-def fenced_json(path: Path) -> dict[str, Any]:
-    """The first fenced record of a Markdown template, references resolved.
-
-    A template opens with its ``sources`` declaration; the record the callers
-    want is the first fenced block after it.
-    """
+def data_record(path: Path) -> dict[str, Any]:
+    """The first non-declaration record, with its source references resolved."""
     for record in resolved_records(path):
         if isinstance(record, dict) and not is_declaration(record):
             return record
-    raise AssertionError(f"{path}: missing fenced JSON object")
+    raise AssertionError(f"{path}: missing data object")
 
 
 def resolve_json_pointer(document: object, pointer: str) -> object:
@@ -335,6 +332,8 @@ class SuiteAnatomyTests(unittest.TestCase):
             if path.is_file() and path.suffix in {".json", ".jsonl"}
         ]
         shipped += sorted((SUITE / "skills").glob("*/assets/*.md"))
+        shipped += sorted(AUTHORING_RECORDS.glob("*.json"))
+        shipped += sorted(AUTHORING_RECORDS.glob("*.jsonl"))
         for path in shipped:
             declares = not path.name.endswith(FRAGMENT_SUFFIX)
             for document in resolved_records(path):
@@ -373,24 +372,24 @@ class SuiteAnatomyTests(unittest.TestCase):
     def test_cross_template_json_pointers_resolve(self) -> None:
         project = resolved_records(CORE / "assets/project-template/short-drama.json")[0]
         shot = record_with(
-            SUITE / "skills/short-drama-storyboard/assets/shot-template.jsonl", "shot_id"
+            AUTHORING_RECORDS / "shot-template.jsonl", "shot_id"
         )
         documents = {
-            "delivery_container": fenced_json(
-                SUITE
-                / "skills/short-drama-video-prompts/assets/delivery-container.jsonl.md"
+            "delivery_container": data_record(
+                AUTHORING_RECORDS
+                / "delivery-container.jsonl"
             ),
-            "motion": fenced_json(
-                SUITE
-                / "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md"
+            "motion": data_record(
+                AUTHORING_RECORDS
+                / "motion-spec.jsonl"
             ),
             "shot": shot,
             "keyframe": record_with(
-                SUITE / "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
+                AUTHORING_RECORDS / "keyframe-template.jsonl",
                 "keyframe_id",
             ),
             "coverage": resolved_records(
-                SUITE / "skills/short-drama-storyboard/assets/coverage-template.json"
+                AUTHORING_RECORDS / "coverage-template.json"
             )[0],
         }
         targets = {
@@ -501,13 +500,13 @@ class SuiteAnatomyTests(unittest.TestCase):
 
     def test_delivery_container_and_motion_refs_are_acyclic(self) -> None:
         templates = {
-            "剧集/<EP>/storyboard/delivery-containers.jsonl": fenced_json(
-                SUITE
-                / "skills/short-drama-video-prompts/assets/delivery-container.jsonl.md"
+            "剧集/<EP>/storyboard/delivery-containers.jsonl": data_record(
+                AUTHORING_RECORDS
+                / "delivery-container.jsonl"
             ),
-            "剧集/<EP>/storyboard/motion-specs.jsonl": fenced_json(
-                SUITE
-                / "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md"
+            "剧集/<EP>/storyboard/motion-specs.jsonl": data_record(
+                AUTHORING_RECORDS
+                / "motion-spec.jsonl"
             ),
         }
         edges: dict[str, set[str]] = {source: set() for source in templates}
@@ -593,25 +592,25 @@ class SuiteAnatomyTests(unittest.TestCase):
     def test_candidate_templates_distinguish_inputs_from_same_publication_refs(self) -> None:
         templates: list[tuple[Path, dict[str, Any]]] = []
         for relative in (
-            "skills/short-drama-storyboard/assets/coverage-template.json",
-            "skills/short-drama-storyboard/assets/shot-template.jsonl",
-            "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
+            "tests/fixtures/authoring-records/coverage-template.json",
+            "tests/fixtures/authoring-records/shot-template.jsonl",
+            "tests/fixtures/authoring-records/keyframe-template.jsonl",
         ):
             path = SUITE / relative
             templates.append((path, record_with(path, "status")))
         for relative in (
-            "skills/short-drama-image-prompts/assets/image-prompt-spec.jsonl.md",
-            "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md",
+            "tests/fixtures/authoring-records/image-prompt-spec.jsonl",
+            "tests/fixtures/authoring-records/motion-spec.jsonl",
         ):
             path = SUITE / relative
-            templates.append((path, fenced_json(path)))
+            templates.append((path, data_record(path)))
 
         candidate_ref_owners = {
             "coverage-template.json": {"short-drama-storyboard"},
             "shot-template.jsonl": set(),
             "keyframe-template.jsonl": {"short-drama-storyboard"},
-            "image-prompt-spec.jsonl.md": set(),
-            "motion-spec.jsonl.md": set(),
+            "image-prompt-spec.jsonl": set(),
+            "motion-spec.jsonl": set(),
         }
         for path, document in templates:
             self.assertEqual(document.get("status"), "candidate", path)
@@ -670,7 +669,7 @@ class SuiteAnatomyTests(unittest.TestCase):
 
     def test_template_field_refs_resolve_to_owned_example_fields(self) -> None:
         keyframe = record_with(
-            SUITE / "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
+            AUTHORING_RECORDS / "keyframe-template.jsonl",
             "light_projection",
         )
         view = record_with(
@@ -682,8 +681,8 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(light_ref["field"], "/state_differences/light")
         self.assertIn("light", view["state_differences"])
 
-        image_spec = fenced_json(
-            SUITE / "skills/short-drama-image-prompts/assets/image-prompt-spec.jsonl.md"
+        image_spec = data_record(
+            AUTHORING_RECORDS / "image-prompt-spec.jsonl"
         )
         policy_ref = image_spec["text_handling"]["source_policy_ref"]
         prop = record_with(

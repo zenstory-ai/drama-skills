@@ -95,11 +95,7 @@ video and tail-frame inputs; do not omit the source selector to bypass this boun
 
 `prepare` records internal digests of source/reference bytes and returns the exact confirmation phrase. Callers never
 calculate those digests. A changed input requires prepare and confirmation again.
-Jobs already prepared and stored before this contract remain readable under their
-original fingerprint. New non-creator structured jobs remain valid without
-`source_entry` and `reference_bindings`; they still receive the existing
-path/digest/confirmation checks. A `music` job may continue to use the timeline
-music section of canonical `视频提示词.md` without pretending that section is a
+A `music` job uses the timeline music section of canonical `视频提示词.md` without pretending that section is a
 `MOTION-*` entry; other new image/video jobs using canonical creator paths must use
 their matching selector.
 

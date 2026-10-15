@@ -7,7 +7,7 @@ license: MIT
 # 确认后生产
 
 本技能把已经写好的生产规格送到运行环境配置的 adapter。图片提示词归
-`$short-drama-image-prompts`，视频提示词归 `$short-drama-video-prompts`，台词与录音表归
+`$short-drama-image-prompts`，视频提示词归 `$short-drama-video-prompts`，台词归
 `$short-drama-write`，声音身份归 `$short-drama-assets`。
 
 ## Quick Start
@@ -63,10 +63,7 @@ job、prompt、参数、输出路径或直接输入任一变化，旧确认立�
 `分镜.md` 的「输入参考图」路径只是创作阶段的可读依据与使用意图，不是生产输入快照。进入生产时，
 creator-first job 必须从拥有提示词的 `图片提示词.md`、`分镜.md` 或 `视频提示词.md` 对应条目建立绑定；`prepare` 展示的
 `reference_bindings`、`references` 与已确认 job 才是本次 adapter 实际读取哪些文件字节、各自允许
-影响什么的权威。非 creator 的结构化规格可不填 `source_entry`/`reference_bindings`，继续只使用显式
-`references`；但新的 image/video job 只要 `source` 指向对应的当前创作文档，就强制使用匹配的
-selector，不能靠省略字段绕过。升级前已经 prepare 并落盘的
-旧 job 仍可按原指纹读取。
+影响什么的权威。image/video job 从对应的当前创作文档建立，使用匹配的 selector，不能靠省略字段绕过。
 新生产结果不自动回填或刷新分镜；需要把它改为后续输入时，由分镜 owner 修订文档，再建立新 job
 并重新预览、确认。
 

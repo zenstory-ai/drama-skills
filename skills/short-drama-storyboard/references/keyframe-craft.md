@@ -93,8 +93,8 @@ instead of inventing a hidden candidate state.
 默认每镜一张首帧，冻结 `start_boundary`。交付工作流需要首尾帧时，再补一张投影
 `end_boundary` 的尾帧；两帧之间的运动仍按分镜边界和运动提示词实现。
 
-**`structural_invariant`**：结构化关键帧记录声明 `boundary_role`（`start` 或 `end`），
-`boundary_ref` 指向同一镜头对应的那个边界字段。**尾帧是 `end_boundary` 的投影，
+**`structural_invariant`**：《分镜.md》的首帧与收尾关键帧分别指向同一镜头已接受的起点与终点。
+**尾帧是 `end_boundary` 的投影，
 不是新的终点事实**——它与首帧对 `start_boundary` 的关系完全一样：可以决定这一帧怎么构图、
 用什么景别镜头、光怎么落，不能决定人在哪、手里有什么、看着谁。尾帧与镜头终点不一致时，
 错的是尾帧。

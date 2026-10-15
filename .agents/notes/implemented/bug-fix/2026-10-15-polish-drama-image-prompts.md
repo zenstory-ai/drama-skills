@@ -32,3 +32,5 @@ Status: implemented
 - `git diff --check` 通过；未改运行时、测试或机器 schema，未执行媒体生成与供应商调用。
 
 最终复核：独立review确认旧结构化可写暗示，现按既有五文档迁移决定明确旧产物只读追溯与回归用途、继续旧格式编辑须锁定v0.5.0；当前只更新新根Markdown，不反写JSON。全部fences与IMG编号规则不动。
+
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。

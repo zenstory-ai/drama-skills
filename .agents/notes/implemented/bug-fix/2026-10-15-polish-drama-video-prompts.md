@@ -33,3 +33,5 @@ Status: implemented
 独立复核补充：已修container清单夸大脚本能力；按creator_markdown_check一对一关系说明同镜仅一正式MOTION及正文、独立补拍先新增SHOT，候选差异留普通说明。
 
 最终复核：最终review按既有五文档迁移决定补四份历史模板只读/锁版边界。按production_tool来源选择器与本地prepare复现明确creator-first尚不能绑定续接视频，后续段保留路线并停提交；编译器支持角色不等于主流程可提交。Wan外部人类指导中的无字幕范围按VID22保留画内已接受文字，非badcase/配对示例。
+
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。

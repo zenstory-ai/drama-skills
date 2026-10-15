@@ -291,15 +291,14 @@ class ReferenceIntegrityTests(unittest.TestCase):
         self.assertGreater(checked, 0, "no record references were checked")
 
 
-# Artifact basename -> the shipped file that defines that artifact's schema.
-# The episode path in a pointer is a placeholder (`剧集/EP001/...`), but the
-# schema behind it is fixed and ships here, so the basename is what identifies
-# it. Adding a stage means adding a row; a target with no row is reported below
-# rather than skipped, so this table cannot quietly fall behind.
+# Artifact basename -> the repository sample that defines its schema.
+# Samples may be current skill assets or test-only authoring records. The
+# episode path is a placeholder, but its schema remains checkable by basename.
+# A target with no row is reported rather than skipped.
 SCHEMA_TEMPLATES = {
     "episode-map.jsonl": "short-drama-develop/assets/episode-map.jsonl",
     "short-drama.json": "short-drama/assets/project-template/short-drama.json",
-    "shots.jsonl": "short-drama-storyboard/assets/shot-template.jsonl",
+    "shots.jsonl": "../tests/fixtures/authoring-records/shot-template.jsonl",
     "props.jsonl": "short-drama-assets/assets/prop-state.example.jsonl",
     "location-views.jsonl": "short-drama-assets/assets/location-view.example.jsonl",
     # Creator decisions are named after the artifact they accept, so they are
@@ -416,7 +415,15 @@ class ShippedTemplateReferenceTests(unittest.TestCase):
         }
         checked = 0
         unknown: set[str] = set()
-        for path in sorted((SUITE / "skills").rglob("assets/*")):
+        paths = sorted((SUITE / "skills").rglob("assets/*"))
+        paths += [
+            SUITE / "tests/fixtures/authoring-records" / name
+            for name in (
+                "coverage-template.json", "shot-template.jsonl", "keyframe-template.jsonl",
+                "episode-card.json", "episode-card-standalone.json", "beats.jsonl",
+            )
+        ]
+        for path in paths:
             if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
                 continue
             for location, artifact, _record_id, pointer in iter_pointer_claims(path):

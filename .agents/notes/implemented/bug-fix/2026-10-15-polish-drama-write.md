@@ -26,3 +26,5 @@ Status: implemented
 - **验证**：写作技能 14 项 self-test 与安装/套件结构 21 项测试通过；12 份范围内文档的 26 个 fenced code blocks 与基线逐字一致，`SCR-01` 至 `SCR-22` 的 ID 与分级不变。
 
 独立 review 补齐索引重跑的成对参数：改稿前保留旧剧本快照，复用索引时同时传 `--previous-index` 与 `--previous-source`；无快照则明确重编号。临时剧本初建及带成对参数的重跑均通过。
+
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。
