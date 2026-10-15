@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧资产拆解"
-  short_description: "从剧本拆解角色场景道具、身份变体、状态变化与跨场连续性"
+  short_description: "从剧本拆解人物、地点、道具及其身份、变体与连续性，写入视觉设定"
   default_prompt: "使用 $short-drama-assets 从已接受剧本拆解并核对角色、场景、道具、变体和连续性。"
