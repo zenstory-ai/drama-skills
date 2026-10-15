@@ -8,7 +8,7 @@
                     \-> 明确确认后的媒体生产
 ```
 
-可以从任一已有材料直接进入；Look Development 和审查都按需发生。每个 owner 只修改自己的 Markdown，
+可以从任一已有材料直接进入；Look Development 和审查都按需发生。各负责技能只修改自己的 Markdown，
 引用上游可见事实，但不静默改写它们。
 
 ## 输出语言
@@ -17,7 +17,7 @@
 |---|---|---|
 | 创作者可读说明与审查 | `short-drama.json#/language` | 用户当前语言 |
 | 图片、关键帧的可复制正文 | `short-drama.json#/format/prompt_language` | `en` |
-| 视频的可复制正文 | 目标视频模型档案的 `production_profile.choices.video_prompt_language`；未声明时回退 `format.prompt_language` | 根据目标视频模型确认；未声明时使用用户当前语言 |
+| 视频的可复制正文 | 目标视频模型档案的 `creator_authority.production_profile.choices.video_prompt_language`；未声明时回退 `format.prompt_language` | 根据目标视频模型确认；未声明时使用用户当前语言 |
 
 创作者说明、通用提示词语言和视频模型提示词语言互相独立；画面中的对白和可读文字来自剧本/视觉事实，
 不由描述语言推断。

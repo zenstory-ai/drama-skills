@@ -6,11 +6,11 @@ license: MIT
 
 # 短剧创作路由
 
-本技能负责项目初始化、跨阶段路由、制作形态与 Dashboard。各阶段正文由对应 owner 完成。
+本技能负责项目初始化、跨阶段路由、制作形态与 Dashboard。各阶段正文由对应技能完成。
 
 ## Quick Start
 
-所有项目统一使用 [creator-first 工作流](references/creator-workflow.md)：每集按需维护
+当前创作统一使用 [creator-first 工作流](references/creator-workflow.md)：每集按需维护
 `剧本.md`、`视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md`，不建立并行的结构化创作真相。
 具体写法见 [五份创作文档](references/creator-documents.md)。
 
@@ -42,13 +42,13 @@ license: MIT
 
 ## 执行请求
 
-1. 找到用户给出的项目或资料，只读当前任务的直接输入。
-2. 把用户点名的完整范围交给相应 owner；批次只控制上下文，自动续跑。
+1. 定位用户给出的项目或资料，只读当前任务的直接输入。
+2. 把用户点名的完整范围交给相应技能；批次只控制上下文，自动续跑。
 3. 只有真实创作分叉才询问；不要拿 schema、目录、事务或检查器询问创作者。
 4. 范围完成后一次回报完成内容、关键决定、真实未决项和可选下一步。
 5. 不自动开始用户没点名的审查、归档或生产。
-6. 请求横跨视觉设定、图片提示词、分镜或视频提示词时，结束前按当前五文档做一次视觉依赖对账；
-   不因图片提示词和分镜可并行，就把后完成的一支留在另一支的旧引用之外。
+6. 请求横跨视觉设定、图片提示词、分镜或视频提示词时，结束前核对当前已有文档的视觉依赖；
+   图片提示词和分镜并行完成时，也要同步两支的引用。五份文档齐备后再运行完整跨文档检查，不为检查补造文件。
 7. 视频提示词请求遇到「输入参考图：无」或仍带「待补参考图」时，先路由分镜 owner 检查项目已有图片并刷新绑定。有匹配图就同请求续跑；有必要图缺失就列表停下。
    停下时把三条路一起给出：把已有图片放进项目绑成 `REF-...`；由创作者在自己的工具里出图、本轮先用
    `PLAN-...` 写出逐镜挂图计划并照常产出视频提示词；或者明确改走文生视频。用本套件生产参考图需要项目外的
@@ -57,7 +57,7 @@ license: MIT
    同时按已成稿的冻结关键帧回填；两条依据描述同一格画面，不要只补一条。
 8. 用户在会话里点名目标视频模型（“按 MiniMax H3 写”“用 Seedance 2.5”）而 `short-drama.json` 的
    `production_profile` 还是 `unset` 时，先把这个选择连同它带来的原生时长、参考方式和正文语言写进档案，
-   再继续下游阶段。会话里的一句点名不落到档案上，下一轮就会退回通用路径，方言和时长要重猜。
+   再继续下游阶段。把已确认选择写入档案，后续请求才能沿用同一方言、语言和时长边界。
 
 ## 初始化与 Dashboard
 
@@ -73,7 +73,7 @@ python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例�
 `accepted`；`unset` 只表示尚未决定，不另造中间状态。
 `init` 只建立配置和空目录；第一次创作时再把文档写入 `剧集/<EP>/`，不预建空文件。
 项目已经建好、用户之后才定下目标视频模型时，把选择写进档案，并同时展示它对时长区间、参考方式和
-正文语言的影响。档案只接受已发布并已接受的创作者决策，所以是三步，不是一步。先写一行决策记录
+正文语言的影响。档案只能从已发布、已接受的创作者决策写入。先在 `输入/profile.jsonl` 写一行决策记录
 （`accepted_value` 就是要落进 `choices` 的对象本身，不要再包一层 `choices`）：
 
 ```jsonl
@@ -100,8 +100,7 @@ python3 {技能目录}/scripts/project_tool.py set-authority <project> \
 python3 {技能目录}/scripts/dashboard_server.py --workspace <workspace> --port 0 --detach --open
 ```
 
-`--detach` 让服务进程脱离当前 shell 独立运行，会话结束、终端关闭或智能体退出都不会带走它；
-链接因此在整个创作期间保持有效。运行中的地址、端口和 pid 记录在
+`--detach` 让服务进程脱离当前 shell 独立运行，无需保持当前会话或终端开启。运行中的地址、端口和 pid 记录在
 `<workspace>/.short-drama/dashboard.json`（仅本人可读），日志在同目录 `dashboard.log`：
 
 ```bash
@@ -123,11 +122,11 @@ Dashboard 按阶段展示项目：全剧页给出下一步和分集进度，每�
 制作形态、视觉方向、播放面和集长目标确实约束多个阶段时，展示选择及影响后由用户决定。
 Look Development 是可选分支，不是进入图片提示词或分镜的固定门槛。
 
-节奏数值（首钩秒数、情绪触点间隔、反转次数、VO 占比、平均镜长等）住在
+节奏数值（首钩秒数、情绪触点间隔、反转次数、VO 占比、平均镜长等）记录在
 `creator_authority.rhythm_profile`。字段与默认值由 `$short-drama-develop` 按制作形态提出，
-创作者接受或改写后，按上文三步写入：决策的 `accepted_value` 是完整档案对象，`--field`
+创作者接受或改写后，按上文三步写入：决策的 `accepted_value` 是不含 `status` 的完整档案值，`--field`
 写 `/creator_authority/rhythm_profile`；档案已接受后，单改一个值时 `--field` 指向该字段。
-`set-authority` 只校验类型与范围，缺字段、越界或多出未知字段都拒绝写入。下游只按 `status` 为 `accepted` 的档案做算术核对，缺失、`unset` 或
+`set-authority` 对节奏档案校验字段、类型与范围，缺字段、越界或多出未知字段都拒绝写入。下游只按 `status` 为 `accepted` 的档案做算术核对，缺失、`unset` 或
 `proposed` 都表示「未声明，不核对」。写完用 `status` 复核 `rhythm_profile`；手改后档案不合法时
 它返回空档案，问题列在 `rhythm_profile_problems`。
 
@@ -152,7 +151,7 @@ Look Development 是可选分支，不是进入图片提示词或分镜的固定
 python3 {技能目录}/scripts/project_tool.py export <project> --out <项目外目录>
 ```
 
-它把每集现有的五份创作文档和 `剧集/<EP>/制作成果/` 复制到 `--out`，附 `manifest.json` 与
+它把每集现有的五份创作文档、`剪辑单.md` 和 `剧集/<EP>/制作成果/` 复制到 `--out`，附 `manifest.json` 与
 `checksums.sha256`，并排除 `输入/`、`交付/` 和 `.short-drama/`。只要一部分时加
 `--episode EP001`（可重复）；只要文字时加 `--no-media`；覆盖旧目录加 `--overwrite`。
 `--out` 必须在项目之外。

@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧创作"
-  short_description: "基于文件系统初始化、恢复、路由、可视化管理并交付短剧项目"
+  short_description: "初始化和继续短剧项目，路由创作阶段，查看创作台并导出当前成果"
   default_prompt: "使用 $short-drama 初始化、查看、继续、恢复或打开 Dashboard 管理我的文件系统短剧项目。"
