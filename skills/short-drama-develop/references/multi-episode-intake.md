@@ -1,8 +1,8 @@
 # 多集整稿接入与断点续跑
 
 当创作者给的是一份已经写好的多集剧本、散稿或合订稿，并希望生成或补齐
-`项目开发/episode-map.jsonl` 时使用本流程。它不是小说改编分析，也不是把整份文件塞进一次
-提示词：**Agent 判断这份文件实际怎样分集、每集讲了什么；脚本只保存精确定位并防止重复劳动**。
+`项目开发/episode-map.jsonl` 时使用本流程。**Agent 判断这份文件实际怎样分集、每集讲了什么；
+脚本保存精确定位并防止重复劳动**。小说改编走改编分析，整稿接入则按当前分集逐段读取。
 
 ## 不变边界
 
@@ -32,15 +32,12 @@ python3 <本技能目录>/scripts/episode_intake.py index \
 `unmapped_spans` 用 locator 标出**落在任何一集跨度之外**的材料——实际上就是第一个集标题
 之前的前言与目录。它标不出集间说明与尾注：分集跨度从一个集标题一直延伸到下一个集标题
 （最后一集延伸到文件末尾），两集之间不存在空隙，所以一段插在中间的制作方说明会被并进
-前一集，尾注会被并进最后一集，`problems` 仍是空的。**这不是可以靠正则补上的**：
-「这一段属于上一集还是不属于任何一集」是语义判断，扩大正则去猜作品语义正是下一段
-禁止的做法。
+前一集，尾注会被并进最后一集，`problems` 仍是空的。判断这些段落属于剧本还是说明，
+需要 Agent 阅读上下文。
 
-所以「材料不会静默丢失」这条要靠下面的边界检查来保证，而不是靠 `unmapped_spans` 报全：
-Agent 必须对每个 `unmapped_spans` 做小范围检查，**并且**按下一段的做法读每一集的首尾几行，
-确认边界落在正确的位置。
-此时根据候选中的 line span，只读取疑似边界附近的小段，判断**这份文件**使用的是
-幕标题、分隔线、混合标题、目录加正文还是别的规律。不要扩大自动正则去猜作品语义。
+Agent 必须小范围检查每个 `unmapped_spans`，并根据候选中的 line span 读取每集首尾与
+疑似边界附近的几行，确认材料没有遗漏、说明没有混入正文。由此判断**这份文件**使用的是
+幕标题、分隔线、混合标题、目录加正文还是其他规律，不扩大自动正则去猜作品语义。
 
 非标准结构由 Agent 写一个很短的 JSONL 边界文件，每行只给规范 `episode_id` 与 1-based
 `line_start`，必要时给 `line_end`；然后让工具推导精确 byte span：
@@ -60,7 +57,9 @@ python3 <本技能目录>/scripts/episode_intake.py manual-index \
 `manual-index` 仍会机械阻断重号、跳号、倒序、空跨度和非规范 ID，但不会判断一幕是否应该
 属于上一集还是下一集；这个选择仍由 Agent 结合文件内容完成。
 
-自动或手工候选通过检查后，把它发布到正式 owner 路径；不要让 intake 工具直接覆盖规范索引：
+自动或手工候选通过检查后，保存到正式 owner 路径，intake 工具始终先写候选。core 项目
+工具可用时，按下面的 `verify` → `publish` 顺序发布；独立运行时，执行 `verify` 后由
+Agent 核对并保存为 `项目开发/episode-intake-index.json`，不执行 core 的 `publish`：
 
 ```text
 python3 <本技能目录>/scripts/episode_intake.py verify \
@@ -72,11 +71,13 @@ python3 <core 技能目录>/scripts/project_tool.py publish <项目根> \
   --input 输入/<完整剧本>
 ```
 
-发布成功且下游命令已改读正式索引后再删除工作区候选。可重建索引仍通过 owner 的 `publish` 发布，以保持路径所有权和原子替换。
+确认正式索引已保存、下游命令已改读正式路径后，再删除工作区候选。集成项目的可重建索引
+同样通过 owner 的 `publish` 发布，以保持路径所有权和原子替换。
 
 ## 2. 每次只读当前集
 
-任何切片前都验证索引；原文件变化一个字节就重建，不沿用旧 locator：
+任何切片前都验证索引。`verify` 核对总长度、跨度、顺序与行/字节对应，不能发现保持这些
+结构的等长原地改写；编辑过原文件就重建索引，即使校验通过也不沿用旧 locator：
 
 ```text
 python3 <本技能目录>/scripts/episode_intake.py verify \
@@ -108,8 +109,8 @@ python3 <本技能目录>/scripts/episode_intake.py merge \
 ```
 
 它拒绝未知 ID、批内重号、超过本轮显式上限的记录和对已完成集的冲突重写；相同记录重放是
-no-op。合并成功后，通过 core 的公开生命周期把 `episode-map.next.jsonl` 作为同一 artifact
-的新候选发布，并声明它实际读取的完整剧本与索引：
+no-op。合并成功后，core 项目工具可用时，通过其公开生命周期把 `episode-map.next.jsonl`
+作为同一 artifact 的新候选发布，并声明实际读取的完整剧本与索引：
 
 ```text
 python3 <core 技能目录>/scripts/project_tool.py publish <项目根> \
@@ -119,8 +120,9 @@ python3 <core 技能目录>/scripts/project_tool.py publish <项目根> \
   --input 项目开发/episode-intake-index.json
 ```
 
-发布完成后再删除临时候选和单集切片。不要让 `merge` 直接覆盖
-`项目开发/episode-map.jsonl`，也不要绕过 `project_tool.py` 手工替换它。
+独立运行时，由 Agent 核对合并候选与当前地图的差异，再保存为 `项目开发/episode-map.jsonl`。
+确认正式文件已保存后再删除临时候选和单集切片。`merge` 始终写独立候选；集成项目不得绕过
+`project_tool.py` 手工替换正式地图。
 
 中断后先重新运行 `progress`；项目工具可用时也读取 `status`。磁盘上的当前
 `episode-map.jsonl` 是唯一完成真相；checkpoint 若需要只是由它重建的缓存，不能用
