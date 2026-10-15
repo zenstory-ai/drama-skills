@@ -1,7 +1,9 @@
 # `motion-specs.jsonl` 填写模板
 
-文件第一行是 `sources` 声明：每个上游快照在这里写一次 `owner`、`artifact` 和已接受的
-`artifact`，后面的记录用它的 key 引用。key 用产物文件名派生的短小写名字，在本文件内稳定且唯一。
+本文件保留用于旧格式追溯与离线回归。当前发行版将旧项目 JSON/JSONL 只读留存；继续按旧格式编辑须使用锁定的 `v0.5.0`。升级时在新项目根逐集确认五份 Markdown，不在同一根维护两套创作事实。下列填写或导出说明用于解释旧版格式。
+
+文件第一行是 `sources` 声明：每个已接受上游快照在这里声明一次 `owner` 和 `artifact`，后续记录用
+对应的 key 引用。key 由产物文件名派生，使用简短小写名字，在本文件内稳定且唯一。
 本阶段插入的片段（[`performance.fragment.json`](performance.fragment.json)、
 [`coverage-scope.fragment.json`](coverage-scope.fragment.json)）落进同一个文件，它们用到的 key
 也在这里声明。
@@ -199,7 +201,7 @@
 
 运动规格**不带指回交付容器的引用**。依赖方向只有一条：容器 → 运动规格 → 镜头。两端在各自
 `sources` 里互相声明对方会形成环——依赖方向必须单向，
-永远得不到可发布的稳定快照。要找某个镜头属于哪个容器，从容器记录的 `members[]` 反查，不在本文件里
+无法按上游先于下游的顺序形成稳定快照。要找某个镜头属于哪个容器，从容器记录的 `members[]` 反查，不在本文件里
 存副本。容器记录见 [delivery-container.jsonl.md](delivery-container.jsonl.md)。
 
 默认 master 不重复 `purpose_ref` 或 `coverage_scope`：镜头目的、场次计划与原文覆盖从准确
@@ -211,7 +213,7 @@
 普通记录省略 `performance_arcs[]` 与 `attention_handoffs[]`；存在可见表演变化或注意交接时，按
 [`performance.fragment.json`](performance.fragment.json) 插入完整字段。空镜、道具细节、纯空间
 转场和只有物理动作的镜头不编造 arc。多参考的 `slot_id` 稳定且 `order` 唯一。
-`reported_end` 只作比较；末镜没有真实下一镜时改用
-`next_start_locator`。附加参考为空时使用空数组；对白说话者与声音方向只有在已接受引用存在时才填写。
+`end_report` 只作终点比较；末镜没有真实下一镜时，移除 `boundary_refs.next_start`，改用
+`next_start_locator` 描述未来起点的定位信息，写法见 `motion-terminal.example.jsonl`。该定位信息未解析前不能证明连续性已匹配。附加参考为空时使用空数组；对白说话者与声音方向只有在已接受引用存在时才填写。
 母版、补拍和替代关系保留在同一规格文件内，替代决定由审查结论拥有。具体取舍按
 `references/motion-recipe.md` 与 `references/review-and-fixtures.md` 判断。

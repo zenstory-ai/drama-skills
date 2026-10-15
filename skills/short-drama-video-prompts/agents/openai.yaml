@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧视频提示词"
-  short_description: "基于镜头边界编写动作、表演、运镜、声音与节奏视频提示词"
+  short_description: "依据镜头边界编写动作、表演、运镜、声音与节奏的视频提示词"
   default_prompt: "使用 $short-drama-video-prompts 根据已接受镜头和关键帧编写以运动变化为核心的视频提示词。"

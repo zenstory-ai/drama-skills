@@ -1,5 +1,7 @@
 # Timeline Music Spec
 
+This file is retained for legacy-format inspection and offline regression fixtures. The current release keeps old project JSON/JSONL read-only; continued editing in that format requires pinned `v0.5.0`. Upgrade into a new project root and confirm the five Markdown documents episode by episode. The instructions below describe the legacy format.
+
 Music is a timeline layer, not a default bed baked into every generated shot.
 Create a record only when accepted story or directing material gives music a
 specific dramatic job.
