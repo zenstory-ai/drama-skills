@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧生产"
-  short_description: "确认后安全执行图片、视频和语音生产任务，并保留可审计运行记录"
+  short_description: "预览并确认后执行图片、视频、语音和音乐生产任务，保留运行记录"
   default_prompt: "Use $short-drama-produce to preview a bounded media job, request explicit confirmation, then execute it safely."

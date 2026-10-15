@@ -1,5 +1,10 @@
 # Adapter Contract
 
+The bundled provider compilers accept video-reference roles, but the current creator-first Markdown
+source selector declares only image references and character voice references. It cannot bind a previous
+video for continuation. Keep that route unsubmitted until the source interface supports both actual
+video and tail-frame inputs; do not omit the source selector to bypass this boundary.
+
 ## Job file
 
 ```json
@@ -37,12 +42,12 @@
   canonical `剧集|episodes/<EP>/` creator document, matched to that document:
   `图片提示词.md` takes `IMG-*` (image), `视频提示词.md` takes `MOTION-*` (video),
   and `分镜.md` takes `SHOT-*` (image, whose prompt is the shot's
-  `### 冻结关键帧提示词` body rather than `### 可复制提示词`). A new image/video job pointing to either canonical filename must
+  `### 冻结关键帧提示词` body rather than `### 可复制提示词`). A new image/video job using one of these canonical sources must
   provide the matching selector; an arbitrary Markdown file cannot impersonate a
   creator source. `prepare` selects that section and requires `prompt` to exactly
   equal its copyable prompt after Markdown quote markers are removed.
 - `reference_bindings`: zero to sixteen ordered semantic bindings. Every entry has
-  exactly `slot_id`, contiguous `order`, project-relative `path`, Chinese `label`,
+  `slot_id`, contiguous `order`, project-relative `path`, Chinese `label`,
   non-empty `role`, and non-empty `may_control` / `must_not_control` lists. When
   `source_entry` is present, these fields must exactly match that entry's
   `参考` (IMG) or `输入参考图` (SHOT/MOTION) declaration (except `role`, which is
@@ -54,9 +59,9 @@
   the creator document, not this schema, is the authority on. This schema keeps
   `role` free-form because an external adapter names its own inputs, but the
   bundled video adapters read it as the provider's own role and accept only
-  their published vocabulary: `first_frame`, `last_frame`, `reference_image`,
-  `reference_video`, `reference_audio` for MiniMax, and the three `reference_*`
-  values for Seedance. A video job carrying references without bindings fails
+  their implemented vocabulary: `first_frame`, `last_frame`, `reference_image`,
+  `reference_video`, and `reference_audio` for both MiniMax and Seedance.
+  Supported combinations still depend on the configured model. A video job carrying references without bindings fails
   closed there rather than having a role guessed for it.
   A `MOTION-*` entry's `参考音频` line binds after the pictures: its slots follow
   the `输入参考图` bindings in audio `顺序`, continuing the job's `order`, each with
@@ -64,6 +69,17 @@
   slots may use that role. Leaving a declared voice or its character out, or swapping
   characters, fails `prepare`. Adapters must preserve this character binding; bundled
   compilers derive the voice label from `character`, not the free-form asset `label`.
+  For a job rendering a SHOT's own start frame, `prepare` may omit the creator-supplied
+  `PLAN-...` slots because those external pictures are not this job's inputs;
+  the declared real `REF-...` files must still match, and their remaining order must be
+  contiguous from 1. If skipping PLAN leaves gaps, the storyboard owner first revises
+  the source declaration; renumbering the job alone fails source matching.
+  Binding paths must also be unique. Two creative slots may describe different uses of
+  one picture, but this interface cannot submit both with the same path. Have the owning
+  skill and creator decide whether to revise the reference duties or wait for interface
+  support; do not silently merge or omit slots in the job.
+  A job that needs to send the PLAN
+  pictures instead must first bind actual project files as REF slots.
 - `references`: zero to sixteen current project files actually sent to production.
   It may be omitted when `reference_bindings` is present, in which case the paths
   are derived in binding order. If both are present, they must match exactly.
@@ -106,10 +122,10 @@ Keep this file outside the project:
 let the adapter read its environment or operating-system credential store.
 
 A profile may add `"reference_roles": [...]`, the roles its configured model accepts. When present,
-`run` refuses any binding whose role is not listed. A `reference_audio` binding always needs it:
-a model without an audio input can drop the voice without an error. Either way `run` stops before
-the confirmation is spent or the adapter starts. List `reference_audio` only for a model you know
-accepts reference audio.
+`run` refuses any binding whose role is not listed. A `reference_audio` binding always requires
+that declaration, so an unsupported model cannot silently drop a voice. A role rejection happens
+before confirmation is consumed or the adapter starts. List `reference_audio` only for a model
+known to accept reference audio.
 
 ## Capability sources
 
@@ -123,21 +139,22 @@ The adapter receives one UTF-8 JSON document as raw stdin bytes. Read the
 binary stream (for example `json.load(sys.stdin.buffer)`) rather than relying
 on the machine locale. The document contains the confirmed job plus:
 
-- `run_id`: unique attempt ID;
-- `project_root`: local absolute path to a private, run-scoped snapshot containing
+- `run_id`: the original attempt's unique ID, also reused when collecting that attempt;
+- `project_root`: on a run call, the local absolute path to a private, run-scoped snapshot containing
   the exact confirmed `source` and `references`. It is not the live creator
   project and is deleted after the attempt.
 - `output_root`: empty private, run-scoped staging directory owned by the
   production tool. Every adapter output source must be a direct regular-file
   child of this directory. The whole directory is deleted after success or
   failure.
-- `handle_path`: absolute path where the adapter records the provider's task id
+- `handle_path`: on a run call, the absolute path where the adapter records the provider's task id
   **as soon as it has one, before it starts polling** — write
   `{"provider_job_id": "<id>"}`, atomically. Unlike `output_root` this path
   survives the attempt.
 - `collect_provider_job_id`: present only on a collect call. When it is set the
   adapter must **not submit anything**; it polls and downloads that existing
-  task and returns its outputs as usual.
+  task and returns its outputs as usual. A collect call has no input snapshot or
+  `project_root`; it must not reopen the source or reference files.
 
 ## Recovering a submitted task
 

@@ -9,7 +9,7 @@ Adapter command:
 Required environment: `OPENAI_API_KEY`. `OPENAI_BASE_URL` optionally overrides the default
 `https://api.openai.com/v1` and must remain HTTPS.
 
-The job must have modality `image` and exactly one output. With no references, the adapter sends JSON to
+The job must use modality `image` and have exactly one output. With no references, the adapter sends JSON to
 `POST /images/generations`. With one to sixteen references, it sends an `image[]` multipart edit to
 `POST /images/edits`. The model is always `gpt-image-2`, `n` is always one, and the single returned `b64_json` image is
 written to a private temporary file.

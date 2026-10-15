@@ -36,23 +36,29 @@ lengthen a short job. Fixed-duration delivery needs an explicit accepted duratio
 output needs its actual media length and speech checked before timing is accepted. The API response's
 integer `duration` rounds down the frame-based duration, so it is not a precise media measurement.
 
-`compile_seedance_payload` accepts explicit `reference_image`, `reference_video`, and
-`reference_audio` roles with matching HTTPS, `asset://` or base64 data URI values. It emits the matching multimodal
+`compile_seedance_payload` accepts explicit `first_frame`, `last_frame`, `reference_image`,
+`reference_video`, and `reference_audio` roles with matching HTTPS, `asset://` or base64 data URI values.
+Each frame role may appear once; supported role combinations depend on the configured model.
+It emits the matching multimodal
 content type and uses `@图片N`、`@视频N`、`@音频N` in its appended reference contract. The bundled
 runtime sends a project-relative reference inline as a `data:<mime>;base64,<...>` URI, which the
 official contract lists alongside a public URL and `asset://`, so binding an image in the creator
 documents is enough to run the job. Each file's bytes must match the media type its extension claims.
-Volcengine publishes no per-file size numbers, so this adapter applies the same conservative guard as
-the MiniMax path — 30MB per image, 50MB per video, 15MB per audio clip, 64MB per request after base64
-expansion — and fails closed above them rather than sending a body the provider may reject. Each
+This adapter applies the same local guards as the MiniMax path: 30MB per image, 50MB per video,
+15MB per audio clip, and 64MB for combined base64 reference strings. These guards do not establish
+the configured model's native limits; request metadata adds further bytes. An over-limit input
+fails before submission. Each
 reference takes its provider role from the confirmed job's `reference_bindings[].role`; a job with
 references but no bindings fails closed rather than guessing.
 
 Prompt wording for Seedance 2.0 is version-specific: normal reference uses “参考 @视频1”, while
-continuation says “向后延长 @视频1” and binds the actual tail as `@图片1`. See the video-prompt
-skill's `references/seedance-2.0.md`.
+continuation says “向后延长 @视频1” and binds the actual tail as `@图片1`. Use
+`$short-drama-video-prompts` for the version's prompt dialect.
+These are compiler capabilities; the current creator-first source selector cannot declare the
+continuation video, so that route remains unsubmitted in the bundled workflow. See the
+[source-interface boundary](../adapter-contract.md).
 
-Seedance 2.5 has a separate `references/seedance-2.5.md` dialect and may carry
+Seedance 2.5 has its own prompt dialect and may carry
 `omni_reference_task_type: reference|edit|extend|auto`. The compiler enforces the documented hard
 parameter combinations for `edit` (`adaptive`, `-1`, reference video) and `extend` (`adaptive`,
 reference video). It does not infer the task type from prompt keywords, because the API checks that

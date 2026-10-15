@@ -21,11 +21,13 @@ endpoint, exactly as for the video providers. The voice is a creative decision r
 ## Voice selection
 
 Read the provider's voice listing and confirm availability for the chosen model and account.
-The adapter validates the ID format, not catalogue membership. Record the selected ID in the
-character's 声音方向 and pass it through the confirmed job.
+The adapter validates the ID format, not catalogue membership. Have `$short-drama-assets` record
+the selected ID in the character's 声音方向, then pass it through the confirmed job.
 
 This workflow selects preset voices. The adapter does not enrol or clone a voice;
-any supplied recording retains its documented authorization and usage scope.
+any supplied recording retains its documented authorization and usage scope. This adapter does
+not send that recording as a voice reference. Keep performance instructions outside the spoken
+prompt and express them through the supported parameters.
 
 ## Request shape
 
@@ -35,7 +37,7 @@ The request is non-streaming with `output_format: hex`, `POST /t2a_v2`, and carr
 `data.audio` as hexadecimal bytes, and writes it to a private temporary file.
 
 `emotion` accepts the provider's seven values: `happy`, `sad`, `angry`, `fearful`, `disgusted`,
-`surprised`, `neutral`. Anything outside that set is refused rather than passed through — a rejected
-emotion is a typo caught before it is paid for.
+`surprised`, `neutral`. Anything outside that set is refused before submission; it may be an
+unsupported direction rather than a typo and needs an explicit mapping to an available value.
 
 Protocol reference: [MiniMax Text to Speech](https://platform.minimax.io/docs/api-reference/speech-t2a-http).
