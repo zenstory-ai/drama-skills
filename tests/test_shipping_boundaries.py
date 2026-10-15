@@ -44,7 +44,7 @@ ALLOWED_PROVIDER_URLS = {
     # question has somewhere to be answered. It is documentation, not an endpoint
     # this suite calls.
     "skills/short-drama-edit/assets/remotion/README.md": {
-        "https://www.remotion.dev/",
+        "https://github.com/remotion-dev/remotion/blob/main/LICENSE.md",
     },
     "skills/short-drama-video-prompts/references/minimax-h3.md": {
         "https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt",

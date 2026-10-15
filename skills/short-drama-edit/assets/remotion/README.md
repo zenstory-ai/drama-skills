@@ -1,15 +1,13 @@
 # Remotion 叠层
 
 `$short-drama-edit` 用它画两样东西：剪辑单里的**画面文字**（只有这一条路线），以及**可选的**
-字幕排版（默认字幕路线是 ffmpeg + libass，零依赖）。两者在同一遍里渲进一段透明叠层。
-它要装 Node 依赖，而且慢得多、吃内存——先看下面的「代价」。
+字幕排版（默认字幕路线是 ffmpeg + libass，无需 Node 依赖）。两者在同一遍里渲进一段透明叠层。
+使用前需安装 Node 依赖；逐帧渲染的时间与内存开销见「代价」。
 
 ## 为什么走这条路
 
-ASS 的字号是相对 `PlayRes` 的单位，渲染时再缩放一次，这层间接每次都要重推一遍，推错了
-在数字上看不出来（见[声音、字幕与音乐](../../references/sound-and-subtitles.md)）。这里字号、
-描边、行距、安全区、折行都是 CSS，写的是画面像素，改完在 `npx remotion studio` 当场能看。
-面板、发光、逐条入场和逐秒走动的倒计时是版面，不是字幕样式，ASS 画不了。
+这里用 CSS 调整字号、描边、行距、安全区和折行，可在 `npx remotion studio` 中预览。
+系统面板、逐条入场和倒计时分别由组件维护；两条字幕路线的尺寸口径见[声音、字幕与音乐](../../references/sound-and-subtitles.md)。
 
 ## 装一次
 
@@ -32,10 +30,8 @@ cd ~/.cache/short-drama-edit/remotion && npm install
 python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> --subtitles remotion
 ```
 
-它渲染出一段**透明**的叠层（VP8 + alpha），再由 ffmpeg 叠到未经改动的画面上。画面本身
-不经过浏览器重绘，所以不多一次画质损失；也不在浏览器里解码画面，帧时间不规整的拼接素材在那里
-会解出串进别的镜头画面的坏帧。字幕走 ffmpeg 路线时，这一遍只画画面文字，
-字幕在合成后烧在它上面。
+它渲染出一段**透明**叠层（VP8 + alpha），再由 ffmpeg 合成到画面上；浏览器只绘制叠层，不解码或重绘视频。
+字幕走 ffmpeg 路线时，Remotion 只画画面文字，字幕在合成后烧在上面。
 
 ## 画面文字的样式
 
@@ -50,8 +46,7 @@ python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-r
 字体随叠层打包，不依赖本机。字体按字符区段拆成许多小文件，浏览器只在排到某段文字时才去取，
 那时这一帧可能已经截走了。所以叠层挂载时先按整部片子要画的字逐个字重调用
 `document.fonts.load`，全部就绪、组件树提交之后才放出第一帧；十秒内没加载完、某个字重没有声明、
-或加载后仍未就绪，渲染直接报错。这个等待按挂载注册并设了上限，不再是模块加载时那次
-`document.fonts.ready`——在带视频的渲染页里，那次等待曾挂住整个渲染直到超时。
+或加载后仍未就绪，渲染直接报错。等待按挂载注册并设上限。
 
 画每段字之前再测一次宽：把字体栈分别接在 `serif` 与 `monospace` 两个兜底之前，与只有兜底时的
 宽度相比，两边都一样才算字体没到位，这时同样报错，不悄悄换字体出片。
@@ -60,11 +55,10 @@ python3 <本技能目录>/scripts/edit_tool.py render <剧集/EP001> --project-r
 
 叠层**逐帧**渲，长度等于整部成片：一分钟竖屏片一千多帧 1080×1920，每帧一次无头浏览器
 截图，没字的帧照渲。透明还要求 PNG 抓帧加 VP8 编码，Remotion 的性能文档把这两样都列为
-慢环节。默认字幕路线是一次滤镜的事，这条是分钟级。
+慢环节；实际耗时取决于成片时长、画幅和机器性能。
 
-内存才是会出事的地方。Remotion 默认按 CPU 核数开浏览器实例，每个各持一整帧——10 核 8 GB
-的机器上内存打满，整机停止响应，本套件就这么卡死过一次。所以 `edit_tool.py` 固定传
-`--concurrency`，默认 2。要提高先量本机，别凭核数拍：
+每个浏览器实例都占用内存，按 CPU 核数提高并发可能耗尽内存。`edit_tool.py` 显式传入
+`--concurrency`，默认 2；提高前先在本机测量：
 
 ```bash
 cd ~/.cache/short-drama-edit/remotion && npx remotion benchmark
@@ -72,9 +66,8 @@ cd ~/.cache/short-drama-edit/remotion && npx remotion benchmark
 
 ## 许可证
 
-Remotion 个人与小团队免费，超出规模需商业授权，条款以 [remotion.dev](https://www.remotion.dev/)
-为准。本套件是 MIT，不包含也不代理这项授权，也不会替你安装它——缺依赖时只报错并给出命令。
-剪辑单里没有画面文字、字幕走默认路线时，不涉及这件事。
+使用 Remotion 前，按其[官方许可证](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)
+核对适用授权；本套件的 MIT 许可证不覆盖 Remotion。剪辑单没有画面文字且字幕走默认路线时，无需安装 Remotion。
 
 思源黑体（Noto Sans SC）与 JetBrains Mono 都是 SIL Open Font License 1.1：可以随成片使用、
 嵌入和再分发，不能单独出售字体文件。许可证文本在各自的 `node_modules/@fontsource/*/LICENSE`。

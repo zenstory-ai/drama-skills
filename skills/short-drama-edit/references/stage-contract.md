@@ -13,12 +13,12 @@
 
 | ID | Class | Knowledge |
 |---|---|---|
-| EDT-01 | structural_invariant | Every `CUT-...` binds one existing `MOTION-...` and one currently readable media file; a cut with no material source cannot exist. |
-| EDT-02 | structural_invariant | 入点, 出点 and 时长 are self-consistent (`出点 - 入点 == 时长`), non-negative, and the 出点 does not exceed the source file's measured duration. |
+| EDT-01 | structural_invariant | Every `CUT-...` binds one existing source item and one currently readable media file: `MOTION-...` for video, or `SHOT-...` / `IMG-...` for a still. A cut with no material source cannot exist. |
+| EDT-02 | structural_invariant | 入点, 出点 and 时长 are self-consistent (`出点 - 入点 == 时长`) and non-negative. A video's 出点 does not exceed its measured source duration; a still starts at 0 and has 出点 equal to its declared 时长 of at least 0.50 seconds. |
 | EDT-03 | structural_invariant | Editing selects and orders existing frames. It never rewrites dialogue, shot purpose, start/end state, or any upstream declared duration; a needed semantic change is reported to the owning document instead. |
-| EDT-04 | reviewed_invariant | Dialogue retained in the film remains audibly complete. Picture may cut during a line if the sound remains continuous and the narrative is clear. Separate picture and audio editing requires an external tool; the built-in renderer trims them together. |
-| EDT-05 | structural_invariant | When subtitles are requested, every retained spoken line has a cue derived verbatim from the screenplay; punctuation may follow subtitle convention. Transcription locates speech but does not replace the source text. |
-| EDT-06 | structural_invariant | Two cuts drawn from the same source file do not overlap in source time. Deliberate repetition is declared as repetition and states why the second appearance still earns its place. |
+| EDT-04 | reviewed_invariant | Dialogue retained in the film remains audibly complete. Picture may cut during a line if the sound remains continuous and the narrative is clear. The built-in renderer trims a video's original audio with its picture, while independent 配音 files may cross cuts; extracting or replacing the video's original audio requires an external tool. |
+| EDT-05 | structural_invariant | When subtitles are requested, every retained spoken line has a cue copied verbatim, including punctuation, from the screenplay into the cut list. Rendering may transform punctuation for display. Transcription locates speech but does not replace the source text. |
+| EDT-06 | structural_invariant | Two cuts drawn from the same video do not overlap in source time. Deliberate video repetition is declared and states why the second appearance still earns its place. A still image may be reused across cuts. |
 | EDT-07 | reviewed_invariant | Each cut's in-point and out-point land inside that material's usable band, and 取舍 names what is visible at each boundary rather than citing an abstract need for pace. |
 | EDT-08 | craft_default | Check adjacent cuts for unintended visual jumps and duplicated information. Similar framing, deliberate repetition and jump cuts are valid when they serve the accepted narrative. |
 | EDT-09 | craft_default | Do not mechanically redistribute trimmed time. Extend another beat only when its performance or readability benefits, and preserve explicit delivery-duration requirements. |
