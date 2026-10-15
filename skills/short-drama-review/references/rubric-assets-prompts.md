@@ -2,7 +2,7 @@
 
 ## Occurrence and decision
 
-- Does every extracted occurrence point to a source block?
+- Can every production-relevant appearance be traced to a scene ID and a necessary action/dialogue quotation in `剧本.md`?
 - Is it production-relevant rather than every noun in the screenplay?
 - Is the decision explicit: reuse, new identity, new variant, or unresolved?
 - Were pronouns, aliases, groups, memories, portraits, and screen content handled
@@ -12,8 +12,8 @@
 
 ### Character / Look
 
-Identity: stable face/body/hair anchors, distinguishing marks, voice/behavioral
-identity. Look: wardrobe, makeup, hair arrangement, injury, dirt/wetness, disguise,
+Identity: stable face/body/hair anchors, distinguishing marks, and any explicitly
+recorded persistent voice identity. Look: wardrobe, makeup, hair arrangement, injury, dirt/wetness, disguise,
 age/weathering state, validity range.
 
 Fail when a costume change creates a new person or incompatible Looks mix in one
@@ -44,10 +44,11 @@ Fail when:
   (`AST-10`) — this one is structural and blocks;
 - two characters designed together are bound to confusable references and no
   distinguishing trait names the nearest neighbour (`AST-11`);
-- a selection criterion is an emotion word, carries no counter-example, or the
-  list has grown past a handful (`AST-12`);
 - reference audio bytes, a provider parameter, a model name, a task field or a
   URL appear in `视觉设定.md` or the delivery package.
+
+Selection criteria should be audible, bounded by counter-examples, and limited to what helps choose or judge a
+reference (`AST-12`, `craft_default`). Report a weak criterion as a craft note; list length alone is not a failure.
 
 ### Location / View
 
@@ -106,7 +107,7 @@ apply type-specific criteria:
 ## Prompt quality failures
 
 - quality/style boilerplate appears before or instead of identity/geography/scale;
-- prompt copies the whole 设定集 rather than the needed variant;
+- prompt copies the whole visual specification instead of the needed identity and current variant;
 - character description mixes immutable anchors with accidental pose;
 - location prose is rich but cannot orient entrances/zones;
 - one character or prop is assigned to mutually exclusive positions, hands, or

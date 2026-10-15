@@ -35,7 +35,7 @@
   evidence carrier, deadline, or rule, does resistance, action, and consequence dramatize
   it, rather than merely naming it in dialogue?
 - Could a viewer identify those stakes from the screenplay alone, without access to
-  the upstream brief or episode card?
+  the upstream brief or episode planning?
 - Do explicit brief facts, must/forbid constraints, genre contract, and required exit state
   outrank craft defaults, or did the screenplay invent precision, records, resources,
   procedures, relationships, or mechanisms merely to display a rule?
@@ -58,9 +58,9 @@
 A capacity estimate (`STY-16`) is informational, never a blocking finding. If a
 planned episode's shot/duration magnitude is far from the project's own accepted
 ratios, note it as an advisory observation with the sampled basis, and leave the
-resolution to the creator. Do not derive a word, line, or shot quota from it. The only
-numbers a review checks are the ones in an accepted rhythm profile
-([below](#rhythm-profile-rev-12)), and never another project's numbers.
+resolution to the creator. Do not derive a word, line, or shot quota from it. Rhythm
+comparisons use only an accepted profile ([below](#rhythm-profile-rev-12)); explicit
+numbers already required by the brief, such as a literal deadline, still need their own consistency checks.
 
 When the premise grants foreknowledge or externally authorized ability (`STY-17`), keep
 two layers apart and cite each from its own place:
@@ -83,11 +83,13 @@ What is reportable:
 - Strip the device out—does the episode still contain a choice? If not, cite what
   resistance was removed and never replaced.
 - What did the opposition learn once the device was in play?
-- For foreknowledge: does the information degrade as the timeline diverges, or does the
-  author keep inventing reasons to weaken the protagonist? Is the audience's permission
-  level held constant across episodes?
-- For authorized ability: is the cost visible and landed on something the protagonist
-  cares about? Does the device offer options, or decide for them?
+- For foreknowledge: does the information change according to the accepted timeline rules,
+  or does the author invent new limits to weaken the protagonist? Can changes in audience
+  knowledge be traced to information released in the episodes?
+- For authorized ability: when the contract establishes a cost, is it visible and consequential
+  to the protagonist? When the genre places pressure on the opponent, does that opposition
+  remain active without inventing a new cost to dilute the reward? Does the device offer options,
+  or decide for the protagonist?
 - If the device uses an on-screen readable carrier, is the `exact-readable` obligation
   stated instead of coexisting with a global no-text policy?
 
@@ -133,8 +135,8 @@ Active only when the project adapts a source. Read the source span each mapping 
   Pressure made louder or spoken aloud is fine; a supportive figure turned oppressor,
   or a relationship reversed, is a finding unless the creator accepted the change.
   Cite the source fact and the conflicting screenplay line (`REV-03`).
-- Does the main line still run the source's way, and does any invented detail
-  contradict a source fact?
+- Are the main line and invented details consistent with source facts, except for changes
+  the creator has explicitly accepted?
 - Is every character, scene, or opponent the source lacks registered as its own `add`
   mapping, with the function it serves, why existing source material cannot carry it,
   the source facts checked against it, and a line in the brief for the creator (`STY-30`)?
@@ -236,7 +238,7 @@ nothing else:
 | `opposed_reversals_per_episode_min` | Reversals driven or suffered by a human opponent with an agenda; changes completed by a system, a number, or the environment alone do not count. |
 | `end_on_peak` | Whether the last beat sits on or just before the peak, with no afterglow, summary, or quiet coda after it. |
 | `reprise_previous_last_beat` | Whether the opening replays the previous episode's last beat. Not applicable to the first episode. |
-| `vo_share_max` | `[VO]` spoken characters as a share of all spoken characters; `$short-drama-write`'s duration estimate reports it when run with the project file. |
+| `vo_share_max` | `[VO]` characters as a share of all dialogue characters under the write estimate's convention: whitespace and parenthetical directions removed, punctuation retained; `[OS]` belongs only in the denominator. `$short-drama-write` reports the share with the project file when the accepted ceiling is valid and dialogue is present. |
 | `first_major_payoff_by_episode` | Series review only: the episode in which the first major payoff lands. |
 
 Seconds come from the project's declared pacing, or from a real-time read-through
@@ -248,8 +250,8 @@ are measured in the [visual rubric](rubric-visual-motion.md#rhythm-profile-shots
 
 ## Local passes (`REV-13`)
 
-After the whole-episode read, run three passes that each read one part only. A whole
-read lets a strong middle excuse a flat opening; a part read cannot.
+After the whole-episode read, run three passes that each read one part only, so each
+segment is assessed on what it delivers at that point.
 
 1. **Opening hook**: read only the first segment, up to `first_hook_seconds` or, with
    no accepted profile, the first scene. Would a viewer who saw only this stay? Name
@@ -259,10 +261,12 @@ read lets a strong middle excuse a flat opening; a part read cannot.
    first (`SCR-22`)? A still image that poses its own question passes. For a first
    episode, also check that the brief compared the entry candidates on that same image
    (`STY-25`).
-2. **Ending suspense**: read only the last segment, the final scene's closing beats.
-   What question is left open? Does it grow out of this episode's result? Is it a line
-   hook (an unfinished question, an identity hint) or an image hook (a door half open,
-   an envelope half torn)? Does it stop before the answer?
+2. **Ending suspense**: read only the final scene's closing beats. Do they fulfill the
+   episode's accepted ending function? When suspense is intended, what question remains
+   open, and does it grow out of this episode's result? A line hook (an unfinished question,
+   an identity hint) or an image hook (a door half open, an envelope half torn) may stop
+   before the answer. A resolved, quiet, ironic, or intentionally open ending is judged
+   by its own contract; an accepted `end_on_peak` profile takes precedence.
 3. **Mid-episode reversal density**: read only the middle. List each reversal with its
    location and the person driving or suffering it; flag long stretches with no
    touchpoint and reversals bunched at the end.
@@ -273,16 +277,16 @@ the numeric comparisons need one.
 ## Replaceable realization (`SCR-10`)
 
 Only for beats the creator marked. **An unmarked beat leaves this section
-inactive**: do not raise a finding for the absence of a mark, do not guess which
-beats need one, and never rate a depiction against a standard this suite does not
-carry — it carries none, and predicts no outcome.
+inactive**: do not raise a finding for the absence of a mark or choose marks for
+the creator. The suite carries no platform approval standard and predicts no approval outcome.
 
 On a marked beat:
 
 - Is the dramatic function written as *who is proven or changed*, rather than an
   emotion word? A function stated as "高潮" cannot be used to judge equivalence.
 - Does the fallback deliver that same function — same person affected, cost still
-  paid, `payoff_refs` and the next episode's entry state still satisfied?
+  paid, downstream payoffs and the next episode's entry state still satisfied?
+  Existing structured material may locate those payoffs through `payoff_refs`; no new record is required.
 - Does the fallback need a setup the script has not established? Then it is a
   rewrite, not a fallback.
 - Is "delete the scene" being offered as the fallback? Deletion removes the
@@ -290,9 +294,9 @@ On a marked beat:
   which existing beat now carries it and what that beat must absorb.
 - Is the fallback concrete enough to become scene action, or is it "酌情处理"?
 
-Report pre-emptive sanding as a finding in its own right when the current
-depiction was already weakened to avoid a risk nobody stated: the loss is certain,
-the benefit is not, and the mark exists precisely so the strong version can stay.
+When a depiction was weakened to avoid a risk nobody stated, cite the lost dramatic
+function and the absence of a creator requirement. A marked fallback preserves the
+current choice until a concrete need for replacement arises.
 
 ## Common findings
 

@@ -13,7 +13,7 @@
 
 ## Coverage and meaning
 
-- Does every production-relevant block have a disposition?
+- Can every production-relevant action, line, sound, or on-screen text in `剧本.md` be traced to a shot or an explicit omission reason?
 - Are omissions/repeats explained?
 - Does each shot preserve the source action, dialogue, information, and reaction?
 - Has downstream work invented or deleted a story fact?
@@ -23,7 +23,7 @@
 - For a high-value scene with an accepted coverage audition: did the approaches
   genuinely differ — in knowledge timing, audience alignment, performance space,
   strongest image, landing, losses, or production fit?
-- Does the formal plan bind the approach the creator selected, rather than the first draft?
+- Do the final shots in `分镜.md` implement the approach the creator selected?
 - When a scene visual plan was used: do its start/end audience positions, spatial
   pressure, camera rhythm, reaction landing, and sound movement carry **one** dramatic turn?
 - Does that plan stay clear of owning shot boundaries? (Ordinary scenes need no plan
@@ -50,7 +50,8 @@
 Under the `REV-12` conditions in the [story rubric](rubric-story-script.md#rhythm-profile-rev-12),
 measure two storyboard fields: the average shot length per scene (scene duration divided
 by its shot count) against `target_avg_shot_seconds`, and the share of close-range shots
-across the episode, as the profile field defines them, against `close_shot_share_min`. The average is a
+across the episode against `close_shot_share_min`. Close-range shots include 近景、特写、大特写 and 细节镜头;
+divide their count by the episode's total shot count. The average is a
 scene-level target; one long or short shot is not a finding. Also report durations folded
 from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
 
@@ -78,7 +79,7 @@ from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
 ## Motion
 
 - Does it start from the accepted frame/boundary?
-- Are subject actions ordered and small enough to preserve intended performance?
+- Are subject actions ordered and feasible within the accepted duration while preserving the intended performance?
 - Does performance change express the story move rather than stack synonyms?
 - In multi-character motion: do the actors who actually change have distinct,
   readable triggers, choices, leaks, or landings — as this shot needs, not one
@@ -90,8 +91,7 @@ from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
 - Is camera behavior coherent and motivated?
 - Are environment motion, dialogue, SFX, and audio included only when relevant?
 - Does the described end match the storyboard's written end state without rewriting the next shot?
-- When a reference frame carries appearance/composition, does motion prose avoid
-  dumping the full visual 设定集?
+- When a reference frame carries appearance/composition, does motion prose retain only the visual facts this shot needs?
 - Does every claim about text-bearing reference pixels cite a creator/reference-owner
   description or an authorized input-reference observation? Without that evidence,
   is admission still `unverified` instead of pretending a negative prompt solved it?
@@ -113,10 +113,10 @@ observations scoped to their tested model and execution path.
 
 For a pickup or alternate, ask these separately:
 
-- Does the pickup/alternate name its master by visible `MOTION-...` heading?
+- Does the pickup/alternate identify its master? Keep candidate differences in ordinary notes and one formal `MOTION-...` with one copyable body per `SHOT-...`; a separate pickup first needs its own storyboard shot.
 - Is every source obligation assigned to the master, this version, another named version or a requested storyboard revision?
 - Are the changed items and the items that must remain unchanged explicit?
-- Is replacement only requested here? The review Markdown decides whether the master remains primary or the alternate replaces it.
+- Is replacement only requested here? The review Markdown decides whether to adopt the candidate; the owning skill then updates the formal body.
 
 For music, ask these separately (`VID-14`):
 
@@ -178,9 +178,9 @@ ellipsis, dream, or deliberate disorientation.
 并把该记录作为外部证据引用。没有观察记录时保持结果未知，不从任务成功、结果地址或提示词
 存在推断成片质量。
 
-需要项目校准时，先区分输入参考与生成结果。后一种观察只有在绑定准确的提示词/镜头标题、参考顺序、
-制作形态/配置、观察方法和限制时才可引用；finding 同时给出最小修改项与保持项，并保持结论只在该项目
-和版本条件下有效。
+需要项目校准时，先区分输入参考与生成结果。后一种观察须绑定准确的提示词/镜头标题、参考顺序、
+制作形态/配置、观察方法和限制；先按 `REV-11` 选择处置，需要改动时再写最小修改项与保持项。
+结论只在该项目和版本条件下有效。
 
 短剧生产中需要防范的文字风险或获授权观察包括：
 

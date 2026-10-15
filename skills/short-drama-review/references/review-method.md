@@ -40,7 +40,7 @@ Mechanical examples:
 Semantic examples:
 
 - downstream action changes story meaning;
-- a scene has no opposition or turn;
+- a conflict scene has no opposition or turn, or another kind of scene lacks a necessary state change;
 - a keyframe implies several moments;
 - action load crowds out performance;
 - escalation repeats the same mechanism;
@@ -54,7 +54,7 @@ A useful finding contains:
 2. project-relative file plus heading ID, line number or shot when useful;
 3. bounded quotation or conflicting facts;
 4. audience, continuity or production impact;
-5. required outcome and preserve set, not ghostwritten replacement prose;
+5. required outcome and the facts that must stay unchanged, leaving replacement prose to the owner;
 6. owner, severity and open/closed status.
 
 “The dialogue is weak” is invalid. A finding should identify the exact exchange, say what fails to change, and tell
@@ -73,11 +73,13 @@ Resolve upstream meaning first; do not polish prompt wording when the shot or as
 Group duplicate findings and route them to the owning skill. A revision request states the target outcome, preserve
 set and review scope to rerun.
 
-`REV-14`: a revision request is a patch, not a rewrite. It names the smallest change at a cited location; local
-findings never add up to a request to rewrite the episode. When the review compares a revision with the version before
+`REV-14`: a revision request names the smallest change at a cited location and the facts to preserve. Local
+findings do not authorize a whole-episode rewrite. When the review compares a revision with the version before
 it, any strong hook, payoff line, or comic beat that polishing removed is listed under `## 被删的强钩子` with its prior
-location and a short quote, so the owner can restore it. The reviewer lists it; the owner decides. On a later explicit re-review request, read the current version, confirm the finding is addressed, check the
-preserve set and close or retain each affected finding. A different reviewer is useful but not mechanically required.
+location and a short quote, so the owner can decide whether to restore it.
+
+On a later explicit re-review request, read the current version, confirm the required outcome, check the preserve
+set and close or retain each affected finding. Prefer another uninvolved reviewer when available; otherwise disclose self-review.
 
 ## Anti-template review
 

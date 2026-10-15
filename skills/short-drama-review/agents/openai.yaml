@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧审查"
   short_description: "审查短剧故事、资产、连续性、分镜与提示词并给出证据"
-  default_prompt: "使用 $short-drama-review 对短剧项目产物做独立、带证据的校验与审查。"
+  default_prompt: "使用 $short-drama-review 审查我点名的短剧项目产物，给出位置明确、有证据的结论；独立 reviewer 不可用时如实标注自检。"
