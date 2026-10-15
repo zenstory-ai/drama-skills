@@ -7,12 +7,9 @@
 - [材料授权与只读转化](#材料授权与只读转化)
 - [本阶段规则](#本阶段规则)
 
-本文件是本技能的自包含契约：预检、所有权、材料边界与规则表都在这里，
-不需要读取其他技能的文件。
-
 ## 独立运行与项目集成
 
-本技能可以单独安装并运行；下面几条说明项目工具存在时怎样集成。
+本技能可独立运行；项目工具可用时按下列方式集成。
 
 1. **读取直接输入**：只读取用户明确提供或当前任务实际需要的文件，不批量加载整个项目。
 2. **可选项目集成**：若存在 `short-drama.json` 且 core 项目工具可用，可以运行
@@ -31,8 +28,7 @@
   `adaptation-map.jsonl`（`$short-drama-develop` 拥有）；不建资产身份；不写场景、台词、
   分镜与提示词；不生成媒体；不批准自己的产物。
 
-分析层与决策层分开的理由很直接：**分析可以被推翻，契约不能**。把两者写进同一份文件，
-创作者就再也无法只推翻分析而保留已确认的改编承诺。
+分析记录证据和候选判断，改编契约记录创作者已确认的承诺。分开保存后，推翻分析不会自动撤销已确认的决定。
 
 ## 材料授权与只读转化
 
@@ -56,7 +52,7 @@
 | NVA-05 | structural_invariant | A sampled stage states its own coverage and confines every claim to the chapters it read. |
 | NVA-06 | reviewed_invariant | A function summary states what a passage does to character choice, information, power or relationship, not what happens in it. |
 | NVA-07 | reviewed_invariant | Hard facts — levels, counts, distances, who said what, which chapters a character appears in — trace back to a description line or the source; an unsupported one is written as unstated, never filled in by plausibility. |
-| NVA-08 | reviewed_invariant | Character merges preserve dramatic role, knowledge scope, relational position and causal bridge; only proper names and evidenced nicknames may merge, never descriptors or titles. |
+| NVA-08 | reviewed_invariant | Character merges preserve dramatic role, knowledge scope, relational position and causal bridge. Proper names, nicknames and name-plus-title forms may merge with evidence of shared identity; generic descriptors or titles alone never establish identity. |
 | NVA-09 | reviewed_invariant | Adaptation value distinguishes what the screen can show from what only prose can deliver, and names the new carrier for each function it keeps. |
 | NVA-10 | reviewed_invariant | Episode candidates are cut on local dramatic result and precise handoff, not on chapter count or word budget. |
 | NVA-11 | craft_default | Triage a deterministic spread of chapters across the whole book and stop for the creator before committing to a full pass. |

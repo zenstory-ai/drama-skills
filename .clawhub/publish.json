@@ -19,7 +19,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "9755faec352d7a448d1c9e137097599d74124539331ffeabb5fdcc6ef2f372e2",
+      "packageDigest": "7552e3cc0754506dfc1d234a58d1836bcd54304cc68e277786e6a5bc7e883dae",
       "path": "skills/short-drama",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -29,11 +29,11 @@
       },
       "runtimeDependsOn": [
         "bin:python>=3.9",
-        "skill:worldwonderer/short-drama-assets@1.0.0",
-        "skill:worldwonderer/short-drama-develop@1.0.0",
+        "skill:worldwonderer/short-drama-assets@1.0.1",
+        "skill:worldwonderer/short-drama-develop@1.0.1",
         "skill:worldwonderer/short-drama-edit@1.0.0",
         "skill:worldwonderer/short-drama-image-prompts@1.0.0",
-        "skill:worldwonderer/short-drama-novel-analyze@1.0.0",
+        "skill:worldwonderer/short-drama-novel-analyze@1.0.1",
         "skill:worldwonderer/short-drama-produce@1.0.0",
         "skill:worldwonderer/short-drama-review@1.0.0",
         "skill:worldwonderer/short-drama-storyboard@1.0.0",
@@ -48,7 +48,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "catalogMigration": true,
@@ -63,7 +63,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "0146e32f9c6ce311c3b6b838a1135206794d602b38a7daa7e754980a4b0e34f4",
+      "packageDigest": "9495428068ded0fdee5d65b4c6ba2aa27feab2eb6c0b1b26499a508fae3f491c",
       "path": "skills/short-drama-assets",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -73,7 +73,7 @@
       },
       "runtimeDependsOn": [
         "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.0"
+        "skill:worldwonderer/short-drama@1.0.1"
       ],
       "slug": "short-drama-assets",
       "supportedRuntimes": [],
@@ -83,7 +83,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "catalogMigration": true,
@@ -98,7 +98,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "ae5464fb69022d6a500305d41f600f8da266a4e6219b07dfb7f519964fc964c1",
+      "packageDigest": "594d5af25873c4e1bf619f0528460f182878fc977b976456659ea2ea77d8287c",
       "path": "skills/short-drama-develop",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -108,7 +108,7 @@
       },
       "runtimeDependsOn": [
         "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.0"
+        "skill:worldwonderer/short-drama@1.0.1"
       ],
       "slug": "short-drama-develop",
       "supportedRuntimes": [],
@@ -118,7 +118,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "catalogMigration": true,
@@ -203,7 +203,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "51de44b603b0b051659a3cec3d16617160925068897fe23779eaee15dfc1fbea",
+      "packageDigest": "10dc7c24ce5fe7191e27a712fc9e53c9391b57f54c6a54de880da67e6f713e1f",
       "path": "skills/short-drama-novel-analyze",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -213,7 +213,7 @@
       },
       "runtimeDependsOn": [
         "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.0"
+        "skill:worldwonderer/short-drama@1.0.1"
       ],
       "slug": "short-drama-novel-analyze",
       "supportedRuntimes": [],
@@ -223,7 +223,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "catalogMigration": true,
