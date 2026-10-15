@@ -13,6 +13,14 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-15
+
+全套技能与中英说明完成五步精修，创作流程统一围绕现行五份 Markdown 文档交接，
+并按工具实现补齐索引重跑、参考素材绑定、静帧剪辑与审查的适用范围。
+
+*升级*：使用当前技能提供的 Markdown 模板创建和修订创作文档；
+旧版结构化作者模板、反写与重新派生指令已移除，仅供测试的数据不再随技能分发。
+
 ### Removed
 
 - 删除10份旧Markdown创作模板，将6份仅供测试的JSON/JSONL作者模板移出技能目录；清除锁定旧版本、反写和重新派生等兼容指令，当前创作入口统一为五份Markdown。测试需要的合成对象保存在测试夹具中。
@@ -1823,7 +1831,9 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.6...v0.7.0
