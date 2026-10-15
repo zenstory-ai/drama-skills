@@ -1,4 +1,4 @@
-<!-- Last synced with README.md: 2026-09-18 -->
+<!-- Last synced with README.md: 2026-10-15 -->
 
 <p align="center">
   <img src="https://zenstory.ai/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
@@ -43,14 +43,14 @@ confirmed production → editing → review**.
 It installs as 11 skills into the coding agent you already use (Claude Code, Codex, and any other runtime
 that supports the Agent Skill spec); the writing model is that agent's model.
 
-- **Five Markdown files are the creative facts** — each episode maintains only `剧本.md` (script),
+- **Five Markdown files record the creative decisions** — each episode maintains the documents for its requested stages: `剧本.md` (script),
   `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts) and
-  `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when you cut a film. There is no parallel
-  database; editing a file is editing that layer of decisions.
-- **Characters and looks hold across shots because the facts are in files a script can check** — a look that must
+  `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when you cut a film. These files are
+  authoritative for their respective creative decisions.
+- **File-based facts help preserve continuity across shots** — a look that must
   hold across shots is written as one phrase (a continuity lock) that is pasted into every affected prompt unchanged;
-  every shot, once its keyframe is written, states which entries it relies on; whatever is missing, the check script
-  points out. Real error output is shown below.
+  every keyframe states its visual basis. The checker verifies declared references and continuity locks;
+  real error output is shown below.
 - **Preview, confirm, then produce** — every image, video, voice or music job is shown in a file first, with the
   exact content and parameters of this batch; an external API is called, and money spent, only after you explicitly
   confirm.
@@ -80,10 +80,7 @@ provider-neutral.
 
 ## Install
 
-### ClawHub
-
-ClawHub distribution is governed by the repository's [explicit publish inventory](.clawhub/publish.json), with discovery through [ClawHub](https://clawhub.ai/). A skill-specific link is added here only after its publisher, version, and anonymous accessibility are verified, so this README never presents a nonexistent listing as live.
-
+### Install from GitHub
 
 Prerequisite: you already use Claude Code, Codex or another coding agent that supports the Agent Skill spec; the
 command below needs `npx` (Node.js) in your terminal.
@@ -93,8 +90,8 @@ npx skills add zenstory-ai/drama-skills -y -g
 ```
 
 `-g` installs globally for every directory; drop it to install into the current directory only.
-**To update, run the same command again.** The scripts need **Python 3.9 or newer** (the version macOS ships
-is enough); cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH.
+**To update, run the same command again.** The scripts need **Python 3.9 or newer**; check your installed
+version first. Cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH.
 
 You can also just tell your agent (any platform that can import a GitHub repository or skill):
 
@@ -127,9 +124,11 @@ initialization, routing, and the Dashboard.
 
 </details>
 
+ClawHub packages are managed by the [explicit publish inventory](.clawhub/publish.json) and can be found through [ClawHub](https://clawhub.ai/).
+
 Invocation differs by runtime: Claude Code uses `/short-drama`, Codex uses
 `$short-drama`, and you can always drop the prefix and just describe the task in
-plain language. The two forms are interchangeable in the examples below.
+plain language. The examples below use `$`; Claude Code users should use `/` for their runtime.
 
 > Changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases);
 > what to do when upgrading an existing project is in the FAQ entry [What do I do after upgrading?](#what-do-i-do-after-upgrading).
@@ -179,7 +178,7 @@ Starting from a source novel, with the first pass stopping at a text handoff:
 
 ## See what it produces
 
-The three excerpts below come from files in this repository or from one real run; cuts are marked with "…". The full
+The excerpts below come from files in this repository or from one real run; cuts are marked with "…". The full
 version (the source triage checked against its full pass, the adaptation contract, the measured cut, and the model
 observations) is in [Excerpts of real output](docs/real-outputs_EN.md).
 
@@ -242,8 +241,8 @@ The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) ·
 ### Omissions get pointed out
 
 `creator_markdown_check.py` checks the references between the five documents. Break the sample in two places on purpose,
-removing Zhou Bosen from SHOT-002's visual basis and changing MOTION-003's duration from 2s to 3s, and it reports the cause,
-not "validation failed":
+removing Zhou Bosen from SHOT-002's visual basis and changing MOTION-003's duration from 2s to 3s. The errors identify
+the affected shots and causes:
 
 ```text
 ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视觉依据没有覆盖；本镜确实看不见时在视觉依据末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「画面代称：无」
@@ -254,6 +253,8 @@ The first line: the frozen keyframe names the character "Zhou Bosen" but the vis
 genuinely not visible, declare him off-screen. The second: the storyboard says 2 seconds and the video prompt says 3.
 
 ## The eleven skills
+
+Use the stages your request needs: a text handoff can stop at its target stage, review can cover any existing artifact, and static motion comics move from keyframes and voices to production and editing.
 
 ```mermaid
 flowchart LR
@@ -310,8 +311,8 @@ the link stays valid for the whole session; `--status` reprints it and `--stop` 
 local machine only; project content is not uploaded.
 
 When everything is written, hand it over: `project_tool.py export <project> --out <dir outside the
-project>` copies each episode's existing five Markdown documents and `制作成果/` into one delivery
-directory with a manifest and checksums.
+project>` copies each episode's existing five creator documents, `剪辑单.md`, and `制作成果/` into one delivery
+directory with a manifest and checksums. Add `--no-media` for a text-only handoff; the manifest lists missing creator documents.
 
 ## FAQ
 
@@ -350,7 +351,7 @@ prompt may only copy the accepted duration. Method:
 
 ### A is speaking, but the lips move on B's face
 
-The voice is not wrong; the lips landed on the most prominent front-facing face. When a speaker first appears,
+Check speaker binding first: in a small sample, lip movement sometimes landed on the more prominent front-facing face. When a speaker first appears,
 state outside `<d>` whether they are on- or off-screen and their voice, and put the line right after their action
 sentence; when another face is still front-on during the line, write that person explicitly as mouth closed, not
 speaking, and where the storyboard allows, get them out of frame or turned away first. See
@@ -359,16 +360,16 @@ small sample, still check after generating.
 
 ### The process died after a video job was submitted. Resubmit?
 
-No. A job is billed the moment it is submitted, and the bundled adapters write the provider's job ID to disk as soon
-as they have it. After an interruption run `audit`, which reports the attempt as `orphaned_provider_job`; then
-`collect --job-id <id>` retrieves the result, which costs nothing and does not pass through the confirmation gate.
-Only after `collect` confirms the provider really failed do you go back through confirmation and resubmit. See
+Recover the existing job first. An asynchronous submission may already have incurred a charge; the bundled adapters
+write the provider job ID to disk as soon as they receive it. Have the production skill run `audit`, which reports an
+unfinished attempt with an ID as `orphaned_provider_job`, then use `collect` to retrieve it without submitting a new
+generation. Preview and confirm a retry only after the original job is known to have failed terminally and no result
+remains to collect; a polling or download interruption first needs recovery. See
 [confirmed production](skills/short-drama-produce/SKILL.md) (Chinese).
 
 ### Do I need a GPU or my own model? Who pays for generation?
 
-No GPU. Writing, storyboards and prompts are done by the model of the coding agent you already use; locally only
-deterministic check scripts run. Media generation goes through `$short-drama-produce`'s external adapters, using
+No GPU. Writing, storyboards and prompts are done by the model of the coding agent you already use; local scripts handle indexing, validation, production handoffs, and edit rendering. Media generation goes through `$short-drama-produce`'s external adapters, using
 provider credentials you configure outside the project and billed by the provider; every job is previewed and only
 runs after you explicitly confirm. Cutting a film needs `ffmpeg` / `ffprobe` on this machine.
 
