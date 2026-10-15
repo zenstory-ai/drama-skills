@@ -16,6 +16,8 @@ legacy v0.5 结构化项目 never 原地迁移：升级时新建项目根，逐�
 
 创作台如何展示这五份文档见 [单页创作台](../feature/2026-08-06-single-page-creator-dashboard.md)。
 
+写作阶段的默认提示与 Markdown 模板同样只要求 `剧集/<EP>/剧本.md`。单集契约、因果节拍和跨上下文交接只在上下文维护；退出状态对齐已确认分集规划或直接写作的单集契约，不要求新项目补建 `episode-card.json`。保留的录音表模板用于旧版结构化项目，不作为五文档路径的默认交付。
+
 来源：ddfdbe3、c008bbe、879bddc、7811065（0.6.0）、1a0bfc1 (#123)、a9bf714 (#102)
 
 ## Alternatives considered

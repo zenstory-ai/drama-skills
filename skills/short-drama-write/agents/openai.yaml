@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧写作"
   short_description: "创作因果清楚、人物声音鲜明、动作可表演的中文短剧剧本"
-  default_prompt: "使用 $short-drama-write 创作或修订我的单集卡、因果节拍和中文 Markdown 短剧剧本。"
+  default_prompt: "使用 $short-drama-write 创作或定点修订我的单集中文 Markdown 短剧剧本，写入剧集目录的剧本.md。"

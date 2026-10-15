@@ -1,12 +1,14 @@
 # `voice-record-sheet.jsonl` 填写模板
 
+本模板用于维护旧版结构化项目中已有的录音表。当前五文档创作路径只写 `剧本.md`，不生成本表；
+以下快照与块引用沿用旧项目格式，不作为新项目的交付要求。
+
 每行一条待录台词。这份表是**剧本的投影，不是第二份台词权威**：`line_text` 必须逐字
 等于 `source_ref` 指向的剧本块，需要改词就改剧本再重新投影，不在这里改。示例值不是
 默认答案；不适用的字段删掉，不要添加媒体任务、供应商或接口。
 
-录音的顺序几乎从不是剧情顺序——通常按人物集中录，所以**配音者失去的正是上下文**。
-本表存在的理由就是把上下文补回去：他此刻知道什么、对谁说、上一句是谁说的、这一句要
-达成什么。缺了这些，剩下的只是一串没有处境的句子。
+按人物集中录音时，配音者需要补足剧情上下文：角色此刻知道什么、对谁说、接谁的话，以及这句要
+达成什么。本表将这些信息与逐字台词放在一起。
 
 第一行声明本表引用的上游快照，一个快照只写一次：
 
@@ -46,22 +48,22 @@
 }
 ```
 
-## 字段为什么是这些
+## 字段用途
 
 | 字段 | 不写会怎样 |
 |---|---|
 | `source_ref` | 剧本改一句而表没跟上，录出来的是旧词；绑定了块 ID 才能切出剧本原字节逐字比对 |
-| `speaker` 与 `speaker_display` | 前者是资产身份用于绑定，后者是剧本里逐字写的名字；只留一个就必然有一处对不上 |
+| `speaker` 与 `speaker_display` | 前者绑定资产身份，后者保留剧本里逐字写的名字，避免把身份编号与显示名混用 |
 | `channel` 与 `lip_sync_constrained` | 同期与配音、画内与 VO 的可改余地完全不同，混在一起就只能按最严的来。`channel` 必须与它投影的块一致：`[VO]` / `[OS]` 块只能记为同名声道或 `dubbed`，画内对白块不能记成 VO/OS——校验器判定，诊断码 `VOICE_CHANNEL_DISAGREES_WITH_BLOCK` |
 | `addressed_to` / `preceding_line_id` | 集中录制时配音者不知道在对谁说、接谁的话，语气只能靠猜 |
-| `speaker_knows_now` | 同一句话在"已经知道"和"还不知道"下是两种读法，这是最常见的重录原因 |
-| `tactic` | 情绪词（"愤怒"）不可执行；策略可执行。见对白工艺的策略库 |
-| `pronunciation_notes` | 专名与多音字在录音棚里是最贵的中断；决定要在进棚前做完并留痕 |
+| `speaker_knows_now` | 同一句话在“已经知道”和“还不知道”时可能有不同读法，须服从角色此刻的知情边界 |
+| `tactic` | 写明这句要怎样影响对方，可参考本技能对白方法的策略库 |
+| `pronunciation_notes` | 专名、多音字和数字的确定读法在录音前确认并记录 |
 | `target_seconds` | 有画面时长约束的行要提前知道，不要在混录时才发现塞不下 |
 
 ## 诊断码
 
-`voice_sheet_check.py` 报出的全部代码。它只判逐字投影与结构，不判配音表演。
+以下列出逐字投影与结构的诊断码；`voice_sheet_check.py` 不判断配音表演。
 
 | 代码 | 分级 | 判定者 | 含义 |
 |---|---|---|---|
@@ -77,7 +79,7 @@
 | VOICE_BLOCK_IS_UNPARSEABLE | structural_invariant | validator | 台词块不符合文档写明的行语法 |
 | VOICE_LINE_TEXT_DIVERGED | structural_invariant | validator | `line_text` 与剧本原字节不一致——**以剧本为准** |
 | VOICE_SPEAKER_DIVERGED | structural_invariant | validator | `speaker_display` 与剧本里写的名字不一致 |
-| SOURCE_ENTRY_IS_INCOMPLETE | structural_invariant | validator | `sources` 里的条目缺 `owner` 或 `artifact` |
+| SOURCE_ENTRY_IS_INCOMPLETE | structural_invariant | validator | 引用解析器发现 `sources` 条目缺 `owner` 或 `artifact`；本表校验输出时归为 `VOICE_SOURCE_REF_UNDECLARED` |
 
 ## 边界
 
