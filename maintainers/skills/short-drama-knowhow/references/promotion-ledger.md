@@ -1,7 +1,7 @@
 # 去标识 Promotion Ledger
 
-Promotion ledger 记录“哪项公共规则为什么被晋升、缩窄、暂缓或退休”，让维护者能复核
-匿名评测、定位准确公共 diff 并回滚。它不是私有证据摘要，也不是排行榜。
+Promotion ledger 记录公共规则被晋升、缩窄、暂缓或退休的理由，让维护者能复核匿名评测、
+定位准确的公共 diff 并回滚；记录不包含私有证据，也不按表现排名。
 
 ## 记录边界
 
@@ -57,11 +57,12 @@ rollback:
 
 ## 写入与复核
 
-先冻结 synthetic input、两个匿名 skill 包和输出 hash，再由不了解匿名映射的 reviewer 完成
-逐项比较。揭盲后才写版本映射和 `verdict`。Ledger 行可以进入维护者受控的可版本化记录，
+先冻结合成输入、两个匿名 skill 包和输出 hash，由不了解匿名映射的 reviewer 完成逐项比较，
+并在揭盲前冻结偏好、理由与初步结论。揭盲后核对版本映射、公共候选包及实际 diff，再记录
+最终生命周期决定 `review.verdict`。Ledger 事件可以进入维护者受控的可版本化记录，
 但原始输出是否公开由隐私检查决定；只有 hash 不能替代 reviewer 的证据说明，也不能证明
 上下文确实 fresh。
 
 公共 reference 变更、rubric、synthetic fixture 与 ledger 事件必须指向同一条件式 claim。
-若后续证据要求缩窄，新增 superseding 事件并保留旧决定；不要原地改写历史。执行回滚时，
+若后续证据要求缩窄，新增事件并用 `rollback.supersedes` 指向旧事件，保留旧决定。执行回滚时，
 先撤销准确公共 diff，再让受影响规则和 fixture 指向新事件，最后用新的匿名任务重跑审查。

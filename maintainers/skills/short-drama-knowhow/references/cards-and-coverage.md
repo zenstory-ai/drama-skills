@@ -17,19 +17,18 @@
 `genre_axes` 描述题材、受众承诺和情绪合同；`mechanism_axes` 描述实现机制，不把桥段名当机制。
 `evidence` 记录能复核的位置与观察，不记录可识别原文。`counterevidence` 即使为空也必须解释寻找范围。
 先按项目实际存在的层还原 `version_refs`，只记录读到的版本引用，并把缺层放进 `missing_layers`；
-再判断每层记录的 `source_role`：创作来源、
-派生投影、修改请求、执行任务或结果证据不能互相冒充。`creator_overrides` 单列，避免把创作者的明确取舍
-误读成系统规律。提示词存在、任务成功或提交次数只说明
-流程活动，不能填进 `observation_evidence` 冒充效果证明。
+再判断每层记录的 `source_role`，分清创作来源、派生投影、修改请求、执行任务与结果证据。
+`creator_overrides` 单列，避免把创作者的明确取舍误读成系统规律。提示词存在、任务成功或提交次数
+只说明流程活动，不能填进 `observation_evidence` 冒充效果证明。
 
-`observation_kind` 与证据必须配套，而不是任选标签：纯文本链固定为 `none`；输入参考观察使用
+`observation_kind` 按证据选择：只有项目文本、没有合格媒体观察报告时使用 `none`；输入参考观察使用
 `input_reference`；生成结果观察使用 `generated_result`。后两者必须把 `evidence_mode` 写成
 `creator_reported` 或 `authorized_media_inspection` 并填写对应的 `observation_evidence`；没有这份证据时
-退回 `none`，只能提出文字风险，不能进入生产校准。这里的 `media_observed` 专指**制卡的 maintainer
-agent 自身**是否看过媒体；本 skill 只消费文字链，因此始终为 `false`。创作者或另一个获授权观察者
+退回 `none`，只能提出文字风险，不能据此校准生产。本 skill 只读取文字；`media_observed` 专指
+**制卡的维护者 agent 本人**是否看过媒体，因此始终为 `false`。创作者或另一个获授权观察者
 是否看过媒体，写在 `observer_report.observer_media_observed` 并明确归因，不能借此声称本 agent 看过。
 一张卡不能混合输入参考与生成结果观察；一条提示词同时承担多个职责时也分卡记录，避免把
-identity、style、composition 等责任压成一个含糊的 `prompt_role`。
+身份（identity）、风格（style）、构图（composition）等职责压成一个含糊的 `prompt_role`。
 
 ## Observation card schema
 
@@ -76,11 +75,11 @@ evidence:
 `observation_evidence.direct_observations` 只记录授权观察者在所列区域或时间段实际看见/听见的现象。
 不要把同一句发现复制到两处，也不要用后者保存任务状态、提示词摘要或因果解释。
 
-在上述共通头部后，按实际证据**恰好选择下面一个完整尾段**，不要追加到另一个尾段，也不要保留
-重复 YAML key。允许的取值关系是
+在共通头部后，按实际证据**选择且仅选择一个完整尾段**；同一张卡不合并尾段或重复 YAML key。
+`evidence_mode` 的可选值为
 `evidence_mode: none | creator_reported | authorized_media_inspection`。
 
-### none evidence fragment
+### 纯文本尾段（none）
 
 ```yaml
 media_observed: false
@@ -100,7 +99,7 @@ confidence: tentative | supported | conflicted
 
 纯文本卡不建立一组全空的媒体字段。
 
-### generated_result evidence fragment
+### 生成结果观察尾段（generated_result）
 
 ```yaml
 media_observed: false
@@ -129,7 +128,7 @@ privacy:
 confidence: tentative | supported | conflicted
 ```
 
-### input_reference evidence fragment
+### 输入参考观察尾段（input_reference）
 
 ```yaml
 media_observed: false
@@ -194,7 +193,7 @@ review:
 
 ## 完全合成例子
 
-下例由零构造，只演示抽象层级，不对应任何来源项目：
+以下为全新合成例子，演示观察与解释的抽象层级：
 
 ```yaml
 card_type: observation_card

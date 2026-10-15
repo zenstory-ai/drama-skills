@@ -1,6 +1,6 @@
 interface:
   display_name: "短剧 Know-how 学习"
-  short_description: "从授权文本项目中学习、验证并晋升可公开的短剧创作知识"
-  default_prompt: "使用 $short-drama-knowhow 从维护者提供的只读文本源中提炼、盲测并审查可公开的短剧 know-how。"
+  short_description: "从授权的完整项目文本链提炼、盲测并审查可公开的短剧创作知识"
+  default_prompt: "使用 $short-drama-knowhow 从维护者明确授权的只读文本源中提炼短剧创作知识，完成盲测与独立审查后再晋升公共改动。"
 policy:
   allow_implicit_invocation: false

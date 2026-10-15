@@ -1,7 +1,7 @@
 # 题材、画风、场景与提示词 Know-how 学习
 
-本流程扩展完整项目链阅读，专门积累“在什么题材承诺、制作形态、视觉方向和场景职责下，
-哪种提示词机制可能解决什么问题”。它不做提示词词频、风格代码排行或任务成功率分析。
+沿完整项目文本链研究：在什么题材承诺、制作形态、视觉方向和场景职责下，哪种提示词机制
+可能解决什么问题。词频、风格代码排名与任务成功率不能回答这项判断。
 
 ## 选样矩阵
 
@@ -33,14 +33,19 @@
 - `generated_result` 只有绑定准确 prompt/spec hash、稳定参考 `slot_id/order`、production config、
   观察方法、区域/时间段和限制，才能支持该项目条件内的候选校准。
 
-任务成功、URL、提交次数、重试字段、审核错误或 prompt 存在都不能证明内容质量。没有可信媒体
-观察时写 `media_observed: false`，只能研究文本链与修订意图。
+任务成功、URL、提交次数、重试字段、审核错误或 prompt 存在都不能证明内容质量。本 skill 只读文字，
+`media_observed` 始终为 `false`；创作者或其他获授权观察者提供的文字报告，按卡片契约写入
+`observer_report`，并注明 `evidence_mode` 与有界的 `observation_evidence`。没有合格报告时，
+`observation_kind` 与 `evidence_mode` 均写 `none`，结论限于文本链与修订意图。
 
 ## 形成可迁移候选
 
 把表层词句压缩成：
 
 `观众状态 → 场景问题 → 提示词/导演机制 → 可观察信号 → preserve_set → 失效边界`
+
+提示词表演描述中的 `receive / mask / choice` 指接收信号、掩饰反应或作出选择；`attention handoff` 指注意力
+从一个人物或动作转给另一个的时点。
 
 例如“多人同时表现”可压成注意竞争问题，候选机制是只保留一个主要动作、给其他角色不同的
 receive/mask/choice，并声明 attention handoff；它不应被写成“所有群像都只能一个动作”。
@@ -50,7 +55,6 @@ receive/mask/choice，并声明 attention handoff；它不应被写成“所有�
 
 ## 修订与晋升
 
-项目内校准每次只改变诊断所需变量，说明联动项和 `preserve_set`。跨项目 know-how 则继续走
-去标识、de-copy、合成 fixture、fresh-agent blind eval 与 independent reviewer；无增益、诱发
-模板化或出现反例时 narrow、hold 或 retire。整个过程不新增数据库 crawler、语义匹配器或质量
-评分脚本。
+项目内校准每次只改变诊断所需变量，说明联动项和 `preserve_set`。跨项目知识仍须经过去标识、
+去复刻、合成测试、全新上下文盲测与独立审查；无增益、诱发模板化或出现反例时缩窄、暂缓或退休。
+采样和格式核对使用现有工具，创作判断由 agent 与审查者承担。
