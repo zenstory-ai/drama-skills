@@ -3,25 +3,22 @@
 ## Status
 
 - **Status:** Active
-- **Last refreshed:** 2026-08-06
 - **Primary surface:** `$short-drama dashboard`
 - **Audience:** writers, directors, and independent short-drama creators
 
 ## Product principle
 
-Creators work on one page:
+Creators move between project and episode views inside one local workspace:
 
 ```text
 项目标题与状态
-内容目录 | 当前正文
+阶段导航 | 当前视图
 待办提示与导出提示
 ```
 
-The product has one page and one always-visible reading area. It does not provide tabs,
-pop-up document viewers, an advanced mode,
-engineering mode, raw-file view, lifecycle panel, or technical report entry.
-Runtime records and integrity evidence remain system-owned and have no product
-navigation.
+The project overview leads to episode views for the script, settings, storyboard, prompts,
+film and review. Structured views are read-only; “编辑原文” opens the owning Markdown document
+for editing. Runtime records and integrity evidence stay outside product navigation.
 
 ## Goals
 
@@ -32,7 +29,7 @@ navigation.
 - Explain problems in terms of audience or production impact.
 - Export production materials by purpose.
 
-## Single-page information architecture
+## Core authoring groups
 
 ```text
 短剧创作台
@@ -44,14 +41,13 @@ navigation.
 │       ├── 人物场景
 │       ├── 分镜画面
 │       └── 生成文案
-├── 当前正文（始终可见，打开项目后自动载入）
+├── 当前视图（概况、剧本、设定、分镜、提示词、成片或审查）
 └── 待办提示 / 导出提示
 ```
 
-The interface never uses a filesystem tree as navigation. Markdown, structured
-records, images, and video are rendered as creator-facing documents, cards, or
-media previews in the permanent reading area. Selecting another item replaces that
-area in place; it never opens a modal or another page.
+Episode navigation follows creative stages. Documents appear as formatted text, cards or
+media previews; a shot detail drawer supplies focused inspection. Project files remain
+accessible through a separate content list, and hash routes support back navigation and bookmarks.
 
 ### Creator-facing progress
 
@@ -62,9 +58,9 @@ Infer progress from the five visible documents and media, without a separate lif
 - 提示词就绪
 - 已有媒体
 
-The page shows only a compact plain-language reminder. Production confirmation and export
-requests are handed back to the conversation; the Dashboard must not imitate an action it
-cannot complete.
+The project overview and episode stage bar summarize available documents, media and review work.
+Actions that need writing, production or rendering copy a request for the assistant; creators complete
+them in conversation.
 
 ## Interaction rules
 
@@ -78,7 +74,6 @@ cannot complete.
 
 - The creator reads and edits the current document in place.
 - Requests to revise, continue, review, export, or produce return to the conversation.
-- A future action API may shorten this loop, but it must not create a second source of truth.
 
 ### Problems
 
@@ -94,10 +89,10 @@ states.
 
 ## Visual language
 
-- A calm director's worktable, not an administration dashboard.
-- Graphite background with warm paper-like content surfaces.
-- Amber marks the current action; red is reserved for required fixes; green is reserved
-  for creator-confirmed or export-ready content.
+- Use the shared ZenStory tokens: warm paper with navy ink in light mode, navy surfaces
+  with cream text in dark mode, and cyan for focus and current position.
+- Use the signal color for next actions and required changes; keep success, warning and
+  error colors paired with words and icons.
 - System sans-serif for controls and a readable local serif stack for screenplay content.
 - Use the content rail and paper-like reading area as the defining visual motif.
 - Avoid metric-card walls, decorative gradients, and code-editor styling.
@@ -113,11 +108,11 @@ states.
 
 ## Creator-visible files
 
-The target public handoff is:
+The core authoring handoff is:
 
 ```text
 项目/
-├── 原始资料/
+├── 输入/
 ├── 剧集/
 │   └── EP001/
 │       ├── 剧本.md
@@ -127,11 +122,12 @@ The target public handoff is:
 │       └── 视频提示词.md
 ├── 审查/
 │   └── EP001-审查.md
-└── 导出/
+└── 交付/
 ```
 
-The Dashboard classifies the five Chinese document names into story, cast, storyboard,
-and prompt groups, opens `剧本.md` first, and derives episode progress from visible files.
+The Dashboard classifies the five Chinese document names into story, settings, storyboard
+and prompt groups. The episode overview links to available work; editing and review may add
+`剪辑单.md` and review documents without creating another source for the five core texts.
 
 ## Implementation constraints
 
@@ -144,9 +140,10 @@ and prompt groups, opens `剧本.md` first, and derives episode progress from vi
 - Every server action needs unit and HTTP coverage.
 - Every visual change needs desktop and narrow-layout inspection.
 
-## Delivery sequence
+## Maintaining the workspace
 
-1. Replace the file console with the single creator workspace.
-2. Add creator-safe revise, review, production-preview, and export actions.
-3. Introduce logical content identifiers independent of storage paths.
-4. Keep the five Markdown files as the only creator-facing episode truth.
+Routes and stage views are defined in `skills/short-drama/assets/dashboard/app.js`; read-only
+document parsing lives in that skill's `scripts/creator_views.py` and `scripts/dashboard_server.py`. Keep structured views aligned with
+the owning document parsers and save through the existing version-checked Markdown path.
+See the [stage-view decision](.agents/notes/implemented/feature/2026-09-27-dashboard-v2-stage-views.md)
+for the accepted architecture and tradeoffs.

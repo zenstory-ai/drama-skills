@@ -2,10 +2,9 @@
 
 [中文](real-outputs.md)
 
-This is the full version of the README section "See what it produces". Every excerpt below is taken from a file in this repository or from one real run, and each subsection names its
-origin first. The documents are Chinese and are translated here where marked. Excerpts keep only the fields under
-discussion: cuts inside a line are marked with "…", omitted whole paragraphs with a "…" line of their own, and
-omitted field lines are not marked.
+These excerpts come from repository samples and versioned runs; each section names its source.
+Chinese text is translated where marked. A “…” marks an omission within a line or a whole paragraph;
+fields outside the discussion are not listed.
 
 ## One shot through four documents: the storyboard traces back to the script, the look stays locked
 
@@ -114,7 +113,7 @@ points at an image that really is in the project with a stated purpose.
 
 ## Estimate dialogue before fixing shot length; cut on measured timings
 
-Origin: a run made at v0.6.6, the one that produced the sample film at the top. At the storyboard stage each line of dialogue is
+Origin: a run made at v0.6.6, the one that produced the sample film in the README. At the storyboard stage each line of dialogue is
 timed into the shot length, with the estimate written into the shot's "sound" line; the shot is generated at 7 s to
 leave a settle margin, and the target length in the cut is written separately (translated):
 
@@ -248,10 +247,9 @@ Originals: [`creative-brief.md`](../evaluations/让你管账号/reference-run/�
 
 ## Claims about models in the skills were checked against real generations first
 
-Origin: `evaluations/model-behavior-probes.md`. Every "what the model does" statement in the skills corresponds to
-a generation observation on record: a batch of exploratory observations from September 2026 (MiniMax H3, Seedance
-2.0/2.5, gpt-image-2), the summary kept in the repository and the raw media outside it, with sample size, method and
-what each one can support (4 of the table's 20 rows, translated):
+Origin: `evaluations/model-behavior-probes.md`. The four observations below come from exploratory runs in September 2026
+(MiniMax H3, Seedance 2.0/2.5 and gpt-image-2). The repository summary records sample sizes, methods and scope;
+raw media stays outside the repository. These results do not cover every model capability or execution path (translated):
 
 | Observation | Sample and result | What it supports |
 |---|---|---|

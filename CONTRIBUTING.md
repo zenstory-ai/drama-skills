@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢参与短剧技能套件。本项目遵循“知识与做法优先”：能力尽量写入 `SKILL.md` 工作流
+本项目遵循“知识与做法优先”：能力尽量写入 `SKILL.md` 工作流
 和 `references/` 参考资料，脚本只保留稳定索引、结构校验和清单等确定性工作。
 
 ## 修改原则
@@ -83,9 +83,8 @@ uv venv --python 3.9 /tmp/floor && \
 python3 -m unittest tests.test_workflow_evaluation
 ```
 
-它只判定「没有退步」。判定「流程还顺不顺」要按 [evaluations/README.md](evaluations/README.md)
-的做法人工实跑一次——上一轮最重的一个缺陷（文档写的重建方式与脚本实际行为不一致）
-所有测试都是绿的，只有实跑能看见。
+它复核既有回归夹具；当前流程还需按 [evaluations/README.md](evaluations/README.md) 在固定提交上实跑。
+测试通过不能代替核对文档步骤是否可执行。
 
 实跑要在一个**固定提交**上进行（`git worktree add` 一份副本），并把该提交写进报告：
 实跑期间套件文件发生变化，报出来的摩擦就无法归属到某一版。
