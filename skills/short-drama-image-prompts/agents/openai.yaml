@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧资产图提示词"
-  short_description: "为人物场景道具及局部编辑编写可追溯、可复用的图片提示词"
+  short_description: "为人物、场景、道具和局部编辑编写来源明确、可复用的图片提示词"
   default_prompt: "使用 $short-drama-image-prompts 为已接受资产编写可复制的人物、场景、道具或编辑图片提示词。"
