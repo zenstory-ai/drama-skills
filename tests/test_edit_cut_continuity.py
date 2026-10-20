@@ -212,5 +212,52 @@ class RenderedMatchTests(unittest.TestCase):
         self.assertEqual(measured["疑似坏帧"], [])
 
 
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+class RenderedAudioTests(unittest.TestCase):
+    def test_a_tone_across_a_cut_has_no_dropout(self):
+        """Sound that runs over a cut stays continuous in the film.
+
+        Each segment used to be encoded to AAC on its own and stream-copied
+        together, so every cut lost one encoder frame of audio (about 32 ms
+        at 32 kHz): a line or a song crossing the cut dropped out.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            (episode / "media").mkdir(parents=True)
+            for index in (1, 2):
+                subprocess.run(
+                    ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+                     "-i", "color=c=gray:size=90x160:rate=24:duration=1",
+                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=32000:duration=1",
+                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+                     str(episode / "media" / f"{index}.mp4")],
+                    check=True,
+                )
+            (episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n", encoding="utf-8"
+            )
+            (episode / edit.STORYBOARD_DOCUMENT).write_text(
+                "## SHOT-1\n- 来源：EP001-SC001\n\n## SHOT-2\n- 来源：EP001-SC002\n", encoding="utf-8"
+            )
+            cuts = [edit.Cut(f"CUT-{i}", "段", f"MOTION-{i}", f"media/{i}.mp4", 0, 0.9, 0.9, (), {}, 1)
+                    for i in (1, 2)]
+            delivery = edit.Delivery(None, None, False, None, None, None)
+            report = edit.render(episode, root, cuts, delivery, burn_subtitles=False)
+            samples = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", report["成片"], "-ac", "1", "-ar", "8000",
+                 "-f", "s16le", "-"], capture_output=True, check=True,
+            ).stdout
+        values = [int.from_bytes(samples[i:i + 2], "little", signed=True)
+                  for i in range(0, len(samples) - 1, 2)]
+        window = 40  # 5 ms at 8 kHz
+        # Skip the first and last 0.1 s, where the tone itself starts and stops.
+        levels = [max(abs(v) for v in values[at:at + window])
+                  for at in range(800, len(values) - 800 - window, window)]
+        self.assertGreater(min(levels), max(levels) * 0.5, "切点处不应有掉音")
+
+
 if __name__ == "__main__":
     unittest.main()
