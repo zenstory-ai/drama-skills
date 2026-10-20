@@ -1185,6 +1185,16 @@ def _continuity_locks(document: str, errors: list[str]) -> list[ContinuityLock]:
         if not shots:
             errors.append(f"{lock_id}: 连续性锁缺少镜头范围")
             continue
+        malformed = [
+            item
+            for item in shots
+            if item not in ("全集", IN_FRAME_SCOPE) and not re.fullmatch(r"SHOT-[A-Z0-9-]+", item)
+        ]
+        if malformed:
+            errors.append(
+                f"{lock_id}: 连续性锁的镜头范围只能写入画、全集或 SHOT-... 列表: {'、'.join(malformed)}"
+            )
+            continue
         if "全集" in shots and len(shots) != 1:
             errors.append(f"{lock_id}: 连续性锁的镜头范围不能把全集与具体镜头混写")
             continue

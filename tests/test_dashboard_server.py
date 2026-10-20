@@ -2393,6 +2393,9 @@ class CreatorViewsTests(unittest.TestCase):
         # the shot drawer, where the member prompt is still shown.
         member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-002")
         self.assertEqual((member["view"], member["arg"]), ("board", "SHOT-EP001-002"))
+        without_board = dict(episode, board=None)
+        member = next(row for row in views.search_entries(without_board) if row["w"] == "MOTION-EP001-002")
+        self.assertEqual((member["view"], member.get("id")), ("prompts", "GROUP-EP001-01"))
 
     def test_a_group_with_a_missing_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
@@ -2409,9 +2412,16 @@ class CreatorViewsTests(unittest.TestCase):
         group = "\n## {gid} · 坏分组\n- 成员：{members}\n- 时长：{sec}\n\n### 可复制提示词\n> 镜头1：……\n"
         cases = {
             "gap": group.format(gid="GROUP-EP001-01", members="MOTION-EP001-001、MOTION-EP001-003", sec="5s"),
+            "across scenes": group.format(gid="GROUP-EP001-01", members="MOTION-EP001-013、MOTION-EP001-014", sec="{sec}"),
             "duplicate id": group.format(gid="GROUP-EP001-01", members="MOTION-EP001-001、MOTION-EP001-002", sec="7s")
             + group.format(gid="GROUP-EP001-01", members="MOTION-EP001-003、MOTION-EP001-004", sec="5s"),
         }
+        motions = {
+            prompt["id"]: prompt["sec"] for prompt in self.episode()["videoPrompts"]
+        }
+        cases["across scenes"] = cases["across scenes"].replace(
+            "{sec}", f"{motions['MOTION-EP001-013'] + motions['MOTION-EP001-014']:g}s"
+        )
         for label, extra in cases.items():
             with self.subTest(case=label):
                 episode = self.episode(**{"视频提示词.md": example("视频提示词.md") + extra})

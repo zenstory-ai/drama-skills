@@ -443,7 +443,9 @@ def parse_video_groups(text: str) -> list[dict[str, Any]]:
     return groups
 
 
-def usable_groups(text: Optional[str], problems: list[str]) -> list[dict[str, Any]]:
+def usable_groups(
+    text: Optional[str], problems: list[str], documents: Optional[dict[str, Optional[str]]] = None
+) -> list[dict[str, Any]]:
     """The groups the copy queue may fold their members into.
 
     A group stands in for its members only when the checker's own group rules
@@ -462,15 +464,28 @@ def usable_groups(text: Optional[str], problems: list[str]) -> list[dict[str, An
         shot_of[motion_id]: check._plain(check._fields(body, owner=motion_id, errors=[]).get("时长", ""))
         for motion_id, body in motions.items()
     }
+    documents = documents or {}
+    board = documents.get(STORYBOARD)
+    shots = check._sections(board, "SHOT") if board else {}
+    shot_scenes = {
+        shot_id: check.SCENE_ID_RE.findall(check._fields(body, owner=shot_id, errors=[]).get("来源", ""))
+        for shot_id, body in shots.items()
+    }
+    upstream = [documents.get(name) for name in (SCREENPLAY, SETTINGS, STORYBOARD)]
     findings: list[str] = []
     check._check_delivery_groups(
         check._sections(text, "GROUP"),
         video=text,
         motions=motions,
         motion_duration=durations,
-        shot_order=[shot_of[motion_id] for motion_id in motions],
-        shot_scenes={},
-        spoken_sources=None,
+        # The storyboard's order and scenes when it is there, as the checker uses.
+        shot_order=list(shots) if shots else [shot_of[motion_id] for motion_id in motions],
+        shot_scenes=shot_scenes,
+        spoken_sources=(
+            tuple(check._spoken_key(part) for part in upstream)
+            if all(part is not None for part in upstream)
+            else None
+        ),
         errors=findings,
     )
     ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", text, re.MULTILINE)
@@ -848,7 +863,7 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     board = _attempt(problems, STORYBOARD, parse_storyboard, documents.get(STORYBOARD))
     images = _attempt(problems, IMAGE_PROMPTS, parse_image_prompts, documents.get(IMAGE_PROMPTS))
     videos = _attempt(problems, VIDEO_PROMPTS, parse_video_prompts, documents.get(VIDEO_PROMPTS))
-    groups = usable_groups(documents.get(VIDEO_PROMPTS), problems) if videos else []
+    groups = usable_groups(documents.get(VIDEO_PROMPTS), problems, documents) if videos else []
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
@@ -905,13 +920,16 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
     for item in (episode.get("settings") or {}).get("items", []):
         add("设定", item["cat"], item["name"],
             " ".join([*item["desc"], *item["fields"].values(), *item["designators"]]), "settings", item["name"])
-    grouped = {member for group in episode.get("videoGroups") or [] for member in group["members"]}
+    group_of = {member: group["id"] for group in episode.get("videoGroups") or [] for member in group["members"]}
+    known_shots = {shot["id"] for shot in (episode.get("board") or {}).get("shots", [])}
     for group in episode.get("videoGroups") or []:
         add("提示词", group["id"], group["title"], group["prompt"], "prompts", "video", id=group["id"])
     for prompt in episode.get("videoPrompts") or []:
-        if prompt["id"] in grouped and prompt["shot"]:
+        if prompt["id"] in group_of and prompt["shot"] in known_shots:
             # Its own card is folded into the group's; the shot drawer still shows it.
             add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "board", prompt["shot"])
+        elif prompt["id"] in group_of:
+            add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "prompts", "video", id=group_of[prompt["id"]])
         else:
             add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "prompts", "video", id=prompt["id"])
     for prompt in episode.get("imagePrompts") or []:

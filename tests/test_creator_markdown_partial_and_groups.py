@@ -154,6 +154,13 @@ class InFrameLockTests(EpisodeCase):
         for shot_id in listing - flagged:
             self.assertIn(SURFACE, self.shot_keyframe(shot_id))
 
+    def test_a_misspelled_scope_is_caught_at_the_asset_stage(self) -> None:
+        self.drop("分镜.md", "视频提示词.md")
+        visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
+        visual = re.sub(r"（镜头：SHOT-EP001-002[^；]*；", "（镜头：入化；", visual, count=1)
+        (self.episode / "视觉设定.md").write_text(visual, encoding="utf-8")
+        self.assertTrue(any("入化" in error for error in self.errors(partial=True)))
+
     def test_in_frame_lock_outside_an_entry_is_rejected(self) -> None:
         visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
         line = re.search(r"^- 连续性锁：LOCK-JIANGCHEN-DRESS[^\n]*$", visual, re.MULTILINE)
