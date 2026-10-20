@@ -15,7 +15,7 @@ Status: implemented
 - `genre-cards/系统流.md` 的对手压迫改为饭局扔菜单、划掉参赛名单、“拿不到名次就别回来”；
 - `short-drama-assets/references/era-anchors.md` 合成例改为城郊外卖站点；
 - `short-drama-storyboard/references/blocking-playbooks.md` 场景站位示例改用文件里已有的沈一舟、赵经理与财务室；`shot-craft.md` 的运镜例句改为“这单我接了”；
-- `short-drama-video-prompts/references/seedance-2.5.md` 的音色参考例句改用沈一舟；`short-drama-edit/SKILL.md` 卡片样式示例改为订单数。
+- `short-drama-video-prompts/references/seedance-2.5.md` 的音色参考例句改用沈一舟；`short-drama-novel-analyze/references/aggregation-and-entities.md` 的姓氏＋头衔示例改为「李队」「陈记者」「王厂长」；`short-drama-edit/SKILL.md` 卡片样式示例改为订单数。
 
 `examples/creator-first/`、`docs/` 与测试夹具保持不变：它们是公开示例与回归数据，不是技能执行时读到的指引。
 
