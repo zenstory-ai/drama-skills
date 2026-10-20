@@ -393,13 +393,13 @@ def profile_notes(project: Mapping[str, Any]) -> list[str]:
     block = project.get("format")
     pacing = block.get("pacing") if isinstance(block, Mapping) else None
     target = block.get("target_seconds_per_episode") if isinstance(block, Mapping) else None
-    rates = (
-        [pacing.get("spoken_characters_per_second"), pacing.get("seconds_per_action_paragraph")]
-        if isinstance(pacing, Mapping)
-        else []
-    )
-    usable = len(rates) == 2 and all(
-        isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0 for rate in rates
+    speech = pacing.get("spoken_characters_per_second") if isinstance(pacing, Mapping) else None
+    action = pacing.get("seconds_per_action_paragraph") if isinstance(pacing, Mapping) else None
+    # The same rule the write stage's estimator applies: a positive speech rate
+    # and a non-negative action-paragraph duration.
+    usable = (
+        isinstance(speech, (int, float)) and not isinstance(speech, bool) and speech > 0
+        and isinstance(action, (int, float)) and not isinstance(action, bool) and action >= 0
     )
     if isinstance(target, (int, float)) and not usable:
         notes.append(
