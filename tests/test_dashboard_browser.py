@@ -345,6 +345,43 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is unavailable")
+class DeliveryGroupBrowserTests(Browser, unittest.TestCase):
+    """A multi-shot group is copied once, in sequence, instead of its members."""
+
+    GROUP_BODY = "镜头1：攥紧的茶杯。镜头2：四个号四个粉。"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        workspace = Path(cls.temporary.name)
+        project = workspace / "grouped"
+        make_creator_project(project)
+        video = project / "剧集/EP001/视频提示词.md"
+        video.write_text(
+            video.read_text(encoding="utf-8")
+            + "\n## GROUP-EP001-01 · 茶杯到双人\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
+            + f"- 时长：7s\n\n### 可复制提示词\n> {cls.GROUP_BODY}\n",
+            encoding="utf-8",
+        )
+        cls.start(workspace)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop()
+        cls.temporary.cleanup()
+
+    def test_the_group_replaces_its_members_in_the_copy_queue(self) -> None:
+        page = self.open(route="#/EP001/prompts/video")
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=self.origin)
+        expect(page.locator("#copyProgress")).to_have_text("0 / 21")
+        keys = page.locator(".pcard").evaluate_all("nodes => nodes.map((node) => node.dataset.key)")
+        self.assertEqual(keys[:2], ["GROUP-EP001-01", "MOTION-EP001-003"])
+        self.assertNotIn("MOTION-EP001-002", keys)
+        page.locator(".copybar").get_by_role("button", name="复制下一条").click()
+        self.assertEqual(page.evaluate("() => navigator.clipboard.readText()"), self.GROUP_BODY)
+
+
+@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
 class PlainProjectBrowserTests(Browser, unittest.TestCase):
     """Projects outside the five documents still open, and raw text stays text."""
 

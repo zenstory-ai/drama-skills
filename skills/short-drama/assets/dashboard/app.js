@@ -1399,11 +1399,29 @@ function viewSettings(row, E) {
 
 /* ================================================================ prompts */
 
+/** One copy unit per generation: a delivery group stands in for its members, in sequence. */
+function videoCopyUnits(row, E) {
+  const groups = E.videoGroups || [];
+  const groupOf = new Map(groups.flatMap((group) => group.members.map((member) => [member, group])));
+  const shortId = (id) => id.replace(/^MOTION-(EP\d+-)?/, "");
+  const units = [];
+  for (const prompt of E.videoPrompts || []) {
+    const group = groupOf.get(prompt.id);
+    if (group && group.members[0] !== prompt.id) continue;
+    if (group) {
+      units.push({ key: group.id, id: group.id, title: group.title, meta: [`${num(group.sec)} 秒 · 多镜 ${group.members.length} 镜`, `成员 ${group.members.map((member) => esc(shortId(member))).join("、")}`], text: group.prompt });
+      continue;
+    }
+    units.push({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [`${num(prompt.sec)} 秒${prompt.mode ? ` · ${esc(prompt.mode)}` : ""}`, prompt.shot ? `分镜 <a href="#/${esc(row.id)}/board/${esc(prompt.shot)}">${esc(sceneShort(prompt.shot))}</a>` : ""], text: prompt.prompt });
+  }
+  return units;
+}
+
 function viewPrompts(row, E, arg, q) {
   if (!row.has.imgp && !row.has.vidp && !row.has.board) return missingView(row, "prompts");
   const C = context(E);
   const sets = {
-    video: (E.videoPrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [`${num(prompt.sec)} 秒${prompt.mode ? ` · ${esc(prompt.mode)}` : ""}`, prompt.shot ? `分镜 <a href="#/${esc(row.id)}/board/${esc(prompt.shot)}">${esc(sceneShort(prompt.shot))}</a>` : ""], text: prompt.prompt })),
+    video: videoCopyUnits(row, E),
     keyframe: C.shots.filter((shot) => shot.keyframe).map((shot) => ({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "冻结关键帧"], text: shot.keyframe })),
     image: (E.imagePrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [esc(prompt.use), `被 ${C.shots.filter((shot) => shot.imgs.some((img) => img.id === prompt.id)).length} 镜引用`], text: prompt.prompt })),
   };
@@ -1419,7 +1437,7 @@ function viewPrompts(row, E, arg, q) {
       <div class="actions"><div class="seg" role="tablist">${[["video", `视频 ${sets.video.length}`], ["keyframe", `关键帧 ${sets.keyframe.length}`], ["image", `图片 ${sets.image.length}`]].map(([key, label]) => `<a role="tab" href="#/${esc(row.id)}/prompts/${key}" ${tab === key ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</div>${editButton(docFor)}</div></div>
     ${problemNotices(E)}
     ${unreadable ? rawFallback(E, docFor, "提示词") : list.length ? `<div class="card copybar"><b>逐条复制</b><span class="bar"><i data-css="width:${(done / list.length) * 100}%"></i></span><span class="muted" id="copyProgress">${done} / ${list.length}</span>
-      ${nextItem ? `<button class="btn sm primary" type="button" data-copy="${esc(nextItem.text)}" data-key="${esc(nextItem.key)}" data-next="1">${icon("copy")}复制下一条 · <span class="mono">${esc(nextItem.id.replace(/^(MOTION|SHOT|IMG)-(EP\d+-)?/, ""))}</span></button>` : `<span class="status ok">${icon("check")}全部复制过</span>`}
+      ${nextItem ? `<button class="btn sm primary" type="button" data-copy="${esc(nextItem.text)}" data-key="${esc(nextItem.key)}" data-next="1">${icon("copy")}复制下一条 · <span class="mono">${esc(nextItem.id.replace(/^(MOTION|SHOT|IMG|GROUP)-(EP\d+-)?/, ""))}</span></button>` : `<span class="status ok">${icon("check")}全部复制过</span>`}
       <button class="btn sm ghost" type="button" data-act="clear-copied" data-tab="${tab}">清除标记</button><span class="muted lbl-long">标记只存在这台电脑的浏览器里</span></div>
     <div class="plist">${list.map((item) => `<article class="card pcard ${S.copied.has(item.key) ? "copied" : ""}" id="p-${esc(item.id)}" data-key="${esc(item.key)}">
       <div><div class="pid">${esc(item.id)}</div><div class="pt">${esc(item.title)}</div><div class="pm">${item.meta.filter(Boolean).map((line) => `<span>${line}</span>`).join("")}</div></div>

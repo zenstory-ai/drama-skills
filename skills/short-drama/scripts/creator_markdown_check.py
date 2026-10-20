@@ -700,7 +700,9 @@ def _audio_references(
             )
             continue
         shared = [span for span, speakers in quotes if name in speakers]
-        if not voices.has_screenplay or any(speakers == {name} for _, speakers in quotes):
+        if not (voices.has_screenplay and voices.has_visual) or any(
+            speakers == {name} for _, speakers in quotes
+        ):
             pass
         elif shared:
             others = sorted(

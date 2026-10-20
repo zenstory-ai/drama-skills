@@ -425,6 +425,24 @@ def parse_video_prompts(text: str) -> list[dict[str, Any]]:
     return prompts
 
 
+def parse_video_groups(text: str) -> list[dict[str, Any]]:
+    """`GROUP-...` delivery groups: one submitted body standing for several MOTIONs."""
+
+    groups = []
+    for group_id, section in check._sections(text, "GROUP").items():
+        fields = check._fields(section, owner=group_id, errors=[])
+        title = SHOT_TITLE_RE.search(section)
+        groups.append({
+            "id": group_id,
+            "n": _number(group_id),
+            "title": title.group(1).strip() if title else "",
+            "members": re.findall(r"MOTION-[A-Z0-9-]+", fields.get("成员", "")),
+            "sec": check._declared_seconds(fields.get("时长", "")) or 0,
+            "prompt": check._copyable_prompt(section) or "",
+        })
+    return groups
+
+
 # ------------------------------------------------------------------ cut list
 
 # The edit stage's grammar (short-drama-edit/scripts/edit_tool.py). Only reading:
@@ -780,6 +798,8 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     board = _attempt(problems, STORYBOARD, parse_storyboard, documents.get(STORYBOARD))
     images = _attempt(problems, IMAGE_PROMPTS, parse_image_prompts, documents.get(IMAGE_PROMPTS))
     videos = _attempt(problems, VIDEO_PROMPTS, parse_video_prompts, documents.get(VIDEO_PROMPTS))
+    video_text = documents.get(VIDEO_PROMPTS)
+    groups = parse_video_groups(video_text) if video_text else []
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
@@ -790,6 +810,7 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
         "board": board,
         "imagePrompts": images,
         "videoPrompts": videos,
+        "videoGroups": groups,
         "cutlist": cutlist,
         "review": parsed_review,
         "metrics": metrics(script, board),
@@ -835,7 +856,7 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
     for item in (episode.get("settings") or {}).get("items", []):
         add("设定", item["cat"], item["name"],
             " ".join([*item["desc"], *item["fields"].values(), *item["designators"]]), "settings", item["name"])
-    for prompt in episode.get("videoPrompts") or []:
+    for prompt in [*(episode.get("videoGroups") or []), *(episode.get("videoPrompts") or [])]:
         add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "prompts", "video", id=prompt["id"])
     for prompt in episode.get("imagePrompts") or []:
         add("提示词", prompt["id"], prompt["title"], prompt["prompt"] + " " + prompt["use"],

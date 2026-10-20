@@ -2372,6 +2372,24 @@ class CreatorViewsTests(unittest.TestCase):
             ["EP001-SC001"],
         )
 
+    def test_a_delivery_group_is_one_submission_standing_for_its_members(self) -> None:
+        video = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 茶杯到双人\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
+            "- 时长：7s\n\n### 可复制提示词\n> 镜头1：攥紧的茶杯。镜头2：四个号四个粉。\n"
+        )
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(
+            episode["videoGroups"],
+            [{
+                "id": "GROUP-EP001-01", "n": "01", "title": "茶杯到双人",
+                "members": ["MOTION-EP001-001", "MOTION-EP001-002"], "sec": 7.0,
+                "prompt": "镜头1：攥紧的茶杯。镜头2：四个号四个粉。",
+            }],
+        )
+        self.assertEqual(len(episode["videoPrompts"]), 22)
+        hits = views.search(views.search_entries(episode), "镜头1：攥紧的茶杯")
+        self.assertIn("GROUP-EP001-01", [hit.get("id") for hit in hits])
+
     def test_the_storyboard_is_read_by_the_checkers_own_functions(self) -> None:
         # Change what the checker thinks a duration is and the dashboard follows;
         # a second parser would keep answering 62.
