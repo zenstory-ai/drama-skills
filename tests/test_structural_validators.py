@@ -19,24 +19,21 @@ from typing import Any
 
 SUITE = Path(__file__).resolve().parents[1]
 SKILLS = SUITE / "skills"
+LEGACY = SUITE / "tests/legacy"
 
 
-def _module(name: str, relative: str) -> Any:
-    spec = importlib.util.spec_from_file_location(name, SKILLS / relative)
+def _module(name: str, relative: str, root: Path = SKILLS) -> Any:
+    spec = importlib.util.spec_from_file_location(name, root / relative)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-storyboard_check = _module(
-    "sd_storyboard_check", "short-drama-storyboard/scripts/storyboard_check.py"
-)
-container_check = _module(
-    "sd_container_check", "short-drama-video-prompts/scripts/container_check.py"
-)
+storyboard_check = _module("sd_storyboard_check", "short-drama-storyboard/scripts/storyboard_check.py", LEGACY)
+container_check = _module("sd_container_check", "short-drama-video-prompts/scripts/container_check.py", LEGACY)
 voice_sheet_check = _module(
-    "sd_voice_sheet_check", "short-drama-write/scripts/voice_sheet_check.py"
+    "sd_voice_sheet_check", "short-drama-write/scripts/voice_sheet_check.py", LEGACY
 )
 duration_estimate = _module(
     "sd_duration_estimate", "short-drama-write/scripts/duration_estimate.py"

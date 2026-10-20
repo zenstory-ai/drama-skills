@@ -22,24 +22,25 @@ from typing import Any
 
 SUITE = Path(__file__).resolve().parents[1]
 SKILLS = SUITE / "skills"
+LEGACY = SUITE / "tests/legacy"
 
 
-def _module(name: str, relative: str) -> Any:
-    spec = importlib.util.spec_from_file_location(name, SKILLS / relative)
+def _module(name: str, relative: str, root: Path = SKILLS) -> Any:
+    spec = importlib.util.spec_from_file_location(name, root / relative)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-asset_check = _module("g_asset_check", "short-drama-assets/scripts/asset_check.py")
+asset_check = _module("g_asset_check", "short-drama-assets/scripts/asset_check.py", LEGACY)
 provider_adapters = _module(
     "g_provider_adapters", "short-drama-produce/scripts/provider_adapters.py"
 )
 episode_intake = _module(
     "g_episode_intake", "short-drama-develop/scripts/episode_intake.py"
 )
-review_check = _module("g_review_check", "short-drama-review/scripts/review_check.py")
+review_check = _module("g_review_check", "short-drama-review/scripts/review_check.py", LEGACY)
 novel_index = _module("g_novel_index", "short-drama-novel-analyze/scripts/novel_index.py")
 screenplay_index = _module(
     "g_screenplay_index", "short-drama-write/scripts/screenplay_index.py"
@@ -47,9 +48,7 @@ screenplay_index = _module(
 duration_estimate = _module(
     "g_duration_estimate", "short-drama-write/scripts/duration_estimate.py"
 )
-storyboard_check = _module(
-    "g_storyboard_check", "short-drama-storyboard/scripts/storyboard_check.py"
-)
+storyboard_check = _module("g_storyboard_check", "short-drama-storyboard/scripts/storyboard_check.py", LEGACY)
 
 
 class RequiredFieldTests(unittest.TestCase):

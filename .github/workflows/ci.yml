@@ -101,13 +101,13 @@ jobs:
           skills/short-drama/scripts/creator_markdown_check.py
           skills/short-drama/scripts/creator_views.py
           skills/short-drama-develop/scripts/episode_intake.py
-          skills/short-drama-assets/scripts/asset_check.py
-          skills/short-drama-image-prompts/scripts/image_prompt_check.py
+          tests/legacy/short-drama-assets/scripts/asset_check.py
+          tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py
           skills/short-drama-produce/scripts/production_tool.py
           skills/short-drama-produce/scripts/provider_adapters.py
           skills/short-drama-edit/scripts/edit_tool.py
-          skills/short-drama-review/scripts/review_check.py
-          skills/short-drama-video-prompts/scripts/music_spec_check.py
+          tests/legacy/short-drama-review/scripts/review_check.py
+          tests/legacy/short-drama-video-prompts/scripts/music_spec_check.py
           evaluations/content_quality_gate.py
           --ignore-missing-imports
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

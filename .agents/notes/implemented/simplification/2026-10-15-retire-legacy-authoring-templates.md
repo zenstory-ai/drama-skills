@@ -28,3 +28,5 @@ Status: implemented
 - **收益**：创作者只会进入当前五文档路线，维护测试仍保有原对象及引用契约。
 - **代价**：当前技能不再提供旧创作格式的模板或继续编辑指导；测试 fixture 不作为技能接口发货。
 - **验证**：14 份当前文档和 10 份退役文档按五步核对；当前文档的 33 个既有 fenced blocks、全部引用块、配对示例与编号规则 ID/Class 不变。三组提取记录逐字段相等，六份原始数据字节相同。suite anatomy/reference integrity/安装解析 24 项、golden/workflow 23 项通过；image/video/storyboard/write 自测分别 10/10/13/14 项通过。两个修改后的测试模块通过 ruff；未运行外部生产。
+
+2026-10-20 检查器也移出技能目录的后续决定见[旧 JSON 检查器移出技能](2026-10-20-retire-legacy-json-checkers.md)。本篇保留当时保留检查器的判断，不反向改写。

@@ -487,6 +487,34 @@ class ScreenplayIndexTests(unittest.TestCase):
                 ["scene_heading"],
             )
 
+    def test_season_scoped_scene_ids_index_like_the_cross_document_checker_reads_them(
+        self,
+    ) -> None:
+        # creator_markdown_check accepts `S01-EP001-SC001`; the writing stage
+        # must not reject a heading the later check calls valid.
+        text = "# EP001 夜班\n\n## S01-EP001-SC001 内 · 档案室 · 夜\n\n林岚推开门。\n"
+        mismatched = "# EP002 夜班\n\n## S01-EP001-SC001 内 · 档案室 · 夜\n\n林岚推开门。\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            output = root / "screenplay-index.jsonl"
+            source.write_text(text, encoding="utf-8")
+            summary = screenplay_index.build_index(source, output, speakers={"林岚"})
+            self.assertEqual(summary["review_status"], "clean")
+            heading = blocks(output)[0]
+            self.assertEqual(heading["scene_id"], "S01-EP001-SC001")
+
+            other = root / "other.md"
+            other_output = root / "other-index.jsonl"
+            other.write_text(mismatched, encoding="utf-8")
+            screenplay_index.build_index(other, other_output, speakers={"林岚"})
+            codes = {
+                row["issue_code"]
+                for row in read_jsonl(other_output)
+                if row["record_type"] == "source_issue"
+            }
+            self.assertIn("episode_scene_mismatch", codes)
+
     def test_colon_action_requires_owner_resolution_instead_of_speaker_guessing(self) -> None:
         cases = {
             "single_line": "手机屏幕显示：密码错误。",

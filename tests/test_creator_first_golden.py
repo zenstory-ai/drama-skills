@@ -1256,6 +1256,24 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 self.assertTrue(basis.parsed)
                 self.assertTrue(basis.accounted)
 
+    def test_documented_shot_and_motion_pair_satisfies_the_pairing_rules(self) -> None:
+        # A creator copies this pair as the starting shape; if the checker
+        # rejects it, the contract contradicts its own validator.
+        contract = CREATOR_DOCUMENTS.read_text(encoding="utf-8")
+        examples = re.findall(r"```markdown\n(.*?)```", contract, re.DOTALL)
+        shot = next(e for e in examples if e.startswith("## SHOT-EP001-001"))
+        motion = next(e for e in examples if e.startswith("## MOTION-EP001-001"))
+        shot_input = bullet_fields(shot)["输入参考图"]
+        motion_fields = bullet_fields(motion)
+        self.assertEqual(
+            creator_markdown_check._plain(shot_input),
+            creator_markdown_check._plain(motion_fields["输入参考图"]),
+        )
+        self.assertFalse(creator_markdown_check._has_pending_references(shot_input))
+        if creator_markdown_check._is_explicit_text_to_video(shot_input):
+            self.assertEqual(motion_fields["生成方式"], "文生视频")
+            self.assertNotIn("SHOT-", motion_fields["起始帧"])
+
     def test_creator_markdown_validator_accepts_the_golden_episode(self) -> None:
         self.assertEqual(creator_markdown_check.validate_episode(EPISODE, ROOT), [])
 

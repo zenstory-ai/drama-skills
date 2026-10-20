@@ -32,6 +32,11 @@ def script(relative: str) -> Path:
     return SKILLS / relative
 
 
+def legacy_script(relative: str) -> Path:
+    """A retired JSON checker kept only to validate this historical run."""
+    return SUITE / "tests/legacy" / relative
+
+
 def run_json(args: list[str]) -> dict[str, Any]:
     """Run a checker exactly as a creator would, and read its report."""
     completed = subprocess.run(
@@ -167,7 +172,7 @@ class CheckerSweepTests(unittest.TestCase):
     def test_every_checker_passes(self) -> None:
         for label, argv, status, empty in self.CHECKS:
             with self.subTest(checker=label):
-                report = run_json([str(script(argv[0])), *argv[1:]])
+                report = run_json([str(legacy_script(argv[0])), *argv[1:]])
                 self.assertEqual(report["status"], status)
                 for key in empty:
                     self.assertEqual(report[key], [], f"{label}: {key}")
@@ -271,7 +276,7 @@ class VoiceOverCoverageTests(unittest.TestCase):
     def test_the_voice_sheet_covers_every_spoken_line(self) -> None:
         report = run_json(
             [
-                str(script("short-drama-write/scripts/voice_sheet_check.py")),
+                str(legacy_script("short-drama-write/scripts/voice_sheet_check.py")),
                 "剧集/EP001/voice-record-sheet.jsonl",
                 "--index",
                 "剧集/EP001/screenplay-index.jsonl",

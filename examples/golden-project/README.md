@@ -15,20 +15,20 @@
 
 - 所有剧情与人物均为公开样例改写，不保留来源系统标识或远程任务字段。
 - 仓库只提交 UTF-8 文本和 JSON，不提交图片、音频、视频或供应商结果。
-- Dashboard 只负责展示；这里的权威产物和校验入口仍归各 Skill 所有。
+- Dashboard 只负责展示；这些历史产物的校验入口在 `tests/legacy/`，不属于当前技能。
 - 引用只声明上游产物的归属与路径，不带字节摘要；产物是否仍是被接受的那一版由项目状态判定，不由文件里的哈希判定。
 - 规格内的 `candidate` 表示可预览的创作记录形态；是否接受只看 `创作者决策` 里那条独立记录，不靠改状态字样伪造。
 
 ## 独立校验
 
-在仓库根目录运行各 Skill 自带的校验器。例如：
+这些 JSON 记录只能由已退役的旧格式检查器校验；检查器不再随技能发货，留在 `tests/legacy/` 供回归使用。在仓库根目录运行，例如：
 
 ```bash
-python3 skills/short-drama-assets/scripts/asset_check.py --characters examples/golden-project/设定集/characters.jsonl --looks examples/golden-project/设定集/looks.jsonl
-python3 skills/short-drama-image-prompts/scripts/image_prompt_check.py examples/golden-project/剧集/EP001/assets/image-prompt-specs.jsonl
-python3 skills/short-drama-storyboard/scripts/storyboard_check.py examples/golden-project/剧集/EP001/storyboard/coverage.json --shots examples/golden-project/剧集/EP001/storyboard/shots.jsonl --keyframes examples/golden-project/剧集/EP001/storyboard/keyframes.jsonl --project examples/golden-project/short-drama.json
-python3 skills/short-drama-video-prompts/scripts/motion_timing_check.py examples/golden-project/剧集/EP001/storyboard/motion-specs.jsonl --shots examples/golden-project/剧集/EP001/storyboard/shots.jsonl
-python3 skills/short-drama-review/scripts/review_check.py --findings examples/golden-project/审查/findings.jsonl --verdict examples/golden-project/审查/verdict.json
+python3 tests/legacy/short-drama-assets/scripts/asset_check.py --characters examples/golden-project/设定集/characters.jsonl --looks examples/golden-project/设定集/looks.jsonl
+python3 tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py examples/golden-project/剧集/EP001/assets/image-prompt-specs.jsonl
+python3 tests/legacy/short-drama-storyboard/scripts/storyboard_check.py examples/golden-project/剧集/EP001/storyboard/coverage.json --shots examples/golden-project/剧集/EP001/storyboard/shots.jsonl --keyframes examples/golden-project/剧集/EP001/storyboard/keyframes.jsonl --project examples/golden-project/short-drama.json
+python3 tests/legacy/short-drama-video-prompts/scripts/motion_timing_check.py examples/golden-project/剧集/EP001/storyboard/motion-specs.jsonl --shots examples/golden-project/剧集/EP001/storyboard/shots.jsonl
+python3 tests/legacy/short-drama-review/scripts/review_check.py --findings examples/golden-project/审查/findings.jsonl --verdict examples/golden-project/审查/verdict.json
 ```
 
 完整的可移植性、引用完整性、索引可重建性与生命周期演练由 `tests/test_golden_project.py` 覆盖。

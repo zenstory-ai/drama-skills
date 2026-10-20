@@ -146,8 +146,10 @@ KIND_CODES = {
 # digits would have made EP1000 a legal directory but an illegal heading.
 _EPISODE = r"EP(?:[0-9]{3}|[1-9][0-9]{3,})"
 EPISODE_HEADING_RE = re.compile(rf"^# (?P<episode>{_EPISODE})(?: .+)?$")
+# A project that scopes ids by season writes `S01-EP001-SC001`; the episode is
+# still the `EP` segment, and the cross-document checker accepts the same form.
 SCENE_HEADING_RE = re.compile(
-    rf"^## (?P<scene>{_EPISODE}-SC[0-9]{{3}}) "
+    rf"^## (?P<scene>(?:[A-Za-z0-9]+-)*?(?P<episode>{_EPISODE})-SC[0-9]{{3}}) "
     r"(?P<space>内外|内|外) · (?P<location>\S(?:.*\S)?) · "
     r"(?P<time>\S(?:.*\S)?)$"
 )
@@ -329,7 +331,7 @@ def _parse_screenplay(
                 )
             else:
                 scene_id = match.group("scene")
-                heading_episode = scene_id.split("-", 1)[0]
+                heading_episode = match.group("episode")
                 if episode_id and episode_id != heading_episode:
                     issues.append(
                         _issue(span, "episode_scene_mismatch", "场景 ID 与当前集标题的集 ID 不一致。")

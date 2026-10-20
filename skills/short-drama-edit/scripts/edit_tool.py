@@ -214,7 +214,8 @@ SHOT_MATCH_SAMPLE = "fps=4,scale=64:-2"
 STORYBOARD_DOCUMENT = "分镜.md"
 SHOT_HEADING = re.compile(r"^##\s+(SHOT-[^\s·]+)")
 SHOT_REFERENCE = re.compile(r"SHOT-[A-Za-z0-9-]+")
-SCENE_ID = re.compile(r"[A-Za-z]+[0-9]+-SC[0-9]+")
+# The same scene-id shape the cross-document checker accepts, season prefix included.
+SCENE_ID = re.compile(r"(?:[A-Za-z0-9]+-)+SC[0-9]+")
 # verify reads the delivered film at this size in grey, one value per pixel.
 FRAME_PROBE_SIZE = (90, 160)
 # A frame is suspect when it differs from both neighbours by more than this

@@ -33,22 +33,22 @@ screenplay_index = load_module(
     "golden_screenplay_index", "skills/short-drama-write/scripts/screenplay_index.py"
 )
 asset_check = load_module(
-    "golden_asset_check", "skills/short-drama-assets/scripts/asset_check.py"
+    "golden_asset_check", "tests/legacy/short-drama-assets/scripts/asset_check.py"
 )
 image_prompt_check = load_module(
     "golden_image_prompt_check",
-    "skills/short-drama-image-prompts/scripts/image_prompt_check.py",
+    "tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py",
 )
 storyboard_check = load_module(
     "golden_storyboard_check",
-    "skills/short-drama-storyboard/scripts/storyboard_check.py",
+    "tests/legacy/short-drama-storyboard/scripts/storyboard_check.py",
 )
 motion_timing_check = load_module(
     "golden_motion_timing_check",
-    "skills/short-drama-video-prompts/scripts/motion_timing_check.py",
+    "tests/legacy/short-drama-video-prompts/scripts/motion_timing_check.py",
 )
 review_check = load_module(
-    "golden_review_check", "skills/short-drama-review/scripts/review_check.py"
+    "golden_review_check", "tests/legacy/short-drama-review/scripts/review_check.py"
 )
 compact_refs = load_module("golden_compact_refs", "tools/compact_refs.py")
 

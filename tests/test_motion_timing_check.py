@@ -9,7 +9,7 @@ from typing import Any
 
 
 SUITE = Path(__file__).resolve().parents[1]
-SCRIPT = SUITE / "skills/short-drama-video-prompts/scripts/motion_timing_check.py"
+SCRIPT = SUITE / "tests/legacy/short-drama-video-prompts/scripts/motion_timing_check.py"
 SPEC = importlib.util.spec_from_file_location("short_drama_motion_timing", SCRIPT)
 assert SPEC and SPEC.loader
 motion_timing_check = importlib.util.module_from_spec(SPEC)

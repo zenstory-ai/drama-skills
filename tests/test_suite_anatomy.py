@@ -396,9 +396,7 @@ class SuiteAnatomyTests(unittest.TestCase):
             "short-drama.json": project,
             "剧集/<EP>/storyboard/shots.jsonl": shot,
         }
-        for path in sorted(
-            (SUITE / "skills/short-drama-assets/assets").glob("*.jsonl")
-        ):
+        for path in sorted(AUTHORING_RECORDS.glob("*.example.jsonl")):
             for example in resolved_records(path):
                 destination = example.get("destination")
                 if isinstance(destination, str):
@@ -542,53 +540,6 @@ class SuiteAnatomyTests(unittest.TestCase):
         for source in templates:
             visit(source, (), complete)
 
-    def test_asset_template_derivation_graph_has_no_self_ref_or_cycle(self) -> None:
-        """Derivation must be a DAG; cross-naming between peers need not be.
-
-        Edges come from ``sources`` -- the artifacts a file was built from --
-        not from every artifact a record happens to mention. An occurrence may
-        name the decision it feeds while that decision names the occurrence it
-        consumes: with byte digests gone from the chain there is nothing
-        impossible about two peers naming each other, only about one being
-        derived from the other in both directions.
-        """
-        templates = SUITE / "skills/short-drama-assets/assets"
-        edges: set[tuple[str, str]] = set()
-        for path in templates.glob("*.jsonl"):
-            for document in resolved_records(path):
-                source = document.get("destination")
-                if not isinstance(source, str):
-                    continue
-                for entry in (document.get("sources") or {}).values():
-                    artifact = entry.get("artifact") if isinstance(entry, dict) else None
-                    if not isinstance(artifact, str):
-                        continue
-                    self.assertNotEqual(
-                        artifact,
-                        source,
-                        f"{path.name} declares itself as its own source",
-                    )
-                    if artifact.startswith(("设定集/", "剧集/", "bible/", "episodes/")):
-                        edges.add((source, artifact))
-
-        graph: dict[str, set[str]] = {}
-        for source, target in edges:
-            graph.setdefault(source, set()).add(target)
-
-        def visit(node: str, active: tuple[str, ...], complete: set[str]) -> None:
-            if node in active:
-                cycle = " -> ".join((*active, node))
-                self.fail(f"derivation cycle: {cycle}")
-            if node in complete:
-                return
-            for target in graph.get(node, set()):
-                visit(target, (*active, node), complete)
-            complete.add(node)
-
-        complete: set[str] = set()
-        for node in graph:
-            visit(node, (), complete)
-
     def test_candidate_templates_distinguish_inputs_from_same_publication_refs(self) -> None:
         templates: list[tuple[Path, dict[str, Any]]] = []
         for relative in (
@@ -650,30 +601,13 @@ class SuiteAnatomyTests(unittest.TestCase):
             (SUITE / "skills/short-drama/assets/creator-decision.example.jsonl").is_file()
         )
 
-    def test_review_templates_bind_evidence_targets_and_verdict_snapshot(self) -> None:
-        finding = record_with(
-            SUITE / "skills/short-drama-review/assets/finding-template.jsonl", "target_ref"
-        )
-        self.assertGreaterEqual(len(finding["evidence_refs"]), 2)
-        self.assertTrue(REF_PAIR.issubset(finding["target_ref"]))
-        verdict = resolved_records(
-            SUITE / "skills/short-drama-review/assets/verdict-template.json"
-        )[0]
-        self.assertTrue(verdict["reviewed_artifacts"])
-        self.assertTrue(REF_PAIR.issubset(verdict["findings_ref"]))
-        self.assertEqual(verdict["open_blocker_count"], 0)
-        self.assertEqual(verdict["review_method"], "uninvolved_reviewer | self_check")
-        self.assertIsInstance(verdict["reviewer"], str)
-        self.assertEqual(verdict["structural_validation"], "not_run")
-        self.assertEqual(verdict["verdict"], "PROVISIONAL")
-
     def test_template_field_refs_resolve_to_owned_example_fields(self) -> None:
         keyframe = record_with(
             AUTHORING_RECORDS / "keyframe-template.jsonl",
             "light_projection",
         )
         view = record_with(
-            SUITE / "skills/short-drama-assets/assets/location-view.example.jsonl",
+            AUTHORING_RECORDS / "location-view.example.jsonl",
             "state_differences",
         )
         light_ref = keyframe["light_projection"]["source_ref"]
@@ -686,7 +620,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         )
         policy_ref = image_spec["text_handling"]["source_policy_ref"]
         prop = record_with(
-            SUITE / "skills/short-drama-assets/assets/prop-state.example.jsonl",
+            AUTHORING_RECORDS / "prop-state.example.jsonl",
             "text_policy",
         )
         self.assertEqual(policy_ref["artifact"], "设定集/props.jsonl")

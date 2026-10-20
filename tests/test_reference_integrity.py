@@ -299,8 +299,8 @@ SCHEMA_TEMPLATES = {
     "episode-map.jsonl": "short-drama-develop/assets/episode-map.jsonl",
     "short-drama.json": "short-drama/assets/project-template/short-drama.json",
     "shots.jsonl": "../tests/fixtures/authoring-records/shot-template.jsonl",
-    "props.jsonl": "short-drama-assets/assets/prop-state.example.jsonl",
-    "location-views.jsonl": "short-drama-assets/assets/location-view.example.jsonl",
+    "props.jsonl": "../tests/fixtures/authoring-records/prop-state.example.jsonl",
+    "location-views.jsonl": "../tests/fixtures/authoring-records/location-view.example.jsonl",
     # Creator decisions are named after the artifact they accept, so they are
     # matched by their directory rather than by a fixed basename.
     "创作者决策/": "short-drama/assets/creator-decision.example.jsonl",
