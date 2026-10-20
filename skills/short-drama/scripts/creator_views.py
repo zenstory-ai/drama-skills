@@ -87,8 +87,10 @@ _EPISODE = r"EP(?:[0-9]{3}|[1-9][0-9]{3,})"
 # The same spelling project_tool.py's EPISODE_ID_RE enforces on 剧集/<EP>/.
 EPISODE_ID_RE = re.compile(_EPISODE)
 TITLE_RE = re.compile(r"^# (?:" + _EPISODE + r")?\s*(?:·\s*)?(.*)$")
+# Same heading grammar as the writing stage's index, season prefix included
+# (`S01-EP001-SC001`), so a screenplay the index accepts never drops scenes here.
 SCENE_RE = re.compile(
-    r"^## (?P<scene>" + _EPISODE + r"-SC[0-9]{3}) "
+    r"^## (?P<scene>(?:[A-Za-z0-9]+-)*?" + _EPISODE + r"-SC[0-9]{3}) "
     r"(?P<space>内外|内|外) · (?P<location>\S(?:.*\S)?) · (?P<time>\S(?:.*\S)?)$"
 )
 TAG_RE = re.compile(r"^\[(?P<tag>VO|OS|SFX|画面文字|连续性|转场)\]\s*(?P<body>\S[\s\S]*)$")

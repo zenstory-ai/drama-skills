@@ -2386,6 +2386,20 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(views.shot_scale("越过右肩看屏幕"), "")
         self.assertNotIn("中近景", views.CLOSE_SCALES)
 
+    def test_season_prefixed_scenes_read_like_the_write_stage_index(self) -> None:
+        index = load_script(
+            "season_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
+        )
+        text = example("剧本.md")
+        mixed = text.replace("## EP001-SC002", "## S01-EP001-SC002", 1)
+        for screenplay in (text.replace("## EP001-SC", "## S01-EP001-SC"), mixed):
+            with self.subTest(prefixed=screenplay.count("## S01-")):
+                ours = views.parse_screenplay(screenplay)
+                blocks, issues = index._parse_screenplay(screenplay.encode("utf-8"), frozenset())
+                headings = [block["scene_id"] for block in blocks if block["kind"] == "scene_heading"]
+                self.assertEqual([scene["id"] for scene in ours["scenes"]], headings)
+                self.assertEqual(len(headings), 2)
+
     def test_screenplay_blocks_match_the_write_stage_index(self) -> None:
         index = load_script(
             "parity_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"

@@ -15,7 +15,7 @@ Status: implemented
 - `asset_check.py`、`image_prompt_check.py`、`storyboard_check.py`、`motion_timing_check.py`、`container_check.py`、`music_spec_check.py`、`review_check.py`、`voice_sheet_check.py` 及其最小示例移到 `tests/legacy/<技能名>/`，保持原相对布局，只服务 golden-project 与 reference-run 两个历史回归。只测试这些检查器的五个技能 selftest 删除；写作技能的 selftest 去掉配音表部分后保留。
 - assets、storyboard、video-prompts、review 下无消费者的 JSON(L) 示例删除；location-view 与 prop-state 两份仍被引用完整性测试读取，移入 `tests/fixtures/authoring-records/`。只断言已退役模板形状的测试一并删除。
 - assets、image-prompts、storyboard、video-prompts、review 五个技能现在只有知识文档，SKILL.md 不再有「安装维护」selftest 说明，独立运行测试的 selftest 名单同步收窄。
-- `screenplay_index.py` 场景标题接受任意连字符前缀（集号取 `EP` 段），`edit_tool.py` 的场景 ID 与 `creator_markdown_check.py` 用同一形状。
+- `screenplay_index.py` 场景标题接受任意连字符前缀（集号取 `EP` 段），`edit_tool.py` 与创作台 `creator_views.py` 的场景 ID 与 `creator_markdown_check.py` 用同一形状。
 - `creator-documents.md` 的 SHOT-EP001-001 与 MOTION-EP001-001 改为一致的文生视频示例，起始帧写可见状态；待补参考图的写法仍在回退格式示例中展示。references 中的旧字段名改为「起点」「终点」。
 - SHT-16/17、VID-04/13/15 的规则分级不变；creator-first 链路里由审查按 rubric 核对。
 - 审查 finding ID `REV-001` 与规则 ID `REV-01` 同前缀的问题不改：创作台按 `REV-` 解析审查发现，改格式会让既有项目的审查读不出来，而三位与两位编号本身可区分。
