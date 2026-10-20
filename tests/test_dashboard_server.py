@@ -2405,6 +2405,19 @@ class CreatorViewsTests(unittest.TestCase):
         member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-001")
         self.assertEqual(member["view"], "prompts")
 
+    def test_out_of_order_or_repeated_groups_hide_nothing(self) -> None:
+        group = "\n## {gid} · 坏分组\n- 成员：{members}\n- 时长：{sec}\n\n### 可复制提示词\n> 镜头1：……\n"
+        cases = {
+            "gap": group.format(gid="GROUP-EP001-01", members="MOTION-EP001-001、MOTION-EP001-003", sec="5s"),
+            "duplicate id": group.format(gid="GROUP-EP001-01", members="MOTION-EP001-001、MOTION-EP001-002", sec="7s")
+            + group.format(gid="GROUP-EP001-01", members="MOTION-EP001-003、MOTION-EP001-004", sec="5s"),
+        }
+        for label, extra in cases.items():
+            with self.subTest(case=label):
+                episode = self.episode(**{"视频提示词.md": example("视频提示词.md") + extra})
+                self.assertEqual(episode["videoGroups"], [])
+                self.assertTrue(any("GROUP-EP001-01" in problem for problem in episode["problems"]))
+
     def test_a_misspelled_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 拼错\n- 成员：MOTION-EP001-001、MOTON-EP001-002\n"
@@ -2419,7 +2432,7 @@ class CreatorViewsTests(unittest.TestCase):
         video = example("视频提示词.md") + group.format(gid="GROUP-EP001-01") + group.format(gid="GROUP-EP001-02")
         episode = self.episode(**{"视频提示词.md": video})
         self.assertEqual(episode["videoGroups"], [])
-        self.assertEqual(sum("共用成员" in problem for problem in episode["problems"]), 2)
+        self.assertTrue(any("GROUP-EP001-02" in problem for problem in episode["problems"]))
 
     def test_a_group_without_a_usable_body_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (

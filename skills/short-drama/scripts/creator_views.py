@@ -443,6 +443,56 @@ def parse_video_groups(text: str) -> list[dict[str, Any]]:
     return groups
 
 
+def usable_groups(text: Optional[str], problems: list[str]) -> list[dict[str, Any]]:
+    """The groups the copy queue may fold their members into.
+
+    A group stands in for its members only when the checker's own group rules
+    find nothing wrong with it; any finding keeps the members as separate cards
+    and is shown as a notice, so a malformed group never hides or reorders a
+    prompt.
+    """
+    if not text:
+        return []
+    motions = check._sections(text, "MOTION")
+    shot_of = {
+        motion_id: check._plain(check._fields(body, owner=motion_id, errors=[]).get("分镜", ""))
+        for motion_id, body in motions.items()
+    }
+    durations = {
+        shot_of[motion_id]: check._plain(check._fields(body, owner=motion_id, errors=[]).get("时长", ""))
+        for motion_id, body in motions.items()
+    }
+    findings: list[str] = []
+    check._check_delivery_groups(
+        check._sections(text, "GROUP"),
+        video=text,
+        motions=motions,
+        motion_duration=durations,
+        shot_order=[shot_of[motion_id] for motion_id in motions],
+        shot_scenes={},
+        spoken_sources=None,
+        errors=findings,
+    )
+    ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", text, re.MULTILINE)
+    rejected = {group_id for group_id in ids if ids.count(group_id) > 1}
+    for group_id in sorted(rejected):
+        problems.append(f"{VIDEO_PROMPTS}：{group_id} 标题重复，按逐镜显示")
+    for finding in findings:
+        group_id = finding.split(":", 1)[0]
+        rejected.add(group_id)
+        problems.append(f"{VIDEO_PROMPTS}：{finding}；按逐镜显示")
+    # The checker names only the later of two groups that share a member.
+    owners: dict[str, list[str]] = {}
+    parsed = parse_video_groups(text)
+    for group in parsed:
+        for member in group["members"]:
+            owners.setdefault(member, []).append(group["id"])
+    for shared in owners.values():
+        if len(shared) > 1:
+            rejected.update(shared)
+    return [group for group in parsed if group["id"] not in rejected]
+
+
 # ------------------------------------------------------------------ cut list
 
 # The edit stage's grammar (short-drama-edit/scripts/edit_tool.py). Only reading:
@@ -798,37 +848,7 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     board = _attempt(problems, STORYBOARD, parse_storyboard, documents.get(STORYBOARD))
     images = _attempt(problems, IMAGE_PROMPTS, parse_image_prompts, documents.get(IMAGE_PROMPTS))
     videos = _attempt(problems, VIDEO_PROMPTS, parse_video_prompts, documents.get(VIDEO_PROMPTS))
-    video_text = documents.get(VIDEO_PROMPTS)
-    groups = []
-    known_motions = {prompt["id"] for prompt in videos or []}
-    parsed_groups = parse_video_groups(video_text) if video_text else []
-    claims: dict[str, list[str]] = {}
-    for group in parsed_groups:
-        for member in group["members"]:
-            claims.setdefault(member, []).append(group["id"])
-    contested = {owner for owners in claims.values() if len(owners) > 1 for owner in owners}
-    for group in parsed_groups:
-        if group["id"] in contested:
-            problems.append(
-                f"{VIDEO_PROMPTS}：{group['id']} 与其他分组共用成员，按逐镜显示"
-            )
-            continue
-        # A group stands in for its members only when every member is there to
-        # stand in for; otherwise the members stay as they are.
-        missing = [member for member in group["members"] if member not in known_motions]
-        if len(set(group["members"])) != len(group["members"]):
-            problems.append(f"{VIDEO_PROMPTS}：{group['id']} 的成员重复，按逐镜显示")
-        elif not group["members"] or missing:
-            problems.append(
-                f"{VIDEO_PROMPTS}：{group['id']} 的成员"
-                f"{'、'.join(missing) if missing else '为空'}找不到，按逐镜显示"
-            )
-        elif not group["prompt"]:
-            problems.append(
-                f"{VIDEO_PROMPTS}：{group['id']} 没有唯一且非空的可复制提示词，按逐镜显示"
-            )
-        else:
-            groups.append(group)
+    groups = usable_groups(documents.get(VIDEO_PROMPTS), problems) if videos else []
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
