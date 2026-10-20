@@ -29,6 +29,10 @@
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://t.me/+CZmsmvWIhb4zZTNl"><img alt="Telegram group" src="https://img.shields.io/badge/Telegram%20Group-26A5E4?style=for-the-badge&logo=telegram&logoColor=white"></a>
+</p>
+
 <video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
 
 The 68-second portrait sample above is the opening of *Let You Run the Account*, EP001: adapted from a 20-chapter
@@ -404,9 +408,14 @@ ID and reason, and a range such as "001 to 009" is no longer accepted.
 - [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): from an authorized source to episode decisions, one script, and a first small set of shots.
 - [Character consistency guide](https://zenstory.ai/drama-skills/character-consistency): separate character identity, the compatible look for this scene, and per-shot hands, props, and gaze; tell `IMG-*`, `PLAN-*`, and `REF-*` apart.
 
+## Community
+
+- **Telegram**: <https://t.me/+CZmsmvWIhb4zZTNl> — chat, troubleshooting, sharing workflows, and feature discussion.
+- **GitHub Issues**: [bugs, output-quality cases, and feature requests](https://github.com/zenstory-ai/drama-skills/issues/new/choose). Please use the structured form and attach reproduction material or the concrete output.
+
 ## Contributing
 
-Bugs, output-quality cases and feature requests go to [Issues](https://github.com/zenstory-ai/drama-skills/issues/new/choose); please use the structured form and attach reproduction material or the concrete output. Principles and the required test run are in [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese).
+Principles and the required test run are in [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese).
 
 <a href="https://github.com/zenstory-ai/drama-skills/graphs/contributors"><img alt="Contributors" src="https://contrib.rocks/image?repo=zenstory-ai/drama-skills"></a>
 

@@ -27,6 +27,10 @@
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/License-MIT-1F6FEB?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://t.me/+CZmsmvWIhb4zZTNl"><img alt="Telegram 交流群" src="https://img.shields.io/badge/Telegram%20%E4%BA%A4%E6%B5%81%E7%BE%A4-26A5E4?style=for-the-badge&logo=telegram&logoColor=white"></a>
+</p>
+
 <video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
 
 上面这段 68 秒竖屏样片是《让你管账号》第 1 集开头：从一部 20 章的原著改编，分镜 20 镜，逐镜生成后剪成成片，
@@ -351,9 +355,14 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 - [角色跨镜一致性指南](https://zenstory.ai/zh/drama-skills/character-consistency)：分开人物身份、本场造型与逐镜变化的双手、持物、视线；区分 `IMG-*`、`PLAN-*` 与 `REF-*`。
 - [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md)：英文读者的分阶段说明。
 
+## 交流
+
+- **Telegram 群**：<https://t.me/+CZmsmvWIhb4zZTNl> —— 日常交流、踩坑、用法分享与新功能讨论。
+- **GitHub Issues**：[Bug、输出质量 Case、功能请求](https://github.com/zenstory-ai/drama-skills/issues/new/choose)，请按结构化表单附上复现材料或具体输出。
+
 ## 贡献
 
-欢迎提交 Bug、输出质量 Case 与功能请求到 [Issues](https://github.com/zenstory-ai/drama-skills/issues/new/choose)，请按结构化表单附上复现材料或具体输出。修改原则与必跑测试见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+修改原则与必跑测试见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 <a href="https://github.com/zenstory-ai/drama-skills/graphs/contributors"><img alt="Contributors" src="https://contrib.rocks/image?repo=zenstory-ai/drama-skills"></a>
 
