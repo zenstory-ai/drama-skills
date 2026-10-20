@@ -1538,10 +1538,10 @@ def render(
         # with an encoder-priming frame, and copying the segments end to end
         # left that frame as a ~32 ms dropout at each cut. The segments are
         # decoded to PCM, joined sample-exact, and encoded once.
-        pictures = Path(scratch) / "pictures.mp4"
+        picture_track = Path(scratch) / "pictures.mp4"
         _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
               "-f", "concat", "-safe", "0", "-i", str(listing), "-map", "0:v",
-              "-c", "copy", str(pictures)])
+              "-c", "copy", str(picture_track)])
         sound_listing = Path(scratch) / "sound.txt"
         pieces = []
         for index, (segment, length) in enumerate(zip(segments, spans)):
@@ -1556,7 +1556,7 @@ def render(
             "".join(f"file '{piece.as_posix()}'\n" for piece in pieces), encoding="utf-8"
         )
         _run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-              "-i", str(pictures),
+              "-i", str(picture_track),
               "-f", "concat", "-safe", "0", "-i", str(sound_listing),
               "-map", "0:v", "-map", "1:a", "-c:v", "copy",
               "-c:a", "aac", "-b:a", "192k", str(joined)])
