@@ -240,6 +240,21 @@ class DeliveryGroupTests(EpisodeCase):
         self.add_group(body=f"镜头1：{self.body_of('MOTION-EP001-001')} 镜头2：{body}")
         self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁面", self.errors())
 
+    def test_a_scene_named_inside_a_source_quote_is_not_carried(self) -> None:
+        """A quote may mention another scene; only the leading ids are carried.
+
+        A real run's shot quoted a continuity note naming an earlier scene, and
+        its group was rejected as crossing scenes it never filmed.
+        """
+
+        self.edit(
+            "分镜.md",
+            "- 来源：EP001-SC001\n",
+            "- 来源：EP001-SC001「[连续性] 与 EP001-SC002 同一张桌」\n",
+        )
+        self.add_group()
+        self.assertEqual([e for e in self.errors() if "跨场次" in e], [])
+
     def test_a_repeated_member_is_reported_not_collapsed(self) -> None:
         self.add_group(members="MOTION-EP001-001、MOTION-EP001-001、MOTION-EP001-002")
         self.assertIn("GROUP-EP001-01: 成员重复；一次交付里每个镜头只出现一次", self.errors())

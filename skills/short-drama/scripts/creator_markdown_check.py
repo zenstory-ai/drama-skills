@@ -130,6 +130,8 @@ SCENE_HEADING_RE = re.compile(
     r"^## (" + SCENE_ID_PATTERN + r")\b", re.MULTILINE
 )
 SCENE_ID_RE = re.compile(SCENE_ID_PATTERN)
+# A quoted span of the source line, 「…」 or 『…』.
+QUOTE_RE = re.compile(r"「[^」]*」|『[^』]*』")
 # A scene the storyboard decided not to film. SHT-01 has always allowed the
 # omission and always required a reason; without a place to write it the
 # omission and an oversight look identical in the finished document.
@@ -1487,7 +1489,10 @@ def _shot_sources(
         )
         return []
     resolved = []
-    for scene_id in _unique(SCENE_ID_RE.findall(plain)):
+    # A quote may itself mention another scene (「…与 EP001-SC001 同一客厅…」);
+    # that id is quoted text, not a scene this shot carries.
+    unquoted = QUOTE_RE.sub("", plain)
+    for scene_id in _unique(SCENE_ID_RE.findall(unquoted)):
         if scenes is not None and scene_id not in scenes:
             errors.append(f"{owner}: 来源场景不在《剧本.md》中: {scene_id}")
         else:
