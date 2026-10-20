@@ -13,6 +13,14 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-20
+
+本版回应社区创作者的反馈：移除与现行文档相矛盾的旧格式检查器，补上人物站位、一镜容量、
+参考图取舍与首尾帧转场的写法；Seedance 2.0 相关做法都附有实测依据。
+
+*升级*：旧 JSON/JSONL 检查器（`asset_check.py`、`storyboard_check.py`、`review_check.py` 等）不再随技能分发，
+结构检查统一用 `creator_markdown_check.py`。多镜场次可在《分镜.md》开头补写「场景站位」；不补写的既有项目照常通过检查。
+
 ### Added
 
 - 分镜在第一个镜头前为多镜场次写「场景站位」：固定锚点、人物相对位置、轴线与站位变化，逐镜对照它而不只对照上一镜。起点、终点用锚点和人物关系写站位；关键帧与视频提示词按本镜机位写前后景、朝向和画面左右，视线写明看向谁。Seedance 2.0 方言补充站位写法；创作台分镜视图与镜头详情显示场景站位。
@@ -1847,7 +1855,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.7.1...v0.8.0
