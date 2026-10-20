@@ -1353,6 +1353,10 @@ def _check_continuity_locks(
                 errors.append(f"{lock_id}: {image_id} 可复制提示词缺少锁面")
 
 
+def _group_members(value: str) -> list[str]:
+    """A GROUP's 成员 field exactly as written, repeats and typos included."""
+    return [item.strip() for item in re.split(r"[、,，]", _plain(value)) if item.strip()]
+
 def _check_delivery_groups(
     groups: dict[str, str],
     *,
@@ -1382,11 +1386,7 @@ def _check_delivery_groups(
         if not re.search(r"[\u3400-\u9fff]", titled.get(group_id, "")):
             errors.append(f"{group_id}: 交付分组标题缺少中文名称")
         fields = _fields(body, owner=group_id, errors=errors)
-        listed = [
-            item.strip()
-            for item in re.split(r"[、,，]", _plain(fields.get("成员", "")))
-            if item.strip()
-        ]
+        listed = _group_members(fields.get("成员", ""))
         members = _unique(listed)
         if len(members) != len(listed):
             errors.append(f"{group_id}: 成员重复；一次交付里每个镜头只出现一次")

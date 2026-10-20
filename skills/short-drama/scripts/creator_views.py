@@ -436,7 +436,7 @@ def parse_video_groups(text: str) -> list[dict[str, Any]]:
             "id": group_id,
             "n": _number(group_id),
             "title": title.group(1).strip() if title else "",
-            "members": re.findall(r"MOTION-[A-Z0-9-]+", fields.get("成员", "")),
+            "members": check._group_members(fields.get("成员", "")),
             "sec": check._declared_seconds(fields.get("时长", "")) or 0,
             "prompt": check._copyable_prompt(section) or "",
         })
@@ -816,7 +816,9 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
         # A group stands in for its members only when every member is there to
         # stand in for; otherwise the members stay as they are.
         missing = [member for member in group["members"] if member not in known_motions]
-        if not group["members"] or missing:
+        if len(set(group["members"])) != len(group["members"]):
+            problems.append(f"{VIDEO_PROMPTS}：{group['id']} 的成员重复，按逐镜显示")
+        elif not group["members"] or missing:
             problems.append(
                 f"{VIDEO_PROMPTS}：{group['id']} 的成员"
                 f"{'、'.join(missing) if missing else '为空'}找不到，按逐镜显示"
