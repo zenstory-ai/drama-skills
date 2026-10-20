@@ -1612,7 +1612,9 @@ def validate_documents(
         return [f"缺少创作文档: {', '.join(missing)}"]
     present = frozenset(REQUIRED_DOCUMENTS) - frozenset(missing)
     if not present:
-        return ["没有可核对的创作文档"]
+        # A partial check before any document exists has nothing to fail on;
+        # the CLI says so instead of reporting an error the creator cannot fix.
+        return []
 
     def read(name: str) -> str:
         return texts.get(name) or ""
@@ -2032,7 +2034,9 @@ def main() -> int:
             print(f"ERROR: {error}")
         return 1
     missing = missing_documents(args.episode) if args.partial else []
-    if missing:
+    if len(missing) == len(REQUIRED_DOCUMENTS):
+        print(f"OK（局部）: {args.episode}；还没有创作文档，没有可核对的内容")
+    elif missing:
         print(f"OK（局部）: {args.episode}；未核对与这些文档相关的规则: {', '.join(missing)}")
     else:
         print(f"OK: {args.episode}")

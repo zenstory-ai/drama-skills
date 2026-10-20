@@ -799,6 +799,26 @@ class SimpleLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
 
+    def test_choosing_multi_shot_containers_answers_the_shot_length_note(self) -> None:
+        # The creator's decision has to be recordable, or the note repeats on
+        # every status after the conflict was already settled.
+        def manifest(containers: object) -> dict:
+            choices = {"native_duration_seconds": {"min": 4, "max": 15}}
+            if containers is not None:
+                choices["multi_shot_containers"] = containers
+            return {"creator_authority": {
+                "production_profile": {"status": "accepted", "choices": choices},
+                "rhythm_profile": {
+                    "status": "accepted", "form": "ai_live_action", "first_hook_seconds": 5,
+                    "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1,
+                    "end_on_peak": True, "reprise_previous_last_beat": True, "vo_share_max": 0.3,
+                    "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45,
+                    "first_major_payoff_by_episode": 1,
+                },
+            }}
+        self.assertEqual(len(project_tool.profile_notes(manifest(None))), 1)
+        self.assertEqual(project_tool.profile_notes(manifest(True)), [])
+
     def test_pacing_with_zero_action_seconds_still_counts_as_declared(self) -> None:
         # The write stage's estimator accepts a zero action-paragraph duration;
         # status must not ask the creator to change a setting that works.

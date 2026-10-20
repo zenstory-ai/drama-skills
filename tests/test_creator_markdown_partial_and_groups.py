@@ -126,10 +126,11 @@ class PartialCheckTests(EpisodeCase):
         texts["视觉设定.md"] = re.sub(r"^- 画面代称：[^\n]*\n", "", texts["视觉设定.md"], flags=re.MULTILINE)
         self.assertFalse(any("画面代称" in error for error in check.validate_documents(texts, None)))
 
-    def test_nothing_to_check_is_an_error(self) -> None:
+    def test_a_partial_check_before_any_document_has_nothing_to_fail(self) -> None:
         for name in check.REQUIRED_DOCUMENTS:
             (self.episode / name).unlink()
-        self.assertEqual(self.errors(partial=True), ["没有可核对的创作文档"])
+        self.assertEqual(self.errors(partial=True), [])
+        self.assertEqual(self.errors(), [f"缺少创作文档: {', '.join(check.REQUIRED_DOCUMENTS)}"])
 
 
 class InFrameLockTests(EpisodeCase):

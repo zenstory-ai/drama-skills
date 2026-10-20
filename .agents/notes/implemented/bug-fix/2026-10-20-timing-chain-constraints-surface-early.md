@@ -16,7 +16,8 @@ v0.9.1 发布前的主工作流实跑中，时长相关的问题都在下游才�
 ## Decision
 
 - `project_tool.py status` 新增 `profile_notes`：列出各自有效、合在一起却做不到的设定——平均镜长低于目标模型原生最短时长；设了单集目标时长却没有可用语速。只做数值比较，不阻断任何写入。
-- `set-authority` 新增 `/format/episode_count`（正整数）。
+- `set-authority` 新增 `/format/episode_count`（正整数）。生产档案 `choices` 可写 `multi_shot_containers: true` 记录创作者选择多镜容器，此后 `profile_notes` 不再提示镜长低于原生最短时长。
+- `duration_estimate.py` 新增 `voiced_characters`（去掉标点的发声字数），秒数按它与语速换算；`dialogue_characters` 保留标点，只用于 `[VO]` 占比。此前标点被算进语速，实跑中多估约 10 秒；录制回归的 EP001 由 94.8 秒变为 86.2 秒。
 - `short-drama/SKILL.md` 写明语速与集数的决策写入方式和 `profile_notes` 的用法；develop `episode-design.md` 的节奏档案一节要求提出档案时对照原生最短时长、一起提出语速，并在 `end_on_peak` 与契约集尾冲突时交创作者选择。
 - 分镜 SKILL：目标模型只收整数秒时，单独生成的镜头写整数秒；同一多镜容器的成员可以写半秒，但合计必须是整数秒，在分镜阶段排好。
 - 视频提示词：续接只用于下一段从上一段最后一格接着拍的情形，中间有剪接的相邻段各自从已接受起点生成；选择文生视频只说明不挂参考图，不等于放弃续接。Seedance 2.0 方言补充文生视频与组正文必然超过 500 字建议时的取舍。

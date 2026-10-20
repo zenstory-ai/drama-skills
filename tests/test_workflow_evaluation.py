@@ -264,8 +264,11 @@ class VoiceOverCoverageTests(unittest.TestCase):
         )
         self.assertEqual(report["counts"]["dialogue_lines"], 18)
         self.assertEqual(report["counts"]["dialogue_characters"], 274)
+        # Seconds come from what is pronounced: 43 punctuation marks are counted
+        # for the VO share but not spoken.
+        self.assertEqual(report["counts"]["voiced_characters"], 231)
         self.assertEqual(report["counts"]["action_paragraphs"], 16)
-        self.assertEqual(report["seconds"], 94.8)
+        self.assertEqual(report["seconds"], 86.2)
         self.assertLessEqual(
             abs(report["delta_ratio"]),
             0.15,

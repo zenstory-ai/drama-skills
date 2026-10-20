@@ -98,7 +98,8 @@ python3 {技能目录}/scripts/project_tool.py set-authority <project> \
 `accepted_value` 写 `{"spoken_characters_per_second": <每秒可发声字数>, "seconds_per_action_paragraph": <每段动作秒数>}`，
 两项都要给；`--field /format/episode_count`，`accepted_value` 写正整数。没有语速时写作阶段算不出秒数。
 `status` 的 `profile_notes` 会列出各自有效、合在一起却做不到的设定，例如平均镜长低于目标模型原生最短时长，
-或设了单集目标时长却没有语速；看到就交创作者决定，不要等到分镜才发现。
+或设了单集目标时长却没有语速；看到就交创作者决定，不要等到分镜才发现。创作者选择用多镜容器解决镜长冲突时，
+在生产档案 `choices` 里加 `"multi_shot_containers": true`（同一条决策写入），这条提示随之消失。
 
 项目定位与安全写入见 [运行预检](references/runtime-preflight.md)。用户明确要求 Dashboard 时运行：
 

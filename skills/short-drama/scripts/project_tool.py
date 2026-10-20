@@ -274,6 +274,9 @@ def project_video_model_profile(project: Mapping[str, Any]) -> dict[str, Any]:
         "native_duration_seconds",
         "supported_generation_modes",
         "audio_generation",
+        # The creator's choice to pack adjacent short shots into one
+        # generation; it answers the shot-length note below once made.
+        "multi_shot_containers",
     )
     return {field: choices[field] for field in fields if field in choices}
 
@@ -384,6 +387,7 @@ def profile_notes(project: Mapping[str, Any]) -> list[str]:
         isinstance(shortest, (int, float))
         and isinstance(average, (int, float))
         and average < shortest
+        and model.get("multi_shot_containers") is not True
     ):
         notes.append(
             f"rhythm_profile.target_avg_shot_seconds {average:g} is below the target "

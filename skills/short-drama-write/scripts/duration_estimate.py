@@ -27,6 +27,7 @@ import argparse
 import json
 import math
 import re
+import unicodedata
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -64,6 +65,21 @@ def _spoken_characters(line: str) -> int:
     return len(re.sub(r"\s", "", stripped))
 
 
+def _voiced_characters(line: str) -> int:
+    """What a speaker actually pronounces: the spoken count without punctuation.
+
+    Speech rates are measured in pronounced characters, so seconds come from
+    this count; the punctuation-inclusive count stays for the VO share, whose
+    ceiling is defined on it.
+    """
+    stripped = re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+    return sum(
+        1
+        for character in re.sub(r"\s", "", stripped)
+        if not unicodedata.category(character).startswith("P")
+    )
+
+
 def _is_voiced(block: Mapping[str, Any]) -> bool:
     """Speech is a dialogue block, or a production tag that is spoken aloud."""
     kind = block.get("kind")
@@ -93,6 +109,7 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
     """Count the timed material, taking every classification from the index."""
     dialogue_lines = 0
     dialogue_characters = 0
+    voiced_characters = 0
     voiceover_characters = 0
     action_paragraphs = 0
     tag_lines = 0
@@ -130,12 +147,14 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
         dialogue_lines += 1
         characters = _spoken_characters(spoken.group("line"))
         dialogue_characters += characters
+        voiced_characters += _voiced_characters(spoken.group("line"))
         if block.get("tag") == "VO":
             voiceover_characters += characters
 
     counts: dict[str, Any] = {
         "dialogue_lines": dialogue_lines,
         "dialogue_characters": dialogue_characters,
+        "voiced_characters": voiced_characters,
         "voiceover_characters": voiceover_characters,
         "action_paragraphs": action_paragraphs,
         "production_tag_lines": tag_lines,
@@ -270,7 +289,7 @@ def estimate(
         return result
 
     seconds = (
-        counts["dialogue_characters"] / rates["spoken_characters_per_second"]
+        counts["voiced_characters"] / rates["spoken_characters_per_second"]
         + counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
     )
     result["seconds"] = round(seconds, 1)
