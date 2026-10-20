@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-20
+
+本版补齐整条创作流程的衔接：每份文档写完即可局部核对，多镜容器有了可核对的分组写法，
+时长相关的约束在定档时就提示出来；剪辑渲染的切点不再掉音。
+
 ### Added
 
 - 跨文档检查新增 `--partial`：每写完一份文档就能只核对已有文档，不必等五份齐备。
@@ -1880,7 +1885,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.0...v0.8.1
