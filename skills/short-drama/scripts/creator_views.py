@@ -485,7 +485,9 @@ def usable_groups(
         # whether or not a storyboard is around to say the same.
         order = list(motions)
         places = [order.index(m) for m in group["members"] if m in order]
-        if len(places) == len(group["members"]) and places != list(range(places[0], places[0] + len(places))):
+        if places and len(places) == len(group["members"]) and places != list(
+            range(places[0], places[0] + len(places))
+        ):
             problems.append(
                 f"{VIDEO_PROMPTS}：{group['id']} 的成员在视频提示词里不相邻或顺序不对，按逐镜显示"
             )

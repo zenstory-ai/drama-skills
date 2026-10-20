@@ -2475,6 +2475,13 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(episode["videoGroups"], [])
         self.assertTrue(any("不相邻" in problem for problem in episode["problems"]))
 
+    def test_an_unfinished_group_without_members_hides_nothing(self) -> None:
+        video = example("视频提示词.md") + "\n## GROUP-EP001-01 · 未写完\n- 时长：5s\n"
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertEqual(len(episode["videoPrompts"]), 22)
+        self.assertTrue(any("GROUP-EP001-01" in problem for problem in episode["problems"]))
+
     def test_a_misspelled_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 拼错\n- 成员：MOTION-EP001-001、MOTON-EP001-002\n"
