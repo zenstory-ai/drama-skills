@@ -91,11 +91,17 @@ def _voiced_characters(line: str) -> int:
 def _readable_characters(body: str) -> int:
     """Characters a viewer reads in an on-screen text line.
 
-    ``[画面文字] 票面日期：11月6日`` names its carrier before the colon; only the
-    content after it appears on screen. A line without a carrier is all content.
+    The whole tag body counts, brackets and any text before a colon included.
+    ``已授予：演唱`` puts displayed words before its colon and ``暂停营业（东门）``
+    displays its parentheses, so neither can be stripped as a carrier name or a
+    performer's note; a line that does name its carrier is over-read by a few
+    characters rather than having visible words silently dropped.
     """
-    _, separator, content = body.partition("：")
-    return _voiced_characters(content if separator and content.strip() else body)
+    return sum(
+        1
+        for character in re.sub(r"\s", "", body)
+        if not unicodedata.category(character).startswith("P")
+    )
 
 
 def _is_voiced(block: Mapping[str, Any]) -> bool:

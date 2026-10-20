@@ -22,7 +22,7 @@ v0.9.1 发布前的主工作流实跑中，时长相关的问题都在下游才�
 - `short-drama/SKILL.md` 写明语速与集数的决策写入方式和 `profile_notes` 的用法；develop `episode-design.md` 的节奏档案一节要求提出档案时对照原生最短时长、一起提出语速，并在 `end_on_peak` 与契约集尾冲突时交创作者选择。
 - 分镜 SKILL：目标模型只收整数秒时，单独生成的镜头写整数秒；同一多镜容器的成员可以写半秒，但合计必须是整数秒，在分镜阶段排好。
 - 视频提示词：续接只用于下一段从上一段最后一格接着拍的情形，中间有剪接的相邻段各自从已接受起点生成；选择文生视频只说明不挂参考图，不等于放弃续接。Seedance 2.0 方言补充文生视频与组正文必然超过 500 字建议时的取舍。
-- `duration_estimate.py` 输出 `untimed`，列出不在秒数里的 `[画面文字]`、`[SFX]`、`[转场]` 行数；`[画面文字]` 冒号后的内容记为 `on_screen_text_characters`。`format.pacing` 可选声明 `on_screen_text_characters_per_second`，声明后画面文字按读字时间计入秒数。`screenplay_index.py` 的 `[VO]`/`[OS]` 与普通对白一样接受全角括号提示。
+- `duration_estimate.py` 输出 `untimed`，列出不在秒数里的 `[画面文字]`、`[SFX]`、`[转场]` 行数；`[画面文字]` 标签后的全部文字记为 `on_screen_text_characters`（冒号前可能是显示的字，括号里也是，不剥离）。`format.pacing` 可选声明 `on_screen_text_characters_per_second`，声明后画面文字按读字时间计入秒数。`screenplay_index.py` 的 `[VO]`/`[OS]` 与普通对白一样接受全角括号提示。
 
 ## Alternatives considered
 

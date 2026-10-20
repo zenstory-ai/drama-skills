@@ -407,8 +407,8 @@ class SpokenDurationTests(unittest.TestCase):
         self.assertEqual(
             report["untimed"]["tag_lines"], {"画面文字": 1, "SFX": 1}
         )
-        # Only the content after the carrier is read: 11月6日.
-        self.assertEqual(report["counts"]["on_screen_text_characters"], 5)
+        # The whole body is read, carrier included: 票面日期11月6日.
+        self.assertEqual(report["counts"]["on_screen_text_characters"], 9)
         self.assertEqual(report["seconds"], 0.4)
 
     def test_a_declared_reading_rate_times_on_screen_text(self) -> None:
@@ -417,13 +417,28 @@ class SpokenDurationTests(unittest.TestCase):
         report = self.measure(
             "[画面文字] 票面日期：11月6日\n\n[SFX] 汽笛。\n", project=project
         )
-        self.assertEqual(report["on_screen_text_seconds"], 2.0)
-        self.assertEqual(report["seconds"], 2.0)
+        self.assertEqual(report["on_screen_text_seconds"], 3.6)
+        self.assertEqual(report["seconds"], 3.6)
         self.assertEqual(report["untimed"]["tag_lines"], {"SFX": 1})
 
-    def test_a_text_line_without_a_carrier_is_all_content(self) -> None:
-        report = self.measure("[画面文字] 暂停营业\n")
-        self.assertEqual(report["counts"]["on_screen_text_characters"], 4)
+    def test_displayed_words_are_never_dropped_from_screen_text(self) -> None:
+        """A colon or parentheses inside on-screen text are part of what is read.
+
+        Treating the words before a colon as a carrier name dropped 已授予 from
+        a credit card, and stripping parentheses as performer notes dropped the
+        notice's own detail; both under-timed text the viewer has to read.
+        """
+
+        cases = {
+            "[画面文字] 已授予：演唱　导演\n": 7,
+            "[画面文字] 暂停营业（设备维修，请走东门）\n": 12,
+        }
+        for body, expected in cases.items():
+            with self.subTest(body=body):
+                report = self.measure(body)
+                self.assertEqual(
+                    report["counts"]["on_screen_text_characters"], expected
+                )
 
     def test_an_off_screen_line_may_carry_a_performance_cue(self) -> None:
         """`[OS] 角色（提示）：台词` uses the dialogue grammar, cue and all.
