@@ -77,7 +77,7 @@ def test_duration_uses_the_projects_own_rates() -> None:
 
 
 def test_production_tags_are_not_performed_time() -> None:
-    report = measure_text("[画面文字] 账号后台：粉丝 2\n\n他把门关上。\n")
+    report = measure_text("[画面文字] 店门告示：暂停营业\n\n他把门关上。\n")
     require(report["counts"]["production_tag_lines"] == 1, "tag counted separately")
     require(report["counts"]["action_paragraphs"] == 1, "tag is not an action")
 
