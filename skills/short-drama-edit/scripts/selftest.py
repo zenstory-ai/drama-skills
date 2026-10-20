@@ -224,7 +224,7 @@ def check_multi_subtitle() -> None:
         root = Path(scratch)
         episode = build(root, CUT_LIST)
         (episode / "剧本.md").write_text(
-            SCREENPLAY + "\n江晨：就是什么。\n江晨：就是少了点东西。\n江晨：少了什么。\n",
+            SCREENPLAY + "\n许棠：就是什么。\n许棠：就是少了点东西。\n许棠：少了什么。\n",
             encoding="utf-8",
         )
         multi = CUT_LIST.replace(

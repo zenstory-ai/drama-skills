@@ -1233,7 +1233,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         entries = [
             creator_markdown_check.VisualEntry(category, name, [name])
             for category, name in (
-                ("人物", "江辰"),
+                ("人物", "许棠"),
                 ("地点", "旧走廊"),
                 ("地点", "教室"),
                 ("道具", "旧书包"),

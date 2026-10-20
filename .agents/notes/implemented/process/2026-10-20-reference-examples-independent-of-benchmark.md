@@ -16,6 +16,7 @@ Status: implemented
 - `short-drama-assets/references/era-anchors.md` 合成例改为城郊外卖站点；
 - `short-drama-storyboard/references/blocking-playbooks.md` 场景站位示例改用文件里已有的沈一舟、赵经理与财务室；`shot-craft.md` 的运镜例句改为“这单我接了”；
 - `short-drama-video-prompts/references/seedance-2.5.md` 的音色参考例句改用沈一舟；`short-drama-novel-analyze/references/aggregation-and-entities.md` 的姓氏＋头衔示例改为「李队」「陈记者」「王厂长」；`short-drama-edit/SKILL.md` 卡片样式示例改为订单数。
+- `episode-design.md` 冷开否决理由的例句改为“一群人堵在门口拍门”；`short-drama/references/creator-documents.md` 与 `reference-roles.md` 的示例人物、`creator_markdown_check.py` 注释和写作、剪辑自测里与评估原著人名或后台画面相近的文字改为许棠、店门告示等合成内容。
 
 `examples/creator-first/`、`docs/` 与测试夹具保持不变：它们是公开示例与回归数据，不是技能执行时读到的指引。
 

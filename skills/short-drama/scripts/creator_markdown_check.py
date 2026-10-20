@@ -267,7 +267,7 @@ def _contains_slot_token(value: str) -> bool:
 
 def _is_none(value: str) -> bool:
     # `[^）]+` would stop at the first closing bracket, so a gap list that names
-    # an entry in brackets -- 「江晨人物图（IMG-...）」 -- fell through to the REF
+    # an entry in brackets -- 「许棠人物图（IMG-...）」 -- fell through to the REF
     # syntax error, whose obvious repair is deleting the gap record. That is the
     # silent downgrade this contract exists to prevent, so the note takes any
     # content as long as it is bracketed.
@@ -411,7 +411,7 @@ def _references(
     trailing = reference_value[cursor:]
     # Counted as slot heads on the same text the slots were matched in. A bare
     # token count would read the `ref-` in a real path like
-    # `输入/参考图/ref-江晨.png` as a second slot and reject a correct declaration.
+    # `输入/参考图/ref-许棠.png` as a second slot and reject a correct declaration.
     declared = len(SLOT_HEAD_RE.findall(reference_value))
     kinds = frozenset(item[2] for item in matches)
     if (
@@ -945,8 +945,8 @@ def _named_entries(
 ) -> set[tuple[str, str]]:
     """Which declared entries does this frozen keyframe actually call by name?
 
-    Longer designators win: a keyframe that shows 「江晨手机」 names the prop, and
-    the 人物「江晨」 substring inside it is not a second, unrelated claim.
+    Longer designators win: a keyframe that shows 「许棠手机」 names the prop, and
+    the 人物「许棠」 substring inside it is not a second, unrelated claim.
     """
     haystack = re.sub(r"\s+", " ", prompt).strip()
     if fold_case:
