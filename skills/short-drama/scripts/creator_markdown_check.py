@@ -635,6 +635,10 @@ class VoiceContext(NamedTuple):
     dialogue: list[SpokenLine]
     # Every name a clause may use for a 人物 entry: its name and 画面代称.
     names: dict[str, list[str]]
+    # False when that document is not part of a partial check: the checks
+    # that read it are skipped instead of reporting every name as unknown.
+    has_visual: bool = True
+    has_screenplay: bool = True
 
 
 def _audio_references(
@@ -690,13 +694,13 @@ def _audio_references(
             errors.append(f"{owner}: REF 控制与不得控制范围冲突: {slot}")
         if not {"台词", "语气", "情绪"} <= prohibited:
             errors.append(f"{owner}: 参考音频不得控制至少包含台词、语气、情绪: {slot}")
-        if name not in voices.characters:
+        if voices.has_visual and name not in voices.characters:
             errors.append(
                 f"{owner}: 参考音频的角色不是《视觉设定.md》里的人物条目: {name}"
             )
             continue
         shared = [span for span, speakers in quotes if name in speakers]
-        if any(speakers == {name} for _, speakers in quotes):
+        if not voices.has_screenplay or any(speakers == {name} for _, speakers in quotes):
             pass
         elif shared:
             others = sorted(
@@ -712,6 +716,8 @@ def _audio_references(
                 f"{owner}: 人物「{name}」在本镜可复制提示词里没有说出《剧本.md》记在其名下的台词；"
                 "不说话的人物不绑定参考音频"
             )
+        if not voices.has_visual:
+            continue
         record = voices.records.get(name)
         recorded = VOICE_RECORD_PATH_RE.match(record.strip()) if record else None
         if record is None:
@@ -1144,11 +1150,14 @@ def _continuity_locks(document: str, errors: list[str]) -> list[ContinuityLock]:
     """Parse the declared continuity locks of one 视觉设定.md."""
     locks: list[ContinuityLock] = []
     seen: set[str] = set()
-    headings = list(VISUAL_SETTING_HEADING_RE.finditer(document))
+    sections = [match.start() for match in ANY_SECTION_RE.finditer(document)]
     for found in LOCK_LINE_RE.finditer(document):
         line = found.group(0)
-        owner = next(
-            (h for h in reversed(headings) if h.start() < found.start()), None
+        # Only the section the line actually sits in owns it; a lock under a
+        # report or note heading belongs to no entry.
+        start = next((at for at in reversed(sections) if at < found.start()), None)
+        owner = (
+            VISUAL_SETTING_HEADING_RE.match(document, start) if start is not None else None
         )
         entry = (owner.group(1), owner.group(2).strip()) if owner else None
         match = LOCK_RE.match(line)
@@ -1595,6 +1604,8 @@ def validate_episode(
             for entry in visual_entries
             if entry.category == "人物"
         },
+        has_visual=has_visual,
+        has_screenplay=has_screenplay,
     )
     other_headings = {
         match.group(2).strip(): match.group(1).strip()
@@ -1656,6 +1667,9 @@ def validate_episode(
         errors.append("分镜.md: SHOT 标题 ID 重复")
     if len(motion_ids) != len(set(motion_ids)):
         errors.append("视频提示词.md: MOTION 标题 ID 重复")
+    group_ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", video, re.MULTILINE)
+    if len(group_ids) != len(set(group_ids)):
+        errors.append("视频提示词.md: GROUP 标题 ID 重复")
     named_shots = re.findall(
         r"^## (SHOT-[A-Z0-9-]+) · ([^\n]+)$", storyboard, re.MULTILINE
     )
@@ -1700,6 +1714,71 @@ def validate_episode(
 
     if has_storyboard and has_video and set(motion_by_shot) != set(shots):
         errors.append("分镜.md/视频提示词.md: SHOT 与 MOTION 未一一对应")
+
+    def check_motion(
+        motion_id: str,
+        motion_body: str,
+        copyable_prompt: Optional[str],
+        governing_input: str,
+        scenes: list,
+    ) -> tuple[dict[str, str], str]:
+        """MOTION rules that need only the MOTION itself and its governing input.
+
+        With 分镜.md the governing 输入参考图 is the shot's, which the MOTION must
+        copy; in a partial check without it, the MOTION's own declaration.
+        """
+        motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
+        if copyable_prompt is not None and has_screenplay:
+            _check_spoken_lines(
+                copyable_prompt, motion_id, spoken_sources, errors
+            )
+        motion_input = motion_fields.get("输入参考图", "")
+        _references(motion_input, motion_id, project_root, errors, entries)
+        if "参考音频" in motion_fields:
+            _audio_references(
+                motion_fields["参考音频"],
+                motion_id,
+                project_root,
+                errors,
+                image_slots=[
+                    item[3][0]
+                    for item in _slot_matches(
+                        PENDING_REFERENCE_SUFFIX_RE.sub("", motion_input.strip())
+                    )
+                ],
+                prompt=copyable_prompt,
+                voices=voices,
+                scenes=scenes,
+            )
+
+        if _has_pending_references(governing_input):
+            errors.append(f"{motion_id}: 仍有待补参考图，不能生成最终视频提示词")
+
+        # A `PLAN-...` slot is not a file, but the prompt is still written for
+        # image-conditioned generation: the creator attaches those pictures at
+        # generation time. What decides 生成方式 is whether the shot sends
+        # pictures at all, not whether this suite can read them.
+        sends_pictures = not _is_none(governing_input)
+        expected_mode = "图生视频" if sends_pictures else "文生视频"
+        if _plain(motion_fields.get("生成方式", "")) != expected_mode:
+            errors.append(f"{motion_id}: 生成方式应为{expected_mode}")
+        anchor = _plain(motion_fields.get("静态视觉锚点", ""))
+        if not sends_pictures:
+            if not _is_explicit_text_to_video(governing_input):
+                errors.append(
+                    f"{motion_id}: 无真实输入参考图时不能静默降级为文生视频；"
+                    "请先绑定已有图片、列出待补图片，或记录创作者已明确选择文生视频"
+                )
+            if not anchor or anchor == "无":
+                errors.append(f"{motion_id}: 文生视频缺少静态视觉锚点")
+            if (
+                copyable_prompt is not None
+                and anchor
+                and anchor != "无"
+                and anchor not in copyable_prompt
+            ):
+                errors.append(f"{motion_id}: 可复制提示词没有包含静态视觉锚点")
+        return motion_fields, anchor
 
     for shot_id, shot_body in shots.items():
         fields = _fields(shot_body, owner=shot_id, errors=errors)
@@ -1809,68 +1888,30 @@ def validate_episode(
         if not motion:
             continue
         motion_id, motion_body, copyable_prompt = motion
-        motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
-        if copyable_prompt is not None and has_screenplay:
-            _check_spoken_lines(
-                copyable_prompt, motion_id, spoken_sources, errors
-            )
+        motion_fields, anchor = check_motion(
+            motion_id, motion_body, copyable_prompt, shot_input, shot_scenes
+        )
         motion_input = motion_fields.get("输入参考图", "")
-        _references(motion_input, motion_id, project_root, errors, entries)
         if _plain(motion_input) != _plain(shot_input):
             errors.append(f"{motion_id}: 输入参考图与 {shot_id} 不一致")
-        if "参考音频" in motion_fields:
-            _audio_references(
-                motion_fields["参考音频"],
-                motion_id,
-                project_root,
-                errors,
-                image_slots=[
-                    item[3][0]
-                    for item in _slot_matches(
-                        PENDING_REFERENCE_SUFFIX_RE.sub("", motion_input.strip())
-                    )
-                ],
-                prompt=copyable_prompt,
-                voices=voices,
-                scenes=shot_scenes,
+        if not _is_none(shot_input):
+            continue
+        # In text-to-video the anchor carries the appearance the keyframe
+        # would otherwise have carried, so it is the same claim about the
+        # same frame and answers to the same visual basis. The rest of the
+        # motion body is not checked: it may legitimately name an offscreen
+        # speaker, which SHT-22 excludes.
+        if anchor and anchor != "无" and basis.parsed:
+            _check_named_coverage(
+                anchor, motion_id, "静态视觉锚点", basis, visual_entries, errors
             )
 
-        if _has_pending_references(shot_input):
-            errors.append(f"{motion_id}: 仍有待补参考图，不能生成最终视频提示词")
-
-        # A `PLAN-...` slot is not a file, but the prompt is still written for
-        # image-conditioned generation: the creator attaches those pictures at
-        # generation time. What decides 生成方式 is whether the shot sends
-        # pictures at all, not whether this suite can read them.
-        sends_pictures = not _is_none(shot_input)
-        expected_mode = "图生视频" if sends_pictures else "文生视频"
-        if _plain(motion_fields.get("生成方式", "")) != expected_mode:
-            errors.append(f"{motion_id}: 生成方式应为{expected_mode}")
-        if not sends_pictures:
-            if not _is_explicit_text_to_video(shot_input):
-                errors.append(
-                    f"{motion_id}: 无真实输入参考图时不能静默降级为文生视频；"
-                    "请先绑定已有图片、列出待补图片，或记录创作者已明确选择文生视频"
-                )
-            anchor = _plain(motion_fields.get("静态视觉锚点", ""))
-            if not anchor or anchor == "无":
-                errors.append(f"{motion_id}: 文生视频缺少静态视觉锚点")
-            if (
-                copyable_prompt is not None
-                and anchor
-                and anchor != "无"
-                and anchor not in copyable_prompt
-            ):
-                errors.append(f"{motion_id}: 可复制提示词没有包含静态视觉锚点")
-            # In text-to-video the anchor carries the appearance the keyframe
-            # would otherwise have carried, so it is the same claim about the
-            # same frame and answers to the same visual basis. The rest of the
-            # motion body is not checked: it may legitimately name an offscreen
-            # speaker, which SHT-22 excludes.
-            if anchor and anchor != "无" and basis.parsed:
-                _check_named_coverage(
-                    anchor, motion_id, "静态视觉锚点", basis, visual_entries, errors
-                )
+    if not has_storyboard:
+        # A partial check without 分镜.md still owes each MOTION the rules that
+        # read only the MOTION; its own 输入参考图 governs them.
+        for motion_id, motion_body in motions.items():
+            own_input = _fields(motion_body, owner=motion_id, errors=[]).get("输入参考图", "")
+            check_motion(motion_id, motion_body, _copyable_prompt(motion_body), own_input, [])
 
     for scene_id in scene_headings if has_storyboard else ():
         if scene_id in claimed_scenes or scene_id in unfilmed:

@@ -85,6 +85,25 @@ class PartialCheckTests(EpisodeCase):
         self.drop("剧本.md", "视频提示词.md")
         self.assertEqual(self.errors(partial=True), [])
 
+    def test_motion_rules_still_run_without_a_storyboard(self) -> None:
+        self.drop("分镜.md")
+        self.edit("视频提示词.md", "- 输入参考图：无（创作者已明确选择文生视频）。", "- 输入参考图：REF-BROKEN", 1)
+        errors = self.errors(partial=True)
+        self.assertTrue(any(error.startswith("MOTION-EP001-001:") for error in errors), errors)
+
+    def test_bound_voice_is_not_rejected_for_a_missing_upstream(self) -> None:
+        from tests import test_voice_reference_binding as voice
+
+        episode = voice.bound_episode(self.project)
+        self.assertEqual(check.validate_episode(episode, self.project), [])
+        for name in ("剧本.md", "视觉设定.md"):
+            with self.subTest(missing=name):
+                shutil.rmtree(episode)
+                episode = voice.bound_episode(self.project)
+                (episode / name).unlink()
+                errors = check.validate_episode(episode, self.project, partial=True)
+                self.assertFalse(any("参考音频" in error or "声音参考" in error for error in errors), errors)
+
     def test_nothing_to_check_is_an_error(self) -> None:
         for name in check.REQUIRED_DOCUMENTS:
             (self.episode / name).unlink()
@@ -142,6 +161,17 @@ GROUP = """
 """
 
 
+class LockOwnerTests(EpisodeCase):
+    def test_an_in_frame_lock_under_a_note_section_belongs_to_no_entry(self) -> None:
+        visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
+        line = re.search(r"^- 连续性锁：LOCK-JIANGCHEN-DRESS[^\n]*$", visual, re.MULTILINE)
+        assert line
+        scoped = re.sub(r"（镜头：SHOT-EP001-002[^；]*；", "（镜头：入画；", line.group(0))
+        moved = visual.replace(line.group(0) + "\n", "") + "\n## 本集备注\n\n" + scoped + "\n"
+        (self.episode / "视觉设定.md").write_text(moved, encoding="utf-8")
+        self.assertTrue(any("入画" in error and "条目下" in error for error in self.errors()))
+
+
 class DeliveryGroupTests(EpisodeCase):
     def body_of(self, motion_id: str) -> str:
         video = (self.episode / "视频提示词.md").read_text(encoding="utf-8")
@@ -179,6 +209,11 @@ class DeliveryGroupTests(EpisodeCase):
         body = self.body_of("MOTION-EP001-002").replace(SURFACE, "olive jacket")
         self.add_group(body=f"镜头1：{self.body_of('MOTION-EP001-001')} 镜头2：{body}")
         self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁面", self.errors())
+
+    def test_a_repeated_group_id_cannot_hide_a_second_body(self) -> None:
+        self.add_group()
+        self.add_group(seconds="99s", body="他说：“这句台词剧本里没有出现过”")
+        self.assertIn("视频提示词.md: GROUP 标题 ID 重复", self.errors())
 
     def test_a_trailing_section_is_not_read_as_the_last_motion(self) -> None:
         path = self.episode / "视频提示词.md"
