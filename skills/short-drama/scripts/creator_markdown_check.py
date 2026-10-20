@@ -1275,7 +1275,9 @@ def _check_language_designators(
     rounds: a document missing 视觉依据 got one error, and only after fixing it
     did the missing 画面代称 appear.
     """
-    if _prompt_language(project_root).casefold().startswith("zh"):
+    if project_root is None or _prompt_language(project_root).casefold().startswith("zh"):
+        # Without a project root the prompt language is unknown; validate_documents
+        # promises to skip what needs the disk rather than guess a language.
         return
     for entry in entries:
         if entry.category != "人物":

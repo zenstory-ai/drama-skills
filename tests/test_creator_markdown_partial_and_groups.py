@@ -121,6 +121,11 @@ class PartialCheckTests(EpisodeCase):
         errors = self.errors(partial=True)
         self.assertTrue(any(error.startswith("LOCK-JIANGCHEN-DRESS: MOTION-") for error in errors), errors)
 
+    def test_text_only_validation_does_not_guess_the_prompt_language(self) -> None:
+        texts = {name: (self.episode / name).read_text(encoding="utf-8") for name in check.REQUIRED_DOCUMENTS}
+        texts["视觉设定.md"] = re.sub(r"^- 画面代称：[^\n]*\n", "", texts["视觉设定.md"], flags=re.MULTILINE)
+        self.assertFalse(any("画面代称" in error for error in check.validate_documents(texts, None)))
+
     def test_nothing_to_check_is_an_error(self) -> None:
         for name in check.REQUIRED_DOCUMENTS:
             (self.episode / name).unlink()
