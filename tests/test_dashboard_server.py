@@ -2389,6 +2389,21 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(len(episode["videoPrompts"]), 22)
         hits = views.search(views.search_entries(episode), "镜头1：攥紧的茶杯")
         self.assertIn("GROUP-EP001-01", [hit.get("id") for hit in hits])
+        # A member's own card is folded into the group, so its search hit opens
+        # the shot drawer, where the member prompt is still shown.
+        member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-002")
+        self.assertEqual((member["view"], member["arg"]), ("board", "SHOT-EP001-002"))
+
+    def test_a_group_with_a_missing_member_hides_nothing(self) -> None:
+        video = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 有缺口\n- 成员：MOTION-EP001-999、MOTION-EP001-001\n"
+            "- 时长：3s\n\n### 可复制提示词\n> 镜头1：……\n"
+        )
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertTrue(any("GROUP-EP001-01" in problem and "MOTION-EP001-999" in problem for problem in episode["problems"]))
+        member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-001")
+        self.assertEqual(member["view"], "prompts")
 
     def test_the_storyboard_is_read_by_the_checkers_own_functions(self) -> None:
         # Change what the checker thinks a duration is and the dashboard follows;

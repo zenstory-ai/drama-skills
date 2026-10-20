@@ -1405,10 +1405,12 @@ function videoCopyUnits(row, E) {
   const groupOf = new Map(groups.flatMap((group) => group.members.map((member) => [member, group])));
   const shortId = (id) => id.replace(/^MOTION-(EP\d+-)?/, "");
   const units = [];
+  const placed = new Set();
   for (const prompt of E.videoPrompts || []) {
     const group = groupOf.get(prompt.id);
-    if (group && group.members[0] !== prompt.id) continue;
+    if (group && placed.has(group.id)) continue;
     if (group) {
+      placed.add(group.id);
       units.push({ key: group.id, id: group.id, title: group.title, meta: [`${num(group.sec)} 秒 · 多镜 ${group.members.length} 镜`, `成员 ${group.members.map((member) => esc(shortId(member))).join("、")}`], text: group.prompt });
       continue;
     }

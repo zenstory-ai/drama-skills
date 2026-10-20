@@ -799,7 +799,19 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     images = _attempt(problems, IMAGE_PROMPTS, parse_image_prompts, documents.get(IMAGE_PROMPTS))
     videos = _attempt(problems, VIDEO_PROMPTS, parse_video_prompts, documents.get(VIDEO_PROMPTS))
     video_text = documents.get(VIDEO_PROMPTS)
-    groups = parse_video_groups(video_text) if video_text else []
+    groups = []
+    known_motions = {prompt["id"] for prompt in videos or []}
+    for group in parse_video_groups(video_text) if video_text else []:
+        # A group stands in for its members only when every member is there to
+        # stand in for; otherwise the members stay as they are.
+        missing = [member for member in group["members"] if member not in known_motions]
+        if group["members"] and not missing:
+            groups.append(group)
+        else:
+            problems.append(
+                f"{VIDEO_PROMPTS}：{group['id']} 的成员"
+                f"{'、'.join(missing) if missing else '为空'}找不到，按逐镜显示"
+            )
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
@@ -856,8 +868,15 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
     for item in (episode.get("settings") or {}).get("items", []):
         add("设定", item["cat"], item["name"],
             " ".join([*item["desc"], *item["fields"].values(), *item["designators"]]), "settings", item["name"])
-    for prompt in [*(episode.get("videoGroups") or []), *(episode.get("videoPrompts") or [])]:
-        add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "prompts", "video", id=prompt["id"])
+    grouped = {member for group in episode.get("videoGroups") or [] for member in group["members"]}
+    for group in episode.get("videoGroups") or []:
+        add("提示词", group["id"], group["title"], group["prompt"], "prompts", "video", id=group["id"])
+    for prompt in episode.get("videoPrompts") or []:
+        if prompt["id"] in grouped and prompt["shot"]:
+            # Its own card is folded into the group's; the shot drawer still shows it.
+            add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "board", prompt["shot"])
+        else:
+            add("提示词", prompt["id"], prompt["title"], prompt["prompt"], "prompts", "video", id=prompt["id"])
     for prompt in episode.get("imagePrompts") or []:
         add("提示词", prompt["id"], prompt["title"], prompt["prompt"] + " " + prompt["use"],
             "prompts", "image", id=prompt["id"])
