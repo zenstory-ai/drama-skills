@@ -94,7 +94,10 @@ SCENE_RE = re.compile(
     r"(?P<space>内外|内|外) · (?P<location>\S(?:.*\S)?) · (?P<time>\S(?:.*\S)?)$"
 )
 TAG_RE = re.compile(r"^\[(?P<tag>VO|OS|SFX|画面文字|连续性|转场)\]\s*(?P<body>\S[\s\S]*)$")
-VOICE_BODY_RE = re.compile(r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<text>\S[\s\S]*)$")
+VOICE_BODY_RE = re.compile(
+    r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
+    r"(?:（(?P<cue>[^（）\r\n]+)）)?：(?P<text>\S[\s\S]*)$"
+)
 DIALOGUE_RE = re.compile(
     r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
     r"(?:（(?P<cue>[^（）\r\n]+)）)?：(?P<text>\S[\s\S]*)$"
@@ -173,7 +176,7 @@ def parse_screenplay(text: str) -> dict[str, Any]:
             if voice:
                 current["blocks"].append({
                     "k": "line", "tag": tag.group("tag"), "who": voice.group("speaker"),
-                    "paren": "", "text": voice.group("text").strip(),
+                    "paren": voice.group("cue") or "", "text": voice.group("text").strip(),
                 })
             else:
                 current["blocks"].append({"k": "tag", "tag": tag.group("tag"), "text": body})

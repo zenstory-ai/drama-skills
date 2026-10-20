@@ -152,6 +152,7 @@ class CheckerTests(unittest.TestCase):
         cases = {
             "wrapped onto a second line": ("江晨：下周榜首，\n是我们团。", True),
             "tagged VO, wrapped": ("[VO] 江晨：下周榜首，\n是我们团。", True),
+            "tagged OS with a cue": ("[OS] 江晨（隔着门喊）：下周榜首，是我们团。", True),
             "right after a multiline comment": (f"<!-- 备注\n还没定 -->\n{line}", True),
             "inside a comment, between blank lines": (f"<!--\n\n{line}\n\n-->", False),
             "after a comment that never closes": (f"<!-- 备注\n\n{line}", False),

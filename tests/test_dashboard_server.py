@@ -2534,6 +2534,25 @@ class CreatorViewsTests(unittest.TestCase):
                 self.assertEqual([scene["id"] for scene in ours["scenes"]], headings)
                 self.assertEqual(len(headings), 2)
 
+    def test_a_voiced_tag_with_a_cue_reads_like_the_write_stage_index(self) -> None:
+        index = load_script(
+            "cue_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
+        )
+        estimate = load_script(
+            "cue_duration_estimate", SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
+        )
+        text = "# EP001\n\n## EP001-SC001 内 · 船舱 · 夜\n\n[OS] 船员（隔着门喊）：关窗，水进来了！\n"
+        ours = views.parse_screenplay(text)
+        blocks, issues = index._parse_screenplay(text.encode("utf-8"), frozenset({"船员"}))
+        self.assertEqual(issues, [])
+        shown = ours["scenes"][0]["blocks"]
+        self.assertEqual(
+            [(block["k"], block["tag"], block["who"], block["paren"]) for block in shown],
+            [("line", "OS", "船员", "隔着门喊")],
+        )
+        counts = estimate.measure(text.encode("utf-8"), [dict(block, record_type="block") for block in blocks])
+        self.assertEqual(views.voice_share(ours)["spoken"], counts["dialogue_characters"])
+
     def test_screenplay_blocks_match_the_write_stage_index(self) -> None:
         index = load_script(
             "parity_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"

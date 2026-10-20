@@ -106,7 +106,8 @@ SCREENPLAY_DIALOGUE_RE = re.compile(
     r"(?:（[^（）\r\n]+）)?：(?P<text>\S[\s\S]*)$"
 )
 SCREENPLAY_VOICE_TAG_RE = re.compile(
-    r"^\[(?:VO|OS)\]\s*(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<text>\S[\s\S]*)$"
+    r"^\[(?:VO|OS)\]\s*(?P<speaker>[^\s：（）:\[\]#]{1,40})"
+    r"(?:（[^（）\r\n]+）)?：(?P<text>\S[\s\S]*)$"
 )
 # A later line of a paragraph that starts another block (the index's
 # ASCII_DIALOGUE_RE, ANY_TAG_RE and MALFORMED_TAG_RE): the paragraph is missing
