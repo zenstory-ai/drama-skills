@@ -104,6 +104,17 @@ class PartialCheckTests(EpisodeCase):
                 errors = check.validate_episode(episode, self.project, partial=True)
                 self.assertFalse(any("参考音频" in error or "声音参考" in error for error in errors), errors)
 
+    def test_a_quote_from_a_missing_source_is_not_called_invented(self) -> None:
+        board = (self.episode / "分镜.md").read_text(encoding="utf-8")
+        line = re.search(r"^- 画面文字：([^\n]+)$", board, re.MULTILINE)
+        assert line
+        quote = re.search(r"[\u4e00-\u9fff]{4,}", line.group(1))
+        assert quote
+        self.edit("视频提示词.md", "No subtitles", f"屏幕上写着“{quote.group(0)}” No subtitles")
+        self.assertEqual(self.errors(), [])
+        self.drop("分镜.md")
+        self.assertFalse(any("引文" in error for error in self.errors(partial=True)))
+
     def test_nothing_to_check_is_an_error(self) -> None:
         for name in check.REQUIRED_DOCUMENTS:
             (self.episode / name).unlink()
@@ -209,6 +220,15 @@ class DeliveryGroupTests(EpisodeCase):
         body = self.body_of("MOTION-EP001-002").replace(SURFACE, "olive jacket")
         self.add_group(body=f"镜头1：{self.body_of('MOTION-EP001-001')} 镜头2：{body}")
         self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁面", self.errors())
+
+    def test_a_repeated_member_is_reported_not_collapsed(self) -> None:
+        self.add_group(members="MOTION-EP001-001、MOTION-EP001-001、MOTION-EP001-002")
+        self.assertIn("GROUP-EP001-01: 成员重复；一次交付里每个镜头只出现一次", self.errors())
+
+    def test_an_unreadable_member_duration_is_reported(self) -> None:
+        self.edit("视频提示词.md", "- 时长：3s", "- 时长：未知")
+        self.add_group(seconds="999s")
+        self.assertTrue(any("没有可解析的时长" in error and error.startswith("GROUP") for error in self.errors()))
 
     def test_a_repeated_group_id_cannot_hide_a_second_body(self) -> None:
         self.add_group()

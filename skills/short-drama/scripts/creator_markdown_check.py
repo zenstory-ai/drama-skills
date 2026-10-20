@@ -1373,11 +1373,14 @@ def _check_delivery_groups(
         if not re.search(r"[\u3400-\u9fff]", titled.get(group_id, "")):
             errors.append(f"{group_id}: 交付分组标题缺少中文名称")
         fields = _fields(body, owner=group_id, errors=errors)
-        members = _unique(
+        listed = [
             item.strip()
             for item in re.split(r"[、,，]", _plain(fields.get("成员", "")))
             if item.strip()
-        )
+        ]
+        members = _unique(listed)
+        if len(members) != len(listed):
+            errors.append(f"{group_id}: 成员重复；一次交付里每个镜头只出现一次")
         prompt = _copyable_prompt(body)
         if prompt is None:
             errors.append(
@@ -1401,6 +1404,9 @@ def _check_delivery_groups(
         result[group_id] = (member_shots, prompt)
         seconds = [_declared_seconds(motion_duration.get(shot, "")) for shot in member_shots]
         known = [value for value in seconds if value is not None]
+        for shot, value in zip(member_shots, seconds):
+            if value is None:
+                errors.append(f"{group_id}: 成员 {shot} 没有可解析的时长，无法核对分组时长")
         declared = _declared_seconds(_plain(fields.get("时长", "")))
         if declared is None:
             errors.append(f"{group_id}: 缺少可解析的时长")
@@ -1572,6 +1578,9 @@ def validate_episode(
     scene_headings = SCENE_HEADING_RE.findall(screenplay)
     scenes = frozenset(scene_headings)
     known_scenes = scenes if has_screenplay else None
+    # A quote may come from any of the three; with one missing, an unmatched
+    # quote is unverifiable rather than invented.
+    quote_sources_complete = has_screenplay and has_visual and has_storyboard
     if has_screenplay and not scenes:
         errors.append(
             "剧本.md: 没有可解析的场景标题；场景标题写成 ## <场景 ID> 内|外 · 地点 · 时间"
@@ -1728,7 +1737,7 @@ def validate_episode(
         copy; in a partial check without it, the MOTION's own declaration.
         """
         motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
-        if copyable_prompt is not None and has_screenplay:
+        if copyable_prompt is not None and quote_sources_complete:
             _check_spoken_lines(
                 copyable_prompt, motion_id, spoken_sources, errors
             )
@@ -1930,7 +1939,7 @@ def validate_episode(
         motion_duration=motion_duration,
         shot_order=list(shots) if has_storyboard else None,
         shot_scenes=shot_scene_map,
-        spoken_sources=spoken_sources if has_screenplay else None,
+        spoken_sources=spoken_sources if quote_sources_complete else None,
         errors=errors,
     )
 
