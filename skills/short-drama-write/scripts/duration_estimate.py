@@ -55,6 +55,14 @@ VOICE_TAG_PREFIX = re.compile(r"^\[(?:VO|OS)\]\s*")
 DIALOGUE = re.compile(r"^(?P<who>[^：:（(\[\]]{1,24})(?:（[^）]*）|\([^)]*\))?[：:](?P<line>.+)$")
 
 
+# Tags that occupy screen time without being spoken. Their seconds depend on how
+# the cut holds them, so they are counted and named rather than timed -- unless
+# the project declares how fast its audience reads on-screen text.
+ON_SCREEN_TEXT_TAG = "画面文字"
+UNTIMED_TAGS = (ON_SCREEN_TEXT_TAG, "SFX", "转场")
+TAG_PREFIX = re.compile(r"^\[[^\]]+\]\s*")
+
+
 class StaleIndex(Exception):
     """The index does not describe the screenplay it was handed."""
 
@@ -78,6 +86,16 @@ def _voiced_characters(line: str) -> int:
         for character in re.sub(r"\s", "", stripped)
         if not unicodedata.category(character).startswith("P")
     )
+
+
+def _readable_characters(body: str) -> int:
+    """Characters a viewer reads in an on-screen text line.
+
+    ``[画面文字] 票面日期：11月6日`` names its carrier before the colon; only the
+    content after it appears on screen. A line without a carrier is all content.
+    """
+    _, separator, content = body.partition("：")
+    return _voiced_characters(content if separator and content.strip() else body)
 
 
 def _is_voiced(block: Mapping[str, Any]) -> bool:
@@ -113,6 +131,8 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
     voiceover_characters = 0
     action_paragraphs = 0
     tag_lines = 0
+    untimed_lines = {tag: 0 for tag in UNTIMED_TAGS}
+    on_screen_text_characters = 0
     unreadable_blocks: list[str] = []
 
     for block in blocks:
@@ -131,6 +151,17 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
             # performed duration. Comments are not production content at all.
             if kind == "production_tag":
                 tag_lines += 1
+                tag = block.get("tag")
+                if tag in untimed_lines:
+                    untimed_lines[tag] += 1
+                if tag == ON_SCREEN_TEXT_TAG:
+                    text = _block_text(screenplay, block)
+                    if text is None:
+                        unreadable_blocks.append(str(block.get("block_id")))
+                    else:
+                        on_screen_text_characters += _readable_characters(
+                            TAG_PREFIX.sub("", text)
+                        )
             continue
 
         text = _block_text(screenplay, block)
@@ -159,6 +190,12 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
         "action_paragraphs": action_paragraphs,
         "production_tag_lines": tag_lines,
     }
+    if any(untimed_lines.values()):
+        counts["untimed_tag_lines"] = {
+            tag: number for tag, number in untimed_lines.items() if number
+        }
+    if untimed_lines[ON_SCREEN_TEXT_TAG]:
+        counts["on_screen_text_characters"] = on_screen_text_characters
     if unreadable_blocks:
         counts["unreadable_blocks"] = sorted(unreadable_blocks)
     return counts
@@ -203,10 +240,20 @@ def declared_rates(project: dict[str, Any] | None) -> dict[str, Any]:
     usable = isinstance(per_second, (int, float)) and per_second > 0 and (
         isinstance(per_action, (int, float)) and per_action >= 0
     )
+    reading = pacing.get("on_screen_text_characters_per_second")
+    reading_usable = (
+        isinstance(reading, (int, float))
+        and not isinstance(reading, bool)
+        and math.isfinite(reading)
+        and reading > 0
+    )
     return {
         "declared": bool(usable),
         "spoken_characters_per_second": per_second if usable else None,
         "seconds_per_action_paragraph": per_action if usable else None,
+        # Optional: a project that holds text on screen as its own beat can
+        # declare how fast it is read. Without it the text stays untimed.
+        "on_screen_text_characters_per_second": reading if reading_usable else None,
     }
 
 
@@ -277,6 +324,22 @@ def estimate(
             ),
         }
 
+    untimed = dict(counts.get("untimed_tag_lines") or {})
+    if rates["on_screen_text_characters_per_second"] is not None:
+        untimed.pop(ON_SCREEN_TEXT_TAG, None)
+    if untimed:
+        # These lines take screen time this estimate cannot see. A storyboard
+        # that holds each one long enough to read lands well above the number
+        # below, so the gap is named here instead of surfacing two stages later.
+        result["untimed"] = {
+            "tag_lines": untimed,
+            "note": (
+                "these production tags take screen time that is not in the "
+                "seconds; declare format.pacing.on_screen_text_characters_per_second "
+                "to time on-screen text by its readable characters"
+            ),
+        }
+
     if not rates["declared"]:
         result["note"] = (
             "the project declares no format.pacing rates, so seconds cannot be "
@@ -292,6 +355,11 @@ def estimate(
         counts["voiced_characters"] / rates["spoken_characters_per_second"]
         + counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
     )
+    reading = rates["on_screen_text_characters_per_second"]
+    if reading is not None and counts.get("on_screen_text_characters"):
+        reading_seconds = counts["on_screen_text_characters"] / reading
+        result["on_screen_text_seconds"] = round(reading_seconds, 1)
+        seconds += reading_seconds
     result["seconds"] = round(seconds, 1)
     if result["target_seconds"]:
         delta = seconds - result["target_seconds"]

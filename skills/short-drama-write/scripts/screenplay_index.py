@@ -176,7 +176,12 @@ FULLWIDTH_TAG_RE = re.compile(
     r"(?!\s*(?:（[^（）\r\n]*）|\([^()\r\n]*\))?\s*[：:])"
 )
 MALFORMED_TAG_RE = re.compile(r"^\[(?:VO|OS|SFX|画面文字|连续性|转场)(?:\s|：|:)")
-VOICE_TAG_BODY_RE = re.compile(r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<text>\S[\s\S]*)$")
+# A voiced tag carries the same optional performance cue as plain dialogue
+# (``[OS] 角色（提示）：台词``); the duration estimate already times it that way.
+VOICE_TAG_BODY_RE = re.compile(
+    r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
+    r"(?:（(?P<cue>[^（）\r\n]+)）)?：(?P<text>\S[\s\S]*)$"
+)
 BLOCK_ID_RE = re.compile(r"^BLK-(?P<scope>.+)-(?P<code>[HADPC])(?P<number>\d+)$")
 
 
@@ -420,11 +425,13 @@ def _parse_screenplay(
                 voice_match = VOICE_TAG_BODY_RE.fullmatch(body)
                 if not voice_match:
                     issues.append(
-                        _issue(span, "invalid_voice_tag_syntax", f"[{tag}] 必须明确说话者并使用全角冒号。")
+                        _issue(span, "invalid_voice_tag_syntax", f"[{tag}] 写成「[{tag}] 角色（可选提示）：台词」：要有说话者、全角冒号，提示用全角括号。")
                     )
                     index = end_index + 1
                     continue
                 fields["speaker"] = voice_match.group("speaker")
+                if voice_match.group("cue"):
+                    fields["performance_cue"] = voice_match.group("cue")
             append_block("production_tag", span, **fields)
             index = end_index + 1
             continue
