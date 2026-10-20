@@ -115,6 +115,12 @@ class PartialCheckTests(EpisodeCase):
         self.drop("分镜.md")
         self.assertFalse(any("引文" in error for error in self.errors(partial=True)))
 
+    def test_video_lock_checks_survive_a_missing_storyboard(self) -> None:
+        self.drop("分镜.md")
+        self.edit("视频提示词.md", SURFACE, "olive field jacket", count=-1)
+        errors = self.errors(partial=True)
+        self.assertTrue(any(error.startswith("LOCK-JIANGCHEN-DRESS: MOTION-") for error in errors), errors)
+
     def test_nothing_to_check_is_an_error(self) -> None:
         for name in check.REQUIRED_DOCUMENTS:
             (self.episode / name).unlink()

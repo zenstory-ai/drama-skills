@@ -2405,6 +2405,13 @@ class CreatorViewsTests(unittest.TestCase):
         member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-001")
         self.assertEqual(member["view"], "prompts")
 
+    def test_groups_that_share_members_hide_nothing(self) -> None:
+        group = "\n## {gid} · 重叠\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：7s\n\n### 可复制提示词\n> 镜头1：……\n"
+        video = example("视频提示词.md") + group.format(gid="GROUP-EP001-01") + group.format(gid="GROUP-EP001-02")
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertEqual(sum("共用成员" in problem for problem in episode["problems"]), 2)
+
     def test_a_group_without_a_usable_body_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 无正文\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：7s\n"

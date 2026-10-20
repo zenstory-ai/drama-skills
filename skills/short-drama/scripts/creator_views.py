@@ -801,7 +801,18 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     video_text = documents.get(VIDEO_PROMPTS)
     groups = []
     known_motions = {prompt["id"] for prompt in videos or []}
-    for group in parse_video_groups(video_text) if video_text else []:
+    parsed_groups = parse_video_groups(video_text) if video_text else []
+    claims: dict[str, list[str]] = {}
+    for group in parsed_groups:
+        for member in group["members"]:
+            claims.setdefault(member, []).append(group["id"])
+    contested = {owner for owners in claims.values() if len(owners) > 1 for owner in owners}
+    for group in parsed_groups:
+        if group["id"] in contested:
+            problems.append(
+                f"{VIDEO_PROMPTS}：{group['id']} 与其他分组共用成员，按逐镜显示"
+            )
+            continue
         # A group stands in for its members only when every member is there to
         # stand in for; otherwise the members stay as they are.
         missing = [member for member in group["members"] if member not in known_motions]

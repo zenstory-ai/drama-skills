@@ -1298,7 +1298,15 @@ def _check_continuity_locks(
         lock_id = lock.lock_id
         surface = lock.surface
         if shots is None:
-            targets: list[str] = []
+            # Without 分镜.md: explicit shots and 全集 still reach the MOTION and
+            # GROUP bodies through each MOTION's 分镜 field; 入画 needs the
+            # storyboard's 视觉依据 and waits for it.
+            if lock.shots == ["全集"]:
+                targets: list[str] = sorted(motion_by_shot)
+            elif lock.shots == [IN_FRAME_SCOPE]:
+                targets = []
+            else:
+                targets = lock.shots
         elif lock.shots == ["全集"]:
             targets = sorted(shots)
         elif lock.shots == [IN_FRAME_SCOPE]:
@@ -1310,16 +1318,15 @@ def _check_continuity_locks(
         else:
             targets = lock.shots
         for shot_id in targets:
-            if shots is None:
-                break
-            if shot_id not in shots:
-                errors.append(f"{lock_id}: 连续性锁指向不存在的镜头: {shot_id}")
-                continue
-            keyframe = _copyable_prompt(shots[shot_id], heading=r"冻结关键帧提示词")
-            if keyframe is None:
-                errors.append(f"{lock_id}: {shot_id} 缺少可读的冻结关键帧提示词")
-            elif not _carries_surface(keyframe, surface):
-                errors.append(f"{lock_id}: {shot_id} 冻结关键帧提示词缺少锁面")
+            if shots is not None:
+                if shot_id not in shots:
+                    errors.append(f"{lock_id}: 连续性锁指向不存在的镜头: {shot_id}")
+                    continue
+                keyframe = _copyable_prompt(shots[shot_id], heading=r"冻结关键帧提示词")
+                if keyframe is None:
+                    errors.append(f"{lock_id}: {shot_id} 缺少可读的冻结关键帧提示词")
+                elif not _carries_surface(keyframe, surface):
+                    errors.append(f"{lock_id}: {shot_id} 冻结关键帧提示词缺少锁面")
             motion = motion_by_shot.get(shot_id)
             if motion is None:
                 continue
