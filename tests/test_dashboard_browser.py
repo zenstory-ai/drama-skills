@@ -197,6 +197,10 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
         page.locator(".slug .go").first.click()
         page.wait_for_function("() => location.hash === '#/EP001/board?scene=EP001-SC001'")
         expect(page.locator(".shot")).to_have_count(13)
+        expect(page.locator(".blocking-card")).to_have_count(1)
+        expect(page.locator('.blocking-card[data-scene="EP001-SC001"] dd').first).to_contain_text("办公桌")
+        page.locator(".shot").first.click()
+        expect(page.locator("#insBlocking")).to_contain_text("working side")
 
     def test_settings_cards_show_locks_and_filter_the_storyboard(self) -> None:
         page = self.open(route="#/EP001/settings")

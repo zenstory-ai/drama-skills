@@ -262,6 +262,8 @@ def parse_settings(text: str) -> dict[str, Any]:
 
 SHOT_TITLE_RE = re.compile(r"^## \S+ · (.+)$", re.MULTILINE)
 NOTE_RE = re.compile(r"^> (.+)$", re.MULTILINE)
+BLOCKING_HEADING_RE = re.compile(r"场景站位 · (\S+)(?: · (.+))?")
+BULLET_FIELD_RE = re.compile(r"^- ([^：\n]+)：(.+)$", re.MULTILINE)
 REF_STATES = {
     "t2v": "文生视频（创作者已选择不用图）",
     "pending": "待补参考图",
@@ -346,7 +348,28 @@ def parse_storyboard(text: str) -> dict[str, Any]:
         })
     if not shots:
         raise ValueError("没有找到 `## SHOT-EP001-001 · 标题` 这样的镜头")
-    return {"note": note.group(1).strip() if note else "", "shots": shots}
+    return {
+        "note": note.group(1).strip() if note else "",
+        "blocking": parse_scene_blocking(check._storyboard_head(text)),
+        "shots": shots,
+    }
+
+
+def parse_scene_blocking(head: str) -> list[dict[str, Any]]:
+    """`## 场景站位 · <scene> · <place>` blocks: the staging every shot of a scene inherits."""
+
+    blocks = []
+    for section in re.split(r"(?m)^## ", head)[1:]:
+        heading, _, body = section.partition("\n")
+        match = BLOCKING_HEADING_RE.fullmatch(heading.strip())
+        if not match:
+            continue
+        blocks.append({
+            "scene": match.group(1),
+            "place": (match.group(2) or "").strip(),
+            "rows": [[key.strip(), value.strip()] for key, value in BULLET_FIELD_RE.findall(body)],
+        })
+    return blocks
 
 
 def start_frame(shot: dict[str, Any]) -> Optional[str]:

@@ -2354,6 +2354,24 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(shots["SHOT-EP001-001"]["refState"], "t2v")
         self.assertEqual([scene["id"] for scene in episode["script"]["scenes"]], ["EP001-SC001", "EP001-SC002"])
 
+    def test_scene_blocking_is_read_from_the_storyboard_head(self) -> None:
+        # Shots record only changes against their scene's 场景站位, so the
+        # dashboard has to carry the block or those changes read without a baseline.
+        blocking = self.episode()["board"]["blocking"]
+        self.assertEqual(
+            [(block["scene"], block["place"]) for block in blocking],
+            [("EP001-SC001", "副团长办公室"), ("EP001-SC002", "文工团办公区 / 江晨工位")],
+        )
+        rows = dict(blocking[0]["rows"])
+        self.assertIn("周薄森坐在办公桌后", rows["人物"])
+        self.assertIn("working side", rows["轴线"])
+        # A heading that merely sits in the head is not a blocking block.
+        board = example("分镜.md").replace("## 场景站位 · EP001-SC002", "## 备注 · EP001-SC002")
+        self.assertEqual(
+            [block["scene"] for block in self.episode(**{"分镜.md": board})["board"]["blocking"]],
+            ["EP001-SC001"],
+        )
+
     def test_the_storyboard_is_read_by_the_checkers_own_functions(self) -> None:
         # Change what the checker thinks a duration is and the dashboard follows;
         # a second parser would keep answering 62.

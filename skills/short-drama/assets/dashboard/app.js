@@ -1250,6 +1250,16 @@ function soundFlags(C, shot) {
   return flags.join("");
 }
 
+/** 场景站位: the staging a scene's shots inherit, shown as written. */
+function blockingRows(block) {
+  return `<dl class="blocking-dl">${block.rows.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>`;
+}
+
+function blockingHTML(blocks) {
+  if (!blocks.length) return "";
+  return `<div class="blocking" id="boardBlocking">${blocks.map((block) => `<section class="card blocking-card" data-scene="${esc(block.scene)}"><h3>场景站位 · ${esc(sceneShort(block.scene))}${block.place ? ` ${esc(block.place)}` : ""}</h3>${blockingRows(block)}</section>`).join("")}</div>`;
+}
+
 function viewBoard(row, E, arg, q) {
   if (!row.has.board) return missingView(row, "board");
   if (!E.board) return rawFallback(E, E.docs["分镜.md"], "分镜");
@@ -1279,6 +1289,7 @@ function viewBoard(row, E, arg, q) {
     ${editButton(E.docs["分镜.md"])}</div></div>
   ${problemNotices(E)}
   ${E.board.note ? `<p class="muted small" id="boardNote">${esc(E.board.note)}</p>` : ""}
+  ${blockingHTML((E.board.blocking || []).filter((block) => !sceneFilter || block.scene === sceneFilter))}
   <div class="metrics" id="boardMetrics">
     ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
     ${metric("平均镜长", `${num(M.avg)}<small> 秒</small>`, P ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有接受节奏档案", null)}
@@ -1335,6 +1346,7 @@ function renderInspector(row, E, id) {
       </div>
     </div>
     ${shot.purpose ? `<div class="ins-sec"><h4>目的</h4><p class="purpose">${esc(shot.purpose)}</p></div>` : ""}
+    ${(() => { const block = (E.board?.blocking || []).find((item) => item.scene === shot.scene); return block ? `<div class="ins-sec" id="insBlocking"><h4>场景站位</h4>${blockingRows(block)}</div>` : ""; })()}
     <div class="ins-sec"><h4>动作</h4><div class="timeline3"><div><b>起点</b>${esc(shot.start || "—")}</div><div class="mid"><b>唯一动作</b>${esc(shot.action || "—")}</div><div><b>终点</b>${esc(shot.end || "—")}</div></div></div>
     <div class="ins-sec"><h4>声音</h4><p>${esc(shot.sound || "—")}</p>${cut?.subs.length ? `<div>${cut.subs.map((sub) => `<span class="subline">「${esc(sub.text)}」</span>`).join("")}</div>` : ""}</div>
     ${shot.screenText || cut?.texts.length ? `<div class="ins-sec"><h4>画面文字</h4>${shot.screenText ? `<p>${esc(shot.screenText)}</p>` : ""}${(cut?.texts || []).map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</div>` : ""}
