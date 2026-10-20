@@ -2405,6 +2405,14 @@ class CreatorViewsTests(unittest.TestCase):
         member = next(row for row in views.search_entries(episode) if row["w"] == "MOTION-EP001-001")
         self.assertEqual(member["view"], "prompts")
 
+    def test_a_group_without_a_usable_body_hides_nothing(self) -> None:
+        video = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 无正文\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：7s\n"
+        )
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertTrue(any("GROUP-EP001-01" in problem and "可复制提示词" in problem for problem in episode["problems"]))
+
     def test_the_storyboard_is_read_by_the_checkers_own_functions(self) -> None:
         # Change what the checker thinks a duration is and the dashboard follows;
         # a second parser would keep answering 62.

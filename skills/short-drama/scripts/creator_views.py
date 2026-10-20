@@ -805,13 +805,17 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
         # A group stands in for its members only when every member is there to
         # stand in for; otherwise the members stay as they are.
         missing = [member for member in group["members"] if member not in known_motions]
-        if group["members"] and not missing:
-            groups.append(group)
-        else:
+        if not group["members"] or missing:
             problems.append(
                 f"{VIDEO_PROMPTS}：{group['id']} 的成员"
                 f"{'、'.join(missing) if missing else '为空'}找不到，按逐镜显示"
             )
+        elif not group["prompt"]:
+            problems.append(
+                f"{VIDEO_PROMPTS}：{group['id']} 没有唯一且非空的可复制提示词，按逐镜显示"
+            )
+        else:
+            groups.append(group)
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
