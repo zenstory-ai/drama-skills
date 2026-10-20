@@ -359,8 +359,8 @@ class DeliveryGroupBrowserTests(Browser, unittest.TestCase):
         video = project / "剧集/EP001/视频提示词.md"
         video.write_text(
             video.read_text(encoding="utf-8")
-            + "\n## GROUP-EP001-01 · 茶杯到双人\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
-            + f"- 时长：7s\n\n### 可复制提示词\n> {cls.GROUP_BODY}\n",
+            + "\n## GROUP-EP001-01 · 低头到手\n- 成员：MOTION-EP001-003、MOTION-EP001-004\n"
+            + f"- 时长：5s\n\n### 可复制提示词\n> {cls.GROUP_BODY}\n",
             encoding="utf-8",
         )
         cls.start(workspace)
@@ -375,9 +375,9 @@ class DeliveryGroupBrowserTests(Browser, unittest.TestCase):
         page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=self.origin)
         expect(page.locator("#copyProgress")).to_have_text("0 / 21")
         keys = page.locator(".pcard").evaluate_all("nodes => nodes.map((node) => node.dataset.key)")
-        self.assertEqual(keys[:2], ["GROUP-EP001-01", "MOTION-EP001-003"])
-        self.assertNotIn("MOTION-EP001-002", keys)
-        page.locator(".copybar").get_by_role("button", name="复制下一条").click()
+        self.assertEqual(keys[:4], ["MOTION-EP001-001", "MOTION-EP001-002", "GROUP-EP001-01", "MOTION-EP001-005"])
+        self.assertNotIn("MOTION-EP001-004", keys)
+        page.locator('.pcard[data-key="GROUP-EP001-01"] .pact button').click()
         self.assertEqual(page.evaluate("() => navigator.clipboard.readText()"), self.GROUP_BODY)
 
 

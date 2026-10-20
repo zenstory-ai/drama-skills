@@ -448,93 +448,40 @@ def usable_groups(
 ) -> list[dict[str, Any]]:
     """The groups the copy queue may fold their members into.
 
-    A group stands in for its members only when the checker's own group rules
-    find nothing wrong with it; any finding keeps the members as separate cards
-    and is shown as a notice, so a malformed group never hides or reorders a
-    prompt.
+    The checker runs over the documents in hand; a group stands in for its
+    members only when it reports nothing about the group, its member MOTIONs or
+    their shots. Anything else keeps the members as separate cards with a
+    notice, so a malformed group never hides, reorders or misstates a prompt.
     """
     if not text:
         return []
+    documents = {**(documents or {}), VIDEO_PROMPTS: text}
+    findings = check.validate_documents(
+        {name: documents.get(name) for name in check.REQUIRED_DOCUMENTS}, None, partial=True
+    )
     motions = check._sections(text, "MOTION")
     shot_of = {
         motion_id: check._plain(check._fields(body, owner=motion_id, errors=[]).get("分镜", ""))
         for motion_id, body in motions.items()
     }
-    durations = {
-        shot_of[motion_id]: check._plain(check._fields(body, owner=motion_id, errors=[]).get("时长", ""))
-        for motion_id, body in motions.items()
-    }
-    documents = documents or {}
-    board = documents.get(STORYBOARD)
-    shots = check._sections(board, "SHOT") if board else {}
-    shot_scenes = {
-        shot_id: check.SCENE_ID_RE.findall(check._fields(body, owner=shot_id, errors=[]).get("来源", ""))
-        for shot_id, body in shots.items()
-    }
-    upstream = [documents.get(name) for name in (SCREENPLAY, SETTINGS, STORYBOARD)]
-    findings: list[str] = []
-    members = check._check_delivery_groups(
-        check._sections(text, "GROUP"),
-        video=text,
-        motions=motions,
-        motion_duration=durations,
-        # The storyboard's order and scenes when it is there, as the checker uses.
-        shot_order=list(shots) if shots else [shot_of[motion_id] for motion_id in motions],
-        shot_scenes=shot_scenes,
-        spoken_sources=(
-            tuple(check._spoken_key(part) for part in upstream)
-            if all(part is not None for part in upstream)
-            else None
-        ),
-        errors=findings,
-    )
-    settings = documents.get(SETTINGS)
-    if settings:
-        # A group body is what gets submitted, so a lock it drops is a finding
-        # against the group, exactly as in the checker.
-        entries = check._visual_entries(settings, [])
-        other = {
-            match.group(2).strip(): match.group(1).strip()
-            for match in check.OTHER_SETTING_HEADING_RE.finditer(settings)
-            if match.group(1).strip() not in check.VISUAL_CATEGORIES
-        }
-        in_frame = {}
-        for shot_id, body in shots.items():
-            basis = check._visual_basis(
-                check._fields(body, owner=shot_id, errors=[]).get("视觉依据", ""), shot_id, entries, other, []
-            )
-            if basis.parsed:
-                in_frame[shot_id] = basis.declared
-        lock_findings: list[str] = []
-        check._check_continuity_locks(
-            check._continuity_locks(settings, []),
-            shots=shots or None,
-            motion_by_shot={},
-            image_prompts=None,
-            errors=lock_findings,
-            in_frame=in_frame,
-            groups=members,
-        )
-        findings.extend(finding for finding in lock_findings if ": GROUP-" in finding)
     ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", text, re.MULTILINE)
-    rejected = {group_id for group_id in ids if ids.count(group_id) > 1}
-    for group_id in sorted(rejected):
-        problems.append(f"{VIDEO_PROMPTS}：{group_id} 标题重复，按逐镜显示")
-    for finding in findings:
-        found = re.search(r"\bGROUP-[A-Z0-9-]+", finding)
-        group_id = found.group(0) if found else finding.split(":", 1)[0]
-        rejected.add(group_id)
-        problems.append(f"{VIDEO_PROMPTS}：{finding}；按逐镜显示")
-    # The checker names only the later of two groups that share a member.
-    owners: dict[str, list[str]] = {}
-    parsed = parse_video_groups(text)
-    for group in parsed:
-        for member in group["members"]:
-            owners.setdefault(member, []).append(group["id"])
-    for shared in owners.values():
-        if len(shared) > 1:
-            rejected.update(shared)
-    return [group for group in parsed if group["id"] not in rejected]
+    usable = []
+    for group in parse_video_groups(text):
+        if ids.count(group["id"]) > 1:
+            problems.append(f"{VIDEO_PROMPTS}：{group['id']} 标题重复，按逐镜显示")
+            continue
+        names = {group["id"], *group["members"], *(shot_of.get(m, "") for m in group["members"])} - {""}
+        about = [
+            finding
+            for finding in findings
+            if any(re.search(rf"(?<![A-Z0-9-]){re.escape(name)}(?![A-Z0-9-])", finding) for name in names)
+        ]
+        if about or not group["members"]:
+            detail = about[0] if about else "没有成员"
+            problems.append(f"{VIDEO_PROMPTS}：{group['id']} 未并入复制队列（{detail}），按逐镜显示")
+            continue
+        usable.append(group)
+    return usable
 
 
 # ------------------------------------------------------------------ cut list

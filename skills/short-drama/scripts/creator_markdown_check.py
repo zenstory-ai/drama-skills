@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path, PurePosixPath
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import NamedTuple, Optional
 
 
@@ -384,7 +384,7 @@ def _slot_matches(value: str) -> list:
 def _references(
     value: str,
     owner: str,
-    project_root: Path,
+    project_root: Optional[Path],
     errors: list[str],
     entries: Optional[EntryIndex] = None,
 ) -> frozenset:
@@ -485,11 +485,17 @@ def _references(
 
 
 def _check_project_file(
-    locator: str, owner: str, project_root: Path, errors: list[str]
+    locator: str, owner: str, project_root: Optional[Path], errors: list[str]
 ) -> None:
-    """A REF locator names a readable file inside the project, or it is a defect."""
+    """A REF locator names a readable file inside the project, or it is a defect.
+
+    Without a project root (a reader that only has the documents' text) the
+    path's shape is still checked; whether the file exists is not.
+    """
     if not _portable_path(locator):
         errors.append(f"{owner}: REF 路径不是安全的项目相对路径: {locator}")
+        return
+    if project_root is None:
         return
     reference_path = project_root / locator
     if not _inside(reference_path, project_root):
@@ -644,7 +650,7 @@ class VoiceContext(NamedTuple):
 def _audio_references(
     value: str,
     owner: str,
-    project_root: Path,
+    project_root: Optional[Path],
     errors: list[str],
     *,
     image_slots: list[str],
@@ -1222,13 +1228,15 @@ def _continuity_locks(document: str, errors: list[str]) -> list[ContinuityLock]:
     return locks
 
 
-def _prompt_language(project_root: Path) -> str:
+def _prompt_language(project_root: Optional[Path]) -> str:
     """The language a copyable prompt body is written in.
 
     Mirrors the skills' own routing: the project's declared prompt language,
     falling back to `en` when there is no `short-drama.json` -- which is what
     the storyboard skill tells the keyframe author to assume.
     """
+    if project_root is None:
+        return ""
     configuration = project_root / "short-drama.json"
     if not configuration.is_file():
         return "en"
@@ -1254,7 +1262,7 @@ def _prompt_language(project_root: Path) -> str:
 
 
 def _check_language_designators(
-    project_root: Path, *, entries: list[VisualEntry], errors: list[str]
+    project_root: Optional[Path], *, entries: list[VisualEntry], errors: list[str]
 ) -> None:
     """Every character must be nameable in the prompt body's language.
 
@@ -1574,9 +1582,30 @@ def validate_episode(
     reported as passing or failing.
     """
     episode = episode.resolve()
-    project_root = (project_root or episode.parent.parent).resolve()
+    texts = {
+        name: (episode / name).read_text(encoding="utf-8")
+        for name in REQUIRED_DOCUMENTS
+        if (episode / name).is_file()
+    }
+    return validate_documents(
+        texts, (project_root or episode.parent.parent).resolve(), partial=partial
+    )
+
+
+def validate_documents(
+    texts: "Mapping[str, Optional[str]]",
+    project_root: Optional[Path],
+    *,
+    partial: bool = False,
+) -> list[str]:
+    """The same rules over document text already in hand, keyed by file name.
+
+    A missing or None entry is a missing document. ``project_root`` None skips
+    only what needs the disk: whether a REF file exists, and the project's
+    prompt language.
+    """
     errors: list[str] = []
-    missing = missing_documents(episode)
+    missing = [name for name in REQUIRED_DOCUMENTS if texts.get(name) is None]
     if missing and not partial:
         return [f"缺少创作文档: {', '.join(missing)}"]
     present = frozenset(REQUIRED_DOCUMENTS) - frozenset(missing)
@@ -1584,7 +1613,7 @@ def validate_episode(
         return ["没有可核对的创作文档"]
 
     def read(name: str) -> str:
-        return (episode / name).read_text(encoding="utf-8") if name in present else ""
+        return texts.get(name) or ""
 
     has_screenplay = "剧本.md" in present
     has_visual = "视觉设定.md" in present
