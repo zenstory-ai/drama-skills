@@ -480,6 +480,16 @@ def usable_groups(
         if whole:
             problems.append(f"{VIDEO_PROMPTS}：{group['id']} 未并入复制队列（{whole[0]}），按逐镜显示")
             continue
+        # The copy queue follows the MOTION order of this document; a group can
+        # take its members' place only if they sit there consecutively, in order,
+        # whether or not a storyboard is around to say the same.
+        order = list(motions)
+        places = [order.index(m) for m in group["members"] if m in order]
+        if len(places) == len(group["members"]) and places != list(range(places[0], places[0] + len(places))):
+            problems.append(
+                f"{VIDEO_PROMPTS}：{group['id']} 的成员在视频提示词里不相邻或顺序不对，按逐镜显示"
+            )
+            continue
         unshot = [m for m in group["members"] if shots is not None and shot_of.get(m) not in shots]
         if unshot:
             problems.append(

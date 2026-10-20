@@ -2463,6 +2463,18 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual((lock["scope"], lock["shots"]), ("入画", listing))
         self.assertIn("SHOT-EP001-004", listing)
 
+    def test_without_a_storyboard_a_gapped_group_hides_nothing(self) -> None:
+        video = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 跳号\n- 成员：MOTION-EP001-001、MOTION-EP001-003\n- 时长：5s\n\n"
+            "### 可复制提示词\n> 穿 pine-green lapel service jacket 的镜头。\n"
+        )
+        texts = {name: example(name) for name in DOCUMENTS}
+        texts["视频提示词.md"] = video
+        texts["分镜.md"] = None
+        episode = views.read_episode("EP001", texts, REVIEW)
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertTrue(any("不相邻" in problem for problem in episode["problems"]))
+
     def test_a_misspelled_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 拼错\n- 成员：MOTION-EP001-001、MOTON-EP001-002\n"
