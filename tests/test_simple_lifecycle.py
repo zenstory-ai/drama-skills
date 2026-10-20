@@ -799,6 +799,13 @@ class SimpleLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
 
+    def test_pacing_with_zero_action_seconds_still_counts_as_declared(self) -> None:
+        # The write stage's estimator accepts a zero action-paragraph duration;
+        # status must not ask the creator to change a setting that works.
+        manifest = {"format": {"target_seconds_per_episode": 90, "pacing": {
+            "spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 0}}}
+        self.assertEqual(project_tool.profile_notes(manifest), [])
+
     def test_rhythm_profile_is_declared_only_once_a_complete_profile_is_accepted(self) -> None:
         # Later stages do arithmetic on these numbers, so a partial or
         # out-of-range profile must not land; a missing one means "do not check".
