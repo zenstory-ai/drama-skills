@@ -1382,7 +1382,7 @@ function viewSettings(row, E) {
       ${item.desc.map((line) => `<p class="desc">${esc(line)}</p>`).join("")}
       ${anchor ? `<div class="anchor"><b>识别锚点</b>${esc(anchor)}</div>` : ""}
       ${rest.map(([key, value]) => `<div class="field"><span class="muted">${esc(key)}：</span>${esc(value)}</div>`).join("")}
-      ${item.lock ? `<div class="lock"><div class="ln">${icon("lock")}连续性锁《${esc(item.lock.name)}》</div><span class="surface">${esc(item.lock.surface)}</span><div class="muted small">锁定 ${item.lock.shots.length} 镜 · 每条相关提示词都要逐字带上这段</div></div>` : ""}
+      ${item.lock ? `<div class="lock"><div class="ln">${icon("lock")}连续性锁《${esc(item.lock.name)}》</div><span class="surface">${esc(item.lock.surface)}</span><div class="muted small">${lockReach(C, item.lock)} · 每条相关提示词都要逐字带上这段</div></div>` : ""}
       ${C.shots.length ? `<div class="presence"><div class="pk"><span>出现在 ${seen.size} 镜</span>${seen.size ? `<a href="#/${esc(row.id)}/board?entity=${encodeURIComponent(item.name)}">在分镜里筛出 ${icon("right")}</a>` : ""}</div>
         <div class="pstrip" aria-hidden="true">${C.shots.map((shot) => `<i data-css="flex-grow:${Math.max(0.2, shot.sec)}" class="${seen.has(shot.id) ? (locked.has(shot.id) || locked.has("全集") ? "lk" : "on") : ""}" title="${esc(shot.n)}"></i>`).join("")}</div></div>` : ""}
     </article>`;
@@ -1395,6 +1395,13 @@ function viewSettings(row, E) {
     ${["人物", "造型", "地点", "道具"].map((category) => { const items = settings.items.filter((item) => item.cat === category); if (!items.length) return "";
       return `<div class="section-t"><h3>${category}</h3><span class="n">${items.length}</span>${category === "人物" && C.shots.length ? '<span class="more">出场条：每格一镜，宽度按时长；朱红 = 连续性锁生效</span>' : ""}</div><div class="assets">${items.map(card).join("")}</div>`; }).join("")}
   </div>`;
+}
+
+/** How far a continuity lock reaches, in the words its scope was written in. */
+function lockReach(C, lock) {
+  if (lock.shots.includes("全集")) return `锁定全集 ${C.shots.length} 镜`;
+  if (lock.scope === "入画") return C.shots.length ? `入画 · 锁定 ${lock.shots.length} 镜` : "入画 · 分镜写完后按视觉依据生效";
+  return `锁定 ${lock.shots.length} 镜`;
 }
 
 /* ================================================================ prompts */

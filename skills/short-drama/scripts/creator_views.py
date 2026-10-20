@@ -464,9 +464,28 @@ def usable_groups(
         motion_id: check._plain(check._fields(body, owner=motion_id, errors=[]).get("分镜", ""))
         for motion_id, body in motions.items()
     }
+    # Findings about the documents as a whole (unpaired shots, repeated
+    # headings) name no entry, yet they can be about any group's members.
+    whole = [
+        finding
+        for finding in findings
+        if finding.startswith(("分镜.md", "视频提示词.md"))
+        and not re.search(r"\b(?:SHOT|MOTION|GROUP)-[A-Z0-9-]+", finding)
+    ]
+    board = documents.get(STORYBOARD)
+    shots = set(check._sections(board, "SHOT")) if board else None
     ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", text, re.MULTILINE)
     usable = []
     for group in parse_video_groups(text):
+        if whole:
+            problems.append(f"{VIDEO_PROMPTS}：{group['id']} 未并入复制队列（{whole[0]}），按逐镜显示")
+            continue
+        unshot = [m for m in group["members"] if shots is not None and shot_of.get(m) not in shots]
+        if unshot:
+            problems.append(
+                f"{VIDEO_PROMPTS}：{group['id']} 的成员 {'、'.join(unshot)} 在分镜里没有对应镜头，按逐镜显示"
+            )
+            continue
         if ids.count(group["id"]) > 1:
             problems.append(f"{VIDEO_PROMPTS}：{group['id']} 标题重复，按逐镜显示")
             continue
@@ -840,6 +859,18 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     images = _attempt(problems, IMAGE_PROMPTS, parse_image_prompts, documents.get(IMAGE_PROMPTS))
     videos = _attempt(problems, VIDEO_PROMPTS, parse_video_prompts, documents.get(VIDEO_PROMPTS))
     groups = usable_groups(documents.get(VIDEO_PROMPTS), problems, documents) if videos else []
+    if settings:
+        # `入画` is resolved the way the checker resolves it: every shot whose
+        # 视觉依据 lists the entry. Without a storyboard there are none yet.
+        for item in settings["items"]:
+            lock = item["lock"]
+            if lock and lock["shots"] == [check.IN_FRAME_SCOPE]:
+                lock["scope"] = check.IN_FRAME_SCOPE
+                lock["shots"] = [
+                    shot["id"]
+                    for shot in (board or {}).get("shots", [])
+                    if any(b["cat"] == item["cat"] and b["name"] == item["name"] for b in shot["basis"])
+                ]
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {

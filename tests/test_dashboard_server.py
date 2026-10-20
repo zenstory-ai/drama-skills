@@ -2441,6 +2441,28 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(episode["videoGroups"], [])
         self.assertTrue(any("LOCK-JIANGCHEN-DRESS" in problem for problem in episode["problems"]))
 
+    def test_an_unpaired_storyboard_keeps_groups_unfolded(self) -> None:
+        board = example("分镜.md")
+        cut = board.index("## SHOT-EP001-022")
+        video = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 成对\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：7s\n\n"
+            "### 可复制提示词\n> 穿 pine-green lapel service jacket 的镜头。\n"
+        )
+        episode = self.episode(**{"分镜.md": board[:cut], "视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertTrue(any("GROUP-EP001-01" in problem and "未一一对应" in problem for problem in episode["problems"]))
+
+    def test_an_in_frame_lock_reaches_the_shots_that_list_its_entry(self) -> None:
+        settings = re.sub(r"（镜头：SHOT-EP001-002[^；]*；", "（镜头：入画；", example("视觉设定.md"), count=1)
+        episode = self.episode(**{"视觉设定.md": settings})
+        lock = next(item["lock"] for item in episode["settings"]["items"] if item["lock"])
+        listing = [
+            shot["id"] for shot in episode["board"]["shots"]
+            if any(b["cat"] == "人物" and b["name"] == "江晨" for b in shot["basis"])
+        ]
+        self.assertEqual((lock["scope"], lock["shots"]), ("入画", listing))
+        self.assertIn("SHOT-EP001-004", listing)
+
     def test_a_misspelled_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 拼错\n- 成员：MOTION-EP001-001、MOTON-EP001-002\n"
