@@ -737,6 +737,68 @@ class SimpleLifecycleTests(unittest.TestCase):
                     decision_id="CD-PACING-BAD",
                 )
 
+    def _bind(self, root: Path, field: str, decision_id: str, value: object) -> None:
+        relative = f"创作者决策/{decision_id}.jsonl"
+        decision = {
+            "decision_id": decision_id,
+            "status": "accepted",
+            "accepted_value": value,
+            "target_locators": [{"src": "short-drama", "field": field}],
+        }
+        project_tool.publish_candidate(
+            root,
+            owner="short-drama",
+            artifact_id=f"project:{decision_id}",
+            outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
+        )
+        project_tool.record_creator_acceptance(
+            root, artifact_id=f"project:{decision_id}", decision="accepted"
+        )
+        project_tool.set_creator_authority(
+            root, field=field, decision_path=relative, decision_id=decision_id
+        )
+
+    def test_episode_count_settled_after_init_has_a_write_path(self) -> None:
+        # The count is usually known only once the episode map exists, after
+        # init; the manifest kept null with no command able to fill it.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self._bind(root, "/format/episode_count", "CD-COUNT", 16)
+            self.assertEqual(project_tool.project_status(root)["format"]["episode_count"], 16)
+            with self.assertRaisesRegex(ValueError, "positive integer"):
+                self._bind(root, "/format/episode_count", "CD-COUNT-BAD", 2.5)
+
+    def test_status_names_settings_that_cannot_hold_together(self) -> None:
+        # Each value is valid alone; together they promise what a later stage
+        # cannot deliver, and that stage is the first to notice.
+        profile = {
+            "form": "ai_live_action", "first_hook_seconds": 5, "beat_interval_seconds_max": 30,
+            "opposed_reversals_per_episode_min": 1, "end_on_peak": True,
+            "reprise_previous_last_beat": True, "vo_share_max": 0.3,
+            "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45,
+            "first_major_payoff_by_episode": 1,
+        }
+        model = {
+            "target_video_model": "seedance-2.0", "video_prompt_dialect": "seedance-2.0",
+            "video_prompt_language": "zh-CN", "native_duration_seconds": {"min": 4, "max": 15},
+            "supported_generation_modes": ["text"], "audio_generation": "same_pass",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self.assertEqual(project_tool.project_status(root)["profile_notes"], [])
+            self._bind(root, "/creator_authority/rhythm_profile", "CD-RHYTHM", profile)
+            self._bind(root, "/creator_authority/production_profile/choices", "CD-MODEL", model)
+            self._bind(root, "/format/target_seconds_per_episode", "CD-LENGTH", 90)
+            notes = project_tool.project_status(root)["profile_notes"]
+            self.assertEqual(len(notes), 2, notes)
+            self.assertIn("2.5", notes[0])
+            self.assertIn("format.pacing", notes[1])
+            self._bind(
+                root, "/format/pacing", "CD-PACING",
+                {"spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 3},
+            )
+            self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
+
     def test_rhythm_profile_is_declared_only_once_a_complete_profile_is_accepted(self) -> None:
         # Later stages do arithmetic on these numbers, so a partial or
         # out-of-range profile must not land; a missing one means "do not check".

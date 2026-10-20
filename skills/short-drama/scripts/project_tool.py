@@ -119,7 +119,10 @@ PACING_POINTER = "/format/pacing"
 # Everything outside /creator_authority/* that a decision may still bind. Both
 # are read by the write stage to turn a screenplay into seconds, so leaving them
 # out of set-authority left hand-editing short-drama.json as the only way in.
-FORMAT_POINTERS = (EPISODE_LENGTH_POINTER, PACING_POINTER)
+EPISODE_COUNT_POINTER = "/format/episode_count"
+# The episode count is often settled only once the episode map exists, after
+# init; without a pointer it could only be hand-edited into the manifest.
+FORMAT_POINTERS = (EPISODE_LENGTH_POINTER, PACING_POINTER, EPISODE_COUNT_POINTER)
 RHYTHM_PROFILE_TOKENS = [AUTHORITY_ROOT_TOKEN, "rhythm_profile"]
 # The project rhythm profile: what develop proposes and the creator accepts, so
 # that later stages can do arithmetic on accepted numbers. Only types and ranges
@@ -363,6 +366,47 @@ def project_rhythm_profile(project: Mapping[str, Any]) -> tuple[dict[str, Any], 
     if problems:
         return {}, problems
     return {name: profile[name] for name in RHYTHM_PROFILE_FIELDS}, []
+
+
+def profile_notes(project: Mapping[str, Any]) -> list[str]:
+    """Arithmetic conflicts between accepted settings that no single one shows.
+
+    Each value passes on its own; together they promise something a later
+    stage cannot deliver, and that stage is the first to find out.
+    """
+    notes: list[str] = []
+    rhythm, _ = project_rhythm_profile(project)
+    model = project_video_model_profile(project)
+    native = model.get("native_duration_seconds")
+    shortest = native.get("min") if isinstance(native, Mapping) else None
+    average = rhythm.get("target_avg_shot_seconds")
+    if (
+        isinstance(shortest, (int, float))
+        and isinstance(average, (int, float))
+        and average < shortest
+    ):
+        notes.append(
+            f"rhythm_profile.target_avg_shot_seconds {average:g} is below the target "
+            f"model's native minimum of {shortest:g} seconds: most shots will need "
+            "multi-shot containers, or the average must rise"
+        )
+    block = project.get("format")
+    pacing = block.get("pacing") if isinstance(block, Mapping) else None
+    target = block.get("target_seconds_per_episode") if isinstance(block, Mapping) else None
+    rates = (
+        [pacing.get("spoken_characters_per_second"), pacing.get("seconds_per_action_paragraph")]
+        if isinstance(pacing, Mapping)
+        else []
+    )
+    usable = len(rates) == 2 and all(
+        isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0 for rate in rates
+    )
+    if isinstance(target, (int, float)) and not usable:
+        notes.append(
+            "format.target_seconds_per_episode is set but format.pacing has no usable rates: "
+            "the write stage cannot turn a screenplay into seconds"
+        )
+    return notes
 
 
 def initialize_project(
@@ -1029,6 +1073,7 @@ def _build_status(
         "format": project_format(project),
         "rhythm_profile": rhythm_profile,
         "rhythm_profile_problems": rhythm_problems,
+        "profile_notes": profile_notes(project),
         "project_root": project_root,
         "last_action": state.get("last_action"),
         "layout": dict(layout),
@@ -1655,6 +1700,10 @@ def set_creator_authority(
             isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
         ):
             raise ValueError("target_seconds_per_episode must be a positive number of seconds")
+        if field == EPISODE_COUNT_POINTER and not (
+            isinstance(value, int) and not isinstance(value, bool) and value > 0
+        ):
+            raise ValueError("episode_count must be a positive integer")
         project_path = root / PROJECT_FILE
         project = json.loads(project_path.read_text(encoding="utf-8"))
         if not isinstance(project, dict):
