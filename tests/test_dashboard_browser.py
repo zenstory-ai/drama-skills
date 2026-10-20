@@ -348,7 +348,7 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
 class DeliveryGroupBrowserTests(Browser, unittest.TestCase):
     """A multi-shot group is copied once, in sequence, instead of its members."""
 
-    GROUP_BODY = "镜头1：攥紧的茶杯。镜头2：四个号四个粉。"
+    GROUP_BODY = "镜头1：攥紧的茶杯。镜头2：穿 pine-green lapel service jacket 的四个号四个粉。"
 
     @classmethod
     def setUpClass(cls) -> None:

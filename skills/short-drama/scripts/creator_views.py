@@ -473,7 +473,7 @@ def usable_groups(
     }
     upstream = [documents.get(name) for name in (SCREENPLAY, SETTINGS, STORYBOARD)]
     findings: list[str] = []
-    check._check_delivery_groups(
+    members = check._check_delivery_groups(
         check._sections(text, "GROUP"),
         video=text,
         motions=motions,
@@ -488,12 +488,41 @@ def usable_groups(
         ),
         errors=findings,
     )
+    settings = documents.get(SETTINGS)
+    if settings:
+        # A group body is what gets submitted, so a lock it drops is a finding
+        # against the group, exactly as in the checker.
+        entries = check._visual_entries(settings, [])
+        other = {
+            match.group(2).strip(): match.group(1).strip()
+            for match in check.OTHER_SETTING_HEADING_RE.finditer(settings)
+            if match.group(1).strip() not in check.VISUAL_CATEGORIES
+        }
+        in_frame = {}
+        for shot_id, body in shots.items():
+            basis = check._visual_basis(
+                check._fields(body, owner=shot_id, errors=[]).get("视觉依据", ""), shot_id, entries, other, []
+            )
+            if basis.parsed:
+                in_frame[shot_id] = basis.declared
+        lock_findings: list[str] = []
+        check._check_continuity_locks(
+            check._continuity_locks(settings, []),
+            shots=shots or None,
+            motion_by_shot={},
+            image_prompts=None,
+            errors=lock_findings,
+            in_frame=in_frame,
+            groups=members,
+        )
+        findings.extend(finding for finding in lock_findings if ": GROUP-" in finding)
     ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", text, re.MULTILINE)
     rejected = {group_id for group_id in ids if ids.count(group_id) > 1}
     for group_id in sorted(rejected):
         problems.append(f"{VIDEO_PROMPTS}：{group_id} 标题重复，按逐镜显示")
     for finding in findings:
-        group_id = finding.split(":", 1)[0]
+        found = re.search(r"\bGROUP-[A-Z0-9-]+", finding)
+        group_id = found.group(0) if found else finding.split(":", 1)[0]
         rejected.add(group_id)
         problems.append(f"{VIDEO_PROMPTS}：{finding}；按逐镜显示")
     # The checker names only the later of two groups that share a member.

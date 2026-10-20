@@ -650,12 +650,14 @@ def _audio_references(
     image_slots: list[str],
     prompt: Optional[str],
     voices: VoiceContext,
-    scenes: list[str],
+    scenes: Optional[list[str]],
 ) -> None:
     """Validate one MOTION's 参考音频 line against the character it names."""
     if _is_none(value):
         return
     # A line said in another scene is not evidence for this shot.
+    # None: no storyboard says which scenes this MOTION films, so who speaks a
+    # line cannot be told apart and attribution is skipped.
     in_scope = [line for line in voices.dialogue if not scenes or line.scene in scenes]
     quotes = _quote_speakers(prompt, in_scope, voices.names)
     plain = value.strip()
@@ -700,7 +702,7 @@ def _audio_references(
             )
             continue
         shared = [span for span, speakers in quotes if name in speakers]
-        if not (voices.has_screenplay and voices.has_visual) or any(
+        if scenes is None or not (voices.has_screenplay and voices.has_visual) or any(
             speakers == {name} for _, speakers in quotes
         ):
             pass
@@ -1748,7 +1750,7 @@ def validate_episode(
         motion_body: str,
         copyable_prompt: Optional[str],
         governing_input: str,
-        scenes: list,
+        scenes: Optional[list],
     ) -> tuple[dict[str, str], str]:
         """MOTION rules that need only the MOTION itself and its governing input.
 
@@ -1939,7 +1941,7 @@ def validate_episode(
         # read only the MOTION; its own 输入参考图 governs them.
         for motion_id, motion_body in motions.items():
             own_input = _fields(motion_body, owner=motion_id, errors=[]).get("输入参考图", "")
-            check_motion(motion_id, motion_body, _copyable_prompt(motion_body), own_input, [])
+            check_motion(motion_id, motion_body, _copyable_prompt(motion_body), own_input, None)
 
     for scene_id in scene_headings if has_storyboard else ():
         if scene_id in claimed_scenes or scene_id in unfilmed:

@@ -2375,7 +2375,7 @@ class CreatorViewsTests(unittest.TestCase):
     def test_a_delivery_group_is_one_submission_standing_for_its_members(self) -> None:
         video = example("视频提示词.md") + (
             "\n## GROUP-EP001-01 · 茶杯到双人\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
-            "- 时长：7s\n\n### 可复制提示词\n> 镜头1：攥紧的茶杯。镜头2：四个号四个粉。\n"
+            "- 时长：7s\n\n### 可复制提示词\n> 镜头1：攥紧的茶杯。镜头2：穿 pine-green lapel service jacket 的四个号四个粉。\n"
         )
         episode = self.episode(**{"视频提示词.md": video})
         self.assertEqual(
@@ -2383,7 +2383,7 @@ class CreatorViewsTests(unittest.TestCase):
             [{
                 "id": "GROUP-EP001-01", "n": "01", "title": "茶杯到双人",
                 "members": ["MOTION-EP001-001", "MOTION-EP001-002"], "sec": 7.0,
-                "prompt": "镜头1：攥紧的茶杯。镜头2：四个号四个粉。",
+                "prompt": "镜头1：攥紧的茶杯。镜头2：穿 pine-green lapel service jacket 的四个号四个粉。",
             }],
         )
         self.assertEqual(len(episode["videoPrompts"]), 22)
@@ -2427,6 +2427,19 @@ class CreatorViewsTests(unittest.TestCase):
                 episode = self.episode(**{"视频提示词.md": example("视频提示词.md") + extra})
                 self.assertEqual(episode["videoGroups"], [])
                 self.assertTrue(any("GROUP-EP001-01" in problem for problem in episode["problems"]))
+
+    def test_a_group_that_drops_a_lock_hides_nothing(self) -> None:
+        bodies = {prompt["id"]: prompt["prompt"] for prompt in self.episode()["videoPrompts"]}
+        body = (bodies["MOTION-EP001-001"] + " " + bodies["MOTION-EP001-002"]).replace(
+            "pine-green lapel service jacket", "olive jacket"
+        )
+        seconds = sum(p["sec"] for p in self.episode()["videoPrompts"] if p["id"] in ("MOTION-EP001-001", "MOTION-EP001-002"))
+        video = example("视频提示词.md") + (
+            f"\n## GROUP-EP001-01 · 掉锁\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：{seconds:g}s\n\n### 可复制提示词\n> {body}\n"
+        )
+        episode = self.episode(**{"视频提示词.md": video})
+        self.assertEqual(episode["videoGroups"], [])
+        self.assertTrue(any("LOCK-JIANGCHEN-DRESS" in problem for problem in episode["problems"]))
 
     def test_a_misspelled_member_hides_nothing(self) -> None:
         video = example("视频提示词.md") + (
