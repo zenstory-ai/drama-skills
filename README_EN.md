@@ -331,7 +331,7 @@ line under `### 可复制提示词` to the last into that one generation; the ne
 
 ### I make reference images in my own tool and don't want them in the project. Can I still get image-to-video prompts?
 
-Yes. Have the storyboard write the pictures this shot needs as `PLAN-*` slots (located by an `IMG-*` board or this
+Yes, and it is the default. When the project has no matching images, the storyboard writes the pictures this shot needs as `PLAN-*` slots (located by an `IMG-*` board or this
 shot's `SHOT-*` frozen keyframe; `order` is the attach order and every picture states its purpose). Video prompts are
 produced as image-to-video as usual and list, per shot, which pictures to attach, in what order, and what each one
 governs; real files are only needed when the suite itself calls a provider. `REF-*` is reserved for images that really
@@ -341,8 +341,8 @@ exist in the project and have been checked.
 
 Naming a model is not choosing text-to-video. First the model goes into `production_profile` in `short-drama.json`;
 then the storyboard looks through the project for existing images of the visible characters, locations, props and
-start frame and binds them as `REF-*` with a purpose. If pictures are still missing it lists them and stops rather than
-falling back to text-to-video. See
+start frame and binds them as `REF-*` with a purpose. Pictures that are still missing default to `PLAN-*` slots, and image-to-video
+prompts are written as usual rather than falling back to text-to-video. See
 [Comic-drama workflow guide · common snags](docs/comic-drama-workflow.md#常见卡点) (Chinese).
 
 ### Dialogue in H3 clips is rushed or cut off. What do I do?
