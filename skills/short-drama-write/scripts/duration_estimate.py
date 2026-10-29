@@ -99,7 +99,11 @@ def _voiced_units(line: str) -> tuple[int, int]:
     bare digits is read in the language around it: one word in a line that is
     all words, one unit per digit wherever characters are spoken, as before.
     """
-    text = re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+    # NFC first, so an accent typed as a separate combining mark counts the
+    # same as the precomposed letter.
+    text = unicodedata.normalize(
+        "NFC", re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+    )
     characters = words = 0
     digit_runs: list[int] = []
     position, length = 0, len(text)
@@ -111,6 +115,8 @@ def _voiced_units(line: str) -> tuple[int, int]:
                 current = text[end]
                 if _is_word_letter(current):
                     has_letter = True
+                elif unicodedata.category(current).startswith("M"):
+                    pass  # a mark NFC could not fold still belongs to its letter
                 elif current.isdigit():
                     digits += 1
                 elif not (
@@ -126,7 +132,7 @@ def _voiced_units(line: str) -> tuple[int, int]:
                 digit_runs.append(digits)
             position = end
             continue
-        if not character.isspace() and not unicodedata.category(character).startswith("P"):
+        if not character.isspace() and unicodedata.category(character)[0] not in "PM":
             characters += 1
         position += 1
     if words and not characters:

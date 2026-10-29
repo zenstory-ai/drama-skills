@@ -561,6 +561,9 @@ class SpokenDurationTests(unittest.TestCase):
             # Bare digits read as a word in an English line, per digit in Chinese.
             "Mara：Room 302, now.\n": (0, 3, 1.2),
             "葛晴：我住302号。\n": (6, 0, 1.5),
+            # A decomposed accent is the same word as the precomposed one.
+            "Mara：Nai\u0308ve cafe\u0301.\n": (0, 2, 0.8),
+            "Mara：Naïve café.\n": (0, 2, 0.8),
         }
         for body, (characters, words, seconds) in cases.items():
             with self.subTest(body=body):
