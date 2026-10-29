@@ -1746,10 +1746,8 @@ def set_creator_authority(
             if not isinstance(written, Mapping) or not written:
                 raise ValueError("pacing must be an object of named rates")
             speaks = any(
-                isinstance(written.get(name), (int, float))
-                and not isinstance(written.get(name), bool)
-                and written.get(name) > 0
-                for name in SPEECH_RATES
+                isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0
+                for rate in (written.get(name) for name in SPEECH_RATES)
             )
             for name, rate in written.items():
                 if rate is None and name in SPEECH_RATES and speaks:
