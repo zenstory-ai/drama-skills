@@ -147,7 +147,7 @@ license: MIT
 - 外部执行需要的明确动作语法：[生产提示词语法](references/production-prompt-grammar.md)
 - 多人表演、口型和精确时序：[表演与动作时序](references/performance-action-timing.md)
 - 运镜、声音和相邻镜头连续性：[摄影与声音连续性](references/camera-audio-continuity.md)
-- 动作负载、形变和生成风险：[可生成性](references/generability.md)
+- 动作负载、形变、生成风险和打斗接触：[可生成性](references/generability.md)
 - 目标执行端的时长、参考、声音同轨等能力：[目标模型能力档案](references/target-model-profile.md)
 - Seedance 2.0 的中文分镜、素材与声音语法：[Seedance 2.0 方言](references/seedance-2.0.md)
 - Seedance 2.5 的长叙事、时间戳和任务类型语法：[Seedance 2.5 方言](references/seedance-2.5.md)

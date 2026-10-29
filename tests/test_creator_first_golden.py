@@ -97,6 +97,7 @@ EXPECTED_KNOWHOW = {
         "blocking-playbooks.md",
         "comic-keyframe-lexicon.md",
         "coverage-audition.md",
+        "fight-craft.md",
         "keyframe-craft.md",
         "lighting-craft.md",
         "production-shot-grammar.md",
@@ -1799,11 +1800,11 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 *(f"IMG-{number:02d}" for number in range(1, 15))
             },
             "short-drama-storyboard": {
-                *(f"SHT-{number:02d}" for number in range(1, 31)),
+                *(f"SHT-{number:02d}" for number in range(1, 32)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-video-prompts": {
-                *(f"VID-{number:02d}" for number in range(1, 28)),
+                *(f"VID-{number:02d}" for number in range(1, 29)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
             "short-drama-review": {*(f"REV-{number:02d}" for number in range(1, 15))},
