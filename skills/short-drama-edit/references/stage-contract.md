@@ -33,6 +33,7 @@
 | EDT-18 | taste_option | Optional grain is declared once in the delivery spec and applied dynamically after assembly by the built-in renderer. Its supported range is a tool limit, not a quality standard; other treatments may use external grading tools. |
 | EDT-19 | craft_default | A dialogue cut enters about 0.25 s before the line's speech onset and leaves about 0.4 s after the line ends, and lasts at least about 1.2 s. Locate these from the sounds that belong to the scripted line, so noise never stretches the cut. |
 | EDT-20 | craft_default | Within one scene, the built-in renderer pulls each cut partway toward the scene's median exposure and colour and reports the values it applied. A cut's stated correction or 「不校」 replaces the automatic match, and the delivery spec can turn it off. |
+| EDT-21 | craft_default | A fight's multi-shot clip is cut at its generated shot boundaries and each beat is trimmed hard: the impact close-up keeps only the fist's entry through the hit (about 0.3–0.5 s to start), the wind-up only what reads as effort, the aftermath until the receiver's state is clear; cuts land mid-motion rather than after the move settles. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
