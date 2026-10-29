@@ -544,6 +544,46 @@ class SpokenDurationTests(unittest.TestCase):
         self.assertEqual(report["counts"]["voiceover_characters"], 8)
         self.assertEqual(report["vo_share"]["share"], 0.5)
 
+    BILINGUAL = {"format": {"pacing": {
+        "spoken_characters_per_second": 4.0, "spoken_words_per_second": 2.5,
+        "seconds_per_action_paragraph": 2.0}}}
+
+    def test_each_script_is_timed_in_its_own_speech_unit(self) -> None:
+        """An English line counted letter by letter ran about three times long."""
+
+        cases = {
+            # 4 words at 2.5 words/s.
+            "Mara：Don't open that door.\n": (0, 4, 1.6),
+            # One word and two characters: 1 / 2.5 + 2 / 4.0.
+            "葛晴：OK，走吧。\n": (2, 1, 0.9),
+            # Six characters at 4.0 characters/s, exactly as before.
+            "葛晴：你把本子放下。\n": (6, 0, 1.5),
+            # Bare digits read as a word in an English line, per digit in Chinese.
+            "Mara：Room 302, now.\n": (0, 3, 1.2),
+            "葛晴：我住302号。\n": (6, 0, 1.5),
+        }
+        for body, (characters, words, seconds) in cases.items():
+            with self.subTest(body=body):
+                report = self.measure(body, ["Mara", "葛晴"], self.BILINGUAL)
+                self.assertNotIn("incomplete", report)
+                self.assertEqual(report["counts"]["voiced_characters"], characters)
+                self.assertEqual(report["counts"]["voiced_words"], words)
+                self.assertEqual(report["seconds"], seconds)
+                self.assertNotIn("untimed_speech", report)
+
+    def test_speech_in_an_undeclared_unit_is_named_not_borrowed(self) -> None:
+        """A character rate must not time English words, and the gap is shown."""
+
+        report = self.measure("Mara：Don't open that door.\n\n葛晴：走吧。\n", ["Mara", "葛晴"])
+        self.assertEqual(report["seconds"], 0.4)
+        self.assertEqual(report["untimed_speech"]["counts"], {"voiced_words": 4})
+
+        english_only = {"format": {"pacing": {
+            "spoken_words_per_second": 2.5, "seconds_per_action_paragraph": 2.0}}}
+        report = self.measure("Mara：Don't open that door.\n", ["Mara"], english_only)
+        self.assertTrue(report["rates"]["declared"])
+        self.assertEqual(report["seconds"], 1.6)
+
     def test_an_index_built_from_other_bytes_is_refused(self) -> None:
         """Stale spans land on text the index never classified."""
 

@@ -73,19 +73,67 @@ def _spoken_characters(line: str) -> int:
     return len(re.sub(r"\s", "", stripped))
 
 
-def _voiced_characters(line: str) -> int:
-    """What a speaker actually pronounces: the spoken count without punctuation.
+# Scripts written with spaces between words. Their speech unit is the word: an
+# English line timed letter by letter at a per-character rate came out about
+# three times too long. Characters of every other script stay one unit each.
+WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
+# Inside a word only: don't, well-known, it’s.
+WORD_JOINERS = frozenset("'’-")
 
-    Speech rates are measured in pronounced characters, so seconds come from
-    this count; the punctuation-inclusive count stays for the VO share, whose
-    ceiling is defined on it.
+
+def _is_word_letter(character: str) -> bool:
+    if not character.isalpha():
+        return False
+    name = unicodedata.name(character, "")
+    return any(script in name for script in WORD_SCRIPTS)
+
+
+def _voiced_units(line: str) -> tuple[int, int]:
+    """What a speaker actually pronounces, as (characters, words).
+
+    Punctuation is not pronounced, so neither count includes it; the
+    punctuation-inclusive count stays for the VO share, whose ceiling is
+    defined on it. A run of word-script letters (digits and inner apostrophes
+    or hyphens included) is one word, and every other pronounced character is
+    one character, so ``OK，走吧`` is one word and two characters. A run of
+    bare digits is read in the language around it: one word in a line that is
+    all words, one unit per digit wherever characters are spoken, as before.
     """
-    stripped = re.sub(r"（[^）]*）|\([^)]*\)", "", line)
-    return sum(
-        1
-        for character in re.sub(r"\s", "", stripped)
-        if not unicodedata.category(character).startswith("P")
-    )
+    text = re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+    characters = words = 0
+    digit_runs: list[int] = []
+    position, length = 0, len(text)
+    while position < length:
+        character = text[position]
+        if _is_word_letter(character) or character.isdigit():
+            end, has_letter, digits = position, False, 0
+            while end < length:
+                current = text[end]
+                if _is_word_letter(current):
+                    has_letter = True
+                elif current.isdigit():
+                    digits += 1
+                elif not (
+                    current in WORD_JOINERS
+                    and end + 1 < length
+                    and (_is_word_letter(text[end + 1]) or text[end + 1].isdigit())
+                ):
+                    break
+                end += 1
+            if has_letter:
+                words += 1
+            else:
+                digit_runs.append(digits)
+            position = end
+            continue
+        if not character.isspace() and not unicodedata.category(character).startswith("P"):
+            characters += 1
+        position += 1
+    if words and not characters:
+        words += len(digit_runs)
+    else:
+        characters += sum(digit_runs)
+    return characters, words
 
 
 def _readable_characters(body: str) -> int:
@@ -134,6 +182,7 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
     dialogue_lines = 0
     dialogue_characters = 0
     voiced_characters = 0
+    voiced_words = 0
     voiceover_characters = 0
     action_paragraphs = 0
     tag_lines = 0
@@ -184,7 +233,9 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
         dialogue_lines += 1
         characters = _spoken_characters(spoken.group("line"))
         dialogue_characters += characters
-        voiced_characters += _voiced_characters(spoken.group("line"))
+        characters_voiced, words_voiced = _voiced_units(spoken.group("line"))
+        voiced_characters += characters_voiced
+        voiced_words += words_voiced
         if block.get("tag") == "VO":
             voiceover_characters += characters
 
@@ -192,6 +243,7 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
         "dialogue_lines": dialogue_lines,
         "dialogue_characters": dialogue_characters,
         "voiced_characters": voiced_characters,
+        "voiced_words": voiced_words,
         "voiceover_characters": voiceover_characters,
         "action_paragraphs": action_paragraphs,
         "production_tag_lines": tag_lines,
@@ -241,26 +293,31 @@ def index_blocks(
 def declared_rates(project: dict[str, Any] | None) -> dict[str, Any]:
     """Read the project's own pacing rates, or report that it declared none."""
     pacing = ((project or {}).get("format") or {}).get("pacing") or {}
-    per_second = pacing.get("spoken_characters_per_second")
-    per_action = pacing.get("seconds_per_action_paragraph")
-    usable = isinstance(per_second, (int, float)) and per_second > 0 and (
-        isinstance(per_action, (int, float)) and per_action >= 0
-    )
-    reading = pacing.get("on_screen_text_characters_per_second")
-    reading_usable = (
-        isinstance(reading, (int, float))
-        and not isinstance(reading, bool)
-        and math.isfinite(reading)
-        and reading > 0
-    )
+    per_character = _rate(pacing.get("spoken_characters_per_second"))
+    # Words for scripts written with spaces; a project in one language declares
+    # only the speech rate it uses, a bilingual one declares both.
+    per_word = _rate(pacing.get("spoken_words_per_second"))
+    per_action = _rate(pacing.get("seconds_per_action_paragraph"), allow_zero=True)
+    usable = (per_character is not None or per_word is not None) and per_action is not None
+    reading = _rate(pacing.get("on_screen_text_characters_per_second"))
     return {
-        "declared": bool(usable),
-        "spoken_characters_per_second": per_second if usable else None,
+        "declared": usable,
+        "spoken_characters_per_second": per_character if usable else None,
+        "spoken_words_per_second": per_word if usable else None,
         "seconds_per_action_paragraph": per_action if usable else None,
         # Optional: a project that holds text on screen as its own beat can
         # declare how fast it is read. Without it the text stays untimed.
-        "on_screen_text_characters_per_second": reading if reading_usable else None,
+        "on_screen_text_characters_per_second": reading,
     }
+
+
+def _rate(value: Any, allow_zero: bool = False) -> float | None:
+    """A declared rate, or None when the value is not a usable number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value < 0 or (value == 0 and not allow_zero):
+        return None
+    return value
 
 
 def accepted_vo_share(
@@ -357,10 +414,30 @@ def estimate(
         )
         return result
 
-    seconds = (
-        counts["voiced_characters"] / rates["spoken_characters_per_second"]
-        + counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
-    )
+    seconds = counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
+    unpriced: dict[str, int] = {}
+    for unit, rate_name in (
+        ("voiced_characters", "spoken_characters_per_second"),
+        ("voiced_words", "spoken_words_per_second"),
+    ):
+        if not counts[unit]:
+            continue
+        if rates[rate_name] is None:
+            unpriced[unit] = counts[unit]
+        else:
+            seconds += counts[unit] / rates[rate_name]
+    if unpriced:
+        # Speech in a unit the project has no rate for. Borrowing the other
+        # rate is the letter-by-letter error this split exists to stop, so the
+        # count is named next to seconds that leave it out.
+        result["untimed_speech"] = {
+            "counts": unpriced,
+            "note": (
+                "the project declares no rate for this speech, so the seconds "
+                "leave it out; declare format.pacing.spoken_words_per_second "
+                "for words and spoken_characters_per_second for characters"
+            ),
+        }
     reading = rates["on_screen_text_characters_per_second"]
     if reading is not None and counts.get("on_screen_text_characters"):
         reading_seconds = counts["on_screen_text_characters"] / reading

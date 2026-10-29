@@ -737,6 +737,25 @@ class SimpleLifecycleTests(unittest.TestCase):
                     decision_id="CD-PACING-BAD",
                 )
 
+    def test_an_english_project_declares_only_a_word_rate(self) -> None:
+        # The template carries the character rate as null; a project whose
+        # dialogue is English has no character rate to give, and its word rate
+        # alone makes the estimate usable.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self._bind(root, "/format/target_seconds_per_episode", "CD-LENGTH", 90)
+            self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
+            self._bind(
+                root, "/format/pacing", "CD-PACING-EN",
+                {"spoken_words_per_second": 3.0, "seconds_per_action_paragraph": 2.5},
+            )
+            self.assertEqual(project_tool.project_status(root)["profile_notes"], [])
+            with self.assertRaisesRegex(ValueError, "positive number"):
+                self._bind(
+                    root, "/format/pacing", "CD-PACING-BAD",
+                    {"spoken_words_per_second": 0, "seconds_per_action_paragraph": 2.5},
+                )
+
     def _bind(self, root: Path, field: str, decision_id: str, value: object) -> None:
         relative = f"创作者决策/{decision_id}.jsonl"
         decision = {

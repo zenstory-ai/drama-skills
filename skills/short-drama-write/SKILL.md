@@ -61,6 +61,7 @@ license: MIT
 - 项目特有的制作稿方言：[制作格式方言](references/production-format-dialect.md)
 - 输入含[核心选择](references/script-craft.md#35-把一拍写成艰难选择时两个方向都要活着)、[有限次数/轮次/呼吸/节拍](references/script-craft.md#64-有限单位按完成状态计数)、[精确倒计时](references/script-craft.md#63-倒计时先算动作不要只写数字)或[会改变人物判断的关键物证](references/script-craft.md#53-证据先改变判断再改变关系)：[剧作手艺](references/script-craft.md)
 - 过去关系必须通过对白进入，或关键人物容易只剩说明功能：[对白手艺](references/dialogue-craft.md)
+- 台词要用中文以外的语言写，或要把中文剧本改成另一种语言：[非中文台词](references/dialogue-craft.md#63-非中文台词从场景直接写不逐句翻译)
 - 声源、留白与 sound bridge：[场景声音戏剧](references/scene-sound-dramaturgy.md)
 - 同一故事义务的不同可拍实现：[可替代实现](references/substitutable-realization.md)
 - 长单集跨上下文时的最小交接：[场景交接摘要](references/scene-handoff-capsule.md)，只留在上下文
@@ -87,7 +88,9 @@ python3 "{技能目录}/scripts/duration_estimate.py" "剧集/EP001/剧本.md" -
 加 `--no-previous`，也可以回到第一条命令另取一个临时路径。
 
 估时前区分计数口径：`dialogue_characters` 包含标点，用于 `[VO]` 占比；`voiced_characters` 去掉标点，
-脚本按它和语速换算秒数。数字和缩写仍按实际读法另行估计，不把两个计数混用。
+脚本按它和语速换算秒数。英文等以空格分词的台词按词计入 `voiced_words`，按项目的每秒词数换算；
+中英混排的一句各按各的单位计（`OK，走吧` 是 1 词 2 字）。项目没声明某个单位的语速时，那部分列在
+`untimed_speech`，不在秒数里。数字和缩写仍按实际读法另行估计，不把两个计数混用。
 项目已接受节奏档案、上限有效且本集有台词时，输出增加 `vo_share`：`[VO]` 字数占全部台词字数的比例、档案上限，以及是否超过。`[OS]` 计入全部台词，不计入 `[VO]`。
 `[画面文字]`、`[SFX]`、`[转场]` 占用画面时间，但不在秒数里，输出的 `untimed` 列出它们的行数。
 项目在 `format.pacing` 里另声明了 `on_screen_text_characters_per_second`（观众每秒读几个字）时，

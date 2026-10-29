@@ -48,7 +48,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.29"
+      "version": "1.0.30"
     },
     {
       "catalogMigration": true,
@@ -118,7 +118,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.27"
+      "version": "1.0.28"
     },
     {
       "catalogMigration": true,
@@ -393,7 +393,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.10"
+      "version": "1.0.11"
     }
   ]
 }

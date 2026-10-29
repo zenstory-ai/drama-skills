@@ -116,6 +116,9 @@ PROTECTED_PUBLISH_ROOTS = {
 AUTHORITY_ROOT_TOKEN = "creator_authority"
 EPISODE_LENGTH_POINTER = "/format/target_seconds_per_episode"
 PACING_POINTER = "/format/pacing"
+# Characters for scripts written without spaces, words for scripts written with
+# them. A project declares the one its dialogue uses, or both when it mixes.
+SPEECH_RATES = ("spoken_characters_per_second", "spoken_words_per_second")
 # Everything outside /creator_authority/* that a decision may still bind. Both
 # are read by the write stage to turn a screenplay into seconds, so leaving them
 # out of set-authority left hand-editing short-drama.json as the only way in.
@@ -397,14 +400,15 @@ def profile_notes(project: Mapping[str, Any]) -> list[str]:
     block = project.get("format")
     pacing = block.get("pacing") if isinstance(block, Mapping) else None
     target = block.get("target_seconds_per_episode") if isinstance(block, Mapping) else None
-    speech = pacing.get("spoken_characters_per_second") if isinstance(pacing, Mapping) else None
-    action = pacing.get("seconds_per_action_paragraph") if isinstance(pacing, Mapping) else None
+    rates = pacing if isinstance(pacing, Mapping) else {}
+    action = rates.get("seconds_per_action_paragraph")
     # The same rule the write stage's estimator applies: a positive speech rate
-    # and a non-negative action-paragraph duration.
-    usable = (
+    # (per character, per word, or both) and a non-negative action-paragraph
+    # duration.
+    usable = any(
         isinstance(speech, (int, float)) and not isinstance(speech, bool) and speech > 0
-        and isinstance(action, (int, float)) and not isinstance(action, bool) and action >= 0
-    )
+        for speech in (rates.get(name) for name in SPEECH_RATES)
+    ) and isinstance(action, (int, float)) and not isinstance(action, bool) and action >= 0
     if isinstance(target, (int, float)) and not usable:
         notes.append(
             "format.target_seconds_per_episode is set but format.pacing has no usable rates: "
@@ -1741,7 +1745,16 @@ def set_creator_authority(
             # stage's call, and it stays in one place.
             if not isinstance(written, Mapping) or not written:
                 raise ValueError("pacing must be an object of named rates")
+            speaks = any(
+                isinstance(written.get(name), (int, float))
+                and not isinstance(written.get(name), bool)
+                and written.get(name) > 0
+                for name in SPEECH_RATES
+            )
             for name, rate in written.items():
+                if rate is None and name in SPEECH_RATES and speaks:
+                    # A project in one language leaves the other unit unset.
+                    continue
                 if not (
                     isinstance(rate, (int, float))
                     and not isinstance(rate, bool)
