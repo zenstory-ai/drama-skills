@@ -39,6 +39,23 @@ The 68-second portrait sample above is the opening of *Let You Run the Account*,
 novel, storyboarded into 20 shots, generated shot by shot and cut into a film, with subtitles, system panels and sound
 effects added in the edit. Video generation cost about ¥40.
 
+### More samples: a fight, an ensemble scene, a 2D ink-wash comic
+
+<table>
+<tr>
+<td width="33%"><video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="100%"></video></td>
+</tr>
+<tr>
+<td valign="top"><b>Fight</b>: each exchange is split into wind-up → impact close-up → aftermath, generated as one multi-shot clip and cut tight at the generated cuts, keeping about half a second of each impact; the missed pipe swing throws sparks off the meter box.</td>
+<td valign="top"><b>Ensemble</b>: five fixed seats for the whole scene, each line on the right speaker's lips; the second half of Lin Wan's line plays over the uncle's frozen smile, so line and reaction land together.</td>
+<td valign="top"><b>2D ink-wash comic</b>: the sword energy and the demon fire are written as brush strokes and ink smoke in the project's style, and the generation stays ink-wash instead of drifting into 3D effects.</td>
+</tr>
+</table>
+
+All three are synthetic scenes: the skills wrote the storyboard, start frames and video prompts from a short scene description; start frames came from Seedream 5, video from Seedance 2.5, cut from the cut list, with no music or subtitles added.
+
 ## What it is
 
 Drama Skills covers the whole AI short-drama / motion-comic pipeline from idea or novel to a finished cut:

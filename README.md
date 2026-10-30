@@ -36,6 +36,23 @@
 上面这段 68 秒竖屏样片是《让你管账号》第 1 集开头：从一部 20 章的原著改编，分镜 20 镜，逐镜生成后剪成成片，
 字幕、系统面板与音效在剪辑时叠加。视频生成成本约 40 元。
 
+### 更多样片：打戏、群戏、水墨漫剧
+
+<table>
+<tr>
+<td width="33%"><video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="100%"></video></td>
+</tr>
+<tr>
+<td valign="top"><b>打戏</b>：每个回合拆成「起手 → 打击特写 → 余波」，一次生成切出三镜，剪辑在切点紧剪，打击特写只留半秒左右；铁棍落空砸在电表箱上出火星。</td>
+<td valign="top"><b>群戏</b>：五个人的座位全场固定，台词落在说话人嘴上；林晚的后半句压在大伯笑容僵住的画面上，台词和反应同时发生。</td>
+<td valign="top"><b>2D 水墨漫剧</b>：剑气和魔火按项目画风写成笔触和墨烟，生成时保持水墨，不跑成三维光效。</td>
+</tr>
+</table>
+
+三段都是合成场景：技能从一段场景描述写出分镜、首帧和视频提示词，Seedream 5 出首帧、Seedance 2.5 生成，再按剪辑单剪成，未加配乐和字幕。
+
 ## 这是什么
 
 Drama Skills 覆盖 AI 短剧 / 漫剧从点子或原著到成片的全流程：**原著分析 → 分集剧本 → 视觉设定 →
