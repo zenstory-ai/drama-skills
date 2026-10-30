@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-29
+
+本版把打戏和群戏的节奏做实：打戏按回合拆镜、一次生成切出打击特写再紧剪，群戏的台词压在反应上说完；
+缺参考图时默认写挂图计划、照常交付视频提示词；英文台词按词估时。
+
 ### Added
 
 - 分镜新增打戏做法：按回合拆镜，装得下的回合一镜演完；落空和格挡侧面看清，打到人身上的一下用同侧机位遮住接触点、靠反应读出；围攻时一回合只有一个对手出手；单拍短于最短生成时长时，向创作者提出「起手 → 打击特写 → 余波」的多镜容器。视频提示词补上打斗接触与打击特写的写法，剪辑补上打戏素材的紧剪做法，包括剪掉躲闪之后、反击之前的停顿。
@@ -1899,7 +1904,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.8.1...v0.9.0
