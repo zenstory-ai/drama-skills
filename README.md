@@ -31,18 +31,14 @@
   <a href="https://t.me/+CZmsmvWIhb4zZTNl"><img alt="Telegram 交流群" src="https://img.shields.io/badge/Telegram%20%E4%BA%A4%E6%B5%81%E7%BE%A4-26A5E4?style=for-the-badge&logo=telegram&logoColor=white"></a>
 </p>
 
-<video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
+https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26
 
 上面这段 68 秒竖屏样片是《让你管账号》第 1 集开头：从一部 20 章的原著改编，分镜 20 镜，逐镜生成后剪成成片，
 字幕、系统面板与音效在剪辑时叠加。视频生成成本约 40 元。
 
 ### 更多样片：打戏、群戏、水墨漫剧
 
-<p>
-  <video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="32%"></video>
-  <video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="32%"></video>
-  <video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="32%"></video>
-</p>
+https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 ## 这是什么
 

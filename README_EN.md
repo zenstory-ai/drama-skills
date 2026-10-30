@@ -33,7 +33,7 @@
   <a href="https://t.me/+CZmsmvWIhb4zZTNl"><img alt="Telegram group" src="https://img.shields.io/badge/Telegram%20Group-26A5E4?style=for-the-badge&logo=telegram&logoColor=white"></a>
 </p>
 
-<video src="https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26" controls muted playsinline width="100%"></video>
+https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26
 
 The 68-second portrait sample above is the opening of *Let You Run the Account*, EP001: adapted from a 20-chapter
 novel, storyboarded into 20 shots, generated shot by shot and cut into a film, with subtitles, system panels and sound
@@ -41,11 +41,7 @@ effects added in the edit. Video generation cost about ¥40.
 
 ### More samples: a fight, an ensemble scene, a 2D ink-wash comic
 
-<p>
-  <video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="32%"></video>
-  <video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="32%"></video>
-  <video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="32%"></video>
-</p>
+https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 ## What it is
 
