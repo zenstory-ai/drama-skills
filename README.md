@@ -40,9 +40,9 @@
 
 <table>
 <tr>
-<td width="33%"><video src="VIDEO_URL_FIGHT" controls muted playsinline width="100%"></video></td>
-<td width="33%"><video src="VIDEO_URL_ENSEMBLE" controls muted playsinline width="100%"></video></td>
-<td width="33%"><video src="VIDEO_URL_INK" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="100%"></video></td>
 </tr>
 <tr>
 <td valign="top"><b>打戏</b>：每个回合拆成「起手 → 打击特写 → 余波」，一次生成切出三镜，剪辑在切点紧剪，打击特写只留半秒左右；铁棍落空砸在电表箱上出火星。</td>

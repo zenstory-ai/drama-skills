@@ -43,9 +43,9 @@ effects added in the edit. Video generation cost about ¥40.
 
 <table>
 <tr>
-<td width="33%"><video src="VIDEO_URL_FIGHT" controls muted playsinline width="100%"></video></td>
-<td width="33%"><video src="VIDEO_URL_ENSEMBLE" controls muted playsinline width="100%"></video></td>
-<td width="33%"><video src="VIDEO_URL_INK" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/b40221e1-6b9e-4381-8545-f8e07b9cbc42" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/34e8b6dc-2a2e-4c43-8135-1ded54745814" controls muted playsinline width="100%"></video></td>
+<td width="33%"><video src="https://github.com/user-attachments/assets/c6613009-df6e-406d-a2ae-67efa10702f1" controls muted playsinline width="100%"></video></td>
 </tr>
 <tr>
 <td valign="top"><b>Fight</b>: each exchange is split into wind-up → impact close-up → aftermath, generated as one multi-shot clip and cut tight at the generated cuts, keeping about half a second of each impact; the missed pipe swing throws sparks off the meter box.</td>
