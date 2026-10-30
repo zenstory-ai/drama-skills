@@ -133,7 +133,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "2c41d17095b19c1887faa0bb643cbf62b275b75cebff2bba17d0f71025d2f17b",
+      "packageDigest": "2038e35d7df0e09948a1a2e8cc185e96c2539d9ce1d637ac31255487e6213bac",
       "path": "skills/short-drama-edit",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -154,7 +154,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.9"
+      "version": "1.0.10"
     },
     {
       "catalogMigration": true,
