@@ -83,7 +83,7 @@ npx skills add zenstory-ai/drama-skills -y -g
 `-g` 全局安装，所有目录可用；去掉 `-g` 则只装到当前目录。**更新时重新执行同一条命令即可。**
 脚本需要 **Python 3.9 或更新版本**，请先检查本机版本；剪辑成片另需 `ffmpeg` / `ffprobe` 在 PATH 上。
 
-支持导入 GitHub 仓库或 skill 的平台，也可以直接对 Agent 说：
+支持导入 GitHub 仓库或 skill 的平台（例如 WorkBuddy，见社区写的[完整用法](https://zhuanlan.zhihu.com/p/2088046501696222384)），也可以直接对 Agent 说：
 
 ```
 安装这些技能 https://github.com/zenstory-ai/drama-skills
