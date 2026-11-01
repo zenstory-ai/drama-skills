@@ -101,7 +101,8 @@ npx skills add zenstory-ai/drama-skills -y -g
 **To update, run the same command again.** The scripts need **Python 3.9 or newer**; check your installed
 version first. Cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH.
 
-You can also just tell your agent (any platform that can import a GitHub repository or skill):
+You can also just tell your agent (any platform that can import a GitHub repository or skill, such as WorkBuddy;
+see a [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384), in Chinese):
 
 ```
 Install this skill suite: https://github.com/zenstory-ai/drama-skills
