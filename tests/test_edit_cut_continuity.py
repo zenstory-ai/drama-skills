@@ -1,4 +1,7 @@
+import contextlib
 import importlib.util
+import io
+import json
 import shutil
 import subprocess
 import tempfile
@@ -170,6 +173,19 @@ class FrameReportTests(unittest.TestCase):
         report = edit._frame_report(None, 30.0, [cut("A")], [1.0], [S1])
         self.assertTrue(report["疑似坏帧"].startswith("未测"))
 
+    def test_silence_and_short_cuts_neither_break_nor_borrow_the_level_comparison(self):
+        rate = 1000
+        cuts = [cut("A"), cut("B"), cut("C"), cut("D")]
+        # A tone, then silence, then a 0.05 s blip too short to judge, then the tone.
+        samples = [3000, -3000] * 500 + [0] * 1000 + [30000] * 50 + [3000, -3000] * 500
+        report = edit._level_report(samples, rate, cuts, [1.0, 1.0, 0.05, 1.0], [S1] * 4)
+        (silenced,) = report["切点音量变化"]
+        self.assertEqual((silenced["后段"], silenced["切后 dBFS"]), ("B", edit.CUT_LEVEL_FLOOR))
+        self.assertEqual(len(report["请回听"]), 1)
+        self.assertTrue(edit._level_report(None, rate, cuts, [1.0] * 4, [S1] * 4)
+                        ["切点音量变化"].startswith("未测"))
+
+
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class RenderedMatchTests(unittest.TestCase):
@@ -257,6 +273,41 @@ class RenderedAudioTests(unittest.TestCase):
         levels = [max(abs(v) for v in values[at:at + window])
                   for at in range(800, len(values) - 800 - window, window)]
         self.assertGreater(min(levels), max(levels) * 0.5, "切点处不应有掉音")
+
+    def test_verify_lists_a_loud_step_at_a_cut_to_listen_to_and_still_exits_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            (episode / "media").mkdir(parents=True)
+            # 1 → 2 keeps the level; 2 → 3 steps up by about 23 dB.
+            for index, gain in ((1, 0.05), (2, 0.05), (3, 0.7)):
+                subprocess.run(
+                    ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+                     "-i", "color=c=gray:size=90x160:rate=24:duration=1",
+                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=32000:duration=1",
+                     "-af", f"volume={gain}", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                     "-c:a", "aac", "-shortest", str(episode / "media" / f"{index}.mp4")],
+                    check=True,
+                )
+            (episode / edit.CUT_LIST_NAME).write_text("# 剪辑单\n\n- 字幕：无\n\n" + "".join(
+                f"## CUT-{i} · 段\n\n- 来源：MOTION-{i} · media/{i}.mp4\n"
+                "- 入点：0.00\n- 出点：0.90\n- 时长：0.90\n- 声音：保留原声\n\n"
+                for i in (1, 2, 3)
+            ), encoding="utf-8")
+            delivery, cuts, _ = edit.parse_cut_list(episode / edit.CUT_LIST_NAME)
+            edit.render(episode, root, cuts, delivery, burn_subtitles=False)
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                status = edit.main(["verify", str(episode), "--project-root", str(root)])
+        measured = json.loads(printed.getvalue())
+
+        self.assertEqual(status, 0)
+        smooth, step = measured["切点音量变化"]
+        self.assertEqual((smooth["前段"], step["前段"]), ("CUT-1", "CUT-2"))
+        self.assertLess(abs(smooth["音量变化 dB"]), 1)
+        self.assertAlmostEqual(step["音量变化 dB"], 23, delta=2)
+        (listen,) = measured["请回听"]
+        self.assertIn("CUT-2 → CUT-3", listen)
 
 
 if __name__ == "__main__":

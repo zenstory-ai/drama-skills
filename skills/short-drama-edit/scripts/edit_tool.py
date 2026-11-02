@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 from array import array
 import json
+import math
 import operator
 import re
 import shutil
@@ -229,6 +230,19 @@ FLASH_NEIGHBOUR_SHARE = 0.5
 SCREEN_TEXT_ENTRANCE = 0.15
 # Mean-luma change across a cut (0-255) above which verify asks for a look.
 CUT_JUMP_NOTICE = 20.0
+# verify compares the film's sound on either side of each cut: RMS over a
+# window this long, kept this far off the cut so neither side straddles it,
+# decoded mono at this rate. Silence measures -inf and is held to the floor.
+CUT_LEVEL_WINDOW = 0.4
+CUT_LEVEL_GUARD = 0.03
+CUT_LEVEL_RATE = 16000
+CUT_LEVEL_FLOOR = -70.0
+# A side shorter than this, on a very short cut, says too little to compare.
+CUT_LEVEL_SHORTEST = 0.1
+# Listing threshold (craft_default, EDT-23), not a quality gate: a level change
+# across a cut above this many dB is listed to listen to. Assembled films jump
+# this much at about a third of their cuts, some of them intended impacts.
+CUT_LEVEL_NOTICE = 10.0
 TOLERANCE = 0.005
 # ffmpeg's `noise` strength runs to 100, which is snow, not grain. The useful
 # band for a finished film is single digits; the cap keeps a typo from shipping
@@ -1024,9 +1038,14 @@ def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) 
 def probe_audible(media: Path) -> Audible:
     """A sound file's length and where its sound starts and stops, decoded small and mono."""
 
-    ffmpeg = _require("ffmpeg")
+    return _audible_span(_mono_samples(_require("ffmpeg"), media, AUDIBLE_RATE), AUDIBLE_RATE)
+
+
+def _mono_samples(ffmpeg: str, media: Path, rate: int) -> Sequence[int]:
+    """The media's sound as signed 16-bit mono samples at `rate`. Raises when it cannot be read."""
+
     result = subprocess.run(
-        [ffmpeg, "-v", "error", "-i", str(media), "-ac", "1", "-ar", str(AUDIBLE_RATE),
+        [ffmpeg, "-v", "error", "-i", str(media), "-ac", "1", "-ar", str(rate),
          "-f", "s16le", "-"],
         capture_output=True, check=False,
     )
@@ -1036,7 +1055,7 @@ def probe_audible(media: Path) -> Audible:
     samples.frombytes(result.stdout[: len(result.stdout) // 2 * 2])
     if sys.byteorder == "big":
         samples.byteswap()
-    return _audible_span(samples, AUDIBLE_RATE)
+    return samples
 
 
 def _audible_span(samples: Sequence[int], rate: int) -> Audible:
@@ -2804,9 +2823,16 @@ def verify(
             episode, project_root or episode, cuts, spans
         )
     measurements["台词完整性"] = "未测（本工具不做转写；在成片上转写后逐句对《剧本.md》原文）"
-    measurements.update(_frame_report(
-        _grey_frames(ffmpeg, final), stream["fps"], cuts, spans, _scene_keys(episode, cuts)
-    ))
+    scenes = _scene_keys(episode, cuts)
+    measurements.update(_frame_report(_grey_frames(ffmpeg, final), stream["fps"], cuts, spans, scenes))
+    if probe_audio(final) is None:
+        measurements["切点音量变化"] = "未测（成片没有音轨）"
+    else:
+        try:
+            sound: Optional[Sequence[int]] = _mono_samples(ffmpeg, final, CUT_LEVEL_RATE)
+        except EditError:
+            sound = None
+        measurements.update(_level_report(sound, CUT_LEVEL_RATE, cuts, spans, scenes))
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
     return measurements
 
@@ -2872,10 +2898,83 @@ def _cut_jumps(
             "前段": cuts[index - 1].cut_id,
             "后段": cuts[index].cut_id,
             "亮度变化": round(means[frame] - means[frame - 1], 1),
-            "场景": "未知" if before is None or after is None
-            else "同场" if before == after else "换场",
+            "场景": _scene_change(before, after),
         })
     return rows
+
+
+def _scene_change(before: Optional[tuple[str, ...]], after: Optional[tuple[str, ...]]) -> str:
+    return "未知" if before is None or after is None else "同场" if before == after else "换场"
+
+
+def _rms_db(samples: Sequence[int]) -> float:
+    """RMS level in dBFS, held to CUT_LEVEL_FLOOR."""
+
+    energy = sum(value * value for value in samples) / len(samples)
+    if energy <= 0:
+        return CUT_LEVEL_FLOOR
+    return max(CUT_LEVEL_FLOOR, 10 * math.log10(energy / 32768 ** 2))
+
+
+def _cut_level_jumps(
+    samples: Sequence[int],
+    rate: int,
+    cuts: Sequence[Cut],
+    spans: Sequence[float],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+) -> list[dict[str, Any]]:
+    """Sound level just before each cut against just after it, each side kept inside its own cut."""
+
+    bounds = [0.0]
+    for span in spans:
+        bounds.append(bounds[-1] + span)
+    shortest = round(CUT_LEVEL_SHORTEST * rate)
+    rows: list[dict[str, Any]] = []
+    for index in range(1, min(len(cuts), len(spans))):
+        at = bounds[index]
+        sides = (
+            (max(bounds[index - 1], at - CUT_LEVEL_GUARD - CUT_LEVEL_WINDOW), at - CUT_LEVEL_GUARD),
+            (at + CUT_LEVEL_GUARD, min(bounds[index + 1], at + CUT_LEVEL_GUARD + CUT_LEVEL_WINDOW)),
+        )
+        windows = [
+            samples[max(0, round(start * rate)):min(len(samples), round(stop * rate))]
+            for start, stop in sides
+        ]
+        if min(len(window) for window in windows) < shortest:
+            continue
+        before, after = (_rms_db(window) for window in windows)
+        rows.append({
+            "切点秒": round(at, 2),
+            "前段": cuts[index - 1].cut_id,
+            "后段": cuts[index].cut_id,
+            "切前 dBFS": round(before, 1),
+            "切后 dBFS": round(after, 1),
+            "音量变化 dB": round(after - before, 1),
+            "场景": _scene_change(scenes[index - 1], scenes[index]),
+        })
+    return rows
+
+
+def _level_report(
+    samples: Optional[Sequence[int]],
+    rate: int,
+    cuts: Sequence[Cut],
+    spans: Sequence[float],
+    scenes: Sequence[Optional[tuple[str, ...]]],
+) -> dict[str, Any]:
+    """Sound level changes at cuts, with which to listen to. Nothing here blocks."""
+
+    if samples is None:
+        return {"切点音量变化": "未测（读不出成片的声音）"}
+    jumps = _cut_level_jumps(samples, rate, cuts, spans, scenes)
+    return {
+        "切点音量变化": jumps,
+        "请回听": [
+            f"{row['切点秒']:.2f} 秒 {row['前段']} → {row['后段']}（{row['场景']}）音量变化 "
+            f"{row['音量变化 dB']:+.1f} dB：用耳朵听，是有意的冲击还是接缝跳了一下"
+            for row in jumps if abs(row["音量变化 dB"]) > CUT_LEVEL_NOTICE
+        ],
+    }
 
 
 def _frame_report(
