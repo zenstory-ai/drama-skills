@@ -125,6 +125,7 @@ EXPECTED_KNOWHOW = {
     },
     "short-drama-review": {
         "anti-template-repair.md",
+        "generated-media.md",
         "production-quality-gates.md",
         "project-calibration.md",
         "review-method.md",
@@ -1547,7 +1548,14 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             "duplicate path": (
                 "REF-A（顺序：1）· 输入/a.png《人物参考》（用途：身份；控制：脸型；不得控制：动作）；"
                 "REF-B（顺序：2）· 输入/a.png《同一张图的第二个身份槽位》（用途：身份；控制：体态；不得控制：构图）",
-                "REF 路径与用途完全重复",
+                "REF 同一张图只能占一个槽位: 输入/a.png",
+            ),
+            # Production binds each file once, so a second 用途 on the same file
+            # is a declaration no job can match.
+            "same path with a second purpose": (
+                "REF-A（顺序：1）· 输入/a.png《本镜起始画面》（用途：起始帧；控制：起始构图；不得控制：终态）；"
+                "REF-B（顺序：2）· 输入/a.png《同一张图的造型槽位》（用途：造型状态；控制：本集造型；不得控制：构图）",
+                "REF 同一张图只能占一个槽位: 输入/a.png",
             ),
             "conflicting scope": (
                 "REF-A（顺序：1）· 输入/a.png《人物参考》（用途：身份；控制：身份；不得控制：身份）",
@@ -1556,30 +1564,43 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         }
         for label, (declaration, expected) in bad_declarations.items():
             with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
-                project = Path(directory)
-                episode = project / "剧集/EP001"
-                shutil.copytree(EPISODE, episode)
-                (project / "输入").mkdir()
-                (project / "输入/a.png").write_bytes(b"a")
-                (project / "输入/b.png").write_bytes(b"b")
-                for name in ("分镜.md", "视频提示词.md"):
-                    path = episode / name
-                    document = path.read_text(encoding="utf-8")
-                    path.write_text(
-                        document.replace(
-                            "- 输入参考图：无（创作者已明确选择文生视频）。", f"- 输入参考图：{declaration}", 1
-                        ),
-                        encoding="utf-8",
-                    )
-                video = episode / "视频提示词.md"
-                video.write_text(
-                    video.read_text(encoding="utf-8").replace(
-                        "- 生成方式：文生视频", "- 生成方式：图生视频", 1
-                    ),
-                    encoding="utf-8",
-                )
-                errors = creator_markdown_check.validate_episode(episode, project)
+                errors = self._errors_with_reference_declaration(Path(directory), declaration)
                 self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_one_picture_doing_two_jobs_passes_as_one_slot(self) -> None:
+        """The repair the duplicate-path error asks for is itself accepted."""
+        declaration = (
+            "REF-A（顺序：1）· 输入/a.png《本镜起始画面》"
+            "（用途：起始帧；控制：起始构图、本集造型；不得控制：终态）"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            errors = self._errors_with_reference_declaration(Path(directory), declaration)
+        self.assertEqual(errors, [])
+
+    @staticmethod
+    def _errors_with_reference_declaration(project: Path, declaration: str) -> list[str]:
+        episode = project / "剧集/EP001"
+        shutil.copytree(EPISODE, episode)
+        (project / "输入").mkdir()
+        (project / "输入/a.png").write_bytes(b"a")
+        (project / "输入/b.png").write_bytes(b"b")
+        for name in ("分镜.md", "视频提示词.md"):
+            path = episode / name
+            document = path.read_text(encoding="utf-8")
+            path.write_text(
+                document.replace(
+                    "- 输入参考图：无（创作者已明确选择文生视频）。", f"- 输入参考图：{declaration}", 1
+                ),
+                encoding="utf-8",
+            )
+        video = episode / "视频提示词.md"
+        video.write_text(
+            video.read_text(encoding="utf-8").replace(
+                "- 生成方式：文生视频", "- 生成方式：图生视频", 1
+            ),
+            encoding="utf-8",
+        )
+        return creator_markdown_check.validate_episode(episode, project)
 
     def test_a_lock_surface_counts_only_when_the_prompt_asserts_it(self) -> None:
         """The surface has to name what is in the picture.
@@ -1807,7 +1828,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 *(f"VID-{number:02d}" for number in range(1, 29)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),
             },
-            "short-drama-review": {*(f"REV-{number:02d}" for number in range(1, 15))},
+            "short-drama-review": {*(f"REV-{number:02d}" for number in range(1, 16))},
         }
         for skill_name, rule_ids in expected.items():
             contract = (

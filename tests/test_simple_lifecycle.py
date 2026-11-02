@@ -838,6 +838,26 @@ class SimpleLifecycleTests(unittest.TestCase):
         self.assertEqual(len(project_tool.profile_notes(manifest(None))), 1)
         self.assertEqual(project_tool.profile_notes(manifest(True)), [])
 
+    def test_continuation_route_choice_is_recorded_and_read_back(self) -> None:
+        # The creator is asked once how continuation segments run; the answer
+        # has to land beside the model choices and come back through status,
+        # or every later stage would ask again.
+        model = {"target_video_model": "studio-video", "video_prompt_language": "en"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self._bind(root, "/creator_authority/production_profile/choices", "CD-MODEL", model)
+            self.assertNotIn(
+                "continuation_route", project_tool.project_status(root)["video_model_profile"]
+            )
+            self._bind(
+                root, "/creator_authority/production_profile/choices", "CD-RELAY",
+                {"continuation_route": "independent_starts"},
+            )
+            self.assertEqual(
+                project_tool.project_status(root)["video_model_profile"],
+                {**model, "continuation_route": "independent_starts"},
+            )
+
     def test_pacing_with_zero_action_seconds_still_counts_as_declared(self) -> None:
         # The write stage's estimator accepts a zero action-paragraph duration;
         # status must not ask the creator to change a setting that works.

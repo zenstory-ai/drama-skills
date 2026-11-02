@@ -36,6 +36,15 @@ class EditMeasurementsTests(unittest.TestCase):
                     findings = edit.check_cuts(root, cuts, root, probe=True)
                 self.assertEqual(len(findings), expected)
 
+    def test_a_tolerance_written_on_the_loudness_line_keeps_its_target(self):
+        for line in (
+            "- 交付响度：-16 LUFS",
+            "- 交付响度：-16 LUFS（容差 ±0.5 LU，真峰 ≤ -2 dBTP）",
+            "- 交付响度：-16 LUFS（容差 ±1.5 LU，创作者已接受）",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(edit._parse_delivery([line]).loudness_lufs, -16.0)
+
     def test_omission_requires_exact_id_and_nonempty_reason(self):
         known = {"MOTION-EP001-001"}
         for note in (

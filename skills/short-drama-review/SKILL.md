@@ -53,6 +53,7 @@ license: MIT
 - 身份、变体、连续性、时代与图片提示词：[资产提示词审查表](references/rubric-assets-prompts.md)
 - 原文落实、镜头、关键帧与视频运动：[视觉运动审查表](references/rubric-visual-motion.md)
 - 完整审查方法：[审查方法](references/review-method.md)
+- 生成素材与剪好的成片（`production_outputs`，或审到成片的 `full_episode`），逐段判镜头职责、给瑕疵归类并给出交付结论：[生成素材审查](references/generated-media.md)
 - 制作端常见缺陷：[生产质量门](references/production-quality-gates.md)
 - 授权生产观察的项目内校准：[项目校准](references/project-calibration.md)
 - 模板感、重复手法或 AI 味：[反模板修订](references/anti-template-repair.md)

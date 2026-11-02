@@ -159,6 +159,14 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
                 CREATOR_SUPPLIED_PLAN.replace("（用途：身份；", "（用途：全参考；"),
                 "PLAN 用途不在允许集合内",
             ),
+            # Production binds each picture once, so naming the same entry in a
+            # second slot is a declaration no job can match.
+            "same entry in two slots": (
+                CREATOR_SUPPLIED_PLAN.replace(
+                    "IMG-ZHOUBOSEN-SHEET《周薄森角色板》", "SHOT-EP001-001《本镜冻结关键帧》"
+                ),
+                "PLAN 同一张图只能占一个槽位: SHOT-EP001-001",
+            ),
             "attach order not contiguous": (
                 CREATOR_SUPPLIED_PLAN.replace("（顺序：2）", "（顺序：4）"),
                 "PLAN 顺序必须唯一且从 1 连续编号",

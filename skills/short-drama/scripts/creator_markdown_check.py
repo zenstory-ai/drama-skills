@@ -52,9 +52,10 @@ PLAN_RE = re.compile(
     r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
     re.IGNORECASE,
 )
-# One picture answers one question. 「同一张图承担两个作用时分开说明」 in
-# references/reference-roles.md is what makes a slot translatable into a
-# provider role, so the vocabulary is closed rather than free prose.
+# One picture takes one slot, and its 用途 names the slot's main job (a second
+# job goes in 控制, per references/reference-roles.md). That single purpose is
+# what makes a slot translatable into a provider role, so the vocabulary is
+# closed rather than free prose.
 REF_PURPOSES = (
     "身份",
     "造型状态",
@@ -448,9 +449,15 @@ def _references(
         range(1, len(orders) + 1)
     ):
         errors.append(f"{owner}: {noun} 顺序必须唯一且从 1 连续编号")
-    locator_purposes = list(zip(locators, purposes))
-    if len(locator_purposes) != len(set(locator_purposes)):
-        errors.append(f"{owner}: {noun} 路径与用途完全重复")
+    # One picture occupies one slot. Production binds each file once, so two
+    # slots on the same file -- whatever their 用途 -- write a declaration the
+    # job can never match; the second job of that picture belongs in 控制.
+    repeated = sorted({item for item in locators if locators.count(item) > 1})
+    for locator in repeated:
+        errors.append(
+            f"{owner}: {noun} 同一张图只能占一个槽位: {locator}；"
+            "保留它的主要用途作为该槽位的用途，把第二个作用写进「控制」"
+        )
     for slot, purpose in zip(slots, purposes):
         if not purpose:
             errors.append(
