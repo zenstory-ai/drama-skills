@@ -52,9 +52,10 @@ PLAN_RE = re.compile(
     r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
     re.IGNORECASE,
 )
-# One picture answers one question. 「同一张图承担两个作用时分开说明」 in
-# references/reference-roles.md is what makes a slot translatable into a
-# provider role, so the vocabulary is closed rather than free prose.
+# One picture takes one slot, and its 用途 names the slot's main job (a second
+# job goes in 控制, per references/reference-roles.md). That single purpose is
+# what makes a slot translatable into a provider role, so the vocabulary is
+# closed rather than free prose.
 REF_PURPOSES = (
     "身份",
     "造型状态",

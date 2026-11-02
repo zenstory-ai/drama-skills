@@ -1575,7 +1575,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as directory:
             errors = self._errors_with_reference_declaration(Path(directory), declaration)
-        self.assertFalse([error for error in errors if "REF" in error], errors)
+        self.assertEqual(errors, [])
 
     @staticmethod
     def _errors_with_reference_declaration(project: Path, declaration: str) -> list[str]:
