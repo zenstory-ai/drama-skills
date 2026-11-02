@@ -132,6 +132,13 @@ REF-STUDY-PLATE（顺序：3；用途：地理）    -> <Picture 3>
 `地理` 只锚定空间关系，`造型状态` 只锚定服装与损污。把这条差异写进 `retention_analysis`，
 不要让角色板顺带决定构图，也不要让场景板顺带决定人物长相。
 
+**`craft_default`**：近景、特写或说话镜里脸占画面大块，本镜又没有起始帧锚住脸、身份槽只有一张全身身份板时，
+给同一角色再挂一张同一 Look 的面部识别板，作为第二个 `用途：身份` 槽；这张板由 `$short-drama-image-prompts` 出。远景和全身镜不需要。
+`subject_definitions` 把两张都绑到同一个主体：`<Subject 1> is the woman in <Picture 1> and <Picture 2>, ... <Picture 1> shows her full body; <Picture 2> is a head-and-shoulders view of her face.`；
+`retention_analysis` 写明哪张管五官与发际、哪张管体态与服装，构图、姿势和表情仍由本镜决定。
+一组无起始帧的夜景近景说话镜小样本里（两个角色，只挂身份板与加挂面部板各 3 次），加挂面部板的片段盲评更接近原脸；
+但两种挂法都把脸拍得更老、更饱满，加挂面部板时女角色的痣还有 2 次画成并排两点，所以面部板不能替代生成后逐项比脸。
+
 角色始终使用同一个说话人 ID；中文对白只出现在 `<d>[Chinese] ...</d>` 内。禁字幕写进可见文字约束，
 与获准的画内文字分开。
 Full-reference 的逐字对白与同步声音放在 `detailed_description` 的对应事件里，`overall_soundscape` 仍只汇总底声与音效。
