@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-02
+
+本版主要解决「卡在质检不出片」：续接段和同一张图写两个槽位这两处死路有了出路，审生成素材时小瑕疵默认交给剪辑；
+另外把几项实测有效的生成写法写进技能，剪辑会提示该回听的切点。
+
 ### Added
 
 - 剪辑：`verify` 会列出前后音量相差超过 10 dB 的切点，提醒你回听一下，分辨是有意的重音还是接缝没接好。只是提示，不影响交付。
@@ -1924,7 +1929,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.0...v0.9.1
