@@ -374,7 +374,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "6d4675937a52b83ae489ecb503d2214ca641111c99e91ef7df71ea7b8a54278c",
+      "packageDigest": "0ca07ebd2b833cd486ee65a67511a87eea9a6cc19fd7a21822ffae1b788a25a6",
       "path": "skills/short-drama-write",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -393,7 +393,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.11"
+      "version": "1.0.12"
     }
   ]
 }
