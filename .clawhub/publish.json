@@ -133,7 +133,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "e963af156ee16dbc6dc8dbed42094b7025fee007d61b7fb42024e2412d98942d",
+      "packageDigest": "d5b9fb8eb0ba8cc30a5eeeab765192a556effb576dacac78d716cd9c8261ba93",
       "path": "skills/short-drama-edit",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -154,7 +154,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.13"
+      "version": "1.0.14"
     },
     {
       "catalogMigration": true,
@@ -374,7 +374,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "75cd045d431659e77940cbd9674008f2be76a7586e42e15cf64bd8965d1072b6",
+      "packageDigest": "b0d815fb3eaf749f6f41be66cb9097eeae554ecc12d96be37220e53286cda97a",
       "path": "skills/short-drama-write",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -393,7 +393,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.12"
+      "version": "1.0.13"
     }
   ]
 }
