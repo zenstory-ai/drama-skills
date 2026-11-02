@@ -19,7 +19,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "1b82f3c098e35c7a7cd2c91ed67580b7e22a18e7d8e460d8ca4dd30298a489fb",
+      "packageDigest": "47a6c2fdefda20d7f9ead8c6430400a806ca888bd782e7f8ca5b3ac68e58839e",
       "path": "skills/short-drama",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -133,7 +133,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "ad81a739b8eb90217545fc3bf7ed79912518a683a5a1581b3e47306998aba695",
+      "packageDigest": "e963af156ee16dbc6dc8dbed42094b7025fee007d61b7fb42024e2412d98942d",
       "path": "skills/short-drama-edit",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -154,7 +154,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.12"
+      "version": "1.0.13"
     },
     {
       "catalogMigration": true,
@@ -169,7 +169,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "6bd0f85bef37e79eb3bee5ec71f73b1bcc63f134f47b733f31d1284a586ae85c",
+      "packageDigest": "c737b93b5740ba55e4336add0a684a1a163b354e7c02c71a2d659821313dd813",
       "path": "skills/short-drama-image-prompts",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -238,7 +238,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "df7c67c98b5079a29dc6d47e607562c7fef73fb30784abc3303d684e6fa5462c",
+      "packageDigest": "9974d5a239722b4dfec1a1cb577b71fdf3f89d218e7e33c836a35ee73e5b6849",
       "path": "skills/short-drama-produce",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -272,7 +272,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "75348857bec962011c4cd0ac7e5e5e469182dfed2ad1e3f4cc05b506d73295a5",
+      "packageDigest": "d432ee7e73c13fcd909b8c9ea73da624caf865e6036ed665a1163bd939ffa10a",
       "path": "skills/short-drama-review",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -306,7 +306,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "479b5a15579a03fd23a5f1c70bbe04c6603ed8d31bdf548363f409b82ca5b6a8",
+      "packageDigest": "e37b404936a75d897331e4123d1185cafa65d6d1cfc8585a122ee7a8aeb06b6e",
       "path": "skills/short-drama-storyboard",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -340,7 +340,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "5b2013780f01f8a8874a3be1cba741d074710ec84a2c97b65b766cabdb2f9ae0",
+      "packageDigest": "d4bbfbe75b87bfdbcb0aee6c65e0fd69b156575f1207da141c7e73026b6338c0",
       "path": "skills/short-drama-video-prompts",
       "publisher": "worldwonderer",
       "rebuildOn": [],
