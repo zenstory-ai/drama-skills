@@ -103,6 +103,12 @@ python3 {技能目录}/scripts/project_tool.py set-authority <project> \
 或设了单集目标时长却没有语速；看到就交创作者决定，不要等到分镜才发现。创作者选择用多镜容器解决镜长冲突时，
 在生产档案 `choices` 里加 `"multi_shot_containers": true`（同一条决策写入），这条提示随之消失。
 
+续接链的执行方式也走同一条决策写入。内置生产路径绑定不了续接视频，`$short-drama-video-prompts`
+或 `$short-drama-produce` 会就此问创作者一次。创作者回答后，在 `choices` 里写
+`"continuation_route": "independent_starts"`（各段从已接受起点独立生成，可走内置路径）或
+`"continuation_route": "relay_external"`（保留续接，后续段在创作者自己的工具里提交）。写入后
+`status` 的 `video_model_profile` 会带上它，后续阶段不再重复问。
+
 项目定位与安全写入见 [运行预检](references/runtime-preflight.md)。用户明确要求 Dashboard 时运行：
 
 ```bash

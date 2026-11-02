@@ -2,8 +2,10 @@
 
 The bundled provider compilers accept video-reference roles, but the current creator-first Markdown
 source selector declares only image references and character voice references. It cannot bind a previous
-video for continuation. Keep that route unsubmitted until the source interface supports both actual
-video and tail-frame inputs; do not omit the source selector to bypass this boundary.
+video for continuation. A continuation segment is therefore not submitted through this path. The
+creator chooses once between independent starts and external submission, and the choice is recorded
+as `continuation_route` in the production profile; see the SKILL's video input section. Do not omit
+the source selector to bypass this boundary.
 
 ## Job file
 

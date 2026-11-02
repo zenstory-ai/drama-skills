@@ -448,9 +448,15 @@ def _references(
         range(1, len(orders) + 1)
     ):
         errors.append(f"{owner}: {noun} 顺序必须唯一且从 1 连续编号")
-    locator_purposes = list(zip(locators, purposes))
-    if len(locator_purposes) != len(set(locator_purposes)):
-        errors.append(f"{owner}: {noun} 路径与用途完全重复")
+    # One picture occupies one slot. Production binds each file once, so two
+    # slots on the same file -- whatever their 用途 -- write a declaration the
+    # job can never match; the second job of that picture belongs in 控制.
+    repeated = sorted({item for item in locators if locators.count(item) > 1})
+    for locator in repeated:
+        errors.append(
+            f"{owner}: {noun} 同一张图只能占一个槽位: {locator}；"
+            "保留它的主要用途作为该槽位的用途，把第二个作用写进「控制」"
+        )
     for slot, purpose in zip(slots, purposes):
         if not purpose:
             errors.append(

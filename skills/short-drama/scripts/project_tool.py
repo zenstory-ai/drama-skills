@@ -280,6 +280,9 @@ def project_video_model_profile(project: Mapping[str, Any]) -> dict[str, Any]:
         # The creator's choice to pack adjacent short shots into one
         # generation; it answers the shot-length note below once made.
         "multi_shot_containers",
+        # How continuation segments are executed when the built-in production
+        # path cannot bind the previous segment's video: asked once, then read.
+        "continuation_route",
     )
     return {field: choices[field] for field in fields if field in choices}
 
