@@ -19,7 +19,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "47a6c2fdefda20d7f9ead8c6430400a806ca888bd782e7f8ca5b3ac68e58839e",
+      "packageDigest": "985f4ed27387970aed030fb66fc51209dc225ebf968f280963a664fac0a2e7d4",
       "path": "skills/short-drama",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -48,7 +48,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.31"
+      "version": "1.0.32"
     },
     {
       "catalogMigration": true,
