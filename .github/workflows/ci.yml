@@ -106,6 +106,7 @@ jobs:
           skills/short-drama-produce/scripts/production_tool.py
           skills/short-drama-produce/scripts/provider_adapters.py
           skills/short-drama-edit/scripts/edit_tool.py
+          skills/short-drama-breakdown/scripts/breakdown_tool.py
           tests/legacy/short-drama-review/scripts/review_check.py
           tests/legacy/short-drama-video-prompts/scripts/music_spec_check.py
           evaluations/content_quality_gate.py

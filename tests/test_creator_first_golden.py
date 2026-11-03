@@ -1812,7 +1812,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
     def test_creator_rule_catalogs_keep_every_craft_rule(self) -> None:
         expected = {
             "short-drama-develop": {*(f"STY-{number:02d}" for number in range(1, 31))},
-            "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 24))},
+            "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 25))},
             "short-drama-assets": {
                 *(f"AST-{number:02d}" for number in range(1, 16)),
                 *(f"CON-{number:02d}" for number in range(1, 8)),

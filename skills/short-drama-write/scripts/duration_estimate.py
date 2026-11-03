@@ -421,6 +421,7 @@ def estimate(
         return result
 
     seconds = counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
+    speech = 0.0
     unpriced: dict[str, int] = {}
     for unit, rate_name in (
         ("voiced_characters", "spoken_characters_per_second"),
@@ -431,7 +432,8 @@ def estimate(
         if rates[rate_name] is None:
             unpriced[unit] = counts[unit]
         else:
-            seconds += counts[unit] / rates[rate_name]
+            speech += counts[unit] / rates[rate_name]
+    seconds += speech
     if unpriced:
         # Speech in a unit the project has no rate for. Borrowing the other
         # rate is the letter-by-letter error this split exists to stop, so the
@@ -450,6 +452,11 @@ def estimate(
         result["on_screen_text_seconds"] = round(reading_seconds, 1)
         seconds += reading_seconds
     result["seconds"] = round(seconds, 1)
+    if seconds and not unpriced:
+        # How much of the estimated runtime someone is speaking. Silent action,
+        # on-screen text and untimed tags make up the rest.
+        result["speech_seconds"] = round(speech, 1)
+        result["speech_share"] = round(speech / seconds, 2)
     if result["target_seconds"]:
         delta = seconds - result["target_seconds"]
         result["delta_seconds"] = round(delta, 1)

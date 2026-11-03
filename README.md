@@ -5,7 +5,7 @@
 <h1 align="center">Drama Skills</h1>
 
 <p align="center">
-  <b>面向编剧、漫剧工作室和编导的 AI 短剧创作工作流：十一个技能，从一个点子或一部原著做到分集剧本、分镜、图片/视频提示词和成片。</b>
+  <b>面向编剧、漫剧工作室和编导的 AI 短剧创作工作流：十二个技能，从一个点子或一部原著做到分集剧本、分镜、图片/视频提示词和成片。</b>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@ https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 Drama Skills 覆盖 AI 短剧 / 漫剧从点子或原著到成片的全流程：**原著分析 → 分集剧本 → 视觉设定 →
 图片提示词与分镜 → 视频提示词 → 确认后生产 → 剪辑成片 → 审查**。
-它以 11 个 skill 的形式装进你已经在用的编程 Agent（Claude Code、Codex 及其他支持 Agent Skill 规范的环境），
+它以 12 个 skill 的形式装进你已经在用的编程 Agent（Claude Code、Codex 及其他支持 Agent Skill 规范的环境），
 写作用的模型就是该 Agent 的模型。
 
 - **五份 Markdown 分别记录创作决定** — 按阶段维护 `剧本.md`、`视觉设定.md`、`分镜.md`、`图片提示词.md`、
@@ -227,7 +227,7 @@ ERROR: SHOT-EP001-002: 冻结关键帧提示词写到人物「周薄森」，视
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词只能原样照抄已接受的镜头时长
 ```
 
-## 十一个技能
+## 十二个技能
 
 各阶段按请求调用：文本交付在所需阶段完成，审查可针对任一已有产物；静态漫剧从关键帧与配音进入生产和剪辑。
 
@@ -237,6 +237,7 @@ flowchart LR
     classDef final fill:#fce4ec,color:#333,stroke:#e57373,stroke-width:1px
 
     nva["原著分析<br/>$short-drama-novel-analyze"]:::phase
+    brk["对标拆解<br/>$short-drama-breakdown"]:::phase
     dev["故事开发<br/>$short-drama-develop"]:::phase
     write["分集剧本<br/>$short-drama-write"]:::phase
     assets["资产决策<br/>$short-drama-assets"]:::phase
@@ -249,6 +250,8 @@ flowchart LR
     pkg["文本交付包"]:::final
 
     nva -.有原著时.-> dev
+    brk -.有对标剧时.-> dev
+    cut -.成片对照.-> brk
     dev -.可选.-> write --> assets
     assets --> img
     assets --> sb --> vid
@@ -269,6 +272,7 @@ flowchart LR
 | `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态、补拍说明，以及跨镜时间线音乐规格 |
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2、MiniMax H3 视频与 MiniMax Music |
 | `short-drama-edit` | 逐镜素材的可用带、入出点取舍、镜序、台词完整性、字幕与响度，写成剪辑单并渲染成片 |
+| `short-drama-breakdown` | 测量并拆解对标剧的集长、镜长、对白密度、开场与集尾，和本项目的计划或成片同口径对照出差距，交给负责的技能并用出片复核 |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
 ## 本地短剧创作台
@@ -353,7 +357,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 - 示例：[examples/](examples/)，公开完整样例是 [《让你管账号》EP001](examples/creator-first/EP001/)；其余目录是仓库校验器的回归夹具。
 - [真实产出节选](docs/real-outputs.md)：一镜穿过四份文档、检查器报错、剪辑单与实测、原著快评回填、改编契约、模型行为观察。
 - [评估](evaluations/README.md)：按文档实跑一次的完整产物、发布前的回归闸门与主工作流实跑方法。
-- [漫剧创作全流程指引](docs/comic-drama-workflow.md)：把十一个技能按漫剧产线从头串一遍，每步命令、产物与卡点。
+- [漫剧创作全流程指引](docs/comic-drama-workflow.md)：把十二个技能按漫剧产线从头串一遍，每步命令、产物与卡点。
 - [跨镜一致性怎么做](docs/character-consistency-across-shots.md)：跨镜、跨集角色一致性，三视图之外的三层文件事实。
 - [分镜脚本怎么写](docs/short-drama-storyboard-script-template.md)：短剧分镜表模板，把剧本逐镜拆开。
 - [角色三视图提示词怎么写](docs/character-turnaround-sheet-prompts.md)：三视图模板、范例与常见失误。

@@ -377,6 +377,17 @@ class SpokenDurationTests(unittest.TestCase):
         self.assertEqual(report["counts"]["production_tag_lines"], 0)
         self.assertEqual(report["counts"]["dialogue_characters"], 11)
 
+    def test_the_voiced_part_of_the_estimate_is_reported(self) -> None:
+        report = self.measure("葛晴推开舱门。\n\n葛晴：关窗，水进来了。\n")
+        self.assertEqual(report["seconds"], 3.7)
+        self.assertEqual(report["speech_seconds"], 1.2)
+        self.assertEqual(report["speech_share"], 0.32)
+
+    def test_no_voiced_share_when_some_speech_has_no_rate(self) -> None:
+        report = self.measure("葛晴推开舱门。\n\n葛晴：Close the window now.\n")
+        self.assertIn("untimed_speech", report)
+        self.assertNotIn("speech_share", report)
+
     def test_an_off_screen_line_is_timed_as_speech(self) -> None:
         report = self.measure("[OS] 船员：关窗，水进来了！\n")
         self.assertEqual(report["counts"]["dialogue_lines"], 1)

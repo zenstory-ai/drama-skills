@@ -93,6 +93,8 @@ python3 "{技能目录}/scripts/duration_estimate.py" "剧集/EP001/剧本.md" -
 `untimed_speech`，不在秒数里。数字和缩写仍按实际读法另行估计，不把两个计数混用。
 项目已接受节奏档案、上限有效且本集有台词时，输出增加 `vo_share`：`[VO]` 字数占全部台词字数的比例、档案上限，以及是否超过。`[OS]` 计入全部台词，不计入 `[VO]`。
 `[画面文字]`、`[SFX]`、`[转场]` 占用画面时间，但不在秒数里，输出的 `untimed` 列出它们的行数。
+所有台词都有语速可算时，输出另给 `speech_seconds` 与 `speech_share`：估算里有人说话的秒数和它占全集估算的比例。
+漫剧项目怎样读这个数，见 [漫剧靠声音往前推](references/script-craft.md#45-漫剧靠声音往前推)。
 项目在 `format.pacing` 里另声明了 `on_screen_text_characters_per_second`（观众每秒读几个字）时，
 `[画面文字]` 标签后的全部文字（含载体名）按它计入秒数（`on_screen_text_seconds`）。唱段按说话语速计时，实际通常更长。
 画面文字多、唱段长的集，估算明显低于成片，要按这几项另加读字和停留时间再对照目标。
