@@ -33,7 +33,7 @@ import sys
 import tempfile
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -71,6 +71,8 @@ EPISODE_MARKED = re.compile(r"(?:EP|E|第)\s*0*(\d{1,4})", re.IGNORECASE)
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
 SHOT_DURATION = re.compile(r"^- 时长：\s*([\d.]+)\s*(?:s|秒)", re.MULTILINE)
 SHOT_HEADING = re.compile(r"^## SHOT-[^\s]+", re.MULTILINE)
+# A performance note inside a line, ``走。（压低声音）``, is not spoken.
+DIRECTION = re.compile(r"（[^（）]*）|\([^()]*\)")
 CUE_LINE = re.compile(r"^(?:\[(VO|OS)\]\s*)?([^\s：:（(\[]{1,12})(?:（[^）]*）|\([^)]*\))?[：:]\s*(.+)$")
 SRT_TIME = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{1,3})"
@@ -308,6 +310,28 @@ def speech_seconds(words: str, pacing: Dict[str, Optional[float]]) -> Optional[f
         latin / by_word if latin and by_word else 0.0)
 
 
+def spoken_lines(text: str, speakers: Set[str]) -> List[Tuple[Optional[str], str]]:
+    """Each spoken block as (VO/OS tag, words said), notes and comments removed."""
+
+    lines = []
+    for block in blocks(text):
+        found = cue(block.split("\n", 1)[0], speakers)
+        if found:
+            words = DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]])).strip()
+            lines.append((found.group(1), words))
+    return lines
+
+
+def beat_text(block: str, speakers: Set[str]) -> str:
+    """What a block puts on screen or in the ear: the words of a line, without
+    its speaker and notes, or the action itself."""
+
+    found = cue(block.split("\n", 1)[0], speakers)
+    if found:
+        return DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]]))
+    return block
+
+
 def cue(line: str, speakers: Set[str]) -> Optional[Any]:
     """A dialogue cue whose speaker is known; anything else is action."""
 
@@ -358,7 +382,7 @@ def script_timeline(text: str, pacing: Dict[str, Optional[float]],
     for block in blocks(text):
         found = cue(block.split("\n", 1)[0], known)
         if found:
-            words = " ".join([found.group(3), *block.split("\n")[1:]])
+            words = DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]])).strip()
             seconds = speech_seconds(words, pacing)
             if seconds is None:
                 return None
@@ -371,7 +395,8 @@ def script_timeline(text: str, pacing: Dict[str, Optional[float]],
         # More speech than the storyboard has time for is a plan conflict to
         # report, not something to squeeze.
         return {"duration": round(speech + silent, 2), "segments": [], "overflow": round(speech - length, 2)}
-    stretch = (length - speech) / silent if length and silent and length > speech else 1.0
+    # Speech that exactly fills the storyboard leaves no time for silence.
+    stretch = (length - speech) / silent if length and silent else 1.0
     clock = 0.0
     segments = []
     for seconds, words in items:
@@ -383,10 +408,15 @@ def script_timeline(text: str, pacing: Dict[str, Optional[float]],
     return {"duration": round(clock, 2), "segments": segments}
 
 
-def paragraphs(text: str) -> List[str]:
-    """Action and spoken blocks; production tags other than VO/OS are not beats."""
+def paragraphs(text: str, speakers: Set[str]) -> List[str]:
+    """Action and spoken beats; production tags other than VO/OS are not beats.
 
-    return [block for block in blocks(text) if not block.startswith("[") or block.startswith(("[VO]", "[OS]"))]
+    A line is compared by its words alone, so two lines that share only a
+    speaker and a delivery note do not read as a replay.
+    """
+
+    return [beat_text(block, speakers) for block in blocks(text)
+            if not block.startswith("[") or block.startswith(("[VO]", "[OS]"))]
 
 
 def plan_episode(episode_dir: Path, named_speakers: Iterable[str] = ()) -> Dict[str, Any]:
@@ -417,19 +447,16 @@ def plan_episode(episode_dir: Path, named_speakers: Iterable[str] = ()) -> Dict[
         text = screenplay.read_text(encoding="utf-8")
         speakers = screenplay_speakers(text, named_speakers)
         spoken = vo = 0
-        for raw in text.splitlines():
-            found = cue(raw, speakers)
-            if not found or raw.startswith("#"):
-                continue
-            count = spoken_characters(found.group(3))
+        for tag, words in spoken_lines(text, speakers):
+            count = spoken_characters(words)
             spoken += count
-            if found.group(1) == "VO":
+            if tag == "VO":
                 vo += count
         record["spoken_characters"] = spoken
         record["vo_characters"] = vo
         # A plan's opening and closing beats include action, so a replayed
         # gesture is caught as well as a replayed line.
-        body = paragraphs(text)
+        body = paragraphs(text, speakers)
         record["opening_text"] = "".join(body[:3])
         record["closing_text"] = "".join(body[-3:])
         pacing = project_pacing(episode_dir)
@@ -470,11 +497,7 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
         "long_shot_share": round(sum(1 for value in lengths if value > LONG_SHOT_SECONDS) / len(lengths), 2)
         if lengths else None,
     }
-    if segments and duration and record.get("kind") != "plan":
-        # A cue running past the picture is a recognition error, not speech:
-        # its timing and its text are both unverified, so it is left out.
-        segments = [{**segment, "e": min(segment["e"], duration)} for segment in segments
-                    if segment["e"] <= duration + OVERRUN_TOLERANCE_SECONDS]
+    segments = verified_segments(record)
     if segments and duration:
         merged: List[List[float]] = []
         for segment in sorted(segments, key=lambda item: item["s"]):
@@ -501,6 +524,21 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
     return numbers
 
 
+def verified_segments(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Transcript cues inside the picture.
+
+    A cue running past the picture is a recognition error, not speech: its
+    timing and its text are both unverified, so every count leaves it out.
+    """
+
+    duration = record.get("duration")
+    segments = record.get("segments") or []
+    if not segments or not duration or record.get("kind") == "plan":
+        return list(segments)
+    return [{**segment, "e": min(segment["e"], duration)} for segment in segments
+            if segment["e"] <= duration + OVERRUN_TOLERANCE_SECONDS]
+
+
 def transcript_overrun(record: Dict[str, Any]) -> bool:
     duration = record.get("duration")
     segments = record.get("segments") or []
@@ -518,8 +556,8 @@ def reprise(previous: Dict[str, Any], following: Dict[str, Any]) -> Optional[int
     if previous.get("closing_text") and following.get("opening_text"):
         tail, head = _han(previous["closing_text"]), _han(following["opening_text"])
         return SequenceMatcher(None, tail, head).find_longest_match(0, len(tail), 0, len(head)).size
-    tail_segments = previous.get("segments") or []
-    head_segments = following.get("segments") or []
+    tail_segments = verified_segments(previous)
+    head_segments = verified_segments(following)
     if not tail_segments or not head_segments or not previous.get("duration"):
         return None
     tail = _han("".join(

@@ -73,6 +73,17 @@ class SpeechTimingTests(unittest.TestCase):
         self.assertEqual([segment["t"] for segment in timeline["segments"]], ["走。", "合格。"])
         self.assertEqual(timeline["duration"], 3.75)
 
+    def test_a_note_inside_a_line_is_not_spoken(self):
+        pacing = {"characters": 4.0, "words": None, "action": 3.0}
+        timeline = breakdown.script_timeline("顾远：走。（压低声音）\n", pacing, speakers={"顾远"})
+        self.assertEqual(timeline["duration"], 0.25)
+
+    def test_speech_that_exactly_fills_the_storyboard_leaves_no_silence(self):
+        pacing = {"characters": 4.0, "words": None, "action": 3.0}
+        timeline = breakdown.script_timeline("他推门。\n\n顾远：一二三四五六七八。\n", pacing, 2.0, {"顾远"})
+        self.assertEqual(timeline["segments"][0]["s"], 0.0)
+        self.assertEqual(timeline["duration"], 2.0)
+
     def test_speech_longer_than_the_storyboard_is_reported_not_squeezed(self):
         with tempfile.TemporaryDirectory() as directory:
             ep = Path(directory) / "剧集" / "EP001"
@@ -213,6 +224,25 @@ class PlanTimelineTests(unittest.TestCase):
             records = [breakdown.plan_episode(root / "剧集" / name) for name in ("EP001", "EP002")]
         self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 1})
 
+    def test_lines_sharing_only_a_speaker_and_a_note_are_not_a_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_project(root, {
+                "EP001": ("顾远（压低声音）：开门。\n", None),
+                "EP002": ("顾远（压低声音）：离开。\n", None),
+            })
+            records = [breakdown.plan_episode(root / "剧集" / name) for name in ("EP001", "EP002")]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 0})
+
+    def test_commented_out_lines_are_not_counted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_project(root, {"EP001": (
+                "顾远：走。\n\n<!--\n[VO] 顾远：这一句已经删掉了不再演。\n-->\n", None)})
+            record = breakdown.plan_episode(root / "剧集" / "EP001")
+        self.assertEqual(record["spoken_characters"], 1)
+        self.assertEqual(record["vo_characters"], 0)
+
     def test_a_project_without_pacing_reports_no_speech_timing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -228,6 +258,14 @@ class TranscriptOverrunTests(unittest.TestCase):
         self.assertTrue(breakdown.transcript_overrun(record))
         self.assertEqual(breakdown.episode_numbers(record)["speech_share"], 0.2)
         self.assertEqual(breakdown.profile([record], opening=1)["transcript_overruns"], [4])
+
+    def test_cues_past_the_picture_cannot_make_a_replay(self):
+        phrase = "你今天走出这个门就别回来"
+        records = [
+            episode(1, 40.0, [40.0], [(30.0, 35.0, "第一集的真结尾"), (39.0, 60.0, phrase)]),
+            episode(2, 40.0, [40.0], [(0.0, 50.0, phrase), (1.0, 3.0, "第二集开场")]),
+        ]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 0})
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
