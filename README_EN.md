@@ -413,6 +413,7 @@ ID and reason, and a range such as "001 to 009" is no longer accepted.
 - [Evaluations](evaluations/README.md) (Chinese): the complete output of one run made by following the docs, the pre-release regression gate, and how a main-workflow run is done.
 - [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md): what the pack does, stage by stage.
 - [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese): the twelve skills as one production line, with per-step commands, outputs, and common pitfalls.
+- [Short-drama script format template](docs/short-drama-script-format-template.md) (Chinese): scene headings, action, dialogue and production tags, and what to check after AI reformats an old script.
 - [Cross-shot consistency](docs/character-consistency-across-shots.md) (Chinese): character consistency across shots and episodes, and the three layers of file facts beyond a turnaround sheet.
 - [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): from an authorized source to episode decisions, one script, and a first small set of shots.
 - [Character consistency guide](https://zenstory.ai/drama-skills/character-consistency): separate character identity, the compatible look for this scene, and per-shot hands, props, and gaze; tell `IMG-*`, `PLAN-*`, and `REF-*` apart.
