@@ -365,10 +365,15 @@ def estimate(
     blocks: Iterable[Mapping[str, Any]],
     project: dict[str, Any] | None = None,
     review: Mapping[str, Any] | None = None,
+    target_seconds: float | None = None,
 ) -> dict[str, Any]:
     counts = measure(screenplay, blocks)
     rates = declared_rates(project)
-    target = ((project or {}).get("format") or {}).get("target_seconds_per_episode")
+    # An episode the episode map gives its own length (a longer first episode)
+    # is compared against that, not against the project-wide default.
+    target: Any = target_seconds
+    if target is None:
+        target = ((project or {}).get("format") or {}).get("target_seconds_per_episode")
 
     result: dict[str, Any] = {"counts": counts, "rates": rates, "seconds": None}
     result["target_seconds"] = target if isinstance(target, (int, float)) else None
@@ -468,7 +473,8 @@ def estimate(
     else:
         result["note"] = (
             "no format.target_seconds_per_episode is declared, so there is "
-            "nothing to compare the estimate against"
+            "nothing to compare the estimate against; pass --target-seconds "
+            "for an episode the episode map gives its own length"
         )
     return result
 
@@ -507,7 +513,20 @@ def main(argv: list[str] | None = None) -> int:
             "and, when accepted, creator_authority.rhythm_profile.vo_share_max"
         ),
     )
+    parser.add_argument(
+        "--target-seconds",
+        type=float,
+        default=None,
+        help=(
+            "this episode's own target length from the episode map; overrides "
+            "format.target_seconds_per_episode for the comparison"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.target_seconds is not None and not (
+        math.isfinite(args.target_seconds) and args.target_seconds > 0
+    ):
+        raise SystemExit("--target-seconds must be a positive number")
 
     if not args.screenplay.is_file():
         raise SystemExit("screenplay not found: {}".format(args.screenplay))
@@ -526,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     except StaleIndex as error:
         raise SystemExit("{}: {}".format(args.index, error))
 
-    report = estimate(screenplay, blocks, project, review)
+    report = estimate(screenplay, blocks, project, review, args.target_seconds)
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))
     # An estimate is never a verdict, so this exits successfully even when the
     # episode lands far from its target. Blocking here would turn a reported

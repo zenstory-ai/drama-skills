@@ -125,7 +125,15 @@ SPEECH_RATES = ("spoken_characters_per_second", "spoken_words_per_second")
 EPISODE_COUNT_POINTER = "/format/episode_count"
 # The episode count is often settled only once the episode map exists, after
 # init; without a pointer it could only be hand-edited into the manifest.
-FORMAT_POINTERS = (EPISODE_LENGTH_POINTER, PACING_POINTER, EPISODE_COUNT_POINTER)
+ASPECT_RATIO_POINTER = "/format/aspect_ratio"
+# init writes a placeholder ratio; the router asks the creator once, and the
+# answer usually arrives after init, so it needs a decision path too.
+FORMAT_POINTERS = (
+    EPISODE_LENGTH_POINTER,
+    PACING_POINTER,
+    EPISODE_COUNT_POINTER,
+    ASPECT_RATIO_POINTER,
+)
 RHYTHM_PROFILE_TOKENS = [AUTHORITY_ROOT_TOKEN, "rhythm_profile"]
 # The project rhythm profile: what develop proposes and the creator accepts, so
 # that later stages can do arithmetic on accepted numbers. Only types and ranges
@@ -1715,6 +1723,10 @@ def set_creator_authority(
             isinstance(value, int) and not isinstance(value, bool) and value > 0
         ):
             raise ValueError("episode_count must be a positive integer")
+        if field == ASPECT_RATIO_POINTER and not (
+            isinstance(value, str) and re.fullmatch(r"[1-9][0-9]*:[1-9][0-9]*", value)
+        ):
+            raise ValueError("aspect_ratio must be written as width:height, e.g. 16:9")
         project_path = root / PROJECT_FILE
         project = json.loads(project_path.read_text(encoding="utf-8"))
         if not isinstance(project, dict):

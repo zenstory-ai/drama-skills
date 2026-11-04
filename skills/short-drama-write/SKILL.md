@@ -73,8 +73,9 @@ license: MIT
 用户问时长，或项目已接受节奏档案、需要核对 VO 占比时，才把索引写入系统临时目录。先用 Python 查询跨平台临时目录，把第一条命令打印的完整
 路径原样替换进后两条命令的引号内。以下每条都是一行完整命令，不依赖 shell 变量或续行符；Windows
 没有 `python3` 命令时使用 `py -3`。`--speaker` 的示例值必须替换为本集实际说话者。
-项目配置存在时，可在第三条命令末尾加 `--project short-drama.json`。只有
-`duration_estimate.py` 接受这个参数，第二条索引命令不接受：
+项目配置存在时，可在第三条命令末尾加 `--project short-drama.json`；分集地图给这一集单独定了目标时长
+（例如首集加长）时，再加 `--target-seconds <秒数>`，按这一集的目标对照。只有 `duration_estimate.py`
+接受这两个参数，第二条索引命令不接受：
 
 ```text
 python3 -c "from pathlib import Path; import tempfile, uuid; print(Path(tempfile.gettempdir()) / ('short-drama-' + uuid.uuid4().hex + '.jsonl'))"

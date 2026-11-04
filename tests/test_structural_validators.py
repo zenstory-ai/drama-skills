@@ -345,6 +345,7 @@ class SpokenDurationTests(unittest.TestCase):
         body: str,
         speakers: list[str] | None = None,
         project: dict[str, Any] | None = None,
+        target_seconds: float | None = None,
     ) -> dict[str, Any]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -368,8 +369,24 @@ class SpokenDurationTests(unittest.TestCase):
             source = screenplay.read_bytes()
             blocks, review = duration_estimate.index_blocks(records, source)
             return duration_estimate.estimate(
-                source, blocks, project or self.PROJECT, review
+                source, blocks, project or self.PROJECT, review, target_seconds
             )
+
+    def test_an_episode_target_replaces_the_project_target(self) -> None:
+        project = {"format": dict(self.PROJECT["format"], target_seconds_per_episode=2)}
+        body = "葛晴推开舱门。\n\n葛晴：关窗，水进来了。\n"
+        self.assertEqual(self.measure(body, project=project)["delta_seconds"], 1.7)
+        report = self.measure(body, project=project, target_seconds=7.4)
+        self.assertEqual(report["target_seconds"], 7.4)
+        self.assertEqual(report["delta_seconds"], -3.7)
+
+    def test_a_target_that_is_not_a_positive_number_is_refused(self) -> None:
+        for value in ("0", "-5", "nan", "inf"):
+            with self.subTest(value=value), self.assertRaises(SystemExit) as raised:
+                duration_estimate.main(
+                    ["missing.md", "--index", "missing.jsonl", "--target-seconds", value]
+                )
+            self.assertIn("--target-seconds", str(raised.exception.code))
 
     def test_a_voice_over_line_is_timed_as_speech(self) -> None:
         report = self.measure("[VO] 葛晴：十二个字的台词在这里。\n")
