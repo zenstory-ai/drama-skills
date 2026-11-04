@@ -355,6 +355,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 - [评估](evaluations/README.md)：按文档实跑一次的完整产物、发布前的回归闸门与主工作流实跑方法。
 - [漫剧创作全流程指引](docs/comic-drama-workflow.md)：把十一个技能按漫剧产线从头串一遍，每步命令、产物与卡点。
 - [跨镜一致性怎么做](docs/character-consistency-across-shots.md)：跨镜、跨集角色一致性，三视图之外的三层文件事实。
+- [短剧剧本格式模板](docs/short-drama-script-format-template.md)：场景标题、动作、对白和制作标签怎么分，用 AI 整理旧稿后查什么。
 - [分镜脚本怎么写](docs/short-drama-storyboard-script-template.md)：短剧分镜表模板，把剧本逐镜拆开。
 - [角色三视图提示词怎么写](docs/character-turnaround-sheet-prompts.md)：三视图模板、范例与常见失误。
 - [Seedance 提示词怎么写](docs/seedance-prompt-writing.md)：起点、动作顺序、终点，以及 2.5 与 2.0 的写法差别。
