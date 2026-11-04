@@ -86,6 +86,19 @@ class SpeechTimingTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(breakdown.script_timeline(line, pacing, speakers={"Mara"})["duration"], seconds)
 
+    def test_on_screen_text_takes_its_declared_reading_time(self):
+        pacing = {"characters": 4.0, "words": None, "action": 3.0, "reading": 2.0}
+        timeline = breakdown.script_timeline("[画面文字] 招牌：城中村修车铺\n\n韩冬：走走走走。\n", pacing,
+                                             speakers={"韩冬"})
+        self.assertEqual(timeline["duration"], 5.0)
+        del pacing["reading"]
+        self.assertEqual(breakdown.script_timeline("[画面文字] 招牌：城中村修车铺\n\n韩冬：走走走走。\n", pacing,
+                                                   speakers={"韩冬"})["duration"], 1.0)
+
+    def test_transcript_density_counts_letters_of_any_script(self):
+        numbers = breakdown.episode_numbers(episode(1, 10.0, [10.0], [(0.0, 2.0, "こんにちは、ミラ。")]))
+        self.assertEqual(numbers["chars_per_speech_second"], 3.5)
+
     def test_a_note_inside_a_line_is_not_spoken(self):
         pacing = {"characters": 4.0, "words": None, "action": 3.0}
         timeline = breakdown.script_timeline("顾远：走。（压低声音）\n", pacing, speakers={"顾远"})
@@ -170,7 +183,8 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(record["spoken_characters"], 3 + 4 + 2)
         numbers = breakdown.episode_numbers(record)
         self.assertEqual(numbers["avg_shot"], 3.0)
-        self.assertEqual(numbers["vo_share"], 0.44)
+        # VO share counts punctuation, as the rhythm profile defines it: 5 of 4 + 5 + 3.
+        self.assertEqual(numbers["vo_share"], 0.42)
 
     def test_shot_headings_without_matching_durations_leave_shot_length_unmeasured(self):
         with tempfile.TemporaryDirectory() as directory:

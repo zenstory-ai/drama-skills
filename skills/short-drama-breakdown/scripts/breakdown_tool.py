@@ -63,7 +63,6 @@ REPRISE_MIN_SHARED_UNITS = 6
 # Episodes after the opening ones count as fixed length when the 10th and
 # 90th percentiles sit this close.
 FIXED_LENGTH_SPREAD_SECONDS = 3.0
-SPOKEN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff0-9A-Za-z]")
 # Scripts written with spaces between words are timed and compared by the
 # word; every other pronounced character is one unit, as in the write stage.
 WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
@@ -72,6 +71,7 @@ EPISODE_MARKED = re.compile(r"(?:EP|E|第)\s*0*(\d{1,4})", re.IGNORECASE)
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
 SHOT_DURATION = re.compile(r"^- 时长：\s*([\d.]+)\s*(?:s|秒)", re.MULTILINE)
 SHOT_HEADING = re.compile(r"^## SHOT-[^\s]+", re.MULTILINE)
+ON_SCREEN_TEXT_TAG = "[画面文字]"
 # A performance note inside a line, ``走。（压低声音）``, is not spoken.
 DIRECTION = re.compile(r"（[^（）]*）|\([^()]*\)")
 CUE_LINE = re.compile(r"^(?:\[(VO|OS)\]\s*)?([^\s：:（(\[]{1,12})(?:（[^）]*）|\([^)]*\))?[：:]\s*(.+)$")
@@ -255,7 +255,22 @@ def attach_transcript(measure: Path, transcript: Path) -> None:
 
 
 def spoken_characters(text: str) -> int:
-    return len(SPOKEN.findall(text))
+    """Letters and digits of any script; punctuation and spaces are not said."""
+
+    return sum(1 for character in text if character.isalnum())
+
+
+def dialogue_characters(text: str) -> int:
+    """The VO share's own count: punctuation included, as the rhythm profile
+    defines it in the write stage."""
+
+    return len(re.sub(r"\s", "", text))
+
+
+def readable_characters(text: str) -> int:
+    """Characters a viewer reads in an on-screen text block, carrier included."""
+
+    return sum(1 for character in re.sub(r"\s", "", text) if not unicodedata.category(character).startswith("P"))
 
 
 def project_pacing(episode_dir: Path) -> Optional[Dict[str, Optional[float]]]:
@@ -280,7 +295,7 @@ def project_pacing(episode_dir: Path) -> Optional[Dict[str, Optional[float]]]:
         if not isinstance(action, (int, float)) or isinstance(action, bool) or action < 0:
             return None
         rates = {"characters": rate("spoken_characters_per_second"), "words": rate("spoken_words_per_second"),
-                 "action": float(action)}
+                 "action": float(action), "reading": rate("on_screen_text_characters_per_second")}
         return rates if rates["characters"] or rates["words"] else None
     return None
 
@@ -426,9 +441,10 @@ def script_timeline(text: str, pacing: Dict[str, Optional[float]],
     """Lay the screenplay out in time with the project's own rates.
 
     Each action paragraph takes the declared seconds; a line takes its speech
-    at the declared rate for its unit (characters or words). Headings and
-    production tags other than VO/OS take no time here, as in the write
-    stage's own estimate. Given the storyboard's ``length``, the silent time
+    at the declared rate for its unit (characters or words). On-screen text
+    takes its reading time when the project declares a reading rate; headings
+    and other production tags take no time, as in the write stage's own
+    estimate. Given the storyboard's ``length``, the silent time
     stretches to fill it and the speaking rate stays as declared. Speech in a
     unit the project has no rate for leaves the timeline unknown.
     """
@@ -443,6 +459,10 @@ def script_timeline(text: str, pacing: Dict[str, Optional[float]],
             if seconds is None:
                 return None
             items.append((seconds, words))
+        elif block.startswith(ON_SCREEN_TEXT_TAG):
+            if pacing.get("reading"):
+                body = block[len(ON_SCREEN_TEXT_TAG):]
+                items.append((readable_characters(body) / float(pacing["reading"] or 1.0), None))
         elif not block.startswith("["):
             items.append((float(pacing["action"] or 0.0), None))
     speech = sum(seconds for seconds, words in items if words is not None)
@@ -502,13 +522,14 @@ def plan_episode(episode_dir: Path, named_speakers: Iterable[str] = ()) -> Dict[
     if screenplay.is_file():
         text = screenplay.read_text(encoding="utf-8")
         speakers = screenplay_speakers(text, named_speakers)
-        spoken = vo = 0
+        spoken = dialogue = vo = 0
         for tag, words in spoken_lines(text, speakers):
-            count = spoken_characters(words)
-            spoken += count
+            spoken += spoken_characters(words)
+            dialogue += dialogue_characters(words)
             if tag == "VO":
-                vo += count
+                vo += dialogue_characters(words)
         record["spoken_characters"] = spoken
+        record["dialogue_characters"] = dialogue
         record["vo_characters"] = vo
         # A plan's opening and closing beats include action, so a replayed
         # gesture is caught as well as a replayed line.
@@ -579,8 +600,8 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
         numbers.update(speech_share=0.0, chars_per_second=0.0, longest_silence=round(duration, 2))
     elif record.get("spoken_characters") is not None and duration:
         numbers.update(chars_per_second=round(record["spoken_characters"] / duration, 2))
-    if record.get("spoken_characters"):
-        numbers.update(vo_share=round(record["vo_characters"] / record["spoken_characters"], 2))
+    if record.get("dialogue_characters"):
+        numbers.update(vo_share=round(record["vo_characters"] / record["dialogue_characters"], 2))
     return numbers
 
 

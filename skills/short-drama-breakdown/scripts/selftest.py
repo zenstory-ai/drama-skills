@@ -59,7 +59,7 @@ def main() -> int:
         )
         planned = plan_episode(ep)
         require(planned["duration"] == 5.0 and planned["shot_seconds"] == [3.0, 2.0], "plan durations")
-        require(planned["spoken_characters"] == 6 and planned["vo_characters"] == 4, "plan spoken characters")
+        require(planned["spoken_characters"] == 6 and planned["vo_characters"] == 5, "plan spoken characters")
         (root / f"EP001{MEASURE_SUFFIX}").write_text(json.dumps(planned, ensure_ascii=False), encoding="utf-8")
         require(len(load_records([root])) == 1, "plan record loads like footage")
 
