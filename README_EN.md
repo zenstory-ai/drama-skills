@@ -306,7 +306,7 @@ flowchart LR
 | `short-drama-video-prompts` | Single-shot action, multi-actor performance and attention handoffs, camera, sound, start/end states, reshoot notes, and cross-shot timeline-music specs |
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, MiniMax H3 video, and MiniMax Music profiles are included |
 | `short-drama-edit` | Usable band per generated clip, in/out points and shot order, dialogue integrity, subtitles and loudness; written as a cut list and rendered into a film |
-| `short-drama-breakdown` | Measures and breaks down benchmark dramas (episode length, shot length, dialogue density, openings and endings), compares them on the same yardstick with this project's plan or footage, hands each gap to its owning skill, and re-checks generated footage |
+| `short-drama-breakdown` | Measures and breaks down benchmark dramas (episode length, shot length, dialogue density, openings and endings), compares them on the same yardstick with this project's plan or footage, hands each gap to its owning skill, and re-checks generated footage; can also reconstruct one or more episodes into scripts, assets and prompts |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
 ## Local creator workspace

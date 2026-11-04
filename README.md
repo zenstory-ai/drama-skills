@@ -272,7 +272,7 @@ flowchart LR
 | `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态、补拍说明，以及跨镜时间线音乐规格 |
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2、MiniMax H3 视频与 MiniMax Music |
 | `short-drama-edit` | 逐镜素材的可用带、入出点取舍、镜序、台词完整性、字幕与响度，写成剪辑单并渲染成片 |
-| `short-drama-breakdown` | 测量并拆解对标剧的集长、镜长、对白密度、开场与集尾，和本项目的计划或成片同口径对照出差距，交给负责的技能并用出片复核 |
+| `short-drama-breakdown` | 测量并拆解对标剧的集长、镜长、对白密度、开场与集尾，和本项目的计划或成片同口径对照出差距，交给负责的技能并用出片复核；也能把一集或多集还原成剧本、物料与提示词 |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
 ## 本地短剧创作台
