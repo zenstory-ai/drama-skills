@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import statistics
@@ -103,7 +104,8 @@ def _require(name: str) -> str:
 def probe(video: Path) -> Dict[str, Any]:
     result = subprocess.run(
         [_require("ffprobe"), "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height:format=duration", "-of", "json", str(video)],
+         "-show_entries", "stream=width,height:stream_tags=rotate:stream_side_data=rotation:format=duration",
+         "-of", "json", str(video)],
         capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
@@ -114,11 +116,19 @@ def probe(video: Path) -> Dict[str, Any]:
         duration = float(data["format"]["duration"])
     except (KeyError, TypeError, ValueError) as error:
         raise BreakdownError(f"{video} 没有可读时长") from error
-    return {
-        "duration": round(duration, 3),
-        "width": streams[0].get("width"),
-        "height": streams[0].get("height"),
-    }
+    width, height = streams[0].get("width"), streams[0].get("height")
+    # Phone footage is often stored landscape with a display rotation; report
+    # the picture as shown, as the contact sheet frames are.
+    rotation = (streams[0].get("tags") or {}).get("rotate")
+    for side in streams[0].get("side_data_list") or []:
+        rotation = side.get("rotation", rotation)
+    try:
+        quarter_turn = int(float(rotation or 0)) % 180 == 90
+    except (TypeError, ValueError):
+        quarter_turn = False
+    if quarter_turn:
+        width, height = height, width
+    return {"duration": round(duration, 3), "width": width, "height": height}
 
 
 def detect_cuts(video: Path, threshold: float) -> List[float]:
@@ -227,7 +237,9 @@ def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
             if start is None or end is None:
                 raise BreakdownError("JSON 转写的每段都要有 start/end（或 s/e）秒数")
             segments.append({"s": float(start), "e": float(end), "t": str(words).strip()})
-        return [segment for segment in segments if segment["t"]]
+        segments = [segment for segment in segments if segment["t"]]
+        _check_intervals(segments)
+        return segments
     pattern = SRT_TIME if suffix == ".srt" else VTT_TIME
     segments = []
     for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n")):
@@ -245,7 +257,15 @@ def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
             break
     if not segments:
         raise BreakdownError("没有读出任何带时间的字幕段；支持 .srt、.vtt 与 JSON segments")
+    _check_intervals(segments)
     return segments
+
+
+def _check_intervals(segments: List[Dict[str, Any]]) -> None:
+    for segment in segments:
+        start, end = segment["s"], segment["e"]
+        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end):
+            raise BreakdownError(f"转写里有一段时间不成立（{start}–{end} 秒）：开始要不小于 0 且早于结束；先修正这段再挂接")
 
 
 def attach_transcript(measure: Path, transcript: Path) -> None:

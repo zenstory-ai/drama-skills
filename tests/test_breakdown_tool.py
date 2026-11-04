@@ -39,6 +39,11 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual(breakdown.parse_transcript(vtt, ".vtt"), expected)
         self.assertEqual(breakdown.parse_transcript(payload, ".json"), expected)
 
+    def test_a_cue_that_ends_before_it_starts_is_refused(self):
+        for start, end in ((6, 2), (-1, 2), ("nan", 2)):
+            with self.subTest(start=start, end=end), self.assertRaises(breakdown.BreakdownError):
+                breakdown.parse_transcript(json.dumps([{"start": start, "end": end, "text": "甲"}]), ".json")
+
     def test_a_file_without_timings_is_refused(self):
         with self.assertRaises(breakdown.BreakdownError):
             breakdown.parse_transcript("只有文字，没有时间\n", ".srt")
@@ -348,6 +353,19 @@ class TranscriptOverrunTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class MeasureTests(unittest.TestCase):
+    def test_a_rotated_phone_clip_reports_the_picture_as_shown(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            plain, rotated = Path(directory) / "plain.mp4", Path(directory) / "rotated.mp4"
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=red:size=160x90:rate=24:d=1",
+                                    "-pix_fmt", "yuv420p", str(plain)], check=True)
+            made = subprocess.run(quiet + ["-display_rotation", "90", "-i", str(plain), "-c", "copy", str(rotated)],
+                                  capture_output=True, check=False)
+            if made.returncode != 0:
+                self.skipTest("this ffmpeg cannot write a display rotation")
+            shown = breakdown.probe(rotated)
+        self.assertEqual((shown["width"], shown["height"]), (90, 160))
+
     def test_cuts_between_flat_colour_shots_are_found(self):
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
         with tempfile.TemporaryDirectory() as directory:
