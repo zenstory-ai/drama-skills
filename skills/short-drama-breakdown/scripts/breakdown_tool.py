@@ -133,7 +133,8 @@ def probe(video: Path) -> Dict[str, Any]:
 
 def detect_cuts(video: Path, threshold: float) -> List[float]:
     result = subprocess.run(
-        [_require("ffmpeg"), "-hide_banner", "-nostats", "-i", str(video), "-an",
+        # The same first video track probe() reads, whatever ffmpeg would pick.
+        [_require("ffmpeg"), "-hide_banner", "-nostats", "-i", str(video), "-map", "0:v:0",
          "-vf", f"scale=256:-2,select='gt(scene,{threshold})',showinfo", "-f", "null", "-"],
         capture_output=True, text=True, check=False,
     )
@@ -158,7 +159,7 @@ def contact_sheet(video: Path, lengths: Sequence[float], out: Path, columns: int
             middle = start + length / 2
             start += length
             subprocess.run(
-                [ffmpeg, "-v", "error", "-ss", f"{middle:.3f}", "-i", str(video),
+                [ffmpeg, "-v", "error", "-ss", f"{middle:.3f}", "-i", str(video), "-map", "0:v:0",
                  "-frames:v", "1", "-vf", "scale=320:-2", "-y", f"{tmp}/{index:04d}.jpg"],
                 check=False,
             )

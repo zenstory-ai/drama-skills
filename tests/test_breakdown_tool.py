@@ -353,6 +353,27 @@ class TranscriptOverrunTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class MeasureTests(unittest.TestCase):
+    def test_every_measurement_reads_the_first_video_track(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second, video = root / "first.mp4", root / "second.mp4", root / "E003.mp4"
+            # A cut at two seconds on the first track; a larger static track
+            # after it, the one ffmpeg would choose on its own.
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=red:size=160x90:rate=24:d=2",
+                                    "-f", "lavfi", "-i", "color=c=blue:size=160x90:rate=24:d=2",
+                                    "-filter_complex", "[0][1]concat=n=2:v=1", "-pix_fmt", "yuv420p", str(first)],
+                           check=True)
+            subprocess.run(quiet + ["-f", "lavfi", "-i", "color=c=white:size=640x360:rate=24:d=4",
+                                    "-pix_fmt", "yuv420p", str(second)], check=True)
+            subprocess.run(quiet + ["-i", str(first), "-i", str(second), "-map", "0:v", "-map", "1:v",
+                                    "-c", "copy", str(video)], check=True)
+            cuts = breakdown.detect_cuts(video, 0.28)
+            shown = breakdown.probe(video)
+        self.assertEqual((shown["width"], shown["height"]), (160, 90))
+        self.assertEqual(len(cuts), 1)
+        self.assertAlmostEqual(cuts[0], 2.0, delta=0.1)
+
     def test_a_rotated_phone_clip_reports_the_picture_as_shown(self):
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
         with tempfile.TemporaryDirectory() as directory:
