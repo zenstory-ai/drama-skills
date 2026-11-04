@@ -73,6 +73,19 @@ class SpeechTimingTests(unittest.TestCase):
         self.assertEqual([segment["t"] for segment in timeline["segments"]], ["走。", "合格。"])
         self.assertEqual(timeline["duration"], 3.75)
 
+    def test_a_scene_written_straight_under_its_heading_is_kept(self):
+        pacing = {"characters": 4.0, "words": None, "action": 3.0}
+        text = "## EP001-SC001 内 · 车间 · 日\n韩冬：走。\n"
+        self.assertEqual(breakdown.script_timeline(text, pacing, speakers={"韩冬"})["duration"], 0.25)
+
+    def test_speech_units_follow_the_script_of_each_word(self):
+        pacing = {"characters": 4.0, "words": 2.0, "action": 3.0}
+        cases = {"Mara: Naïve café.": 1.0, "Mara: I have 2 cats.": 2.0, "Mara: Привет, мир.": 1.0,
+                 "Mara: こんにちは。": 1.25, "Mara: OK，走吧。": 1.0}
+        for line, seconds in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(breakdown.script_timeline(line, pacing, speakers={"Mara"})["duration"], seconds)
+
     def test_a_note_inside_a_line_is_not_spoken(self):
         pacing = {"characters": 4.0, "words": None, "action": 3.0}
         timeline = breakdown.script_timeline("顾远：走。（压低声音）\n", pacing, speakers={"顾远"})
@@ -233,6 +246,30 @@ class PlanTimelineTests(unittest.TestCase):
             })
             records = [breakdown.plan_episode(root / "剧集" / name) for name in ("EP001", "EP002")]
         self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 0})
+
+    def test_a_repeated_english_line_counts_as_a_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(json.dumps({"format": {"pacing": {
+                "spoken_words_per_second": 2.5, "seconds_per_action_paragraph": 3}}}), encoding="utf-8")
+            for name, screenplay in {
+                "EP001": "Mara slams the door.\n\nMara: You will never set foot in this house again.\n",
+                "EP002": "Mara: You will never set foot in this house again.\n\nShe walks away.\n",
+            }.items():
+                ep = root / "剧集" / name
+                ep.mkdir(parents=True)
+                (ep / "剧本.md").write_text(screenplay, encoding="utf-8")
+            records = [breakdown.plan_episode(root / "剧集" / name) for name in ("EP001", "EP002")]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 1})
+
+    def test_an_episode_without_lines_counts_as_silent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_project(root, {"EP001": ("他推门。\n\n门外空无一人。\n", None)})
+            record = breakdown.plan_episode(root / "剧集" / "EP001")
+        numbers = breakdown.episode_numbers(record)
+        self.assertEqual(numbers["speech_share"], 0.0)
+        self.assertEqual(numbers["longest_silence"], 6.0)
 
     def test_commented_out_lines_are_not_counted(self):
         with tempfile.TemporaryDirectory() as directory:

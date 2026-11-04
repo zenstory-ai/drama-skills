@@ -31,6 +31,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -58,15 +59,15 @@ OVERRUN_TOLERANCE_SECONDS = 0.5
 # Opening this many seconds of the next episode is compared with the closing
 # seconds of the previous one.
 REPRISE_WINDOW_SECONDS = 12.0
-REPRISE_MIN_SHARED_CHARACTERS = 6
+REPRISE_MIN_SHARED_UNITS = 6
 # Episodes after the opening ones count as fixed length when the 10th and
 # 90th percentiles sit this close.
 FIXED_LENGTH_SPREAD_SECONDS = 3.0
 SPOKEN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff0-9A-Za-z]")
-CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff0-9]")
-LATIN_WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
-WORD_OR_NUMBER = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z]+)?")
-HAN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+# Scripts written with spaces between words are timed and compared by the
+# word; every other pronounced character is one unit, as in the write stage.
+WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
+WORD_JOINERS = frozenset("'’-")
 EPISODE_MARKED = re.compile(r"(?:EP|E|第)\s*0*(\d{1,4})", re.IGNORECASE)
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
 SHOT_DURATION = re.compile(r"^- 时长：\s*([\d.]+)\s*(?:s|秒)", re.MULTILINE)
@@ -285,24 +286,79 @@ def project_pacing(episode_dir: Path) -> Optional[Dict[str, Optional[float]]]:
 
 
 def blocks(text: str) -> List[str]:
-    """Screenplay blocks: blank-line separated, comments and headings dropped."""
+    """Screenplay blocks: blank-line separated, comments and heading lines dropped.
+
+    A heading line ends a block, so a scene written straight under its heading
+    keeps its content.
+    """
 
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    return [block.strip() for block in re.split(r"\n\s*\n", text)
-            if block.strip() and not block.strip().startswith("#")]
+    text = re.sub(r"(?m)^[ \t]*#.*$", "", text)
+    return [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+
+
+def _is_word_letter(character: str) -> bool:
+    if not character.isalpha():
+        return False
+    name = unicodedata.name(character, "")
+    return any(script in name for script in WORD_SCRIPTS)
+
+
+def units(text: str) -> List[Tuple[str, bool]]:
+    """Pronounced units in order: a word-script word is one unit, any other
+    pronounced character is one, punctuation and marks are none.
+
+    A run of bare digits is one word in a line that is all words and one unit
+    per digit wherever characters are spoken, as the write stage reads it.
+    """
+
+    text = unicodedata.normalize("NFC", text)
+    found: List[Tuple[str, bool]] = []
+    digit_runs: List[Tuple[int, str]] = []
+    position, length = 0, len(text)
+    while position < length:
+        character = text[position]
+        if _is_word_letter(character) or character.isdigit():
+            end, has_letter = position, False
+            while end < length:
+                current = text[end]
+                if _is_word_letter(current):
+                    has_letter = True
+                elif not (unicodedata.category(current).startswith("M") or current.isdigit() or (
+                        current in WORD_JOINERS and end + 1 < length
+                        and (_is_word_letter(text[end + 1]) or text[end + 1].isdigit()))):
+                    break
+                end += 1
+            if has_letter:
+                found.append((text[position:end].casefold(), True))
+            else:
+                digit_runs.append((len(found), text[position:end]))
+                found.append(("", False))
+            position = end
+            continue
+        if not character.isspace() and unicodedata.category(character)[0] not in "PMZ":
+            found.append((character, False))
+        position += 1
+    has_words = any(word for _, word in found)
+    has_characters = any(unit and not word for unit, word in found)
+    for index, digits in reversed(digit_runs):
+        found[index:index + 1] = ([(digits, True)] if has_words and not has_characters
+                                  else [(digit, False) for digit in digits])
+    return found
+
+
+def voiced_units(text: str) -> Tuple[int, int]:
+    """(characters, words) a speaker pronounces."""
+
+    found = units(text)
+    words = sum(1 for _, word in found if word)
+    return len(found) - words, words
 
 
 def speech_seconds(words: str, pacing: Dict[str, Optional[float]]) -> Optional[float]:
     """Seconds for one line in the project's own units; None when a unit has no rate."""
 
-    # Digits are read as characters inside a Chinese line and as words inside
-    # an English one, as the write stage's own estimate counts them.
-    if HAN.search(words):
-        characters = len(CJK.findall(words))
-        latin = len(LATIN_WORD.findall(words))
-    else:
-        characters = 0
-        latin = len(WORD_OR_NUMBER.findall(words))
+    characters, latin = voiced_units(words)
     by_character, by_word = pacing["characters"], pacing["words"]
     if (characters and not by_character) or (latin and not by_word):
         return None
@@ -517,6 +573,10 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
             tail_after_last_line=round(max(0.0, duration - merged[-1][1]), 2),
             longest_silence=round(max(gaps), 2) if gaps else None,
         )
+    elif record.get("timing") and duration:
+        # A timed plan with no lines is known to be silent, not unmeasured,
+        # and has to pull the series medians down rather than drop out.
+        numbers.update(speech_share=0.0, chars_per_second=0.0, longest_silence=round(duration, 2))
     elif record.get("spoken_characters") is not None and duration:
         numbers.update(chars_per_second=round(record["spoken_characters"] / duration, 2))
     if record.get("spoken_characters"):
@@ -546,30 +606,31 @@ def transcript_overrun(record: Dict[str, Any]) -> bool:
                 and max(segment["e"] for segment in segments) > duration + OVERRUN_TOLERANCE_SECONDS)
 
 
-def _han(text: str) -> str:
-    return "".join(re.findall(r"[\u3400-\u9fff]", text))
+def _shared_run(tail: List[str], head: List[str]) -> int:
+    return SequenceMatcher(None, tail, head, autojunk=False).find_longest_match(0, len(tail), 0, len(head)).size
 
 
 def reprise(previous: Dict[str, Any], following: Dict[str, Any]) -> Optional[int]:
-    """Longest run of characters the next opening shares with the previous ending."""
+    """Longest run of units (characters, or words for word scripts) the next
+    opening shares with the previous ending."""
 
     if previous.get("closing_text") and following.get("opening_text"):
-        tail, head = _han(previous["closing_text"]), _han(following["opening_text"])
-        return SequenceMatcher(None, tail, head).find_longest_match(0, len(tail), 0, len(head)).size
+        return _shared_run([unit for unit, _ in units(previous["closing_text"])],
+                           [unit for unit, _ in units(following["opening_text"])])
     tail_segments = verified_segments(previous)
     head_segments = verified_segments(following)
     if not tail_segments or not head_segments or not previous.get("duration"):
         return None
-    tail = _han("".join(
+    tail = [unit for unit, _ in units(" ".join(
         segment["t"] for segment in tail_segments
         if segment["s"] > previous["duration"] - REPRISE_WINDOW_SECONDS
-    ))
-    head = _han("".join(
+    ))]
+    head = [unit for unit, _ in units(" ".join(
         segment["t"] for segment in head_segments if segment["s"] < REPRISE_WINDOW_SECONDS
-    ))
+    ))]
     if not tail or not head:
         return 0
-    return SequenceMatcher(None, tail, head).find_longest_match(0, len(tail), 0, len(head)).size
+    return _shared_run(tail, head)
 
 
 def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
@@ -601,7 +662,7 @@ def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
             continue
         shared = reprise(record, following)
         if shared is not None:
-            pairs.append(shared >= REPRISE_MIN_SHARED_CHARACTERS)
+            pairs.append(shared >= REPRISE_MIN_SHARED_UNITS)
     sources = sorted({record.get("kind", "footage") for record in ordered})
     return {
         "sources": sources,
