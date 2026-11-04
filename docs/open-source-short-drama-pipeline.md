@@ -1,6 +1,6 @@
 # An open-source AI short-drama pipeline: script, assets, storyboard, prompts, then generation
 
-Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 11 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual asset sheet, storyboard with frozen keyframes, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs after the creator explicitly confirms a previewed batch. Optional adapters cover Seedance, GPT Image 2, MiniMax H3 video, MiniMax speech and MiniMax Music.
+Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual asset sheet, storyboard with frozen keyframes, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs after the creator explicitly confirms a previewed batch. Optional adapters cover Seedance, GPT Image 2, MiniMax H3 video, MiniMax speech and MiniMax Music.
 
 中文全流程：[漫剧创作全流程指引](comic-drama-workflow.md)
 
@@ -27,7 +27,7 @@ idea / novel / existing script
 
 The five core Markdown documents hold each episode's creative decisions. Editing and requested review add their own cut list or findings; they do not replace those source documents.
 
-## The 11 skills
+## The 12 skills
 
 | Skill | Role |
 |---|---|
@@ -41,6 +41,7 @@ The five core Markdown documents hold each episode's creative decisions. Editing
 | `short-drama-video-prompts` | Per-shot action, performance, camera, sound, start and end states; timeline music spec |
 | `short-drama-produce` | Runs confirmed image, video, TTS or music jobs through external adapters and records results |
 | `short-drama-edit` | In and out points, shot order, dialogue completeness, subtitles, loudness, render |
+| `short-drama-breakdown` | Measures benchmark dramas and compares them with the project's own plan or footage on the same yardstick; hands each gap to the owning skill |
 | `short-drama-review` | Structural and continuity review; writes findings, does not edit source files |
 
 ## What makes it hold together across shots

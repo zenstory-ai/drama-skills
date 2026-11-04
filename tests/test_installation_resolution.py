@@ -24,6 +24,7 @@ EXPECTED_SKILLS = {
     "short-drama-produce",
     "short-drama-edit",
     "short-drama-review",
+    "short-drama-breakdown",
 }
 
 

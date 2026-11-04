@@ -365,10 +365,15 @@ def estimate(
     blocks: Iterable[Mapping[str, Any]],
     project: dict[str, Any] | None = None,
     review: Mapping[str, Any] | None = None,
+    target_seconds: float | None = None,
 ) -> dict[str, Any]:
     counts = measure(screenplay, blocks)
     rates = declared_rates(project)
-    target = ((project or {}).get("format") or {}).get("target_seconds_per_episode")
+    # An episode the episode map gives its own length (a longer first episode)
+    # is compared against that, not against the project-wide default.
+    target: Any = target_seconds
+    if target is None:
+        target = ((project or {}).get("format") or {}).get("target_seconds_per_episode")
 
     result: dict[str, Any] = {"counts": counts, "rates": rates, "seconds": None}
     result["target_seconds"] = target if isinstance(target, (int, float)) else None
@@ -421,6 +426,7 @@ def estimate(
         return result
 
     seconds = counts["action_paragraphs"] * rates["seconds_per_action_paragraph"]
+    speech = 0.0
     unpriced: dict[str, int] = {}
     for unit, rate_name in (
         ("voiced_characters", "spoken_characters_per_second"),
@@ -431,7 +437,8 @@ def estimate(
         if rates[rate_name] is None:
             unpriced[unit] = counts[unit]
         else:
-            seconds += counts[unit] / rates[rate_name]
+            speech += counts[unit] / rates[rate_name]
+    seconds += speech
     if unpriced:
         # Speech in a unit the project has no rate for. Borrowing the other
         # rate is the letter-by-letter error this split exists to stop, so the
@@ -450,6 +457,11 @@ def estimate(
         result["on_screen_text_seconds"] = round(reading_seconds, 1)
         seconds += reading_seconds
     result["seconds"] = round(seconds, 1)
+    if seconds and not unpriced:
+        # How much of the estimated runtime someone is speaking. Silent action,
+        # on-screen text and untimed tags make up the rest.
+        result["speech_seconds"] = round(speech, 1)
+        result["speech_share"] = round(speech / seconds, 2)
     if result["target_seconds"]:
         delta = seconds - result["target_seconds"]
         result["delta_seconds"] = round(delta, 1)
@@ -461,7 +473,8 @@ def estimate(
     else:
         result["note"] = (
             "no format.target_seconds_per_episode is declared, so there is "
-            "nothing to compare the estimate against"
+            "nothing to compare the estimate against; pass --target-seconds "
+            "for an episode the episode map gives its own length"
         )
     return result
 
@@ -500,7 +513,20 @@ def main(argv: list[str] | None = None) -> int:
             "and, when accepted, creator_authority.rhythm_profile.vo_share_max"
         ),
     )
+    parser.add_argument(
+        "--target-seconds",
+        type=float,
+        default=None,
+        help=(
+            "this episode's own target length from the episode map; overrides "
+            "format.target_seconds_per_episode for the comparison"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.target_seconds is not None and not (
+        math.isfinite(args.target_seconds) and args.target_seconds > 0
+    ):
+        raise SystemExit("--target-seconds must be a positive number")
 
     if not args.screenplay.is_file():
         raise SystemExit("screenplay not found: {}".format(args.screenplay))
@@ -519,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     except StaleIndex as error:
         raise SystemExit("{}: {}".format(args.index, error))
 
-    report = estimate(screenplay, blocks, project, review)
+    report = estimate(screenplay, blocks, project, review, args.target_seconds)
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))
     # An estimate is never a verdict, so this exits successfully even when the
     # episode lands far from its target. Blocking here would turn a reported

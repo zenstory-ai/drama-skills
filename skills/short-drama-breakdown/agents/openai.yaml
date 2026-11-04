@@ -1,0 +1,4 @@
+interface:
+  display_name: "短剧拆解学习"
+  short_description: "测量并拆解对标短剧，与本项目的计划或成片对照出差距，交给负责的技能补强"
+  default_prompt: "使用 $short-drama-breakdown 拆解我提供的对标剧，测量集长、镜长、对白密度、开场与集尾，并和本项目对照出差距。"

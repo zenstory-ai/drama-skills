@@ -19,7 +19,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "985f4ed27387970aed030fb66fc51209dc225ebf968f280963a664fac0a2e7d4",
+      "packageDigest": "1dedf9e88b1ac40a955ff79e49526e5ab13887bf790308b5324c1244f1d844e3",
       "path": "skills/short-drama",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -48,7 +48,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.32"
+      "version": "1.0.33"
     },
     {
       "catalogMigration": true,
@@ -86,6 +86,42 @@
       "version": "1.0.27"
     },
     {
+      "catalogMigration": false,
+      "categories": [
+        "creative",
+        "automation"
+      ],
+      "displayName": "短剧拆解学习",
+      "disposition": "publish",
+      "excludeReason": "",
+      "include": [
+        "**/*"
+      ],
+      "maintainer": "worldwonderer",
+      "packageDigest": "977ac585154b276ed1fa78b4964fab2d3a41e69e485cfa4745485524529c283d",
+      "path": "skills/short-drama-breakdown",
+      "publisher": "worldwonderer",
+      "rebuildOn": [],
+      "rights": {
+        "evidence": ".clawhub/README.md#rights",
+        "status": "permission-recorded"
+      },
+      "runtimeDependsOn": [
+        "bin:python>=3.9",
+        "bin:ffmpeg",
+        "bin:ffprobe"
+      ],
+      "slug": "short-drama-breakdown",
+      "supportedRuntimes": [],
+      "topics": [
+        "short-drama",
+        "screenwriting",
+        "video-analysis",
+        "benchmark"
+      ],
+      "version": "1.0.0"
+    },
+    {
       "catalogMigration": true,
       "categories": [
         "creative",
@@ -98,7 +134,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "7268022199b07006188ba883e2c0490f6728a61897571582f0f3412da9964d3d",
+      "packageDigest": "15b5fb1e53820994aa2a53d9b9573fec8e0a22da0efffa405dab0af1ca077808",
       "path": "skills/short-drama-develop",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -118,7 +154,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.28"
+      "version": "1.0.29"
     },
     {
       "catalogMigration": true,
@@ -340,7 +376,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "a798a59da68ed0839aeb0d6cd6b3f25ead3505b989631be351615f6c5a2a19d5",
+      "packageDigest": "a4c0964d050ab00e081bd3a0eac4d454ca66fedda0ec62bedfa4aa7ba42c9c0d",
       "path": "skills/short-drama-video-prompts",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -359,7 +395,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.14"
+      "version": "1.0.15"
     },
     {
       "catalogMigration": true,
@@ -374,7 +410,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "b0d815fb3eaf749f6f41be66cb9097eeae554ecc12d96be37220e53286cda97a",
+      "packageDigest": "cc4aee2411e6f762041b3eecddfbc5ef270bc1f6aa05c317f80580a3355b4be8",
       "path": "skills/short-drama-write",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -393,7 +429,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.13"
+      "version": "1.0.14"
     }
   ]
 }

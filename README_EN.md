@@ -7,7 +7,7 @@
 <h1 align="center">Drama Skills</h1>
 
 <p align="center">
-  <b>An AI short-drama creation workflow for screenwriters, motion-comic studios, and directors: eleven skills that take an idea or a source novel to episode scripts, storyboards, image/video prompts, and a finished cut.</b>
+  <b>An AI short-drama creation workflow for screenwriters, motion-comic studios, and directors: twelve skills that take an idea or a source novel to episode scripts, storyboards, image/video prompts, and a finished cut.</b>
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 Drama Skills covers the whole AI short-drama / motion-comic pipeline from idea or novel to a finished cut:
 **source analysis → episode script → visual design → image prompts and storyboard → video prompts →
 confirmed production → editing → review**.
-It installs as 11 skills into the coding agent you already use (Claude Code, Codex, and any other runtime
+It installs as 12 skills into the coding agent you already use (Claude Code, Codex, and any other runtime
 that supports the Agent Skill spec); the writing model is that agent's model.
 
 - **Five Markdown files record the creative decisions** — each episode maintains the documents for its requested stages: `剧本.md` (script),
@@ -261,7 +261,7 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
 The first line: the frozen keyframe names the character "Zhou Bosen" but the visual basis does not cover him; if he is
 genuinely not visible, declare him off-screen. The second: the storyboard says 2 seconds and the video prompt says 3.
 
-## The eleven skills
+## The twelve skills
 
 Use the stages your request needs: a text handoff can stop at its target stage, review can cover any existing artifact, and static motion comics move from keyframes and voices to production and editing.
 
@@ -271,6 +271,7 @@ flowchart LR
     classDef final fill:#fce4ec,color:#333,stroke:#e57373,stroke-width:1px
 
     nva["Source analysis<br/>$short-drama-novel-analyze"]:::phase
+    brk["Benchmark breakdown<br/>$short-drama-breakdown"]:::phase
     dev["Story development<br/>$short-drama-develop"]:::phase
     write["Episode script<br/>$short-drama-write"]:::phase
     assets["Asset decisions<br/>$short-drama-assets"]:::phase
@@ -283,6 +284,8 @@ flowchart LR
     pkg["Text delivery package"]:::final
 
     nva -.with a source.-> dev
+    brk -.with benchmarks.-> dev
+    cut -.compare cuts.-> brk
     dev -.optional.-> write --> assets
     assets --> img
     assets --> sb --> vid
@@ -303,6 +306,7 @@ flowchart LR
 | `short-drama-video-prompts` | Single-shot action, multi-actor performance and attention handoffs, camera, sound, start/end states, reshoot notes, and cross-shot timeline-music specs |
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, MiniMax H3 video, and MiniMax Music profiles are included |
 | `short-drama-edit` | Usable band per generated clip, in/out points and shot order, dialogue integrity, subtitles and loudness; written as a cut list and rendered into a film |
+| `short-drama-breakdown` | Measures and breaks down benchmark dramas (episode length, shot length, dialogue density, openings and endings), compares them on the same yardstick with this project's plan or footage, hands each gap to its owning skill, and re-checks generated footage |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
 ## Local creator workspace
@@ -408,7 +412,7 @@ ID and reason, and a range such as "001 to 009" is no longer accepted.
 - [Excerpts of real output](docs/real-outputs_EN.md): one shot through four documents, checker errors, the cut list and its measurements, the source triage backfill, the adaptation contract, model observations.
 - [Evaluations](evaluations/README.md) (Chinese): the complete output of one run made by following the docs, the pre-release regression gate, and how a main-workflow run is done.
 - [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md): what the pack does, stage by stage.
-- [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese): the eleven skills as one production line, with per-step commands, outputs, and common pitfalls.
+- [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese): the twelve skills as one production line, with per-step commands, outputs, and common pitfalls.
 - [Short-drama script format template](docs/short-drama-script-format-template.md) (Chinese): scene headings, action, dialogue and production tags, and what to check after AI reformats an old script.
 - [Cross-shot consistency](docs/character-consistency-across-shots.md) (Chinese): character consistency across shots and episodes, and the three layers of file facts beyond a turnaround sheet.
 - [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): from an authorized source to episode decisions, one script, and a first small set of shots.

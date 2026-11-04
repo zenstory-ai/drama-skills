@@ -73,8 +73,9 @@ license: MIT
 用户问时长，或项目已接受节奏档案、需要核对 VO 占比时，才把索引写入系统临时目录。先用 Python 查询跨平台临时目录，把第一条命令打印的完整
 路径原样替换进后两条命令的引号内。以下每条都是一行完整命令，不依赖 shell 变量或续行符；Windows
 没有 `python3` 命令时使用 `py -3`。`--speaker` 的示例值必须替换为本集实际说话者。
-项目配置存在时，可在第三条命令末尾加 `--project short-drama.json`。只有
-`duration_estimate.py` 接受这个参数，第二条索引命令不接受：
+项目配置存在时，可在第三条命令末尾加 `--project short-drama.json`；分集地图给这一集单独定了目标时长
+（例如首集加长）时，再加 `--target-seconds <秒数>`，按这一集的目标对照。只有 `duration_estimate.py`
+接受这两个参数，第二条索引命令不接受：
 
 ```text
 python3 -c "from pathlib import Path; import tempfile, uuid; print(Path(tempfile.gettempdir()) / ('short-drama-' + uuid.uuid4().hex + '.jsonl'))"
@@ -93,6 +94,8 @@ python3 "{技能目录}/scripts/duration_estimate.py" "剧集/EP001/剧本.md" -
 `untimed_speech`，不在秒数里。数字和缩写仍按实际读法另行估计，不把两个计数混用。
 项目已接受节奏档案、上限有效且本集有台词时，输出增加 `vo_share`：`[VO]` 字数占全部台词字数的比例、档案上限，以及是否超过。`[OS]` 计入全部台词，不计入 `[VO]`。
 `[画面文字]`、`[SFX]`、`[转场]` 占用画面时间，但不在秒数里，输出的 `untimed` 列出它们的行数。
+所有台词都有语速可算时，输出另给 `speech_seconds` 与 `speech_share`：估算里有人说话的秒数和它占全集估算的比例。
+漫剧项目怎样读这个数，见 [漫剧靠声音往前推](references/script-craft.md#45-漫剧靠声音往前推)。
 项目在 `format.pacing` 里另声明了 `on_screen_text_characters_per_second`（观众每秒读几个字）时，
 `[画面文字]` 标签后的全部文字（含载体名）按它计入秒数（`on_screen_text_seconds`）。唱段按说话语速计时，实际通常更长。
 画面文字多、唱段长的集，估算明显低于成片，要按这几项另加读字和停留时间再对照目标。

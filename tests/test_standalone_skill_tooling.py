@@ -14,6 +14,7 @@ SKILLS = SUITE / "skills"
 class StandaloneSkillToolingTests(unittest.TestCase):
     SELFTEST_SKILLS = {
         "short-drama",
+        "short-drama-breakdown",
         "short-drama-develop",
         "short-drama-edit",
         "short-drama-novel-analyze",

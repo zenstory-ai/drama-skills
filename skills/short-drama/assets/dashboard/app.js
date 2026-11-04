@@ -72,6 +72,7 @@ const OWNER_SECTIONS = {
   "short-drama-video-prompts": "prompts",
   "short-drama-produce": "production",
   "short-drama-edit": "production",
+  "short-drama-breakdown": "project",
 };
 
 // Mirrors project_tool.py's EPISODE_ID_RE.

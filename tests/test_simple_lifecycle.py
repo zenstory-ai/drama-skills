@@ -806,6 +806,18 @@ class SimpleLifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "positive integer"):
                 self._bind(root, "/format/episode_count", "CD-COUNT-BAD", 2.5)
 
+    def test_aspect_ratio_chosen_after_init_has_a_write_path(self) -> None:
+        # init writes a placeholder ratio; the creator's answer to the router's
+        # one question usually comes later and had nowhere to go but hand edits.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self._bind(root, "/format/aspect_ratio", "CD-ASPECT", "16:9")
+            self.assertEqual(project_tool.project_status(root)["format"]["aspect_ratio"], "16:9")
+            for bad in ("16/9", "0:9", "横屏"):
+                with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "width:height"):
+                    self._bind(root, "/format/aspect_ratio", f"CD-ASPECT-{len(bad)}", bad)
+            self.assertEqual(project_tool.project_status(root)["format"]["aspect_ratio"], "16:9")
+
     def test_status_names_settings_that_cannot_hold_together(self) -> None:
         # Each value is valid alone; together they promise what a later stage
         # cannot deliver, and that stage is the first to notice.
