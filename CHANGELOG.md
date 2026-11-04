@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-03
+
+本版新增对标拆解技能：把你找的标杆剧量成数字，再和自己的剧本、分镜、成片放在一起比。我们用它拆了 9 部在短剧 App 上
+连播的漫剧，按结果调整了漫剧的默认节奏和 MiniMax H3 的文生写法。
+
 ### Added
 
 - 新技能 `short-drama-breakdown`（对标拆解）：把你找的标杆剧量成可以复算的数字：每集多长、平均几秒一个镜头、多少时间有人说话、语速、第一句和最后一句台词在哪、下一集开头会不会重放上一集结尾。再用同样的口径量你自己的剧本、分镜或成片，列出差距交给对应技能修改，改完生成一段再量一次。需要 ffmpeg；有字幕或转写时还能算对白相关的数字。
@@ -1949,7 +1954,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.1...v0.9.2
