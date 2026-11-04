@@ -74,7 +74,7 @@ SHOT_HEADING = re.compile(r"^## SHOT-[^\s]+", re.MULTILINE)
 ON_SCREEN_TEXT_TAG = "[画面文字]"
 # A performance note inside a line, ``走。（压低声音）``, is not spoken.
 DIRECTION = re.compile(r"（[^（）]*）|\([^()]*\)")
-CUE_LINE = re.compile(r"^(?:\[(VO|OS)\]\s*)?([^\s：:（(\[]{1,12})(?:（[^）]*）|\([^)]*\))?[：:]\s*(.+)$")
+CUE_LINE = re.compile(r"^(?:\[(VO|OS)\]\s*)?([^\s：:（(\[]{1,40})(?:（[^）]*）|\([^)]*\))?[：:]\s*(.+)$")
 SRT_TIME = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{1,3})"
 )
@@ -617,7 +617,7 @@ def verified_segments(record: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not segments or not duration or record.get("kind") == "plan":
         return list(segments)
     return [{**segment, "e": min(segment["e"], duration)} for segment in segments
-            if segment["e"] <= duration + OVERRUN_TOLERANCE_SECONDS]
+            if segment["s"] < duration and segment["e"] <= duration + OVERRUN_TOLERANCE_SECONDS]
 
 
 def transcript_overrun(record: Dict[str, Any]) -> bool:
@@ -644,7 +644,7 @@ def reprise(previous: Dict[str, Any], following: Dict[str, Any]) -> Optional[int
         return None
     tail = [unit for unit, _ in units(" ".join(
         segment["t"] for segment in tail_segments
-        if segment["s"] > previous["duration"] - REPRISE_WINDOW_SECONDS
+        if segment["e"] > previous["duration"] - REPRISE_WINDOW_SECONDS
     ))]
     head = [unit for unit, _ in units(" ".join(
         segment["t"] for segment in head_segments if segment["s"] < REPRISE_WINDOW_SECONDS

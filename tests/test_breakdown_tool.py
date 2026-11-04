@@ -73,6 +73,12 @@ class SpeechTimingTests(unittest.TestCase):
         self.assertEqual([segment["t"] for segment in timeline["segments"]], ["走。", "合格。"])
         self.assertEqual(timeline["duration"], 3.75)
 
+    def test_a_long_speaker_name_counts_once_it_is_named(self):
+        pacing = {"characters": None, "words": 2.0, "action": 3.0}
+        text = "StationCommanderOfTheNorthGate: Open the gate.\n"
+        self.assertEqual(breakdown.script_timeline(text, pacing, speakers={"StationCommanderOfTheNorthGate"})["duration"],
+                         1.5)
+
     def test_a_scene_written_straight_under_its_heading_is_kept(self):
         pacing = {"characters": 4.0, "words": None, "action": 3.0}
         text = "## EP001-SC001 内 · 车间 · 日\n韩冬：走。\n"
@@ -309,6 +315,18 @@ class TranscriptOverrunTests(unittest.TestCase):
         self.assertTrue(breakdown.transcript_overrun(record))
         self.assertEqual(breakdown.episode_numbers(record)["speech_share"], 0.2)
         self.assertEqual(breakdown.profile([record], opening=1)["transcript_overruns"], [4])
+
+    def test_a_cue_wholly_after_the_picture_is_not_speech(self):
+        numbers = breakdown.episode_numbers(episode(1, 10.0, [10.0], [(1.0, 3.0, "一二"), (10.1, 10.4, "三")]))
+        self.assertEqual(numbers["speech_share"], 0.2)
+
+    def test_a_closing_cue_that_runs_into_the_last_seconds_is_compared(self):
+        phrase = "你今天走出这个门就别回来"
+        records = [
+            episode(1, 40.0, [40.0], [(27.0, 39.9, phrase)]),
+            episode(2, 40.0, [40.0], [(0.5, 3.0, phrase)]),
+        ]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 1})
 
     def test_cues_past_the_picture_cannot_make_a_replay(self):
         phrase = "你今天走出这个门就别回来"
