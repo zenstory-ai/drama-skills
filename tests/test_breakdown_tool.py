@@ -328,6 +328,15 @@ class TranscriptOverrunTests(unittest.TestCase):
         ]
         self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 1, "replayed": 1})
 
+    def test_footage_whose_transcript_has_no_speech_counts_as_silent(self):
+        silent = dict(episode(1, 10.0, [10.0], []), transcript_source="E001.json")
+        voiced = dict(episode(2, 10.0, [10.0], [(0.0, 10.0, "一二三")]), transcript_source="E002.json")
+        untranscribed = dict(episode(3, 10.0, [10.0], []), segments=None)
+        self.assertEqual(breakdown.episode_numbers(silent)["speech_share"], 0.0)
+        self.assertNotIn("speech_share", breakdown.episode_numbers(untranscribed))
+        later = breakdown.profile([silent, voiced, untranscribed], opening=0)
+        self.assertEqual(later["later"]["speech_share"], 0.5)
+
     def test_cues_past_the_picture_cannot_make_a_replay(self):
         phrase = "你今天走出这个门就别回来"
         records = [
@@ -370,6 +379,13 @@ class MeasureTests(unittest.TestCase):
                               ["measure", str(video), "--out", str(out), "--no-sheet", "--scene-threshold", "0.4"]):
                 subprocess.run([sys.executable, str(SCRIPT), *arguments], capture_output=True, check=True)
             remeasured = json.loads(measured.read_text(encoding="utf-8"))
+            # A replaced cut under the same name does not inherit the old transcript.
+            shutil.copyfile(parts[0], video)
+            subprocess.run([sys.executable, str(SCRIPT), "measure", str(video), "--out", str(out), "--no-sheet"],
+                           capture_output=True, check=True)
+            replaced = json.loads(measured.read_text(encoding="utf-8"))
+        self.assertIsNone(replaced["segments"])
+        self.assertNotIn("transcript_source", replaced)
         self.assertEqual(remeasured["scene_threshold"], 0.4)
         self.assertEqual(remeasured["transcript_source"], "E007.srt")
         self.assertEqual(record["episode"], 7)

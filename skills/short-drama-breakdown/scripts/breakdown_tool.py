@@ -172,6 +172,7 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
         "episode": episode_number(video.stem),
         "kind": "footage",
         **info,
+        "source_bytes": video.stat().st_size,
         "scene_threshold": threshold,
         "cuts": [cut for cut in cuts if EDGE_IGNORE_SECONDS < cut < info["duration"] - EDGE_IGNORE_SECONDS],
         "shot_seconds": lengths,
@@ -180,12 +181,19 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / f"{video.stem}{MEASURE_SUFFIX}"
     if target.is_file():
-        # Re-measuring (a new threshold, a fresh sheet) keeps the transcript
-        # already attached to the same video.
+        # Re-measuring the same file (a new threshold, a fresh sheet) keeps the
+        # transcript already attached; a replaced cut needs its own transcript.
         earlier = json.loads(target.read_text(encoding="utf-8"))
-        if earlier.get("source") == video.name and earlier.get("segments"):
-            record["segments"] = earlier["segments"]
-            record["transcript_source"] = earlier.get("transcript_source")
+        if earlier.get("segments") is not None:
+            same = (earlier.get("source") == video.name
+                    and earlier.get("source_bytes") == record["source_bytes"]
+                    and earlier.get("duration") == record["duration"])
+            if same:
+                record["segments"] = earlier["segments"]
+                record["transcript_source"] = earlier.get("transcript_source")
+            else:
+                print(f"注意：{video.name} 和上次测量的不是同一个文件，之前挂的转写已清除，请重新挂接",
+                      file=sys.stderr)
     target.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
     if sheet:
         contact_sheet(video, lengths, out_dir / f"{video.stem}.sheet.jpg")
@@ -594,9 +602,10 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
             tail_after_last_line=round(max(0.0, duration - merged[-1][1]), 2),
             longest_silence=round(max(gaps), 2) if gaps else None,
         )
-    elif record.get("timing") and duration:
-        # A timed plan with no lines is known to be silent, not unmeasured,
-        # and has to pull the series medians down rather than drop out.
+    elif duration and record.get("segments") == [] and (record.get("timing") or record.get("transcript_source")):
+        # A timed plan with no lines, or footage whose transcript has no
+        # speech, is known to be silent, not unmeasured, and has to pull the
+        # series medians down rather than drop out.
         numbers.update(speech_share=0.0, chars_per_second=0.0, longest_silence=round(duration, 2))
     elif record.get("spoken_characters") is not None and duration:
         numbers.update(chars_per_second=round(record["spoken_characters"] / duration, 2))
