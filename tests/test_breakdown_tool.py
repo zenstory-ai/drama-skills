@@ -137,7 +137,8 @@ class SpeechTimingTests(unittest.TestCase):
 class EpisodeNumberTests(unittest.TestCase):
     def test_a_marked_episode_number_wins_over_other_digits(self):
         for stem, expected in (("E001_5550001234567890123", 1), ("2026短剧第3集", 3),
-                               ("ep12-final", 12), ("片段07", 7)):
+                               ("ep12-final", 12), ("片段07", 7), ("Love2026_EP002", 2),
+                               ("夏夜第1季第2集", 2), ("Season1-E05", 5), ("第4话", 4)):
             with self.subTest(stem=stem):
                 self.assertEqual(breakdown.episode_number(stem), expected)
 
@@ -353,6 +354,28 @@ class TranscriptOverrunTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
 class MeasureTests(unittest.TestCase):
+    def test_a_same_length_replacement_cut_does_not_keep_the_old_transcript(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video, out = root / "E009.avi", root / "measure"
+            subtitles = root / "E009.srt"
+            subtitles.write_text("1\n00:00:00,500 --> 00:00:01,500\n站住\n", encoding="utf-8")
+            sizes = []
+            for colour in ("red", "blue"):
+                subprocess.run(quiet + ["-f", "lavfi", "-i", f"color=c={colour}:size=64x36:rate=12:d=2",
+                                        "-c:v", "rawvideo", "-pix_fmt", "yuv420p", str(video)], check=True)
+                sizes.append(video.stat().st_size)
+                subprocess.run([sys.executable, str(SCRIPT), "measure", str(video), "--out", str(out), "--no-sheet"],
+                               capture_output=True, check=True)
+                if colour == "red":
+                    subprocess.run([sys.executable, str(SCRIPT), "transcript",
+                                    str(out / f"E009{breakdown.MEASURE_SUFFIX}"), str(subtitles)],
+                                   capture_output=True, check=True)
+            record = json.loads((out / f"E009{breakdown.MEASURE_SUFFIX}").read_text(encoding="utf-8"))
+        self.assertEqual(sizes[0], sizes[1])
+        self.assertIsNone(record["segments"])
+
     def test_every_measurement_reads_the_first_video_track(self):
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
         with tempfile.TemporaryDirectory() as directory:

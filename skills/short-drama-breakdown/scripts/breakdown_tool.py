@@ -24,6 +24,7 @@ Whether a reference choice suits this project is the creator's call.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -68,7 +69,13 @@ FIXED_LENGTH_SPREAD_SECONDS = 3.0
 # word; every other pronounced character is one unit, as in the write stage.
 WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
 WORD_JOINERS = frozenset("'’-")
-EPISODE_MARKED = re.compile(r"(?:EP|E|第)\s*0*(\d{1,4})", re.IGNORECASE)
+# Strongest first: 第N集, then an EP/E marker that does not sit inside a word
+# (``Love2026_EP001``), then a 第N that is not a season or a part.
+EPISODE_MARKERS = (
+    re.compile(r"第\s*0*(\d{1,4})\s*[集话話]"),
+    re.compile(r"(?<![A-Za-z])(?:EP|E)\s*0*(\d{1,4})(?!\d)", re.IGNORECASE),
+    re.compile(r"第\s*0*(\d{1,4})(?![\d季部])"),
+)
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
 SHOT_DURATION = re.compile(r"^- 时长：\s*([\d.]+)\s*(?:s|秒)", re.MULTILINE)
 SHOT_HEADING = re.compile(r"^## SHOT-[^\s]+", re.MULTILINE)
@@ -174,6 +181,14 @@ def contact_sheet(video: Path, lengths: Sequence[float], out: Path, columns: int
         )
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> Path:
     info = probe(video)
     cuts = detect_cuts(video, threshold)
@@ -183,7 +198,7 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
         "episode": episode_number(video.stem),
         "kind": "footage",
         **info,
-        "source_bytes": video.stat().st_size,
+        "source_sha256": file_sha256(video),
         "scene_threshold": threshold,
         "cuts": [cut for cut in cuts if EDGE_IGNORE_SECONDS < cut < info["duration"] - EDGE_IGNORE_SECONDS],
         "shot_seconds": lengths,
@@ -197,8 +212,7 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
         earlier = json.loads(target.read_text(encoding="utf-8"))
         if earlier.get("segments") is not None:
             same = (earlier.get("source") == video.name
-                    and earlier.get("source_bytes") == record["source_bytes"]
-                    and earlier.get("duration") == record["duration"])
+                    and earlier.get("source_sha256") == record["source_sha256"])
             if same:
                 record["segments"] = earlier["segments"]
                 record["transcript_source"] = earlier.get("transcript_source")
@@ -215,8 +229,11 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
 
 
 def episode_number(stem: str) -> Optional[int]:
-    found = EPISODE_MARKED.search(stem) or EPISODE_BARE.search(stem)
-    return int(found.group(1)) if found else None
+    for marker in (*EPISODE_MARKERS, EPISODE_BARE):
+        found = marker.search(stem)
+        if found:
+            return int(found.group(1))
+    return None
 
 
 def _seconds(hours: Optional[str], minutes: str, seconds: str, fraction: str) -> float:
