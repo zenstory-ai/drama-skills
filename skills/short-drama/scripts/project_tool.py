@@ -2575,6 +2575,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # 创作者在终端里直接读输出：中文照原样打印；控制台编码不了时退成 \uXXXX，JSON 仍可解析。
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(errors="backslashreplace")
     try:
         if args.command == "init":
             result = initialize_project(
@@ -2639,9 +2643,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             result = verify_delivery_package(Path(args.path), episode=args.episode)
             if result["status"] != "verified":
-                print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True))
                 return 1
-        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     except (KeyError, OSError, ValueError, ProjectConflictError, PackageBlockedError) as exc:
         print(str(exc), file=sys.stderr)

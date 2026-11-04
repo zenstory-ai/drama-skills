@@ -106,6 +106,25 @@ class SimpleLifecycleTests(unittest.TestCase):
         self.assertNotIn("recover", result.stdout)
         self.assertFalse(hasattr(project_tool, "record_independent_review"))
 
+    def test_cli_prints_readable_chinese_and_survives_a_non_utf8_stdout(self) -> None:
+        # 创作者在终端里直接读 init/status 的输出；控制台编码不了中文时退成转义，JSON 仍可解析。
+        for encoding, readable in (("utf-8", True), ("ascii", False)):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "项目"
+                for args in (["init", str(root), "--title", "镖箱错账"], ["status", str(root)]):
+                    result = subprocess.run(
+                        [sys.executable, str(SCRIPT), *args],
+                        check=False,
+                        capture_output=True,
+                        encoding="utf-8",
+                        env={**os.environ, "PYTHONIOENCODING": encoding},
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    payload = json.loads(result.stdout)
+                    title = payload.get("title") or payload["project"]["title"]
+                    self.assertEqual(title, "镖箱错账")
+                    self.assertEqual("镖箱错账" in result.stdout, readable)
+
     def test_publish_accept_review_use_one_creator_facing_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
