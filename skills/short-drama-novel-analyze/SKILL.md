@@ -186,7 +186,7 @@ python3 {技能目录}/scripts/novel_index.py coverage \
 
 - `adaptation-value.md`：哪些单元在竖屏短剧里能直接成立、哪些要换载体、哪些是纯文字快感
   （内心戏、叙述性诡计、长铺垫）在画面上无法兑现；制作负担落在哪里。
-- `episode-candidates.jsonl`：按**爽点分布、局部戏剧结果与精确交接**切出的候选集，不按章号
+- `episode-candidates.jsonl`：按**爽点分布、当集戏剧结果与精确交接**切出的候选集，不按章号
   或字数平均切。每条带来源 span、承担的功能、承接的爽点以及未决项。
 
 同时**回填快评**：把 S1 中被全量结果推翻的判断及原因写进 `adaptation-value.md` 开头。
