@@ -13,6 +13,11 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-06
+
+本版让对标拆解从“量数字”走到“还原成一套能生成的项目”，并把一集实际出片时遇到的问题写进了各个技能：
+同一个房间、同一个人的声音、镜头之间怎么接。
+
 ### Added
 
 - 对标拆解：可以把对标的一集或连续多集还原成一个完整的套件项目，包括逐字台词的剧本、跨集统一的人物/造型/场景/道具、每个实测镜头一条分镜、每镜关键帧的图片提示词和对应的视频提示词，集与集之间按接缝表接上。还原项目放在对标目录 `输入/对标/<REF-ID>/还原/`，不进你自己的项目。看片用 Antigravity CLI（`agy`）加能听音轨的 `gemini-4-argon-high`，做法和保真度核对见技能的「整集与多集还原」。我们用一部 160 集的三维漫剧试了前 12 集：台词字错率 0.34%，抽查两集没有漏句，抽 16 个镜头 12 个完全对。
@@ -1970,7 +1975,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.9.2...v0.10.0
