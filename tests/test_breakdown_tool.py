@@ -496,11 +496,58 @@ class SubtitleEventTests(unittest.TestCase):
         events = breakdown.subtitle_events([0, glyphs, 0, 0], self.PIXELS, 10.0, 0.4, 0.04, 0.5, 0.15)
         self.assertEqual(events, [])
 
+    def test_a_subtitle_exactly_at_the_minimum_is_kept_wherever_it_starts(self):
+        glyphs = (1 << 30) - 1
+        for masks in ([glyphs, glyphs, 0, 0], [0, glyphs, glyphs, 0]):
+            events = breakdown.subtitle_events(masks, self.PIXELS, 10.0, 0.4, 0.04, 0.5, 0.2)
+            self.assertEqual(len(events), 1, masks)
+
     def test_only_bright_pixels_beside_a_dark_outline_count_as_glyphs(self):
         # One row: an outlined stroke, then a flat lit area whose inside has no outline.
         row = bytes([0, 0, 250, 250, 0, 0] + [250] * 6)
         mask = breakdown.glyph_masks(row, len(row), 225, 80, 2)[0]
         self.assertEqual(format(mask, f"0{len(row)}b"), "001100110000")
+
+    def test_with_a_colour_plane_the_glyph_is_where_the_colour_is_not_where_it_is_bright(self):
+        # Grey row: a mid-grey stroke (a yellow glyph) and a white one, both outlined.
+        grey = bytes([0, 0, 190, 190, 0, 0, 250, 250, 0, 0])
+        hue = bytes([0, 0, 255, 255, 0, 0, 0, 0, 0, 0])
+        by_brightness = breakdown.glyph_masks(grey, len(grey), 225, 80, 2)[0]
+        by_colour = breakdown.glyph_masks(grey + hue, len(grey), 225, 80, 2, hue=True)[0]
+        self.assertEqual(format(by_brightness, "010b"), "0000001100")
+        self.assertEqual(format(by_colour, "010b"), "0011000000")
+
+    def test_a_colour_must_be_six_hex_digits(self):
+        self.assertEqual(breakdown.parse_color("#ffd400"), (255, 212, 0))
+        for text in ("FFD4", "yellow", "GGGGGG"):
+            with self.subTest(text=text), self.assertRaises(breakdown.BreakdownError):
+                breakdown.parse_color(text)
+
+    def test_shared_time_between_two_sets_of_spans(self):
+        self.assertAlmostEqual(breakdown.overlap_seconds([[0, 2], [5, 6]], [(1, 5.5)]), 1.5)
+        self.assertEqual(breakdown.overlap_seconds([[0, 1]], []), 0)
+
+
+class SubtitleRowTests(unittest.TestCase):
+    WIDTH = 100
+
+    def test_subtitle_rows_show_and_change_a_watermark_only_shows(self):
+        mark = (1 << 10) - 1
+        frames = []
+        for step in range(4):
+            line = mark << (step % 2) * 40  # the subtitle row alternates between two lines
+            frames += [mark, 0, 0, line]      # rows: watermark, empty, empty, subtitle
+        profile, totals = breakdown.row_profile(frames, 4, self.WIDTH, bands=4, min_share=0.05)
+        shown = [band["shown"] for band in profile]
+        changed = [band["changed"] for band in profile]
+        self.assertEqual(shown, [1.0, 0.0, 0.0, 1.0])
+        self.assertEqual(changed, [0.0, 0.0, 0.0, 1.0])
+        self.assertEqual(totals, [20, 20, 20, 20])
+
+    def test_frames_with_most_text_are_picked_apart_and_blank_episodes_still_give_frames(self):
+        totals = [0, 9, 8, 0, 0, 0, 5, 0]
+        self.assertEqual(breakdown.pick_frames(totals, fps=1.0, count=2, spacing=3.0), [1, 6])
+        self.assertEqual(breakdown.pick_frames([0] * 8, fps=1.0, count=2, spacing=3.0), [2, 6])
 
 
 class CandidateRunTests(unittest.TestCase):
@@ -524,6 +571,20 @@ class AudioAndShotTests(unittest.TestCase):
             "-filter_complex", "[0][1]concat=n=2:v=1[v]", "-map", "[v]", "-map", "2:a",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(video)], check=True)
         return video
+
+    def test_audio_stops_counting_voice_where_a_short_track_ends(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "E009.mp4"
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                            "-f", "lavfi", "-i", "color=c=red:size=160x90:rate=24:d=4",
+                            "-f", "lavfi", "-i", "sine=f=440:d=2", "-map", "0:v", "-map", "1:a",
+                            "-pix_fmt", "yuv420p", "-c:a", "aac", str(video)], check=True)
+            record = json.loads(breakdown.measure_audio(video, root / "out", -35.0, 0.3).read_text(encoding="utf-8"))
+        self.assertAlmostEqual(record["duration"], 4.0, delta=0.1)
+        self.assertEqual(len(record["voiced"]), 1, record["voiced"])
+        self.assertAlmostEqual(record["voiced"][0][1], 2.0, delta=0.1)
+        self.assertAlmostEqual(record["voiced_share"], 0.5, delta=0.05)
 
     def test_audio_reports_voiced_intervals_and_loudness(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -711,6 +772,63 @@ class SubtitleScanTests(unittest.TestCase):
             self.assertAlmostEqual(event["end"], end, delta=0.15)
         self.assertEqual(crops, [True, True])
         self.assertEqual(refused.returncode, 2)
+
+    def test_amber_lines_need_their_colour_and_voiced_time_is_checked_against_them(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "E007.mp4"
+            # Amber stripes from 1 s to 3 s: too dim for the brightness test.
+            subprocess.run(quiet + [
+                "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:d=4", "-vf",
+                "drawgrid=x=0:y=0:w=16:h=4000:t=6:c=0xFFB000:enable='between(t,1,2.99)'",
+                "-pix_fmt", "yuv444p", str(video)], check=True)
+            audio = root / "audio"
+            audio.mkdir()
+            (audio / f"E007{breakdown.AUDIO_SUFFIX}").write_text(
+                json.dumps({"voiced": [[0.0, 2.0]]}), encoding="utf-8")
+            runs = {}
+            for name, extra in (("grey", []), ("amber", ["--color", "FFB000", "--audio", str(audio)])):
+                completed = subprocess.run(
+                    [sys.executable, str(SCRIPT), "subtitles", str(video), "--out", str(root / name),
+                     "--band", "0,0,1,1", "--no-crops", *extra], capture_output=True, text=True, check=False)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                runs[name] = json.loads((root / name / f"E007{breakdown.SUBTITLE_SUFFIX}").read_text(encoding="utf-8"))
+        self.assertEqual(runs["grey"]["events"], [])
+        self.assertEqual(len(runs["amber"]["events"]), 1, runs["amber"]["events"])
+        self.assertAlmostEqual(runs["amber"]["events"][0]["start"], 1.0, delta=0.15)
+        self.assertAlmostEqual(runs["amber"]["shown_seconds"], 2.0, delta=0.2)
+        self.assertAlmostEqual(runs["amber"]["voiced_shown_share"], 0.5, delta=0.1)
+        self.assertIsNone(runs["grey"]["voiced_shown_share"])
+
+    def test_the_calibration_sheet_points_at_the_band_where_lines_come_and_go(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "E008.mp4"
+            # Stripes over the whole frame, blacked out except a strip at 0.80–0.90
+            # height; their phase flips every second, like successive lines.
+            stripes = ",".join(
+                f"drawgrid=x={offset}:y=0:w=16:h=4000:t=3:c=white:enable='eq(mod(floor(t),2),{phase})'"
+                for phase, offset in ((0, 0), (1, 8)))
+            subprocess.run(quiet + [
+                "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24:d=8", "-vf",
+                f"{stripes},drawbox=x=0:y=0:w=iw:h=ih*0.8:c=black:t=fill,"
+                "drawbox=x=0:y=ih*0.9:w=iw:h=ih*0.1:c=black:t=fill",
+                "-pix_fmt", "yuv420p", str(video)], check=True)
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), "subtitle-sheet", str(video), "--out", str(root / "cal"),
+                 "--frames", "2"], capture_output=True, text=True, check=False)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            record = json.loads((root / "cal" / "subtitle-rows.json").read_text(encoding="utf-8"))
+            sheet_kept = (root / "cal" / record["sheet"]).is_file()
+        rows = record["videos"][0]["rows"]
+        lit = [band for band in rows if band["shown"] > 0.5]
+        self.assertTrue(sheet_kept)
+        self.assertEqual(len(record["videos"][0]["frames_at"]), 2)
+        self.assertTrue(lit)
+        self.assertTrue(all(0.78 <= band["top"] and band["bottom"] <= 0.92 for band in lit), lit)
+        self.assertTrue(any(band["changed"] > 0 for band in lit), lit)
 
 
 if __name__ == "__main__":
