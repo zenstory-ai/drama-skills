@@ -699,7 +699,7 @@ class MarkdownBoldRunTests(unittest.TestCase):
         files = [
             SUITE / name
             for name in (
-                "README.md", "README_EN.md", "CHANGELOG.md",
+                "README.md", "README_EN.md", "README_JA.md", "CHANGELOG.md",
                 "CONTRIBUTING.md", "DESIGN.md",
             )
         ]
