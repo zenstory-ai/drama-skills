@@ -161,7 +161,7 @@ ClawHub 分发条目由[显式发布清单](.clawhub/publish.json)管理，可�
 
 从原著出发、第一轮只要文本交接的写法：
 
-> 用我拥有或获准改编的 `输入/故事.txt`，先列出必须保留的事实、人物动机与暂不可揭示的信息，再提出分集方案；章节数不要直接当集数。只写第一集，并交接其中三个镜头的起止动作、双手、持物和视线。区分 `IMG-*`、待提供的 `PLAN-*` 与已实际检查的 `REF-*`，止步于文本，不生成图片、视频、配音或音乐。
+> 用我有权改编的 `输入/故事.txt`，先列出必须保留的事实、人物动机与暂不可揭示的信息，再提出分集方案；章节数不要直接当集数。只写第一集，并交接其中三个镜头的起止动作、双手、持物和视线。区分 `IMG-*`、待提供的 `PLAN-*` 与已实际检查的 `REF-*`，止步于文本，不生成图片、视频、配音或音乐。
 
 ## 看看它的输出
 
@@ -264,7 +264,7 @@ flowchart LR
 |---|---|
 | `short-drama` | 初始化、路由、视觉方向/Look Development 与 Dashboard |
 | `short-drama-novel-analyze` | 长篇原著的抽样改编快评、章节索引、逐章功能提取、剧情单元与节奏、改编价值与分集候选 |
-| `short-drama-develop` | 小说/长材料的可追溯改编、多集整稿的 Agent 主导切片与续跑、故事引擎、分集地图、导演阐述、题材与钩子手册 |
+| `short-drama-develop` | 小说/长材料的可追溯改编、多集整稿的分集切分与断点续跑、故事引擎、分集地图、导演阐述、题材与钩子手册 |
 | `short-drama-write` | 单集目标、因果节拍、可拍剧本和项目选择的制作稿格式 |
 | `short-drama-assets` | 人物/造型、地点/视图、道具/状态、可选的角色声音方向与连续性决策 |
 | `short-drama-image-prompts` | Lookdev 风格帧、角色/场景/道具参考板提示词与定点修改说明 |
@@ -315,7 +315,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 
 ### H3 视频里对白赶读或被截断怎么办？
 
-分镜阶段先估对白时长再定镜长：H3 中文小样本约 4.1 个可发声字/秒，较密的输入会赶词或静默截断。分镜把估时依据写在本镜「声音」里，
+分镜阶段先估对白时长再定镜长：H3 中文小样本约 4.1 个可发声字/秒，较密的输入会赶词或不报错直接截断。分镜把估时依据写在本镜「声音」里，
 放不下就延长镜头或拆镜；视频提示词只能原样照抄已接受的时长。见[对白估时](skills/short-drama-storyboard/references/shot-craft.md#对白估时)。
 
 ### 说话的是 A，口型却落在画里 B 的脸上？
@@ -326,7 +326,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 
 ### 视频任务提交后进程断了，要重投吗？
 
-先恢复原任务。异步任务提交后可能已产生费用，内置 adapter 拿到供应商任务 ID 就落盘。中断后让生产技能运行 `audit`；
+先恢复原任务。异步任务提交后可能已产生费用，内置 adapter 拿到供应商任务 ID 就会立刻写入本地文件。中断后让生产技能运行 `audit`；
 它会把带任务 ID 的未完成尝试报成 `orphaned_provider_job`，再用 `collect` 取回既有结果，不提交新生成任务。
 确认原任务已终态失败、无需继续取回后，再为重投重新预览和确认；暂时无法轮询或下载时先排查取回路径。见
 [确认后生产](skills/short-drama-produce/SKILL.md)。
@@ -391,7 +391,7 @@ macOS、Linux、WSL 与 Windows 原生都可运行。创作台以 `--detach` 独
 | --- | --- |
 | [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | 网文写作 skill 包：扫榜、拆文、写作、去AI味、封面图 |
 | [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI 短剧 / 漫剧创作 skill 合集：剧本、资产、分镜、图片/视频提示词、独立审查（本仓库） |
-| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 面向原著改编、指定运行环境构建与运行证据 QA 的 agent skills |
+| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 原著改编、网页游戏构建与实机运行验收的 agent skills |
 | [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | 将支持的视频文件制作成中文解说，可选导出可编辑的剪映/CapCut 草稿 |
 | [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 社区插件，提供小说、短剧、游戏和视频解说工作台 |
 | [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（[app.zenstory.ai](https://app.zenstory.ai)） |

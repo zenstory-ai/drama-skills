@@ -10,7 +10,7 @@ license: MIT
 
 ## Quick Start
 
-离线验证多集整稿的精确索引、切片和源文件变更检测：
+离线验证多集整稿的精确索引、按集切分和源文件变更检测：
 
 ```bash
 python3 {技能目录}/scripts/selftest.py
@@ -34,7 +34,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 4. **已有单集剧本**：不要为了流程完整而虚构开发材料。写/改剧本交给 `$short-drama-write`；拆资产或后续制作可从相应技能直接进入。
 5. **已有多集整稿，要生成或补分集地图**：保留原文件，只加载
    [多集整稿接入与断点续跑](references/multi-episode-intake.md)。让 Agent 按文件实际结构决定
-   边界与本轮批次；工具只做精确索引、单集切片、校验和续跑，不代写创作判断。
+   边界与本轮批次；工具只做精确索引、单集切分、校验和续跑，不代写创作判断。
 
 信息足够时直接工作。只有会改变主角、冲突引擎、结局承诺或改编边界的缺口才需要提问。
 
@@ -59,7 +59,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 
 需要深化戏剧承诺或冲突机制时，读取 [story-craft.md](references/story-craft.md)。题材已经确定时，可从
 [genre-cards.md](references/genre-cards.md) 按索引取**一张**题材卡，用来校准该题材更常用的
-压力来源、场面颗粒与制作负担；它是可被创作者一句话覆盖的参考，不替代方向选择，也不进入交付物。
+压力来源、具体场面细节与制作负担；它是可被创作者一句话覆盖的参考，不替代方向选择，也不进入交付物。
 
 若设定里主角带着一段已经发生过的经历，或获得了一套外部授权的能力，那是叠加在题材之上的
 **前提装置**，另读 [premise-devices.md](references/premise-devices.md)——装置取消阻力，
@@ -154,7 +154,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
   [reveal-reversal-payoff.md](references/reveal-reversal-payoff.md)
 - **按题材选择冲突推进方式、设计开场或规划集尾钩子时的定性案例方法**：
   [genre-and-hook-playbook.md](references/genre-and-hook-playbook.md)
-- **已确定题材，需要该题材更常用的压力、场面颗粒、钩子取向与制作难点**：
+- **已确定题材，需要该题材更常用的压力、具体场面细节、钩子取向与制作难点**：
   [genre-cards.md](references/genre-cards.md)（索引与召回规范；一次只读一张卡）
 - **主角带着已知结果开局，或获得外部授权的能力**：
   [premise-devices.md](references/premise-devices.md)（装置层，叠加在题材卡之上）
