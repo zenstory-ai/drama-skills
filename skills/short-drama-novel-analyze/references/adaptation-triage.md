@@ -100,7 +100,7 @@ python3 {技能目录}/scripts/novel_index.py sample \
 `triage.md` 第一行写覆盖率，用脚本返回的 `coverage_ratio` 与 `total_chapters`：
 
 ```markdown
-> 本快评基于抽样：读了 340 章中的 12 章（3.5%），章号见下表。结论是假设，不是结论。
+> 本快评基于抽样：读了 340 章中的 12 章（3.5%），章号见下表。以下判断仅为抽样假设，待全量拆解后核对。
 ```
 
 三条：

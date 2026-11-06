@@ -6,7 +6,7 @@ Animate SHOT-EP001-01 as a fifteen-second vertical live-action shot. Story beat:
 
 ## MOTION-EP001-02
 
-Animate SHOT-EP001-02 as a fifteen-second vertical live-action shot. Story beat: 让梁锋的窘迫通过湿衣与空钱包变得可见. Performance owners: 梁锋. Preserve every bound dialogue line and land on PSTATE-LEDGER-RULE-VISIBLE without adding story events.
+Animate SHOT-EP001-02 as a fifteen-second vertical live-action shot. Story beat: 让梁锋湿透工装、翻遍口袋只摸出旧硬币的窘迫当场显现. Performance owners: 梁锋. Preserve every bound dialogue line and land on PSTATE-LEDGER-RULE-VISIBLE without adding story events.
 
 ## MOTION-EP001-03
 
