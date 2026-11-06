@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "镜头紧跟陈予安，每样旧物亮上台面时观众才跟着知情。",
+    "viewpoint_and_audience_alignment": "镜头从陈予安拉门打烊的视角切入，随旧账本索引页翻开才与观众一同确认周海平的来历。",
     "opening_action_carrier": "用打烊和雨声制造封闭压力",
     "turn_carrier": "周海平把一只生锈月饼盒放上柜台，并说出陈德海的名字。",
     "payoff_carrier": "系列主线人物到场，旧账从传闻变成物证。",
@@ -28,8 +28,8 @@
         "scene_id": "EP003-SC001",
         "agenda_collision": "陈予安不认识他，也不知道父亲账本里的旧名字意味着什么。",
         "dramatic_result": "陈予安在旧账页找到周海平，但尚未打开盒子。",
-        "external_pressure": "medium：钱和信物已经摆上柜台，必须当场接招",
-        "emotional_load": "medium：双方都得扭转对“欠债还钱”的执念",
+        "external_pressure": "medium：打烊雨夜突然闯入背负十二年旧账的来客，铁盒压上柜台",
+        "emotional_load": "medium：意外触及亡父十二年前留下的救命旧事与未解批注",
         "visible_change": "关闭的铁盒和未解释的旧记录留在柜台上。",
         "source_contract_fields": [
           "/objective",

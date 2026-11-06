@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "镜头紧跟陈予安，每样旧物亮上台面时观众才跟着知情。",
+    "viewpoint_and_audience_alignment": "镜头随陈予安清晨推起卷帘门由内向外展开，门口的无标面粉袋与纸条第一眼就同观众照面。",
     "opening_action_carrier": "卷帘门开启建立新一天和新循环",
     "turn_carrier": "清晨门口出现匿名面粉袋，梁锋承认是几名骑手共同送来的。",
     "payoff_carrier": "善意以非现金、非原路归还的形式回流，完成系列闭环。",
@@ -28,8 +28,8 @@
         "scene_id": "EP008-SC001",
         "agenda_collision": "系列完成后最容易停在一次感动，没有新的行动者。",
         "dramatic_result": "新的资源和新的参与者进入，面馆规则从旧账变成持续机制。",
-        "external_pressure": "medium：钱和信物已经摆上柜台，必须当场接招",
-        "emotional_load": "medium：双方都得扭转对“欠债还钱”的执念",
+        "external_pressure": "medium：早市开门迎客在即，门槛外的匿名面粉袋亟待查验入库与记账",
+        "emotional_load": "medium：看见善意跨出三人小圈子、引来一群匿名同行者接力的欣慰",
         "visible_change": "账本新增匿名记录，面馆开门迎接下一位客人。",
         "source_contract_fields": [
           "/objective",

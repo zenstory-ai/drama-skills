@@ -1,6 +1,6 @@
 # 摘录链条：一集短剧的四阶段交接示例
 
-本目录保留四份 Markdown 节选，展示同一场都市反转戏如何从剧本一路交接到资产、分镜与视频提示词。剧中情节、人物和地名均为虚构。日常创作的完整五文档样例见 [creator-first/](../creator-first/)；结构化校验夹具见 [golden-project/](../golden-project/)。
+本目录保留四份历史 Markdown 节选，展示同一场都市反转戏如何从剧本一路交接到资产、分镜与视频提示词。剧中情节、人物和地名均为虚构。日常创作的完整五文档样例见 [creator-first/](../creator-first/)；结构化校验夹具见 [golden-project/](../golden-project/)。
 
 | 文件 | 环节 | 对应技能 |
 |---|---|---|

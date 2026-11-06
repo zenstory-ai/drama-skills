@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "镜头紧跟陈予安，每样旧物亮上台面时观众才跟着知情。",
+    "viewpoint_and_audience_alignment": "镜头随陈予安退入后厨，隔着出餐口回望铁盒并翻出旧页小字批注，外化他的两难抉择。",
     "opening_action_carrier": "陈予安在后厨用机械动作消化冲突",
     "turn_carrier": "账本旧页把偿还对象写成“下一位需要的人”，而不是陈家。",
     "payoff_carrier": "主角面临真正的价值选择，不用口号替代行动。",
@@ -28,8 +28,8 @@
         "scene_id": "EP005-SC001",
         "agenda_collision": "拒收能保持清白，却会让一笔可继续帮助人的资金停下来。",
         "dramatic_result": "陈予安暂不收钱，先让周海平说明这些年钱如何往前传。",
-        "external_pressure": "medium：钱和信物已经摆上柜台，必须当场接招",
-        "emotional_load": "medium：双方都得扭转对“欠债还钱”的执念",
+        "external_pressure": "medium：周海平守在柜台外等待答复，出餐口外的铁盒现金持续施压",
+        "emotional_load": "medium：守住父训清白与不让救命钱落空之间的内心拉锯",
         "visible_change": "选择被延后，但判断标准从收或不收转为怎样继续。",
         "source_contract_fields": [
           "/objective",

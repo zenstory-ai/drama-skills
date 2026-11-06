@@ -79,13 +79,13 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 连续剧、长篇改编或人物纵向变化较重时，再读取
 [serial-character-and-memory.md](references/serial-character-and-memory.md)：先建立只供
 作者决策的前史储备，选择旧策略开始付出代价的叙事切入窗口，再记录人物死守的
-执念、压力测试、信息权限和跨集记忆。不要把前史储备直接倒进首集对白。
+信念、压力测试、信息权限和跨集记忆。不要把前史储备直接倒进首集对白。
 
 ### 4. 把系列运动落到分集
 
-读取 [episode-design.md](references/episode-design.md)，再复制 [episode-map.jsonl](assets/episode-map.jsonl)。每一集记录进入状态、开场、当集追求、阻力、局势转折、当集结果、信息亮底、留给下集的压力以及下一集必须继承的事实。
+读取 [episode-design.md](references/episode-design.md)，再复制 [episode-map.jsonl](assets/episode-map.jsonl)。每一集记录进入状态、开场、当集追求、阻力、局势转折、当集结果、信息释放、出去的压力以及下一集必须继承的事实。
 
-先保证每集落地一个阶段性戏剧结果、相邻集能精确交接，再讨论外部压力/情感负荷的双轨
+先保证每集落地一个当集戏剧结果、相邻集能精确交接，再讨论外部压力/情感负荷的双轨
 节奏。第 1 集入口先比较收益入口与冷开；改编项目先读原著分析的爽点表，把高光排到观众
 最早能拿到的位置。集数、钩子类型、是否反转和高潮位置由创作者与项目决定。
 

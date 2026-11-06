@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "镜头紧跟陈予安，每样旧物亮上台面时观众才跟着知情。",
+    "viewpoint_and_audience_alignment": "镜头跟随陈予安誊写便签、审视旧照片，直到照片摆上父亲遗照旁才完成态度扭转。",
     "opening_action_carrier": "周海平逐项说明过去的帮助避免空泛忏悔",
     "turn_carrier": "周海平带来的照片显示他的儿子正在给夜班工人送免费热汤。",
     "payoff_carrier": "回答善意是否真正传下去，并把证据交给下一选择。",
@@ -28,8 +28,8 @@
         "scene_id": "EP006-SC001",
         "agenda_collision": "单靠自述不足以证明持续行动，陈予安仍担心这是一次性偿还。",
         "dramatic_result": "陈予安确认父亲的帮助已经改变了另一个家庭的行动方式。",
-        "external_pressure": "medium：钱和信物已经摆上柜台，必须当场接招",
-        "emotional_load": "medium：双方都得扭转对“欠债还钱”的执念",
+        "external_pressure": "medium：逐年帮扶清单与送汤照片摆上柜台，等待陈予安给出最终认可",
+        "emotional_load": "medium：看见两代人把救命恩情化作街头热汤的触动与释怀",
         "visible_change": "现金从旧债象征转变为可继续运作的共同资源。",
         "source_contract_fields": [
           "/objective",
