@@ -78,7 +78,7 @@
 ## 检查器抓什么：把样例故意改坏两处
 
 出处：同上一节的公开样例。`creator_markdown_check.py` 核对一集五份文档之间可执行的契约。原样跑过；删掉 SHOT-002 视觉依据里的周薄森、
-再把 MOTION-003 的时长从 2s 改成 3s，它报的是原因，不是「校验失败」：
+再把 MOTION-003 的时长从 2s 改成 3s，它会直接报出具体原因，而不只是笼统的「校验失败」：
 
 ```text
 $ python3 skills/short-drama/scripts/creator_markdown_check.py examples/creator-first/EP001 --project-root examples/creator-first

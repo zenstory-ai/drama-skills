@@ -64,7 +64,7 @@ python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-
 
 ### S0 章节索引
 
-各阶段共用 [章节索引脚本](scripts/novel_index.py) 建立的章节边界，不各自重新切片。
+各阶段共用 [章节索引脚本](scripts/novel_index.py) 建立的章节边界，不各自重新切分。
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py index 输入/{原文文件} \
@@ -141,11 +141,11 @@ S0–S5 每次停靠都用同一个 id 重新发布。
 ### S2 逐章功能提取
 
 按 [章节提取](references/chapter-extraction.md) 处理每一章。能并发子代理就分批并发
-（每批 5–8 章，等一批落盘再发下一批），不支持就串行——两条路径的写法要求和自检是同一份，
+（每批 5–8 章，等一批写完再发下一批），不支持就串行——两条路径的写法要求和自检是同一份，
 只是速度不同。
 
 每章提取完落到 `chapters/ch-<N>-extract.md`，`<N>` 是索引里的 `sequence`，不是原文章号
-（多卷书的原文章号会重复，sequence 不会）。全部落盘后跑覆盖率：
+（多卷书的原文章号会重复，sequence 不会）。全部写入磁盘后跑覆盖率：
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py coverage \

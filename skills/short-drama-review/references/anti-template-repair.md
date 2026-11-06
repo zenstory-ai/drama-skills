@@ -71,7 +71,7 @@ Finding 应指出缺少哪个 accepted identity/scale/material/state/text policy
 
 三个连续台词都 extreme close + push。先问每句 attention：第一轮是双方关系，可留 two-shot；
 第二轮证物被推过桌面，attention 落到手/边界；第三轮对方不碰证物，reaction 可由手和负空间
-完成。不是为了“景别多样化”，而是每个 cut 有不同 viewing purpose。
+完成。每个 cut 都有不同的 viewing purpose，切镜不只是为了“景别多样化”。
 
 ## 3. 误报反例
 
