@@ -14,11 +14,24 @@ Subcommands, each printing or writing measurements and never verdicts:
 ``profile``     aggregate measured episodes per series into one table: the
                 opening episodes apart from the rest, medians, the length regime
                 and whether an episode opens by replaying the previous ending.
+``audio``       voiced intervals (silence detection) and loudness of an
+                episode's sound track, so dialogue rhythm can be looked at
+                before any transcript exists.
+``shots``       cut one small clip and a first, middle and last frame per
+                measured shot, with low-threshold candidate cuts inside each
+                shot, for the per-shot reconstruction pass.
+``subtitles``   when each burned-in subtitle appears and changes, with one
+                crop per subtitle to read: line timing for a reconstruction.
+``subtitle-sheet``  frames most covered by outlined text, with a ratio grid,
+                and how often each height band shows and changes such text,
+                so the agent can mark where a series puts its subtitles.
 
 Cut detection is a frame-difference threshold. It misses slow dissolves and
 counts flashes, whip pans and particle effects as cuts; a transcript counts
-narration, system voice and dialogue alike. The numbers say where to look.
-Whether a reference choice suits this project is the creator's call.
+narration, system voice and dialogue alike; silence detection cannot tell
+speech from music. The numbers say where to look. Whether a reference choice
+suits this project is the creator's call. Nothing here watches or listens with
+a model; that pass belongs to the agent.
 """
 
 from __future__ import annotations
@@ -89,6 +102,48 @@ SRT_TIME = re.compile(
 VTT_TIME = re.compile(
     r"(?:(\d+):)?(\d{2}):(\d{2})\.(\d{1,3})\s*-->\s*(?:(\d+):)?(\d{2}):(\d{2})\.(\d{1,3})"
 )
+AUDIO_SUFFIX = ".audio.json"
+DEFAULT_SILENCE_DB = -35.0
+DEFAULT_SILENCE_SECONDS = 0.3
+# Shot clips for the per-shot pass: the short side is at most this many pixels.
+SHOT_CLIP_SHORT_SIDE = 720
+# A seek returns the first frame at or after the moment, so the last frame of
+# a shot is sought one and a half frame durations before its end.
+LAST_FRAME_LEAD_FRAMES = 1.5
+SUBTITLE_SUFFIX = ".subtitles.json"
+# The bottom-centre strip where burned-in subtitles sit: left, top, right, bottom.
+DEFAULT_SUBTITLE_BAND = (0.15, 0.86, 0.85, 0.96)
+DEFAULT_SUBTITLE_FPS = 10.0
+# Subtitle glyphs are near-white; outlines and most backgrounds are darker.
+DEFAULT_SUBTITLE_BRIGHT = 225
+SUBTITLE_SAMPLE_WIDTH = 720
+# Glyph outlines: a pixel this dark exactly this many pixels left or right of a bright one.
+SUBTITLE_DARK = 80
+SUBTITLE_OUTLINE_REACH = 2
+# A frame shows text when this share of the band is bright.
+SUBTITLE_MIN_SHARE = 0.002
+# The text changed when this share of its bright pixels moved between frames.
+SUBTITLE_CHANGE_SHARE = 0.5
+SUBTITLE_MIN_SECONDS = 0.2
+# --color: a pixel is the glyph colour when no channel is further off than this.
+DEFAULT_COLOR_TOLERANCE = 60
+# Calibration sheet: frames scanned per second, frames shown, picture width,
+# and the minimum spacing between shown frames.
+SUBTITLE_SHEET_FPS = 2.0
+SUBTITLE_SHEET_FRAMES = 8
+SUBTITLE_SHEET_WIDTH = 640
+SUBTITLE_SHEET_SPACING_SECONDS = 3.0
+# Row profile: the frame height in this many bands; a band shows glyphs in a
+# frame when one of its rows has at least this share of its width outlined.
+SUBTITLE_ROW_BANDS = 50
+SUBTITLE_ROW_MIN_SHARE = 0.01
+# Measured shots: frame-difference candidates at this lower threshold are
+# listed inside each shot for the per-shot pass to confirm.
+DEFAULT_INNER_THRESHOLD = 0.1
+# A candidate this close to a shot's edge is the measured cut itself.
+INNER_EDGE_SECONDS = 0.1
+# Candidates closer than this belong to one flicker run.
+CANDIDATE_RUN_SECONDS = 0.3
 
 
 class BreakdownError(Exception):
@@ -222,6 +277,570 @@ def measure_video(video: Path, out_dir: Path, threshold: float, sheet: bool) -> 
     target.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
     if sheet:
         contact_sheet(video, lengths, out_dir / f"{video.stem}.sheet.jpg")
+    return target
+
+
+# ----------------------------------------------------------------- audio
+
+
+def has_audio(video: Path) -> bool:
+    result = subprocess.run(
+        [_require("ffprobe"), "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+         "-of", "json", str(video)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise BreakdownError(f"ffprobe 读不出 {video}: {result.stderr.strip()}")
+    return bool(json.loads(result.stdout or "{}").get("streams"))
+
+
+def audio_end(video: Path) -> Optional[float]:
+    """Where the first audio stream stops, or ``None`` when the container does not say."""
+
+    result = subprocess.run(
+        [_require("ffprobe"), "-v", "error", "-select_streams", "a:0", "-show_entries",
+         "stream=start_time,duration", "-of", "json", str(video)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise BreakdownError(f"ffprobe 读不出 {video}: {result.stderr.strip()}")
+    streams = json.loads(result.stdout or "{}").get("streams") or []
+    try:
+        stream = streams[0]
+        return float(stream.get("start_time") or 0.0) + float(stream["duration"])
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
+def voiced_intervals(log: str, duration: float) -> List[List[float]]:
+    """The complement of ffmpeg ``silencedetect``'s silences inside the picture."""
+
+    silences: List[List[float]] = []
+    for kind, value in re.findall(r"silence_(start|end):\s*(-?[\d.]+)", log):
+        moment = min(max(float(value), 0.0), duration)
+        if kind == "start":
+            silences.append([moment, duration])
+        elif silences:
+            silences[-1][1] = moment
+        else:
+            # A silence already running when the track starts.
+            silences.append([0.0, moment])
+    voiced: List[List[float]] = []
+    clock = 0.0
+    for start, end in silences:
+        if start > clock:
+            voiced.append([round(clock, 3), round(start, 3)])
+        clock = max(clock, end)
+    if clock < duration:
+        voiced.append([round(clock, 3), round(duration, 3)])
+    return voiced
+
+
+def loudness_summary(log: str) -> Dict[str, Optional[float]]:
+    """Integrated loudness, loudness range and true peak from ``ebur128``'s summary."""
+
+    summary = log.rsplit("Summary:", 1)[1] if "Summary:" in log else ""
+
+    def number(pattern: str) -> Optional[float]:
+        found = re.search(pattern, summary)
+        value = float(found.group(1)) if found else None
+        # A digitally silent track peaks at -inf, which strict JSON cannot hold.
+        return value if value is not None and math.isfinite(value) else None
+
+    return {"integrated_lufs": number(r"\bI[:]\s+(-?[\d.]+)\s+LUFS"),
+            "loudness_range_lu": number(r"LRA:\s+(-?[\d.]+)\s+LU"),
+            "true_peak_dbfs": number(r"Peak:\s+(-?[\d.]+|-inf)\s+dBFS")}
+
+
+def measure_audio(video: Path, out_dir: Path, noise_db: float, min_silence: float) -> Path:
+    info = probe(video)
+    duration = info["duration"]
+    record: Dict[str, Any] = {
+        "source": video.name,
+        "episode": episode_number(video.stem),
+        "duration": duration,
+        "source_sha256": file_sha256(video),
+        "evidence": "measured",
+        "method": {"silence_noise_db": noise_db, "silence_min_seconds": min_silence},
+        "has_audio": has_audio(video),
+        "blind_spot": "有声区间不分对白、旁白、配乐与音效；整段配乐铺底时几乎全程算有声",
+    }
+    if record["has_audio"]:
+        result = subprocess.run(
+            [_require("ffmpeg"), "-hide_banner", "-nostats", "-i", str(video), "-map", "0:a:0",
+             "-af", f"silencedetect=noise={noise_db}dB:d={min_silence},ebur128=peak=true", "-f", "null", "-"],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0:
+            raise BreakdownError(f"ffmpeg 读音轨失败 {video}: {result.stderr.strip()[-300:]}")
+        # Past the end of a shorter audio track there is no sound, not unbroken voice.
+        end = audio_end(video)
+        voiced = voiced_intervals(result.stderr, min(duration, end) if end else duration)
+        record.update(loudness_summary(result.stderr))
+    else:
+        voiced = []
+        record.update(integrated_lufs=None, loudness_range_lu=None, true_peak_dbfs=None)
+    seconds = round(sum(end - start for start, end in voiced), 3)
+    record.update(voiced=voiced, voiced_seconds=seconds,
+                  voiced_share=round(seconds / duration, 3) if duration else None)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / f"{video.stem}{AUDIO_SUFFIX}"
+    target.write_text(json.dumps(record, ensure_ascii=False, indent=1, allow_nan=False), encoding="utf-8")
+    return target
+
+
+# ----------------------------------------------------------------- shots
+
+
+def measured_shots(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Shots between a measure's cuts, numbered ``S01`` onward."""
+
+    duration = float(record["duration"])
+    bounds = [0.0, *sorted(record.get("cuts") or []), duration]
+    width = max(2, len(str(len(bounds) - 1)))
+    return [{"id": f"S{index + 1:0{width}d}", "start": round(bounds[index], 3), "end": round(bounds[index + 1], 3)}
+            for index in range(len(bounds) - 1) if bounds[index + 1] > bounds[index]]
+
+
+def candidate_runs(cuts: Sequence[float], gap: float = CANDIDATE_RUN_SECONDS) -> List[Dict[str, Any]]:
+    """Candidates closer together than ``gap`` are one run: a flash, a particle
+    burst or a fast pan flickers across several frames, a hard cut is one."""
+
+    runs: List[Dict[str, Any]] = []
+    for cut in sorted(cuts):
+        if runs and cut - runs[-1]["last"] < gap:
+            runs[-1]["last"] = cut
+            runs[-1]["frames"] += 1
+        else:
+            runs.append({"at": cut, "last": cut, "frames": 1})
+    return [{"at": run["at"], "until": run["last"], "frames": run["frames"]} for run in runs]
+
+
+def video_timing(video: Path) -> Tuple[float, Optional[float]]:
+    """Frame rate and the video stream's own duration (a longer audio track
+    stretches the container's)."""
+
+    result = subprocess.run(
+        [_require("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=avg_frame_rate,r_frame_rate,duration", "-of", "json", str(video)],
+        capture_output=True, text=True, check=False,
+    )
+    stream: Dict[str, Any] = {}
+    if result.returncode == 0:
+        try:
+            stream = (json.loads(result.stdout or "{}").get("streams") or [{}])[0]
+        except ValueError:
+            stream = {}
+    fps = 0.0
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        top, _, bottom = str(stream.get(key) or "0/0").partition("/")
+        try:
+            fps = float(top) / float(bottom or 1)
+        except (ValueError, ZeroDivisionError):
+            fps = 0.0
+        if fps > 0:
+            break
+    try:
+        length: Optional[float] = float(stream["duration"])
+    except (KeyError, TypeError, ValueError):
+        length = None
+    return (fps if fps > 0 else 25.0), length
+
+
+def _extract_frame(ffmpeg: str, video: Path, moment: float, vf: str, target: Path) -> bool:
+    """One frame at ``moment``; a stale file from an earlier run never stands in."""
+
+    if target.exists():
+        target.unlink()
+    result = subprocess.run(
+        [ffmpeg, "-v", "error", "-ss", f"{moment:.3f}", "-i", str(video), "-map", "0:v:0",
+         "-frames:v", "1", "-vf", vf, "-y", str(target)],
+        capture_output=True, check=False,
+    )
+    return result.returncode == 0 and target.is_file()
+
+
+SHOT_OUTPUT = re.compile(r"S\d{2,}(?:-(?:first|mid|last)\.jpg|\.mp4)")
+SUBTITLE_CROP = re.compile(r"T\d{3,}\.png")
+
+
+def _clear(folder: Path, written: "re.Pattern[str]") -> None:
+    """Remove files an earlier run of this tool wrote, matched by exact name."""
+
+    for stale in folder.iterdir():
+        if stale.is_file() and not stale.is_symlink() and written.fullmatch(stale.name):
+            stale.unlink()
+
+
+def _refuse_source_folder(video: Path, out_dir: Path) -> None:
+    folder = out_dir.resolve()
+    source = video.resolve().parent
+    if folder == source or folder in source.parents:
+        raise BreakdownError(f"输出目录 {out_dir} 是原片所在目录或它的上级；换一个单独的目录")
+
+
+def cut_shots(video: Path, measure: Path, out_dir: Path,
+              inner_threshold: Optional[float] = DEFAULT_INNER_THRESHOLD) -> Path:
+    record = json.loads(measure.read_text(encoding="utf-8"))
+    if record.get("kind", "footage") != "footage" or record.get("duration") is None:
+        raise BreakdownError(f"{measure} 不是成片的测量结果；shots 只按 measure 测出的切点切")
+    expected = record.get("source_sha256")
+    if expected and file_sha256(video) != expected:
+        raise BreakdownError(f"{video.name} 和 {measure.name} 测量的不是同一个文件；先对这个文件重新 measure")
+    ffmpeg = _require("ffmpeg")
+    side = SHOT_CLIP_SHORT_SIDE
+    scale = (f"scale='if(gt(iw,ih),-2,trunc(min({side},iw)/2)*2)':"
+             f"'if(gt(iw,ih),trunc(min({side},ih)/2)*2,-2)'")
+    _refuse_source_folder(video, out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _clear(out_dir, SHOT_OUTPUT)
+    shots = measured_shots(record)
+    fps, video_length = video_timing(video)
+    picture_end = min(float(record["duration"]), video_length) if video_length else float(record["duration"])
+    if shots and shots[-1]["end"] > picture_end > shots[-1]["start"]:
+        # A longer audio track stretches the container; the last shot ends with the picture.
+        shots[-1]["end"] = round(picture_end, 3)
+    measured = record.get("scene_threshold")
+    candidates: List[float] = []
+    if inner_threshold is not None and (not isinstance(measured, (int, float)) or inner_threshold < measured):
+        candidates = detect_cuts(video, inner_threshold)
+    for shot in shots:
+        start, end = shot["start"], shot["end"]
+        clip = f"{shot['id']}.mp4"
+        result = subprocess.run(
+            [ffmpeg, "-v", "error", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{end - start:.3f}",
+             "-map", "0:v:0", "-map", "0:a:0?", "-vf", scale, "-c:v", "libx264", "-preset", "veryfast",
+             "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", "-y",
+             str(out_dir / clip)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0:
+            raise BreakdownError(f"ffmpeg 切镜失败 {shot['id']}: {result.stderr.strip()[-300:]}")
+        frames = {}
+        moments = {"first": start, "mid": (start + end) / 2,
+                   "last": max(start, min(end, picture_end) - LAST_FRAME_LEAD_FRAMES / fps)}
+        for name, moment in moments.items():
+            frame = f"{shot['id']}-{name}.jpg"
+            frames[name] = frame if _extract_frame(ffmpeg, video, moment, scale, out_dir / frame) else None
+        inside = candidate_runs([cut for cut in candidates
+                                 if start + INNER_EDGE_SECONDS < cut < end - INNER_EDGE_SECONDS])
+        shot.update(seconds=round(end - start, 3), clip=clip, frames=frames, candidate_cuts=inside)
+    manifest = {
+        "source": record.get("source", video.name),
+        "source_sha256": expected or file_sha256(video),
+        "measure": measure.name,
+        "scene_threshold": record.get("scene_threshold"),
+        "inner_threshold": inner_threshold,
+        "duration": record["duration"],
+        "evidence": "measured",
+        "note": ("镜头边界来自 measure 的帧差切点；烟雾、火光、闪白、慢溶这类过渡可能整段并在一镜里。"
+                 "candidate_cuts 是低阈值下镜内的候选切点，相邻 0.3 秒内的并成一段（frames>1 多半是闪光、粒子或快摇），逐镜那一遍看片确认后才算切"),
+        "shots": shots,
+    }
+    target = out_dir / "manifest.json"
+    target.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    return target
+
+
+# ------------------------------------------------------------- subtitles
+
+
+def parse_color(text: str) -> Tuple[int, int, int]:
+    value = text.strip().lstrip("#")
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", value):
+        raise BreakdownError(f"--color 要写成六位十六进制，例如 FFD400：{text}")
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _color_filter(color: Tuple[int, int, int], tolerance: int) -> str:
+    """Pixels whose every channel is within ``tolerance`` of ``color`` turn 255, the rest 0."""
+
+    red, green, blue = color
+    near = (f"if(lte(max(max(abs(r(X,Y)-{red}),abs(g(X,Y)-{green})),abs(b(X,Y)-{blue})),{tolerance}),255,0)")
+    return f"geq=r='{near}':g='{near}':b='{near}',format=gray"
+
+
+def _band_frames(video: Path, crop: str, fps: Optional[float],
+                 color: Optional[Tuple[int, int, int]] = None, tolerance: int = DEFAULT_COLOR_TOLERANCE) -> bytes:
+    """Grey frames of the band; with ``color``, each frame is followed by an
+    equally sized frame that is 255 where the picture has that colour."""
+
+    rate = f"fps={fps:g}," if fps else ""
+    chain = f"{rate}{crop},scale={SUBTITLE_SAMPLE_WIDTH}:-2"
+    if color is None:
+        chain += ",format=gray"
+    else:
+        # Both branches of a split share one pixel format: make it RGB, or the
+        # colour branch would only ever see grey.
+        chain += f",format=gbrp,split[grey][hue];[grey]format=gray[g];[hue]{_color_filter(color, tolerance)}[c];[g][c]vstack"
+    result = subprocess.run(
+        [_require("ffmpeg"), "-v", "error", "-i", str(video), "-map", "0:v:0"]
+        + ([] if fps else ["-frames:v", "1"])
+        + ["-vf", chain, "-f", "rawvideo", "-"],
+        capture_output=True, check=False,
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise BreakdownError(f"ffmpeg 扫字幕区失败 {video}: {result.stderr.decode(errors='replace')[-300:]}")
+    return result.stdout
+
+
+def glyph_masks(data: bytes, size: int, bright: int, dark: int, reach: int, hue: bool = False) -> List[int]:
+    """Per frame, a bit per pixel: bright with a dark pixel ``reach`` pixels to
+    its left or right. Outlined subtitle glyphs are that; a white shirt or a
+    lit screen behind the band mostly is not.
+
+    With ``hue``, every grey frame of ``size`` bytes is followed by a colour
+    frame of the same size, and "bright" means 255 there instead."""
+
+    to_bright = bytes(ord("1") if value >= bright else ord("0") for value in range(256))
+    to_dark = bytes(ord("1") if value <= dark else ord("0") for value in range(256))
+    to_hue = bytes(ord("1") if value >= 128 else ord("0") for value in range(256))
+    step = size * 2 if hue else size
+    masks: List[int] = []
+    for index in range(0, len(data) - step + 1, step):
+        frame = data[index:index + size]
+        lit = int((data[index + size:index + step].translate(to_hue) if hue else frame.translate(to_bright)), 2)
+        shade = int(frame.translate(to_dark), 2)
+        masks.append(lit & ((shade << reach) | (shade >> reach)))
+    return masks
+
+
+def _bits(value: int) -> int:
+    return bin(value).count("1")
+
+
+def subtitle_events(masks: Sequence[int], pixels: int, fps: float, duration: float, min_share: float,
+                    change_share: float, min_seconds: float) -> List[Dict[str, Any]]:
+    """Intervals in which one subtitle stays on screen.
+
+    A frame shows text when enough of the band is outlined glyph; the text
+    changes when the glyph pixels that moved are a large share of those shown.
+    """
+
+    events: List[Dict[str, float]] = []
+    current: Optional[int] = None
+    previous: Optional[int] = None
+    for index, mask in enumerate(masks):
+        lit = _bits(mask)
+        shown = lit >= min_share * pixels
+        changed = False
+        if shown and previous is not None and current is not None:
+            changed = _bits(mask ^ previous) > change_share * max(lit, _bits(previous))
+        if current is not None and (not shown or changed):
+            events.append({"start": current / fps, "end": index / fps})
+            current = None
+        if shown and current is None:
+            current = index
+        previous = mask if shown else None
+    if current is not None:
+        events.append({"start": current / fps, "end": min(len(masks) / fps, duration)})
+    # Float slack: two samples at 10 fps meet a 0.2 s minimum wherever they fall (0.3 - 0.1 < 0.2).
+    kept = [event for event in events if event["end"] - event["start"] >= min_seconds - 1e-6]
+    width = max(3, len(str(len(kept))))
+    return [{"id": f"T{number:0{width}d}", "start": round(event["start"], 2), "end": round(event["end"], 2)}
+            for number, event in enumerate(kept, 1)]
+
+
+def overlap_seconds(spans: Iterable[Sequence[float]], others: Iterable[Sequence[float]]) -> float:
+    """Total time two sets of [start, end] spans share; each set must not overlap itself."""
+
+    return sum(max(0.0, min(end, other_end) - max(start, other_start))
+               for start, end in spans for other_start, other_end in others)
+
+
+def scan_subtitles(video: Path, out_dir: Path, band: Tuple[float, float, float, float],
+                   fps: float = DEFAULT_SUBTITLE_FPS, bright: int = DEFAULT_SUBTITLE_BRIGHT,
+                   crops: bool = True, color: Optional[Tuple[int, int, int]] = None,
+                   tolerance: int = DEFAULT_COLOR_TOLERANCE, audio: Optional[Path] = None) -> Path:
+    left, top, right, bottom = band
+    if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+        raise BreakdownError("--band 要写成 左,上,右,下 四个 0–1 之间的比例，且左<右、上<下")
+    if fps <= 0:
+        raise BreakdownError("--fps 要大于 0")
+    info = probe(video)
+    crop = (f"crop=trunc(iw*{right - left:.4f}/2)*2:trunc(ih*{bottom - top:.4f}/2)*2:"
+            f"trunc(iw*{left:.4f}):trunc(ih*{top:.4f})")
+    size = len(_band_frames(video, crop, None))
+    data = _band_frames(video, crop, fps, color, tolerance)
+    masks = glyph_masks(data, size, bright, SUBTITLE_DARK, SUBTITLE_OUTLINE_REACH, hue=color is not None)
+    events = subtitle_events(masks, size, fps, info["duration"], SUBTITLE_MIN_SHARE, SUBTITLE_CHANGE_SHARE,
+                             SUBTITLE_MIN_SECONDS)
+    shown = round(sum(event["end"] - event["start"] for event in events), 2)
+    voiced_shown: Optional[float] = None
+    voiced_file = audio / f"{video.stem}{AUDIO_SUFFIX}" if audio is not None else None
+    if voiced_file is not None and voiced_file.is_file():
+        voiced = json.loads(voiced_file.read_text(encoding="utf-8")).get("voiced") or []
+        voiced_total = sum(end - start for start, end in voiced)
+        if voiced_total > 0:
+            spans = [(event["start"], event["end"]) for event in events]
+            voiced_shown = round(overlap_seconds(voiced, spans) / voiced_total, 3)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if crops:
+        ffmpeg = _require("ffmpeg")
+        folder = out_dir / f"{video.stem}.subtitles"
+        folder.mkdir(exist_ok=True)
+        _clear(folder, SUBTITLE_CROP)
+        for event in events:
+            name = f"{event['id']}.png"
+            kept = _extract_frame(ffmpeg, video, (event["start"] + event["end"]) / 2, crop, folder / name)
+            event["crop"] = f"{folder.name}/{name}" if kept else None
+    record = {
+        "source": video.name,
+        "episode": episode_number(video.stem),
+        "duration": info["duration"],
+        "source_sha256": file_sha256(video),
+        "evidence": "measured",
+        "method": {"band": list(band), "fps": fps, "bright": None if color else bright,
+                   "color": "{:02X}{:02X}{:02X}".format(*color) if color else None,
+                   "color_tolerance": tolerance if color else None,
+                   "dark": SUBTITLE_DARK, "min_share": SUBTITLE_MIN_SHARE,
+                   "change_share": SUBTITLE_CHANGE_SHARE, "min_seconds": SUBTITLE_MIN_SECONDS},
+        "blind_spot": ("只测字幕区里带深色描边的亮字（或指定颜色的字）何时出现、何时换；不认字，文字要读 crop。"
+                       "字幕区里的白衣、亮背景、系统面板会多出事件；同一句字幕跨镜头不断开；字幕时间不等于开口时间"),
+        "shown_seconds": shown,
+        "shown_share": round(shown / info["duration"], 3) if info["duration"] else None,
+        "voiced_shown_share": voiced_shown,
+        "events": events,
+    }
+    target = out_dir / f"{video.stem}{SUBTITLE_SUFFIX}"
+    target.write_text(json.dumps(record, ensure_ascii=False, indent=1, allow_nan=False), encoding="utf-8")
+    return target
+
+
+def row_profile(rows: Sequence[int], height: int, width: int, bands: int = SUBTITLE_ROW_BANDS,
+                min_share: float = SUBTITLE_ROW_MIN_SHARE, change_share: float = SUBTITLE_CHANGE_SHARE,
+                ) -> Tuple[List[Dict[str, float]], List[int]]:
+    """From one glyph mask per picture row, frame after frame: for each height
+    band, the share of frames showing outlined text there and the share of
+    frame pairs in which that text changed; and each frame's glyph pixel count.
+
+    Subtitles show often and change often; a watermark shows always and never
+    changes; a name card or system panel shows now and then."""
+
+    frames = len(rows) // height if height else 0
+    least = max(1, int(width * min_share))
+    shown = [0] * bands
+    changed = [0] * bands
+    totals: List[int] = []
+    previous: Optional[List[int]] = None
+    for frame in range(frames):
+        masks = rows[frame * height:(frame + 1) * height]
+        counts = [_bits(mask) for mask in masks]
+        totals.append(sum(counts))
+        hit = [False] * bands
+        moved = [False] * bands
+        for row, count in enumerate(counts):
+            if count < least:
+                continue
+            band = row * bands // height
+            hit[band] = True
+            if previous is not None:
+                before = previous[row]
+                if _bits(masks[row] ^ before) > change_share * max(count, _bits(before)):
+                    moved[band] = True
+        for band in range(bands):
+            shown[band] += hit[band]
+            changed[band] += moved[band]
+        previous = list(masks)
+    profile = [{"top": round(band / bands, 3), "bottom": round((band + 1) / bands, 3),
+                "shown": round(shown[band] / frames, 3) if frames else 0.0,
+                "changed": round(changed[band] / (frames - 1), 3) if frames > 1 else 0.0}
+               for band in range(bands)]
+    return profile, totals
+
+
+def pick_frames(totals: Sequence[int], fps: float, count: int, spacing: float) -> List[int]:
+    """The frames with the most outlined text, at least ``spacing`` seconds
+    apart, in time order; evenly spaced frames fill up when too few frames
+    show any (yellow or unoutlined subtitles leave the count at zero)."""
+
+    gap = max(1, int(round(spacing * fps)))
+    chosen: List[int] = []
+    for index in sorted(range(len(totals)), key=lambda item: (-totals[item], item)):
+        if len(chosen) >= count or totals[index] == 0:
+            break
+        if all(abs(index - other) >= gap for other in chosen):
+            chosen.append(index)
+    for slot in range(count):
+        if len(chosen) >= count:
+            break
+        index = int((slot + 0.5) * len(totals) / count)
+        if index < len(totals) and all(abs(index - other) >= gap for other in chosen):
+            chosen.append(index)
+    return sorted(chosen)
+
+
+def ruler_filter() -> str:
+    """Ticks on all four edges, short every 0.05 and long every 0.1 of the
+    picture, and a faint full-width line every 0.1 of its height."""
+
+    boxes = []
+    for step in range(1, 20):
+        long_tick = step % 2 == 0
+        tick = 28 if long_tick else 12
+        at = f"{step}/20"
+        boxes += [f"drawbox=x=0:y=ih*{at}-1:w={tick}:h=3:c=red:t=fill",
+                  f"drawbox=x=iw-{tick}:y=ih*{at}-1:w={tick}:h=3:c=red:t=fill"]
+        if long_tick:
+            boxes += [f"drawbox=x=0:y=ih*{at}:w=iw:h=1:c=red@0.35:t=fill",
+                      f"drawbox=x=iw*{at}-1:y=0:w=3:h={tick}:c=red:t=fill",
+                      f"drawbox=x=iw*{at}-1:y=ih-{tick}:w=3:h={tick}:c=red:t=fill"]
+    return ",".join(boxes)
+
+
+def subtitle_sheet(videos: Sequence[Path], out_dir: Path, frames: int = SUBTITLE_SHEET_FRAMES,
+                   bright: int = DEFAULT_SUBTITLE_BRIGHT) -> Path:
+    if frames < 1:
+        raise BreakdownError("--frames 至少 1")
+    ffmpeg = _require("ffmpeg")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    per_video = max(1, math.ceil(frames / len(videos)))
+    picked: List[Tuple[Path, float]] = []
+    sources: List[Dict[str, Any]] = []
+    portrait = False
+    for video in videos:
+        info = probe(video)
+        portrait = portrait or (info["height"] or 0) > (info["width"] or 0)
+        whole = "crop=iw:ih:0:0"
+        size = len(_band_frames(video, whole, None))
+        height = size // SUBTITLE_SAMPLE_WIDTH
+        data = _band_frames(video, whole, SUBTITLE_SHEET_FPS)
+        rows = glyph_masks(data, SUBTITLE_SAMPLE_WIDTH, bright, SUBTITLE_DARK, SUBTITLE_OUTLINE_REACH)
+        profile, totals = row_profile(rows, height, SUBTITLE_SAMPLE_WIDTH)
+        moments = [index / SUBTITLE_SHEET_FPS
+                   for index in pick_frames(totals, SUBTITLE_SHEET_FPS, per_video, SUBTITLE_SHEET_SPACING_SECONDS)]
+        picked.extend((video, moment) for moment in moments)
+        sources.append({"source": video.name, "source_sha256": file_sha256(video), "frames_at": moments,
+                        "rows": profile})
+    picked = picked[:frames]
+    grid = f"scale={SUBTITLE_SHEET_WIDTH}:-2," + ruler_filter()
+    sheet = out_dir / "subtitle-sheet.jpg"
+    if sheet.exists():
+        sheet.unlink()
+    with tempfile.TemporaryDirectory() as scratch:
+        kept = 0
+        for video, moment in picked:
+            if _extract_frame(ffmpeg, video, moment, grid, Path(scratch) / f"f{kept + 1:03d}.png"):
+                kept += 1
+        if kept:
+            columns = min(kept, 4 if portrait else 2)
+            subprocess.run(
+                [ffmpeg, "-v", "error", "-i", str(Path(scratch) / "f%03d.png"), "-frames:v", "1",
+                 "-vf", f"tile={columns}x{math.ceil(kept / columns)}:padding=8:color=white", "-y", str(sheet)],
+                capture_output=True, check=False,
+            )
+    record = {
+        "evidence": "measured",
+        "sheet": sheet.name if sheet.is_file() else None,
+        "grid": "四边红色刻度：短的每 0.05，长的每 0.1；淡红横线每 0.1 画面高。最上沿、最左沿是 0",
+        "method": {"fps": SUBTITLE_SHEET_FPS, "bright": bright, "dark": SUBTITLE_DARK,
+                   "row_min_share": SUBTITLE_ROW_MIN_SHARE, "change_share": SUBTITLE_CHANGE_SHARE},
+        "blind_spot": ("只认带深色描边的亮字；黄字、彩字、无描边字可能整段不出现，要看图。"
+                       "shown 高、changed 近 0 的多是水印或台标；名条、系统面板也会出现在这里"),
+        "videos": sources,
+    }
+    target = out_dir / "subtitle-rows.json"
+    target.write_text(json.dumps(record, ensure_ascii=False, indent=1, allow_nan=False), encoding="utf-8")
     return target
 
 
@@ -817,6 +1436,46 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     prof.add_argument("--opening", type=int, default=3, help="单列统计的开头集数（默认 3）")
     prof.add_argument("--json", action="store_true", help="输出完整 JSON 而不是表格")
 
+    audio = sub.add_parser("audio", help="测音轨：有声区间与响度（不分对白和配乐）")
+    audio.add_argument("videos", nargs="+", type=Path)
+    where = audio.add_mutually_exclusive_group(required=True)
+    where.add_argument("--measure", type=Path, help="写在这份 *.measure.json 旁边（只能配一个视频）")
+    where.add_argument("--out", type=Path, help="写进这个目录")
+    audio.add_argument("--noise-db", type=float, default=DEFAULT_SILENCE_DB,
+                       help=f"低于这个电平算静音（默认 {DEFAULT_SILENCE_DB:g} dB）")
+    audio.add_argument("--min-silence", type=float, default=DEFAULT_SILENCE_SECONDS,
+                       help=f"静音至少持续这么多秒才算（默认 {DEFAULT_SILENCE_SECONDS:g}）")
+
+    shots = sub.add_parser("shots", help="按测量切点切出每镜小段与首、中、尾三帧，写 manifest.json")
+    shots.add_argument("video", type=Path)
+    shots.add_argument("measure", type=Path)
+    shots.add_argument("--out", type=Path, help="默认 <REF-ID>/shots/<集名>/，与 measure 目录同级")
+    shots.add_argument("--inner-threshold", type=float, default=DEFAULT_INNER_THRESHOLD,
+                       help=f"列镜内候选切点用的低阈值（默认 {DEFAULT_INNER_THRESHOLD:g}；不低于测量阈值时不列）")
+    subs = sub.add_parser("subtitles", help="扫烧录字幕区：每句字幕的出现与消失时间，并各存一张字幕裁图")
+    subs.add_argument("videos", nargs="+", type=Path)
+    subs.add_argument("--out", type=Path, required=True)
+    subs.add_argument("--band", default=",".join(f"{value:g}" for value in DEFAULT_SUBTITLE_BAND),
+                      help="字幕区：左,上,右,下 的画面比例（默认底部居中 %(default)s）")
+    subs.add_argument("--fps", type=float, default=DEFAULT_SUBTITLE_FPS,
+                      help=f"每秒采样帧数（默认 {DEFAULT_SUBTITLE_FPS:g}，时间精度约 1/fps 秒）")
+    subs.add_argument("--bright", type=int, default=DEFAULT_SUBTITLE_BRIGHT,
+                      help=f"白亮字形的亮度下限 0–255（默认 {DEFAULT_SUBTITLE_BRIGHT}；黄字、彩字改用 --color）")
+    subs.add_argument("--color", help="字色，六位十六进制（如黄字 FFD400）；给了就按颜色找字形，不再看 --bright")
+    subs.add_argument("--color-tolerance", type=int, default=DEFAULT_COLOR_TOLERANCE,
+                      help=f"每个通道与字色最多差多少仍算字形（默认 {DEFAULT_COLOR_TOLERANCE}）")
+    subs.add_argument("--audio", type=Path,
+                      help="audio 子命令的输出目录；给了就记下有声时间里有字幕的比例 voiced_shown_share")
+    subs.add_argument("--no-crops", action="store_true", help="不存字幕裁图")
+
+    sheet = sub.add_parser("subtitle-sheet",
+                           help="字幕区校准图：描边字最多的几帧叠比例网格，加各高度出现与变化描边字的比例")
+    sheet.add_argument("videos", nargs="+", type=Path, help="同一部剧的几集，帧从各集平均抽")
+    sheet.add_argument("--out", type=Path, required=True)
+    sheet.add_argument("--frames", type=int, default=SUBTITLE_SHEET_FRAMES,
+                       help=f"图里放几帧（默认 {SUBTITLE_SHEET_FRAMES}）")
+    sheet.add_argument("--bright", type=int, default=DEFAULT_SUBTITLE_BRIGHT, help="字形亮度下限 0–255")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "measure":
@@ -839,6 +1498,35 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     json.dumps(plan_episode(episode, args.speaker), ensure_ascii=False, indent=1), encoding="utf-8"
                 )
                 print(target)
+        elif args.command == "audio":
+            if args.measure is not None and len(args.videos) > 1:
+                raise BreakdownError("--measure 只能配一个视频；多个视频用 --out 指定目录")
+            out_dir = args.measure.parent if args.measure is not None else args.out
+            for video in args.videos:
+                print(measure_audio(video, out_dir, args.noise_db, args.min_silence))
+        elif args.command == "shots":
+            here = args.measure.resolve().parent
+            out_dir = args.out or (here.parent if here.name == "measure" else here) / "shots" / args.video.stem
+            print(cut_shots(args.video, args.measure, out_dir, args.inner_threshold))
+        elif args.command == "subtitles":
+            try:
+                band = tuple(float(value) for value in args.band.split(","))
+            except ValueError:
+                band = ()
+            if not 0 <= args.bright <= 255:
+                raise BreakdownError("--bright 要在 0–255 之间")
+            if len(band) != 4:
+                raise BreakdownError("--band 要写成 左,上,右,下 四个 0–1 之间的比例，例如 0.15,0.86,0.85,0.96")
+            color = parse_color(args.color) if args.color else None
+            if not 0 <= args.color_tolerance <= 255:
+                raise BreakdownError("--color-tolerance 要在 0–255 之间")
+            for video in args.videos:
+                print(scan_subtitles(video, args.out, band, args.fps, args.bright, not args.no_crops,
+                                     color, args.color_tolerance, args.audio))
+        elif args.command == "subtitle-sheet":
+            if not 0 <= args.bright <= 255:
+                raise BreakdownError("--bright 要在 0–255 之间")
+            print(subtitle_sheet(args.videos, args.out, args.frames, args.bright))
         else:
             results = {}
             for item in args.series:

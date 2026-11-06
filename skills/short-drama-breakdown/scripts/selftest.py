@@ -8,7 +8,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from breakdown_tool import MEASURE_SUFFIX, load_records, parse_transcript, plan_episode, profile
+from breakdown_tool import (MEASURE_SUFFIX, candidate_runs, load_records, parse_transcript, plan_episode, profile,
+                            subtitle_events, voiced_intervals)
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -63,7 +64,15 @@ def main() -> int:
         (root / f"EP001{MEASURE_SUFFIX}").write_text(json.dumps(planned, ensure_ascii=False), encoding="utf-8")
         require(len(load_records([root])) == 1, "plan record loads like footage")
 
-    print("8 self-tests passed")
+    log = "silence_start: 1.0\nsilence_end: 2.0 | silence_duration: 1.0\n"
+    require(voiced_intervals(log, 4.0) == [[0.0, 1.0], [2.0, 4.0]], "voiced intervals")
+
+    glyphs = (1 << 30) - 1
+    events = subtitle_events([0, glyphs, glyphs, glyphs << 40, glyphs << 40, 0], 100, 10.0, 6.0, 0.04, 0.5, 0.15)
+    require([(event["start"], event["end"]) for event in events] == [(0.1, 0.3), (0.3, 0.5)], "subtitle events")
+    require([run["frames"] for run in candidate_runs([1.0, 1.1, 4.0])] == [2, 1], "candidate cut runs")
+
+    print("11 self-tests passed")
     return 0
 
 
