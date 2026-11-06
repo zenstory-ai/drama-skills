@@ -169,7 +169,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "b621bad2d2a0fc416f13194287809585116e20806fbc47b49dcb513b9faacfbe",
+      "packageDigest": "b63a4b422e2d263552ee11d1b9c5e9423f6023a537adf06510d1f46eea8b1707",
       "path": "skills/short-drama-edit",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -376,7 +376,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "a1b5070cb36c2f821d25acbfca4d6cf1780ff77fbb92b679be3aa4134d9b0205",
+      "packageDigest": "a9ebca148b3daf5fb14c0049eb1e41fe21a26c1d5829af6e76dc90cca2c8579e",
       "path": "skills/short-drama-video-prompts",
       "publisher": "worldwonderer",
       "rebuildOn": [],
