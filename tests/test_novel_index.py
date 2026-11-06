@@ -32,6 +32,19 @@ def build_from(text: str) -> dict[str, Any]:
         return novel_index.build_index(source)
 
 
+def index_and_verify(
+    text: str, edit: Any = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    with tempfile.TemporaryDirectory() as directory:
+        source = Path(directory) / "book.txt"
+        source.write_text(text, encoding="utf-8")
+        document = novel_index.build_index(source)
+        written = edit(dict(document)) if edit else document
+        index_path = Path(directory) / "index.json"
+        index_path.write_text(json.dumps(written, ensure_ascii=False), encoding="utf-8")
+        return document, novel_index.verify_index(index_path, source)
+
+
 class ChineseNumeralTests(unittest.TestCase):
     def test_reads_the_forms_serialized_fiction_actually_uses(self) -> None:
         cases = {
@@ -149,6 +162,66 @@ class NumberingValidationScopeTests(unittest.TestCase):
             any("volume 2" in problem for problem in index["problems"]),
             index["problems"],
         )
+
+
+class TextBeforeFirstChapterTests(unittest.TestCase):
+    """Prose ahead of the first heading must not drop out of the index silently."""
+
+    PROLOGUE = "楔子\n" + prose(40)
+
+    def test_prologue_before_the_first_chapter_is_reported(self) -> None:
+        # Regression: the prologue belonged to no chapter, yet index returned no
+        # problems and verify passed, so every later stage skipped it.
+        index, verified = index_and_verify(
+            self.PROLOGUE + "\n\n" + chapters(["一", "二", "三"]) + "\n"
+        )
+        self.assertFalse(verified["verified"], verified)
+        self.assertTrue(index["problems"], index["problems"])
+        self.assertGreater(index["text_before_first_chapter"], 500)
+
+    def test_hand_written_prologue_row_covers_the_prologue(self) -> None:
+        def cover_prologue(document: dict[str, Any]) -> dict[str, Any]:
+            rows = [dict(row) for row in document["chapters"]]
+            prologue = {
+                "sequence": 1,
+                "source_number": None,
+                "title": "楔子",
+                "line_start": 1,
+                "line_end": rows[0]["line_start"] - 1,
+            }
+            for row in rows:
+                row["sequence"] += 1
+            document["chapters"] = [prologue, *rows]
+            document["chapter_count"] = len(document["chapters"])
+            return document
+
+        _, verified = index_and_verify(
+            self.PROLOGUE + "\n\n" + chapters(["一", "二", "三"]) + "\n",
+            cover_prologue,
+        )
+        self.assertTrue(verified["verified"], verified)
+
+    def test_book_blurb_before_the_first_chapter_is_not_a_problem(self) -> None:
+        blurb = (
+            "书名：示例长篇\n作者：示例作者\n\n内容简介：\n"
+            + "落魄的少年在旧城里捡到一封信，从此卷进一场延续三代的恩怨。" * 4
+            + "\n"
+        )
+        index, verified = index_and_verify(
+            blurb + "\n" + chapters(["一", "二", "三"]) + "\n"
+        )
+        self.assertEqual(index["problems"], [])
+        self.assertTrue(verified["verified"], verified)
+
+    def test_contents_block_before_the_first_chapter_is_not_a_problem(self) -> None:
+        numbers = ["一", "二", "三", "四", "五", "六"]
+        contents = "目录\n" + "\n".join(f"第{number}章 目录条目" for number in numbers)
+        index, verified = index_and_verify(
+            contents + "\n\n" + chapters(numbers) + "\n"
+        )
+        self.assertEqual(index["contents_entries_dropped"], 6)
+        self.assertEqual(index["problems"], [])
+        self.assertTrue(verified["verified"], verified)
 
 
 class ChapterUnitTests(unittest.TestCase):
@@ -277,6 +350,38 @@ class VerifyTests(unittest.TestCase):
             index_path.write_text(json.dumps(count_mismatch), encoding="utf-8")
             self.assertFalse(novel_index.verify_index(index_path, source)["verified"])
 
+
+    def test_duplicate_source_number_is_reported(self) -> None:
+        # Regression: verify ignored source_number, so a hand-written index
+        # with two rows claiming the same chapter passed.
+        def duplicate_second(document: dict[str, Any]) -> dict[str, Any]:
+            rows = [dict(row) for row in document["chapters"]]
+            rows[1]["source_number"] = rows[0]["source_number"]
+            document["chapters"] = rows
+            return document
+
+        _, verified = index_and_verify(
+            chapters(["一", "二", "三"]) + "\n", duplicate_second
+        )
+        self.assertFalse(verified["verified"], verified)
+        self.assertTrue(
+            any("duplicate" in problem for problem in verified["problems"]),
+            verified["problems"],
+        )
+
+    def test_unnumbered_rows_and_volume_restarts_are_not_duplicates(self) -> None:
+        def unnumber(document: dict[str, Any]) -> dict[str, Any]:
+            rows = [dict(row) for row in document["chapters"]]
+            for row in rows[:2]:
+                row["source_number"] = None
+            document["chapters"] = rows
+            return document
+
+        volumes = chapters(["一", "二", "三"]) + "\n\n" + chapters(["一", "二", "三"])
+        for name, edit in {"volumes": None, "unnumbered": unnumber}.items():
+            with self.subTest(name=name):
+                _, verified = index_and_verify(volumes + "\n", edit)
+                self.assertTrue(verified["verified"], verified)
 
 class SampleTests(unittest.TestCase):
     def _index_of(self, directory: Path, count: int) -> Path:

@@ -241,6 +241,38 @@ def drop_leading_table_of_contents(
     return headings[cut:], cut
 
 
+# Text ahead of the first chapter belongs to no span. A blurb or an author's
+# note there is normal and stays under this; a prologue written as prose does
+# not, and dropping it silently is how a story's opening went unanalysed.
+MAX_TEXT_BEFORE_FIRST_CHAPTER = 500
+
+
+def text_before_first_chapter(lines: list[str], first_line: int) -> int:
+    """Count the characters ahead of `first_line`, minus heading-shaped lines.
+
+    Heading-shaped lines are excluded so a dropped contents block, which sits
+    exactly here, does not count as unclaimed prose.
+    """
+
+    prefix = lines[: max(first_line - 1, 0)]
+    headings, _ = find_heading_lines(prefix)
+    heading_lines = {heading["line_index"] for heading in headings}
+    return sum(
+        _visible_width(line.strip())
+        for offset, line in enumerate(prefix)
+        if offset not in heading_lines
+    )
+
+
+def text_before_first_chapter_problem(count: int, first_line: int) -> str | None:
+    if count <= MAX_TEXT_BEFORE_FIRST_CHAPTER:
+        return None
+    return (
+        f"{count} characters before line {first_line} belong to no chapter; "
+        "if this is a prologue, cover it with a leading row starting at line 1"
+    )
+
+
 def build_chapters(
     lines: list[str], headings: list[dict[str, Any]], text: str
 ) -> list[dict[str, Any]]:
@@ -362,6 +394,11 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
     chapters = build_chapters(lines, headings, text)
     segments = segment_by_restart(chapters)
     problems = validate_chapters(chapters, segments)
+    first_line = chapters[0]["line_start"] if chapters else 1
+    unclaimed = text_before_first_chapter(lines, first_line)
+    unclaimed_problem = text_before_first_chapter_problem(unclaimed, first_line)
+    if unclaimed_problem:
+        problems.append(unclaimed_problem)
     if unit is not None:
         coarser = [
             other
@@ -400,6 +437,7 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
         # long, the count is how a creator finds out why chapters went missing.
         "long_heading_lines_skipped": long_heading_lines,
         "contents_entries_dropped": dropped,
+        "text_before_first_chapter": unclaimed,
         "volume_numbering_restarts": len(segments) > 1,
         "volume_count": len(segments),
         "chapter_count": len(chapters),
@@ -445,6 +483,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
     ):
         problems.append("chapter_count does not match the chapter rows")
     previous_end: int | None = None
+    previous_number: int | None = None
     for position, chapter in enumerate(chapters, start=1):
         if not isinstance(chapter, dict):
             problems.append(f"chapter row {position} is not an object")
@@ -481,13 +520,24 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
                 f"{start_line}-{end_line}, outside the source's {len(lines)} lines"
             )
             continue
-        if previous_end is not None and start_line != previous_end + 1:
+        if previous_end is None:
+            unclaimed_problem = text_before_first_chapter_problem(
+                text_before_first_chapter(lines, start_line), start_line
+            )
+            if unclaimed_problem:
+                problems.append(unclaimed_problem)
+        elif start_line != previous_end + 1:
             problems.append(
                 f"chapter {sequence} must start at line {previous_end + 1}; "
                 f"found {start_line}"
             )
             continue
         previous_end = end_line
+        number = chapter.get("source_number")
+        if isinstance(number, int) and not isinstance(number, bool):
+            if number == previous_number:
+                problems.append(f"duplicate chapter number {number} at chapter {sequence}")
+            previous_number = number
     if previous_end is not None and previous_end != len(lines):
         problems.append(
             f"chapter spans end at line {previous_end}; source ends at line {len(lines)}"

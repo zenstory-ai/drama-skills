@@ -239,7 +239,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "e8a79ae961a4262d521e0420ee72493c7e37a97615cc9ebd93ed42ee8a42c38d",
+      "packageDigest": "770ae6decee8cbfe148ff2d0a6ed977710adf99b67d236b90c361ec896cdad0f",
       "path": "skills/short-drama-novel-analyze",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -259,7 +259,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.29"
+      "version": "1.0.30"
     },
     {
       "catalogMigration": true,
