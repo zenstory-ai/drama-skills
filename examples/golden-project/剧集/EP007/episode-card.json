@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "跟随陈予安，只在可见证据出现时扩大观众知识。",
+    "viewpoint_and_audience_alignment": "镜头围绕柜台上的两个信封、铁盒与十元纸币展开，三人共同封款入账的过程全程公开可见。",
     "opening_action_carrier": "陈予安把私人收入与接力资金明确分开",
     "turn_carrier": "梁锋提出把自己的第一张十元纸币也放入独立的“接力面券”。",
     "payoff_carrier": "完成主角价值选择，并让第一集人物回到主线共同承担规则。",
@@ -28,8 +28,8 @@
         "scene_id": "EP007-SC001",
         "agenda_collision": "没有公开规则，收钱仍可能被理解为店主收回旧债。",
         "dramatic_result": "三人建立单独记录、只用于陌生人餐食的接力面券。",
-        "external_pressure": "medium：资源或证据必须当场处理",
-        "emotional_load": "medium：人物必须调整对偿还的理解",
+        "external_pressure": "medium：本金推至面前、梁锋敲门加入，必须当场立下公开透明的用款边界",
+        "emotional_load": "medium：搁置十二年的救命旧账在三人手中正式化作接力面券",
         "visible_change": "周海平记录改为已接力，现金由私人铁盒转入公开用途。",
         "source_contract_fields": [
           "/objective",

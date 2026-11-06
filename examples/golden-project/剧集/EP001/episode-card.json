@@ -18,7 +18,7 @@
     ]
   },
   "execution_plan": {
-    "viewpoint_and_audience_alignment": "跟随陈予安，只在可见证据出现时扩大观众知识。",
+    "viewpoint_and_audience_alignment": "镜头紧跟陈予安守店迎客，账本扉页与内页栏位翻开时观众才同步看清面馆家规。",
     "opening_action_carrier": "用账本扉页建立面馆不催债的规则",
     "turn_carrier": "陈予安解释账本只记录善意往哪里继续，不记录谁欠谁。",
     "payoff_carrier": "建立面馆规则和账本的第一条可见记录。",
@@ -28,8 +28,8 @@
         "scene_id": "EP001-SC001",
         "agenda_collision": "梁锋把接受帮助理解成新增债务，坚持离开。",
         "dramatic_result": "梁锋接受帮助，并答应有余力时把一碗面递给下一个人。",
-        "external_pressure": "medium：资源或证据必须当场处理",
-        "emotional_load": "medium：人物必须调整对偿还的理解",
+        "external_pressure": "medium：淋透的梁锋只摸出一枚旧硬币，随时要背箱离开",
+        "emotional_load": "medium：一边是善意留客，一边是不肯白吃欠人情的自尊",
         "visible_change": "账本新增梁锋一行，状态仍是“待传”。",
         "source_contract_fields": [
           "/objective",

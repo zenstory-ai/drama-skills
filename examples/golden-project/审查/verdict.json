@@ -580,7 +580,8 @@
   "open_blocker_count": 0,
   "notes": [
     "Exact readable Chinese text remains an explicit postproduction task.",
-    "Candidate-shaped authoring records are accepted only through the separate hash-bound creator decisions; status words inside the records are not treated as acceptance."
+    "Candidate-shaped authoring records are accepted only through the separate creator decisions; status words inside the records are not treated as acceptance.",
+    "Maintainer self-check updated after aligning per-episode planning records and Chinese prose with the episode screenplays; creator acceptance records remain fixture baselines."
   ],
   "supersession_decisions": []
 }

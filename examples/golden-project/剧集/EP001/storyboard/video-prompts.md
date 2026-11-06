@@ -14,7 +14,7 @@ Animate SHOT-EP001-03 as a fifteen-second vertical live-action shot. Story beat:
 
 ## MOTION-EP001-04
 
-Animate SHOT-EP001-04 as a fifteen-second vertical live-action shot. Story beat: 两人围绕如何偿还产生方向性转折. Performance owners: 梁锋, 陈予安. Preserve every bound dialogue line and land on PSTATE-LEDGER-RULE-VISIBLE without adding story events.
+Animate SHOT-EP001-04 as a fifteen-second vertical live-action shot. Story beat: 陈予安翻开账本立规矩，把“还钱”扭转为“把热面传给下一个落难人”. Performance owners: 梁锋, 陈予安. Preserve every bound dialogue line and land on PSTATE-LEDGER-RULE-VISIBLE without adding story events.
 
 ## MOTION-EP001-05
 
