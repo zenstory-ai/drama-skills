@@ -476,6 +476,31 @@ class ShippedTemplateReferenceTests(unittest.TestCase):
         )
         self.assertGreater(checked, 0, "no template pointers were checked")
 
+    def test_episode_map_template_lists_no_concrete_ids(self) -> None:
+        """An ID list in the template is copied into projects with no such ID.
+
+        The template once pre-filled ``clause_ids_disclosed_so_far`` with
+        ``DEV-01``; a project without a premise device kept a reference to a
+        clause its story engine never defined.
+        """
+
+        concrete: list[str] = []
+
+        def walk(node: Any, cursor: str) -> None:
+            if isinstance(node, dict):
+                for key, child in node.items():
+                    walk(child, f"{cursor}/{key}")
+            elif isinstance(node, list):
+                ids = cursor.rsplit("/", 1)[-1].endswith(("_ids", "_so_far", "_disclosed"))
+                for index, child in enumerate(node):
+                    if ids and isinstance(child, str) and not child.startswith("__"):
+                        concrete.append(f"{cursor}/{index}: {child}")
+                    walk(child, f"{cursor}/{index}")
+
+        for record in data_records(SUITE / "skills" / SCHEMA_TEMPLATES["episode-map.jsonl"]):
+            walk(record, "")
+        self.assertEqual(concrete, [])
+
 
 if __name__ == "__main__":
     unittest.main()
