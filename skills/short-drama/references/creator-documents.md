@@ -20,7 +20,7 @@
 - 识别锚点：窄长眼、左眉尾旧疤、肩背略绷。
 - 本集造型：深灰旧西装，右袖口有雨水深痕。
 - 状态变化：EP001-SC003 后右手掌沾血。
-- 画面代称：Jiangchen
+- 画面代称：Xutang
 - 连续性锁：LOCK-XUTANG-SUIT《许棠深灰旧西装》（镜头：入画；图片提示词项：IMG-XUTANG-SHEET）· 锁面：dark-grey worn wool suit
 ```
 

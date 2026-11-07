@@ -1,49 +1,36 @@
-# Frozen Keyframe Craft
+# 冻结关键帧手艺
 
 ## 目录
 
-- [Boundary and instant tests](#boundary-and-instant-tests)
-- [Purpose](#purpose)
-- [Ordered recipe](#ordered-recipe)
+- [边界与瞬间准则](#边界与瞬间准则)
+- [定位与职责](#定位与职责)
+- [写作顺序](#写作顺序)
 - [尾帧：什么时候可以有，以及它换来什么代价](#尾帧什么时候可以有以及它换来什么代价sht-17)
-- [Start-only drafting discipline](#start-only-drafting-discipline)
-- [Static test](#static-test)
+- [只写起点的草拟纪律](#只写起点的草拟纪律)
+- [静态画面检验](#静态画面检验)
 
-## Boundary and instant tests
+## 边界与瞬间准则
 
-- `SHT-05` — Project exactly one accepted shot boundary and bind the exact
-  Character/Look, Location/View, and Prop/State variants visible there.
-- `SHT-06` — Describe one freezeable instant. Ordered action, expression arcs,
-  camera movement, and transforming weather belong to motion, not the keyframe.
+- `SHT-05` — 准确呈现镜头已接受的单一边界（起点或终点），并绑定该边界可见的人物/造型、地点/视角和道具/状态。
+- `SHT-06` — 只描述一个可以定格的瞬间。有先后顺序的动作、表情变化过程、镜头运动和正在变化的天气属于运动提示词，不进冻结关键帧。
 
-## Purpose
+## 定位与职责
 
-Describe one frame that can exist at a single instant and accurately anchors the
-accepted shot. A keyframe is not a compressed video prompt.
+冻结关键帧描述的是单一瞬间能够同时成立的一格画面，用来锚定已接受镜头的边界。关键帧不是压缩版的视频提示词。
 
-## Ordered recipe
+## 写作顺序
 
-1. **Purpose:** what the audience must notice now.
-2. **Focal subject:** exact asset and variant IDs.
-3. **Frame:** shot size, angle, lens intent, aspect-aware composition.
-4. **Geography:** Location/View, fixed anchors, foreground/background zones.
-5. **Boundary projection:** exact start position, body facing, pose, gaze, hands,
-   held props. Give body facing for every person — it fixes which screen side they
-   hold and which side the next reverse cuts from; `gaze` does not cover it. Add
-   head facing only when it differs from body facing.
-6. **Performance instant:** one visible expression/tension state, not an arc.
-   Pick a channel the current shot size can actually read — gaze, breath, body
-   set, object handling, or a held decision. A wide shot cannot carry an eyelid;
-   a close-up cannot carry a full-body retreat. Naming only the emotion ("愤怒")
-   leaves the translation to a downstream stage, and the keyframe is the first
-   frame — a mistranslation there is wrong from frame one.
-7. **Light and atmosphere:** inherit accepted direction/time/weather; add only
-   frame-relevant detail.
-8. **Text policy:** readable/symbolic/blank/postproduction for visible surfaces.
-9. **Exclusions:** contradictions or drift likely for this frame.
+1. **画面目的**：这一帧最先要让观众注意到什么。
+2. **视觉主体**：准确的人物、造型、地点和道具版本。
+3. **取景与构图**：景别、机位角度、焦段意图、适配当前画幅的构图。
+4. **空间地理**：地点与观察视角、固定空间锚点、前景/中景/后景分区。
+5. **边界投影**：准确的起始位置、身体朝向、姿态、视线、双手位置和手持道具。在场的每个人都要写身体朝向——它决定人物占画面哪一侧，以及下一镜反打从哪一侧切；只写视线方向替代不了身体朝向。头部朝向与身体不同时再单独标出。
+6. **表演定格**：一个可见的表情或身体紧绷状态，而不是一段变化过程。选当前景别真正读得出的通道——眼神、呼吸屏住、肩背绷紧、手部动作或停在半途的抉择。远景读不出眼皮微颤，特写装不下全身后退。只写情绪词（如“愤怒”）等于把翻译工作甩给下游，而关键帧就是第一帧，翻错就从第一帧错起。
+7. **光线与氛围**：继承已接受的光向、时段与天气，只补本帧构图需要的那一点明暗细节。
+8. **画面文字政策**：可见表面按已确认政策处理（精确可读、符号化、留白或后期叠加）。
+9. **排除项**：本帧容易漂移或与边界冲突的内容。
 
-Identity and boundary facts remain source references. The keyframe owns focal,
-composition, camera/lens, frame-only staging, and exclusions.
+身份和起止边界由上游记录定义；关键帧自己负责焦点层次、构图、机位焦段、本帧站位投影与排除项。
 
 ### 写完之后过一遍可渲染检查
 
@@ -71,8 +58,7 @@ composition, camera/lens, frame-only staging, and exclusions.
 光线与质感；近景挂地点图被拉宽时照旧不挂，背景写进正文并写浅景深。出图后交 `$short-drama-review`
 对照「场景站位」核对，再送去生成视频。
 
-**`craft_default`：一件事只说一次。** 合并能自然衔接的句子，删除重复事实和不帮助确定画面的铺垫。
-不设通用字数门槛；保留当前帧所需的身份、空间、构图、光线、文字和连续性事实。
+**`craft_default`：一件事只说一次，不抄整本设定集。** 绑定已接受的资产版本后，只重述本帧防歧义所需的事实：识别锚点、当前造型、关键空间锚点、手持道具、光向与文字状态。合并能自然衔接的句子，删除重复事实和“电影感、8K、大师级”之类替代不了身份、地理与构图的套话。不设通用字数门槛。
 
 以下合成片段示意构图与静态事实的组织方式：
 
@@ -85,15 +71,7 @@ composition, camera/lens, frame-only staging, and exclusions.
 排除：无动作过程，无雨丝拖影。
 ```
 
-Every visible entry the finished frame carries is listed in the shot's required
-`视觉依据` field, resolving to a real `视觉设定.md` entry; an `IMG-...` prompt item
-in `图片提示词.md` is a separate axis and does not stand in for it, and
-`视觉设定.md` itself does not define `IMG-...` IDs. Write that list from the
-finished frame, not from the shot's intent — the subject that gets missed is the
-one that entered the composition while the frame was being written. A frozen frame may determine whether the surface
-is legible in this composition; it may not replace the exact wording or policy
-with an untraceable prose instruction. If the policy is still undecided, say so
-instead of inventing a hidden candidate state.
+成稿画面里每一个需要认出身份、造型或地理的可见条目，都要写进本镜必填的「视觉依据」字段，并解析到《视觉设定.md》的真实标题；《图片提示词.md》里的 `IMG-...` 条目是另一条轴线，不能代替「视觉依据」，《视觉设定.md》本身也不定义 `IMG-...` ID。「视觉依据」要按写完后的成稿画面回填，不能只按最初的镜头意图填写——最容易漏掉的，往往是写关键帧正文时顺手带进构图的人物或道具。冻结关键帧可以决定某个文字承载面在当前构图下是否看得清，但不能用无法追溯的散文描述替换已确认的精确文字或文字政策；政策未定时如实标明未决，不私自编造候选状态。
 
 ## 尾帧：什么时候可以有，以及它换来什么代价（`SHT-17`）
 
@@ -121,11 +99,9 @@ instead of inventing a hidden candidate state.
   镜头（转身、递交完成、坐下），不适合"路径本身是戏"的镜头。
 - 终点报告仍然对照镜头「终点」，不对照尾帧。尾帧只是它的画面呈现，不能自证到达。
 
-## Start-only drafting discipline
+## 只写起点的草拟纪律
 
-**`SHT-10 · reviewed_invariant`**: rendered keyframe prose may contain only facts
-from the boundary that frame declares. 首帧写进任何由运动或终点首次产生的事实是漂移；
-尾帧写进在它之前就已经消耗掉的事实同样是漂移。两帧各守各的边界，不互相借用。
+**`SHT-10 · reviewed_invariant`**：关键帧的可复制正文只能包含该帧所声明边界（起点或终点）里的事实。首帧写进任何由运动或终点首次产生的事实是漂移；尾帧写进在它之前就已经消耗掉的事实同样是漂移。两帧各守各的边界，不互相借用。
 
 关键帧默认呈现镜头起点，不能直接选取“本镜最有戏的时刻”。为避免提前写入终点事实：
 
@@ -138,39 +114,29 @@ from the boundary that frame declares. 首帧写进任何由运动或终点首�
 反例：start 是“右手空置、看对方”，end 是“右手握铃绳、看门”。冻结帧写
 “手已握铃绳”会提前写入终点事实，属于边界漂移。
 
-## Static test
+## 静态画面检验
 
-Ask: could a still photographer capture every described fact at once?
+写完问一句：一名剧照摄影师能不能在同一次快门里拍下正文描述的所有事实？
 
-Move these to motion:
+下列内容一律移交运动提示词：
 
-- ordered verbs (先、再、随后、最终);
-- expression changing from A to B;
-- camera push/pan/track over time;
-- entering/leaving/turning/reaching sequences;
-- dialogue delivery arc or sound progression;
-- light/weather transforming during the shot.
+- 带先后顺序的动词（先、再、随后、最终）；
+- 表情从甲状态变到乙状态；
+- 摄影机随时间推、摇、移、跟；
+- 进门、离场、转身、伸手取物等连续过程；
+- 台词发声弧线或声音递进过程；
+- 光线或天气在镜头内发生变化。
 
-A single held pose may imply tension, but it must not require several moments.
+一个定格姿态可以蓄着张力，但不能要求画面跨越好几个瞬间。
 
-## Prompt economy
+## 常见失误
 
-Do not restate full character or location 设定集s. Bind accepted variants and
-repeat only facts the frame needs to prevent ambiguity: distinguishing anchor,
-current Look, crucial spatial anchor, held prop, light direction, text state.
-
-Generic “cinematic, 8K, masterpiece” language cannot replace subject identity,
-geography, composition, or continuity.
-
-## Failure examples
-
-- incompatible Looks appear in the same frame;
-- “turns, runs, then looks back” appears in a still;
-- the start hand/prop differs from the shot boundary;
-- background changes location identity or orientation;
-- light direction resets without source change;
-- readable evidence is paired with no-text;
-- prompt lists subjects but not their spatial relationship;
-- framing has no focal hierarchy.
-- structured projection matches start but rendered prompt describes a fact that
-  first appears in the shot end or motion.
+- 同一帧里混入互斥的造型状态；
+- 静帧正文写出“转身、跑开、再回头看”之类连续动作；
+- 起手姿势或持物与分镜「起点」不一致；
+- 背景改变了地点身份或空间朝向；
+- 光向无故重置；
+- 要求精确可读的证物文字与全局禁字指令同时出现；
+- 提示词只罗列人物和物件，没写彼此的空间位置关系；
+- 构图平均用力，没有视觉主次；
+- 结构化字段与起点一致，但可复制正文写进了运动过程或终点才出现的事实。
