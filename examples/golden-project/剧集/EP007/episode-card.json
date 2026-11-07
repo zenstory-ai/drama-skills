@@ -29,7 +29,7 @@
         "agenda_collision": "没有公开规则，收钱仍可能被理解为店主收回旧债。",
         "dramatic_result": "三人建立单独记录、只用于陌生人餐食的接力面券。",
         "external_pressure": "medium：本金推至面前、梁锋敲门加入，必须当场立下公开透明的用款边界",
-        "emotional_load": "medium：搁置十二年的救命旧账在三人手中正式化作接力面券",
+        "emotional_load": "high：搁置十二年的救命旧账在老中青三代人手中正式化作接力面券",
         "visible_change": "周海平记录改为已接力，现金由私人铁盒转入公开用途。",
         "source_contract_fields": [
           "/objective",
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "陈予安要让本金继续帮助人，同时避免变成陈家的私人收入。",
+        "visible_choice_carrier": "陈予安取出两只空白信封把店内收入与接力面券分开，将周海平的本金与梁锋的十元纸币一同装入“接力面券”信封。",
         "visible_countermove_carrier": "没有公开规则，收钱仍可能被理解为店主收回旧债。",
         "visible_state_change_carrier": "三人建立单独记录、只用于陌生人餐食的接力面券。"
       }

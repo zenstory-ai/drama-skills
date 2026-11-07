@@ -28,8 +28,8 @@
         "scene_id": "EP004-SC001",
         "agenda_collision": "现金看似构成偿还，但欠条背面的文字否定了简单结账。",
         "dramatic_result": "周海平证明自己既带回本金，也执行过父亲留下的条件。",
-        "external_pressure": "medium：铁盒敞开、整捆现金与欠条摆在眼前，当场逼问收不收这笔本金",
-        "emotional_load": "medium：亡父救急的字迹重现，还债执念与不收钱的家规正面对撞",
+        "external_pressure": "high：铁盒敞开、整捆现金与欠条摆在眼前，当场逼问收不收这笔救命本金",
+        "emotional_load": "high：亡父搭上换灶钱救急的字迹重现，还债执念与不收钱的家规正面对撞",
         "visible_change": "现金仍在打开的铁盒中，陈予安必须决定如何处理。",
         "source_contract_fields": [
           "/objective",
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "陈予安要确认盒中证据和父亲当年的真实要求。",
+        "visible_choice_carrier": "陈予安展开折叠欠条核对正背两面字迹，指着父亲背面附言追问周海平为何仍把本金送回陈家。",
         "visible_countermove_carrier": "现金看似构成偿还，但欠条背面的文字否定了简单结账。",
         "visible_state_change_carrier": "周海平证明自己既带回本金，也执行过父亲留下的条件。"
       }

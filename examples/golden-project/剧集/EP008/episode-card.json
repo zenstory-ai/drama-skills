@@ -28,7 +28,7 @@
         "scene_id": "EP008-SC001",
         "agenda_collision": "系列完成后最容易停在一次感动，没有新的行动者。",
         "dramatic_result": "新的资源和新的参与者进入，面馆规则从旧账变成持续机制。",
-        "external_pressure": "medium：早市开门迎客在即，门槛外的匿名面粉袋亟待查验入库与记账",
+        "external_pressure": "low：雨停天亮开门迎客，全剧旧账矛盾已解，转入清晨烟火日常",
         "emotional_load": "medium：看见善意跨出三人小圈子、引来一群匿名同行者接力的欣慰",
         "visible_change": "账本新增匿名记录，面馆开门迎接下一位客人。",
         "source_contract_fields": [
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "陈予安要验证新规则离开三人的承诺后是否仍能继续。",
+        "visible_choice_carrier": "陈予安抱起门口的匿名面粉袋，在旧账本新页写下“夜班同行者 — 面粉一袋 — 正在继续”，推门迎客。",
         "visible_countermove_carrier": "系列完成后最容易停在一次感动，没有新的行动者。",
         "visible_state_change_carrier": "新的资源和新的参与者进入，面馆规则从旧账变成持续机制。"
       }

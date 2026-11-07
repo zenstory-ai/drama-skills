@@ -28,8 +28,8 @@
         "scene_id": "EP005-SC001",
         "agenda_collision": "拒收能保持清白，却会让一笔可继续帮助人的资金停下来。",
         "dramatic_result": "陈予安暂不收钱，先让周海平说明这些年钱如何往前传。",
-        "external_pressure": "medium：周海平守在柜台外等待答复，出餐口外的铁盒现金持续施压",
-        "emotional_load": "medium：守住父训清白与不让救命钱落空之间的内心拉锯",
+        "external_pressure": "low：后厨独处揉面，前厅交锋暂停，留出消化旧事的呼吸空间",
+        "emotional_load": "high：父亲亲笔批注亮明，守住父训清白与不让救命钱落空在心头拉锯",
         "visible_change": "选择被延后，但判断标准从收或不收转为怎样继续。",
         "source_contract_fields": [
           "/objective",
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "陈予安要决定收下现金是否背叛父亲的规则。",
+        "visible_choice_carrier": "陈予安擦净面粉手把旧账本抱进后厨，翻出父亲在周海平那页下方留下的小字批注，再端账本回前厅核问去向。",
         "visible_countermove_carrier": "拒收能保持清白，却会让一笔可继续帮助人的资金停下来。",
         "visible_state_change_carrier": "陈予安暂不收钱，先让周海平说明这些年钱如何往前传。"
       }

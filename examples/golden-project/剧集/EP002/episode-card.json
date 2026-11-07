@@ -28,8 +28,8 @@
         "scene_id": "EP002-SC001",
         "agenda_collision": "陈予安拒绝把善意重新结算成两人之间的钱债。",
         "dramatic_result": "陈予安不收十元，把梁锋的记录改为已传一次。",
-        "external_pressure": "medium：十元纸币已经压上柜台，收与不收当场检验第一集立下的规矩",
-        "emotional_load": "medium：把还钱的客气推回去，同时接住对方实打实的善意",
+        "external_pressure": "low：梁锋跑完夜班主动上门还钱，店内没有外部冲突逼迫",
+        "emotional_load": "medium：十元纸币承载着梁锋的体面与陈予安把善意往下传的坚持",
         "visible_change": "梁锋开始成为规则的参与者，而不是被救助者。",
         "source_contract_fields": [
           "/objective",
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "梁锋想证明自己没有白拿那碗面。",
+        "visible_choice_carrier": "陈予安把柜台上的十元纸币推回梁锋手里，提笔把账本批注从“待传”改为“已传一次”。",
         "visible_countermove_carrier": "陈予安拒绝把善意重新结算成两人之间的钱债。",
         "visible_state_change_carrier": "陈予安不收十元，把梁锋的记录改为已传一次。"
       }

@@ -28,8 +28,8 @@
         "scene_id": "EP006-SC001",
         "agenda_collision": "单靠自述不足以证明持续行动，陈予安仍担心这是一次性偿还。",
         "dramatic_result": "陈予安确认父亲的帮助已经改变了另一个家庭的行动方式。",
-        "external_pressure": "medium：逐年帮扶清单与送汤照片摆上柜台，等待陈予安给出最终认可",
-        "emotional_load": "medium：看见两代人把救命恩情化作街头热汤的触动与释怀",
+        "external_pressure": "low：两人围着柜台按年份整理便签与照片，不再是剑拔弩张的盘问",
+        "emotional_load": "high：看见两代人把救命恩情化作街头热汤的触动与彻底释怀",
         "visible_change": "现金从旧债象征转变为可继续运作的共同资源。",
         "source_contract_fields": [
           "/objective",
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "周海平要证明自己不是用现金买断愧疚。",
+        "visible_choice_carrier": "陈予安把周海平按年份写下的帮人便签逐条誊进旧账本，并接过那张街头送热汤的照片仔细核看。",
         "visible_countermove_carrier": "单靠自述不足以证明持续行动，陈予安仍担心这是一次性偿还。",
         "visible_state_change_carrier": "陈予安确认父亲的帮助已经改变了另一个家庭的行动方式。"
       }

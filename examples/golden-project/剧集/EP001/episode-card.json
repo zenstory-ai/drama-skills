@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "陈予安要让淋雨又没钱的梁锋先吃上一碗热面。",
+        "visible_choice_carrier": "陈予安翻开父亲留下的旧账本扉页，盛出热面并在账本上记下“待传”而非欠款。",
         "visible_countermove_carrier": "梁锋把接受帮助理解成新增债务，坚持离开。",
         "visible_state_change_carrier": "梁锋接受帮助，并答应有余力时把一碗面递给下一个人。"
       }
