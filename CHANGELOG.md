@@ -13,6 +13,10 @@
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-07
+
+本版把原著分析、故事开发、剧本写作、视觉设定、分镜与提示词里的技巧说明和正反案例改写成普通创作者能直接照着做的白话，并修掉原著章节索引漏楔子与分集地图模板预填装置条款的问题。
+
 ### Added
 
 - 原著分析、故事开发与写作：补上小说心理叙述改短剧的两条去向——设定与前史拆进当场动作和对话交锋，言行反差的冷幽默或重生先知等跨时认知差保留一句简短 `[VO]` 配反向画面（同一拍里 `[VO]` 不重复动作已演出的意思），不再一刀切改成捏手指、攥衣角等小动作；补上非打脸题材的爽点与桥段判据，并把各技能里的抽象概念和残缺正反例改写成带前因后果的白话做法与短剧场景。
@@ -1985,7 +1989,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.0...v0.10.1
