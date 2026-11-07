@@ -63,7 +63,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "84217861072554ce9446a17c0e31ebf301846b8376da2db9dcd2dfc8c2e83a6b",
+      "packageDigest": "d1498e3dad78b0f01a1d253994a4ac00a1b25aab521d513baac8f3f26effccc6",
       "path": "skills/short-drama-assets",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -134,7 +134,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "af47ba959fd33b036e7d04c3dfec1a9a71eb93066c22857c9ad2c57a5e0c3c88",
+      "packageDigest": "4a99f25d692d15d9a654ca4d6d097a66dce538b1fe342d2c5a5cb4544ad818f0",
       "path": "skills/short-drama-develop",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -154,7 +154,7 @@
         "storyboard",
         "video-production"
       ],
-      "version": "1.0.32"
+      "version": "1.0.33"
     },
     {
       "catalogMigration": true,
@@ -205,7 +205,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "618822a6385d5464f94085b726347fb447bdf93942a7ea526c54515ad278f6d9",
+      "packageDigest": "fff1b51335dd619df98f6c7aa93b372b95a00b0b375e18e313ac87aaad88db3f",
       "path": "skills/short-drama-image-prompts",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -308,7 +308,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "fa2d5b4aba40f869b8a44c863f4401d6d8433e6846c5964ee23f7fbdec317e9a",
+      "packageDigest": "948c4f2e51b214fe4d386f4088daaf01ef08c81a1943c4f429481deb8c3a65b7",
       "path": "skills/short-drama-review",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -410,7 +410,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "34b9c82f617d531d478a8b54a1b0a5645b9c353ea9e3d1c1c59824d65d71fde6",
+      "packageDigest": "a822dd6975f655fa51a345ce340a35be4178061c87b432f36fbf6f9a0b4ee318",
       "path": "skills/short-drama-write",
       "publisher": "worldwonderer",
       "rebuildOn": [],
