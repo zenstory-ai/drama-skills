@@ -2,7 +2,7 @@
 
 ## MOTION-EP006-01
 
-Animate SHOT-EP006-01 as a fifteen-second vertical live-action shot. Story beat: 周海平逐项说明过去的帮助避免空泛忏悔. Performance owners: 陈予安, 周海平. Preserve every bound dialogue line and land on the accepted character boundary without adding story events.
+Animate SHOT-EP006-01 as a fifteen-second vertical live-action shot. Story beat: 周海平逐项说明过去的帮助避免空泛忏悔. Performance owners: 周海平, 陈予安. Preserve every bound dialogue line and land on the accepted character boundary without adding story events.
 
 ## MOTION-EP006-02
 

@@ -2,7 +2,7 @@
 
 ## MOTION-EP002-01
 
-Animate SHOT-EP002-01 as a fifteen-second vertical live-action shot. Story beat: 用皱折纸币唤回第一集的承诺. Performance owners: 陈予安, 梁锋. Preserve every bound dialogue line and land on PSTATE-TEN-NOTE-OFFERED without adding story events.
+Animate SHOT-EP002-01 as a fifteen-second vertical live-action shot. Story beat: 用皱折纸币唤回第一集的承诺. Performance owners: 梁锋, 陈予安. Preserve every bound dialogue line and land on PSTATE-TEN-NOTE-OFFERED without adding story events.
 
 ## MOTION-EP002-02
 

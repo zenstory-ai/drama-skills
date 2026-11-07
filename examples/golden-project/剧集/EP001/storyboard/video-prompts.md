@@ -18,4 +18,4 @@ Animate SHOT-EP001-04 as a fifteen-second vertical live-action shot. Story beat:
 
 ## MOTION-EP001-05
 
-Animate SHOT-EP001-05 as a fifteen-second vertical live-action shot. Story beat: 以账本新增待传记录结束本集. Performance owners: 陈予安, 梁锋. Preserve every bound dialogue line and land on PSTATE-LEDGER-LIANG-PENDING without adding story events.
+Animate SHOT-EP001-05 as a fifteen-second vertical live-action shot. Story beat: 以账本新增待传记录结束本集. Performance owners: 梁锋, 陈予安. Preserve every bound dialogue line and land on PSTATE-LEDGER-LIANG-PENDING without adding story events.
