@@ -63,7 +63,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "d1498e3dad78b0f01a1d253994a4ac00a1b25aab521d513baac8f3f26effccc6",
+      "packageDigest": "0e7a50b23b1d6f33170f9584bbe3d77c6f74e32215ec654676464ab6da399c7a",
       "path": "skills/short-drama-assets",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -239,7 +239,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "76a8f7082823f0a4a01cdc7e8da08c93b2f76df9157106d4ce364f343fa8a9a5",
+      "packageDigest": "004a733cf24062712eade03431580b81d21365af4777cc4ee7ef25f80b111f7a",
       "path": "skills/short-drama-novel-analyze",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -342,7 +342,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "54f8e636f09f231327a78d4bf353bd0e2e72988e11b178d9b0796db8013b82b9",
+      "packageDigest": "e836004bf714eb1ceb666a34ac39b9b6bf444f037d02bdcbe3e46e7e6951d40a",
       "path": "skills/short-drama-storyboard",
       "publisher": "worldwonderer",
       "rebuildOn": [],
