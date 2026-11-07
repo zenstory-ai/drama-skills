@@ -2,24 +2,24 @@
 
 ## MOTION-EP007-01
 
-Animate SHOT-EP007-01 as a fifteen-second vertical live-action shot. Story beat: 陈予安把私人收入与接力资金明确分开. Performance owners: 陈予安. Preserve every bound dialogue line and land on PSTATE-CASH-IN-TIN without adding story events.
+Starting from the opening frame at the north counter before dawn, from 0.0 to 15.0 seconds Chen Yuan lays two kraft paper envelopes side by side on the counter beside the open tin box of cash, places his hand on the blank envelope, and says in Mandarin: "这笔钱我接了，但一分都不能进陈家的私账。专门留着请生客吃面，不挂牌子，也不图人道谢。" Static locked camera. No subtitles or on-screen text overlays.
 
 ## MOTION-EP007-02
 
-Animate SHOT-EP007-02 as a fifteen-second vertical live-action shot. Story beat: 周海平同意资金不能换取名声或控制权. Performance owners: 周海平. Preserve every bound dialogue line and land on PSTATE-CASH-IN-TIN without adding story events.
+Starting from the opening frame at the north counter before dawn, from 0.0 to 15.0 seconds Zhou Haiping pushes the open rusted tin box containing the bundled cash across the wooden counter to Chen Yuan's side and says in Mandarin: "只要这口热乎气能一直传下去，留不留我的名儿都行。" Slow, restrained camera push-in over 15 seconds. No subtitles or on-screen text overlays.
 
 ## MOTION-EP007-03
 
-Animate SHOT-EP007-03 as a fifteen-second vertical live-action shot. Story beat: 梁锋带着第一张十元纸币回到主线. Performance owners: 梁锋. Preserve every bound dialogue line and land on PSTATE-CASH-IN-TIN without adding story events.
+Starting from the opening frame before dawn, from 0.0 to 15.0 seconds after three knocks on the rolling shutter, Liang Feng ducks in through the doorway, spots the cash and IOU on the counter, says in Mandarin: "我在门外听半天了。这么好的事，算我一份！" and places his saved creased ten-yuan note right on top of the bundled cash stack. Static locked camera. No subtitles or on-screen text overlays.
 
 ## MOTION-EP007-04
 
-Animate SHOT-EP007-04 as a fifteen-second vertical live-action shot. Story beat: 三人共同写下接力面券的使用边界. Performance owners: 陈予安, 梁锋. Preserve every bound dialogue line and land on PSTATE-CASH-IN-TIN without adding story events.
+Starting from the opening frame across the north counter, from 0.0 to 7.5 seconds Chen Yuan looks at Liang Feng and asks in Mandarin: "你那碗面不是早就传出去了吗？" From 7.5 to 15.0 seconds Liang Feng grins and answers in Mandarin: "传了一次，还能再传第二次嘛。" Then all three lean in over the counter to write the usage rules on the front of the blank kraft envelope. Slow, restrained camera push-in over 15 seconds. No subtitles or on-screen text overlays.
 
 ## MOTION-EP007-05
 
-Animate SHOT-EP007-05 as a fifteen-second vertical live-action shot. Story beat: 现金从铁盒转入独立封袋完成物理状态变化. Performance owners: 陈予安, 周海平. Preserve every bound dialogue line and land on PSTATE-CASH-MEAL-FUND without adding story events.
+Starting from the opening frame at the north counter, from 0.0 to 7.5 seconds Chen Yuan counts Zhou Haiping's bundled principal together with Liang Feng's creased ten-yuan note, seals them inside the relay meal-voucher envelope, and extends the yellowed IOU sheet toward Zhou Haiping. From 7.5 to 15.0 seconds Zhou Haiping receives the returned IOU while the sealed meal-voucher envelope rests on the counter. Static locked camera. No subtitles or on-screen text overlays.
 
 ## MOTION-EP007-06
 
-Animate SHOT-EP007-06 as a fifteen-second vertical live-action shot. Story beat: 账本把周海平标记为已接力形成主题回报. Performance owners: 陈予安, 周海平. Preserve every bound dialogue line and land on PSTATE-CASH-MEAL-FUND without adding story events.
+Starting from the opening frame at the north counter, from 0.0 to 7.5 seconds Chen Yuan opens the old ledger to Zhou Haiping's entry and writes the updated relay status beside his name. From 7.5 to 15.0 seconds Zhou Haiping holds the returned IOU in both hands without tearing it, folds it carefully along its old creases, and places it back inside the empty mooncake tin box. Slow, restrained camera push-in over 15 seconds. No subtitles or on-screen text overlays.
