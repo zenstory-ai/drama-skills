@@ -162,7 +162,7 @@ license: MIT
 - 镜头职责、切镜理由、镜长推导、对白覆盖和边界：[镜头手艺](references/shot-craft.md)
 - 实际制作所需的镜头语法：[生产镜头语法](references/production-shot-grammar.md)
 - 关键场次比较导演方案：[场次视觉计划](references/scene-visual-plan.md)
-- 检查原文是否都有画面承载：[Coverage Audition](references/coverage-audition.md)
+- 关键场景多方案拍法比选：[拍法比选（Coverage Audition）](references/coverage-audition.md)
 - 多人、群体和复杂空间调度：[调度手册](references/blocking-playbooks.md)
 - 打戏怎么拆回合、放机位、卖打击：[打戏分镜](references/fight-craft.md)
 - 谁被照亮、怎么写才执行得出：[光的设计](references/lighting-craft.md)

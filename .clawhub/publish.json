@@ -19,7 +19,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "e1a4a82cad60756b958a8a8be4f3f89fdd6129625bcb15dc218a3913e688ae88",
+      "packageDigest": "441392333fbbbaba2483a7d70968d9b3b9a62f1a8394859c013428f0cadbc9c3",
       "path": "skills/short-drama",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -134,7 +134,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "e0a3353e1a918c39e26cbf92e502a4e5386545107773c92c24710965d3e7b7e5",
+      "packageDigest": "066abfcdf4bef39f7d77c1733c7c477181c90c4507f6aa25bd2fe7327c0dea8b",
       "path": "skills/short-drama-develop",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -239,7 +239,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "f9a8ec3681bd881fcea7474446833d93260a6e6eb7a88db389c2e6a37b1963d1",
+      "packageDigest": "ece3db299849d54d6975a27b0f27a7c5121e2f018aecd1f11b516f619b4d2d7d",
       "path": "skills/short-drama-novel-analyze",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -342,7 +342,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "214d11e715e082c16a8fbb1456459a31055f821a86ed422da2c7e4bd2744432c",
+      "packageDigest": "8abff55ddbf214dadee79ba44590dfe5e61e6bdc8deeefa86dcc3ab98a3f83a7",
       "path": "skills/short-drama-storyboard",
       "publisher": "worldwonderer",
       "rebuildOn": [],
@@ -410,7 +410,7 @@
         "**/*"
       ],
       "maintainer": "worldwonderer",
-      "packageDigest": "c51b8f72373609b610c5d877ba92f3787a6c5421170acf2138f073de10395458",
+      "packageDigest": "11313a6005e629bc7b8d1b40d52a613dcef477959122364218df70ef2eae3a13",
       "path": "skills/short-drama-write",
       "publisher": "worldwonderer",
       "rebuildOn": [],
