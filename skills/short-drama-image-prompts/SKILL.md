@@ -24,7 +24,7 @@ license: MIT
 ## 入口
 
 有当前视觉设定即可直接开始；剧本只在提示词需要确认剧情状态时读取。Look Development 是可选分支。
-先确认用途：身份板、造型/状态变体、地点板、道具板、组合 production sheet 或比较风格帧。
+先确认用途：身份板、造型/状态变体、地点板、道具板、组合参考板或比较风格帧。
 分镜需要生产尾帧时，可把已接受的「收尾关键帧提示词」落实为独立 `IMG-...` 状态图条目：
 说明来源 SHOT 与终点，沿用视觉事实和参考范围，不重新设计动作。实际生成以该 IMG 条目为来源。
 
@@ -61,9 +61,9 @@ license: MIT
 - 地点地理、视角和光线：[地点板](references/location-plate.md)
 - 功能道具、尺度、材质与文字：[道具板](references/prop-plate.md)
 - 造型和状态变体：[造型与状态变体](references/look-and-state-variant.md)
-- 多对象组合板：[Production Sheet 配方](references/production-sheet-recipes.md)
+- 多对象组合板：[生产参考板配方](references/production-sheet-recipes.md)
 - 比较视觉方向的代表帧：[Lookdev 风格帧](references/lookdev-frame.md)
-- 局部修改和 preserve set：[定点修改](references/edit-and-revision.md)
+- 局部修改与保留范围：[定点修改](references/edit-and-revision.md)
 - 完成前的可生成性检查：[审查与示例](references/review-and-fixtures.md)
 
 ## 完成与投产

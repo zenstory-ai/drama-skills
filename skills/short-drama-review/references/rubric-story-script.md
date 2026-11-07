@@ -11,6 +11,7 @@
 - [Dialogue](#dialogue)
 - [Rhythm profile](#rhythm-profile-rev-12)
 - [Local passes](#local-passes-rev-13)
+- [Replaceable realization](#replaceable-realization-scr-10)
 - [Findings](#common-findings)
 
 ## Story promise and engine
@@ -211,11 +212,16 @@ them fit this checklist. A loud scene can fail when nothing changes.
 ## Dialogue
 
 - What does each speaker want from the other now?
-- What is withheld, reframed, threatened, bargained, accused, or proven?
-- Does the line respond to the prior move and alter the next?
+- What is withheld, reframed, threatened, bargained, accused, or proven — or, in warm,
+  comedic, or slice-of-life scenes, how do speakers save face, offer an out, or talk past
+  each other without forcing an interrogation template?
+- Does the line respond to the prior move and alter the next, without merely restating an
+  action the character just performed or barking unmotivated threats?
 - Are voices distinct by worldview, status, relationship, vocabulary, and rhythm?
-- Does exposition enter through conflict/evidence/consequence rather than a
-  neutral information dump?
+- Does exposition enter through conflict/evidence/consequence or relational friction rather
+  than a neutral information dump?
+- Are dialogue parentheticals limited to delivery/tactic cues that happen with the line,
+  leaving independent physical actions and prop state changes to action lines (`SCR-08`, `SCR-09`)?
 - When a long speech is split, does the inserted action change the speaker's tactic
   and give downstream a sourced cut point, rather than pad with a glance or a pause
   (`SCR-09`)? When a long speech carries no internal turn, was it shortened instead

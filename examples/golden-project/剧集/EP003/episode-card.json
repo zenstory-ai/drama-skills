@@ -28,7 +28,7 @@
         "scene_id": "EP003-SC001",
         "agenda_collision": "陈予安不认识他，也不知道父亲账本里的旧名字意味着什么。",
         "dramatic_result": "陈予安在旧账页找到周海平，但尚未打开盒子。",
-        "external_pressure": "medium：打烊雨夜突然闯入背负十二年旧账的来客，铁盒压上柜台",
+        "external_pressure": "high：打烊雨夜突然闯入背负十二年旧账的陌生来客，生锈铁盒当场压上柜台",
         "emotional_load": "medium：意外触及亡父十二年前留下的救命旧事与未解批注",
         "visible_change": "关闭的铁盒和未解释的旧记录留在柜台上。",
         "source_contract_fields": [
@@ -43,7 +43,7 @@
     ],
     "causal_escalation_realization": [
       {
-        "visible_choice_carrier": "周海平要把一笔拖了十二年的旧账交回陈家。",
+        "visible_choice_carrier": "陈予安没有贸然打开生锈月饼盒，而是先翻开旧账本核实周海平的名字并为他下一碗热面。",
         "visible_countermove_carrier": "陈予安不认识他，也不知道父亲账本里的旧名字意味着什么。",
         "visible_state_change_carrier": "陈予安在旧账页找到周海平，但尚未打开盒子。"
       }

@@ -81,7 +81,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 作者决策的前史储备，选择旧策略开始付出代价的叙事切入窗口，再记录人物死守的
 信念、压力测试、信息权限和跨集记忆。不要把前史储备直接倒进首集对白。
 
-### 4. 把系列运动落到分集
+### 4. 把全剧脉络落到分集
 
 读取 [episode-design.md](references/episode-design.md)，再复制 [episode-map.jsonl](assets/episode-map.jsonl)。每一集记录进入状态、开场、当集追求、阻力、局势转折、当集结果、信息释放、出去的压力以及下一集必须继承的事实。
 
