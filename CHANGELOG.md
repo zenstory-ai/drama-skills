@@ -13,6 +13,10 @@
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-11-07
+
+本版对全套技能指令做了一次精简去重：删掉面向人类培训班的说教、低频边缘分支与跨文件重复规则，完整保留全部创作规则 ID、阶段契约与可演正反例，无需迁移已有项目或配置。
+
 ### Changed
 
 - 全套技能指令（12 个公开创作技能与维护者技能共 154 份 Markdown）：清理面向人类写作班的培训说教、小样本实验次数日志与极低频分支，删去无判断增量的空泛导语、文末重复自检表和无链接目录，将各阶段所有权、规则分级与文档契约归口到唯一权威位置（总行数由 20,428 行精简至 8,569 行，保留全部规则 ID、阶段契约与可演正反例）；同步在资产、分镜与视频提示词入口明确二级标题类别词、必写字段清单、引用块内禁放分隔线及文生视频「静态视觉锚点」逐字原样粘贴要求。
@@ -1993,7 +1997,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.1...v0.10.2
