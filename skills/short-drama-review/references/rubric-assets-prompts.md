@@ -2,122 +2,59 @@
 
 ## Occurrence and decision
 
-- Can every production-relevant appearance be traced to a scene ID and a necessary action/dialogue quotation in `剧本.md`?
-- Is it production-relevant rather than every noun in the screenplay?
-- Is the decision explicit: reuse, new identity, new variant, or unresolved?
-- Were pronouns, aliases, groups, memories, portraits, and screen content handled
-  without guessing?
+- Trace every production-relevant appearance to a scene ID and action/dialogue quote in `剧本.md` (exclude incidental screenplay nouns).
+- Require an explicit decision (`复用` / `新增身份` / `新增变体` / `待定`) and handle pronouns, aliases, groups, memories, portraits, and screen content without guessing.
 
 ## Identity versus variant
 
 ### Character / Look
 
-Identity: stable face/body/hair anchors, distinguishing marks, and any explicitly
-recorded persistent voice identity. Look: wardrobe, makeup, hair arrangement, injury, dirt/wetness, disguise,
-age/weathering state, validity range.
-
-Fail when a costume change creates a new person or incompatible Looks mix in one
-prompt without story reason.
-
-Relationship labels may guide current blocking, gaze, and social presentation,
-but they do not prove beauty, ugliness, body type, skin tone, or facial morality.
-Fail when protagonist/antagonist status silently invents those identity traits;
-creator-approved idealization or deliberate counter-casting remains a taste choice.
+- **Identity**: stable face/body/hair anchors, distinguishing marks, and persistent voice identity.
+- **Look**: wardrobe, makeup, hair arrangement, injury, dirt/wetness, disguise, age/weathering state, validity range.
+- Fail when a costume change creates a new person, incompatible Looks mix in one prompt without story reason, or protagonist/antagonist labels silently invent beauty, ugliness, body type, skin tone, or facial morality.
 
 ### Voice direction (optional, `AST-07`–`AST-12`)
 
-Only reviewed when `视觉设定.md` records a voice direction. Timbre is carried by a
-named reference recording, not by prose: identity is the reference plus the
-creator's current pronunciation choices, and the text alongside it exists to
-select or judge a voice, never to stand in for one.
+Only reviewed when `视觉设定.md` records a voice direction. Timbre is carried by a named reference recording plus pronunciation choices; accompanying text selects or judges a voice, never stands in for one.
 
 Fail when:
+- no reference exists and prose adjectives stand in for identity instead of `待选型`;
+- a binding omits what it controls/excludes, or leaks take emotion, room reverb/mic distance, or background noise into identity (`AST-08`);
+- an audible claim lacks creator description or authorized listening observation (`AST-09`);
+- one proper noun has two accepted spellings in `视觉设定.md` (`AST-10`, structural blocker);
+- confusable references lack a distinguishing trait naming the nearest neighbour (`AST-11`);
+- reference audio bytes, provider parameters, model names, task fields, or URLs appear in `视觉设定.md` or delivery files.
 
-- a project has no reference and a paragraph of adjectives is standing in for
-  identity — the voice section must say `待选型` instead;
-- a binding omits what it controls and what it must not, or lets the take's
-  emotion, the recording space (reverb, mic distance) or background noise into
-  identity (`AST-08`);
-- a claim about what is audible in a reference has no creator description and no
-  authorized listening observation, yet is written as established fact (`AST-09`);
-- one proper noun appears with two accepted spellings anywhere in `视觉设定.md`
-  (`AST-10`) — this one is structural and blocks;
-- two characters designed together are bound to confusable references and no
-  distinguishing trait names the nearest neighbour (`AST-11`);
-- reference audio bytes, a provider parameter, a model name, a task field or a
-  URL appear in `视觉设定.md` or the delivery package.
-
-Selection criteria should be audible, bounded by counter-examples, and limited to what helps choose or judge a
-reference (`AST-12`, `craft_default`). Report a weak criterion as a craft note; list length alone is not a failure.
+Weak or unbounded selection criteria are reported as a craft note (`AST-12`).
 
 ### Location / View
 
-Identity: architecture, layout, entrances, zones, anchors, materials, navigation.
-View: camera-facing orientation/zone, time/weather/light state, visible anchors.
-
-Fail when each camera angle becomes a new unrelated location or geography changes
-silently between scene and plate.
-
-Views of one Location sharing a time/weather state must also share key-light source,
-warm/cool priority, contrast direction, and practical on/off state (`IMG-10`). Compare
-the group side by side—each plate reading well alone is not evidence. Fail when an
-unrecorded difference would read as two times or two rooms once the plates are
-intercut; orientation-driven back/front lighting and occlusion shadows are expected
-and need only a stated source.
+- **Identity**: architecture, layout, entrances, zones, anchors, materials, navigation.
+- **View**: camera-facing orientation/zone, time/weather/light state, visible anchors.
+- Fail when each camera angle becomes an unrelated location, geography changes silently between scene and plate, or Views sharing a time/weather state have unrecorded differences in key-light source, warm/cool priority, contrast direction, or practical on/off state when compared side by side (`IMG-10`).
 
 ### Prop / State
 
-Identity: scale, shape, material, function, moving parts, marks, text policy.
-State: owner/hand/location, open/closed, clean/damaged/wet/bloodied, contents,
-validity.
-
-Fail when a prop teleports, changes scale/material, or readable evidence is erased.
+- **Identity**: scale, shape, material, function, moving parts, marks, text policy.
+- **State**: owner/hand/location, open/closed, clean/damaged/wet/bloodied, contents, validity.
+- Fail when a prop teleports, changes scale/material, or loses required readable evidence.
 
 ## Era
 
-The era comes from source facts: devices, platforms, slang, stated years. Fail
-when the era shown in `视觉设定.md`, `图片提示词.md` or `视频提示词.md` contradicts
-them, or when a retro or aged descriptor (旧/老式/复古/褪色/斑驳, old, worn, dusty,
-period, CRT) has neither a source basis nor an explicit creator choice (`AST-14`).
-This is the visual layer of the source-fidelity check (`STY-07`): cite the source
-fact and the conflicting line. A visual direction with
-no era anchors, or entries that leave the era-specific form unstated, is a craft
-note (`AST-15`).
+Era comes from source facts (devices, platforms, slang, stated years). Fail when `视觉设定.md`, `图片提示词.md`, or `视频提示词.md` contradicts source era facts, or uses retro/aged descriptors (`旧/老式/复古/褪色/斑驳`, `old`, `worn`, `dusty`, `period`, `CRT`) without source basis or explicit creator choice (`AST-14`, `STY-07`). Missing era anchors or unstated era-specific forms are craft notes (`AST-15`).
 
-## Prompt recipe review
+## Prompt recipe and failure checks
 
-All prompt types need purpose, exact binding, identifying facts, current variant,
-composition, background, lighting, text policy, constraints, and exclusions. Then
-apply type-specific criteria:
+Every prompt requires purpose, exact binding, identifying facts, current variant, composition, background, lighting, text policy, constraints, and exclusions:
 
-- Does each media reference declare one purpose, the facts it may copy,
-  the facts it must not import, and a pixel/text admission decision?
-- If a reference is composition-, scale-, or effect-only, did the prompt avoid
-  borrowing its identity, wardrobe, content, text, count, or story state?
-
-- **Character sheet:** one identity and coherent Look; useful reference views;
-  neutral enough background/light to recognize anchors; no story action chain.
-- **Location plate:** navigable geography, orientation, fixed anchors, material,
-  palette, light direction, atmosphere; normally empty of cast.
-- **Prop plate:** scale cue, shape, materials, wear, function/moving parts, current
-  state, viewing angle, isolation, text policy.
-- **Edit delta:** exact target and region, changes, preserve set, expected
-  continuity impact; no unrelated regeneration.
-
-## Prompt quality failures
-
-- quality/style boilerplate appears before or instead of identity/geography/scale;
-- prompt copies the whole visual specification instead of the needed identity and current variant;
-- character description mixes immutable anchors with accidental pose;
-- location prose is rich but cannot orient entrances/zones;
-- one character or prop is assigned to mutually exclusive positions, hands, or
-  relationship lines in the same frozen instant;
-- prop has no scale or text state;
-- negative constraints contradict the required visible fact;
-- edit request says “make better” without target/change/preserve;
-- `图片提示词.md` contradicts the current identity, state or text policy in `视觉设定.md`;
-- private URL, source ID, provider task field, or operator complaint leaks in.
-- “use the whole reference” does not say what may or may not be copied.
-
-Prompt prose elegance is secondary to recognition, reuse, continuity, and clear
-control of the current operation.
+- **Reference admission**: each media reference must declare one purpose, facts to copy, facts to exclude, and pixel/text admission. Fail on "use the whole reference" or when a composition/scale/effect reference leaks identity, wardrobe, text, count, or story state.
+- **Type-specific checks**:
+  - **Character sheet**: one identity and coherent Look, neutral background/light, no story action chain or accidental pose mixed into immutable anchors.
+  - **Location plate**: navigable geography, orientation, fixed anchors, material, palette, light direction; empty of cast unless specified.
+  - **Prop plate**: scale cue, shape, materials, wear, moving parts, current state, viewing angle, isolation, text policy.
+  - **Edit delta**: exact target/region, changes, preserve set, and continuity impact (fail on vague "make better" requests or unrelated regeneration).
+- **Blocking prompt failures**:
+  - quality/style boilerplate precedes or replaces identity/geography/scale, or the prompt dumps the entire visual spec instead of the needed variant;
+  - one character or prop occupies mutually exclusive positions, hands, or eyelines in the same frozen instant;
+  - negative constraints contradict required visible facts, or `图片提示词.md` contradicts `视觉设定.md`;
+  - private URLs, source IDs, provider task fields, or operator complaints leak into the prompt.

@@ -1,19 +1,13 @@
 # 去标识 Promotion Ledger
 
-Promotion ledger 记录公共规则被晋升、缩窄、暂缓或退休的理由，让维护者能复核匿名评测、
-定位准确的公共 diff 并回滚；记录不包含私有证据，也不按表现排名。
+Promotion ledger 记录公共规则被晋升（`promotion`）、缩窄重测（`narrow-and-retest`）、暂缓（`hold`）或退休（`retire`）的决策与回滚定位。
 
 ## 记录边界
 
-- 不得记录私有来源定位、连接信息、项目/人物名称、原句、稀有设定组合或私有卡片引用。
-- 只引用完全合成的任务、匿名输出、公共 skill 版本和独立 verdict；原始私有证据继续留在
-  授权隔离区，不进入 ledger。
-- 不能用脚本给创作质量打分。脚本只能计算 hash、检查字段和隔离；题材适配、人物行动、
-  制作翻译、边界判断与模板感由 fresh agent 产出、independent reviewer 阅读说明。
-- `hold` 与 `retire` 同样记录，不能只保留成功故事。没有可复核的匿名产物时不得写
-  `promotion`，只能补齐证据或保持 `hold`。
+- 只引用完全合成的任务、匿名输出 hash、公共 skill 版本和独立审查结论；私有来源定位、连接信息、项目/人物名、原句、罕见设定组合与私有卡片引用严禁进入 ledger。
+- `hold` 与 `retire` 必须与 `promotion` 一并记录；缺少可复核的匿名评测产物与独立 reviewer 证据说明时，不得写入 `promotion`。
 
-## 每个事件的最小形状
+## 事件 Schema
 
 ```yaml
 event_version: 1
@@ -55,14 +49,8 @@ rollback:
   retire_trigger: observed-overreach-no-gain-or-new-counterexample
 ```
 
-## 写入与复核
+## 写入与回滚
 
-先冻结合成输入、两个匿名 skill 包和输出 hash，由不了解匿名映射的 reviewer 完成逐项比较，
-并在揭盲前冻结偏好、理由与初步结论。揭盲后核对版本映射、公共候选包及实际 diff，再记录
-最终生命周期决定 `review.verdict`。Ledger 事件可以进入维护者受控的可版本化记录，
-但原始输出是否公开由隐私检查决定；只有 hash 不能替代 reviewer 的证据说明，也不能证明
-上下文确实 fresh。
-
-公共 reference 变更、rubric、synthetic fixture 与 ledger 事件必须指向同一条件式 claim。
-若后续证据要求缩窄，新增事件并用 `rollback.supersedes` 指向旧事件，保留旧决定。执行回滚时，
-先撤销准确公共 diff，再让受影响规则和 fixture 指向新事件，最后用新的匿名任务重跑审查。
+1. 揭盲前冻结合成输入、两个匿名 skill 包、输出 hash 与独立 reviewer 的初步结论；揭盲后核对版本映射、公共候选包与实际 diff，一致后写入 `review.verdict`。
+2. 公共 `reference`、`rubric`、`synthetic fixture` 与 ledger 事件必须指向同一条件式 `claim_scope`。
+3. 后续需要缩窄、替换或回滚时，新增事件并以 `rollback.supersedes` 指向旧事件（保留历史记录）；先按 `revert_target` 撤销或更新公共 diff，再用新合成任务重跑盲测与独立审查。

@@ -1,91 +1,24 @@
 # MiniMax H3 video adapter
 
-Adapter command:
-
 ```json
 {"command": ["python3", "/absolute/path/provider_adapters.py", "minimax-h3"], "timeout_seconds": 3600}
 ```
 
-Required environment:
+- **Required environment**:
+  - `MINIMAX_API_KEY`: MiniMax API key.
+  - `MINIMAX_VIDEO_MODEL`: exact enabled model ID (no default).
+  - `MINIMAX_VIDEO_RESOLUTIONS`: comma-separated subset of `480P`, `768P`, `2K`.
+  - `MINIMAX_VIDEO_MIN_DURATION` and `MINIMAX_VIDEO_MAX_DURATION`: inclusive integer-second range (set both or neither; a job carrying `duration` without this range fails closed).
+- **Optional environment**: `MINIMAX_VIDEO_BASE_URL` (default `https://api.minimax.io/v2`), `MINIMAX_VIDEO_RATIOS` (subset of `adaptive`, `1:1`, `3:4`, `4:3`, `9:16`, `16:9`, `21:9`), `MINIMAX_VIDEO_POLL_INTERVAL` (default `5`), `MINIMAX_VIDEO_TIMEOUT_SECONDS` (default `1800`).
 
-- `MINIMAX_API_KEY`: MiniMax API key.
-- `MINIMAX_VIDEO_MODEL`: the exact enabled model ID. There is intentionally no default; the adapter
-  never assumes which MiniMax video release an account has.
-- `MINIMAX_VIDEO_RESOLUTIONS`: comma-separated subset the configured model actually accepts, drawn
-  from `480P`, `768P`, `2K`. The published envelopes differ per release, so this is configuration,
-  not a constant.
-- `MINIMAX_VIDEO_MIN_DURATION` and `MINIMAX_VIDEO_MAX_DURATION`: the configured model's explicit
-  inclusive duration range in whole seconds. Set both or neither; a job carrying `duration` without
-  the profile fails closed.
+## Job & reference compilation
 
-Optional environment:
-
-- `MINIMAX_VIDEO_BASE_URL` (default `https://api.minimax.io/v2`)
-- `MINIMAX_VIDEO_RATIOS`: comma-separated subset of `adaptive`, `1:1`, `3:4`, `4:3`, `9:16`, `16:9`,
-  `21:9`.
-- `MINIMAX_VIDEO_POLL_INTERVAL` (default `5` seconds)
-- `MINIMAX_VIDEO_TIMEOUT_SECONDS` (default `1800` seconds)
-
-The job must have modality `video` and exactly one `.mp4` output. `duration` and `resolution` are
-required and are only accepted when the runtime profile above permits their values. `ratio` is
-optional for reference-conditioned jobs and **required** for text-to-video, where `adaptive` is
-refused because there is no reference frame to adapt to.
-
-The adapter validates and forwards `duration`; it does not estimate speech length or retime dialogue.
-Before preparing a speaking shot, compare the accepted shot duration, the prompt's spoken timeline,
-and the job's `duration`. Resolve insufficient speaking time in the storyboard and regenerate the
-dependent prompt before preparing the job. Prompt timestamps alone do not change the request duration.
-The official video API has no separate speech-rate parameter.
-
-The prompt is compiled into one `text` item of the multimodal `content` array and is refused above
-7000 characters. Each declared reference becomes one further `content` item carrying an explicit
-`role`: `first_frame`, `last_frame`, `reference_image`, `reference_video`, or `reference_audio`.
-Set the job's `parameters.prompt_language` to the resolved video-prompt language; the compiler
-consumes it when appending reference semantics and does not send it as a MiniMax request field.
-`first_frame` and `last_frame` may each appear once. The published envelope also caps reference
-conditioning at 9 `reference_image`, 3 `reference_video` and 3 `reference_audio` items, with video and
-audio clips between 2 and 15 seconds each and at most 15 seconds in total per modality; the compiler
-does not count them, so a configuration that can exceed those numbers has to bound them itself.
-frame conditioning (`first_frame` / `last_frame`) and full-reference conditioning
-(`reference_image` / `reference_video` / `reference_audio`) are mutually exclusive in one request.
-For continuation, bind the previous actual video as `reference_video` and its actual tail as
-`reference_image`; the compiler labels them `<Video 1>` and `<Picture 1>` in its appended contract.
-This describes compiler support. The current creator-first source selector cannot declare that video,
-so continuation remains unsubmitted in the bundled workflow; see the [source-interface boundary](../adapter-contract.md).
-Never relabel that tail as `first_frame` while a reference video is present. The compiler accepts HTTPS, `mm_file://{file_id}`, or `data:<mime>;base64,<...>` reference URLs.
-The bundled runtime reads each confirmed project-relative reference from disk and sends it
-inline as a data URI, so binding an image in the creator documents is enough to run the job; no
-upload service is required. Each file's bytes must match the media type its extension claims, and
-the published per-modality caps apply: 30MB per image, 50MB per video, 15MB per audio clip, and 64MB
-for the provider request. The local guard checks individual files and the combined base64 reference
-strings against these caps; other request fields also contribute to the provider's body limit.
-An over-limit reference fails before submission. This production tool accepts project files,
-so a hosted URL cannot replace its `references` path. Have the responsible skill prepare a suitable
-input, preserve the accepted content and control scopes, then preview and confirm the updated job.
-
-Each reference takes its provider role from the confirmed job's `reference_bindings[].role`, which is
-where the creator document's `用途` is translated for this provider. A job that carries references
-without those bindings fails closed rather than guessing a role.
-
-The adapter creates an asynchronous task with `POST {base}/video_generation`, polls
-`GET {base}/query/video_generation/{task_id}` until a terminal state, and downloads `task.content.url` into a private temporary directory. Any unknown
-status fails closed.
-
-## What this model changes for the prompt itself
-
-This release generates audio in the same pass as the picture. Its direct prompt dialect is also
-structured: base/first-frame/first-last-frame tasks use `integrated_multimodal_description`,
-`overall_soundscape`, and `non_diegetic_music`; full-reference tasks use the six-section H3 reference
-form. Chinese dialogue remains exact inside `<d>[Chinese] ...</d>`. Use
-`$short-drama-video-prompts` for the full H3 prompt dialect.
-
-State the intended sound layers in the prompt. For no non-diegetic music, the
-H3 dialect uses `non_diegetic_music: N/A`; small probes observed unwanted music
-when this layer was omitted. They did not establish that omitted speech or
-negative clauses cause extra dialogue.
-
-Follow the project's subtitle and in-scene-text policy. Prompt wording belongs
-to the video-prompt skill and the declared language, not to adapter-generated
-boilerplate.
+- **Job parameters**: modality `video`, one `.mp4` output. `duration` and `resolution` are required and validated against the environment profile. `ratio` is optional for reference-conditioned jobs and required for text-to-video (`adaptive` is rejected without references). The API has no speech-rate parameter, and prompt timestamps do not change request `duration`.
+- **Multimodal `content`**: prompt becomes one `text` item (max 7000 chars); each reference becomes one item with `role` from `reference_bindings[].role` (`first_frame`, `last_frame`, `reference_image`, `reference_video`, `reference_audio`).
+  - Frame conditioning (`first_frame` / `last_frame`, at most one each) and full-reference conditioning (`reference_image` ≤ 9, `reference_video` ≤ 3, `reference_audio` ≤ 3; video/audio clips 2–15s each and ≤ 15s total per modality) are mutually exclusive in one request.
+  - Compiler continuation support binds the previous video as `reference_video` (`<Video 1>`) and its tail frame as `reference_image` (`<Picture 1>`, never `first_frame`), though the bundled creator-first selector cannot submit video references (see [source-interface boundary](../adapter-contract.md)).
+- **URI schemes**: the compiler accepts HTTPS, `mm_file://{file_id}`, or `data:<mime>;base64,<...>` URLs (bundled runtime data-URI encoding and size caps follow [adapter-contract.md](../adapter-contract.md)).
+- **Execution**: submits `POST {base}/video_generation`, polls `GET {base}/query/video_generation/{task_id}`, and downloads `task.content.url` to staging (unknown status fails closed).
+- **Prompt dialect**: H3 generates audio and video in the same pass; author prompt structure and sound-layer declarations via `$short-drama-video-prompts`.
 
 Protocol reference: [MiniMax video generation API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create).

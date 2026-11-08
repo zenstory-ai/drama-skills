@@ -1,10 +1,6 @@
 # 审查阶段契约
 
-本阶段只拥有审查结论与修订要求，来源修改交回负责技能。需要保存文件时使用创作者可读 Markdown，引用当前
-文件名、标题 ID、行号或短引文；不建立 JSON/JSONL、来源快照、哈希或接受状态。
-
-审查可以由独立 reviewer 或明确标注的自检完成。媒体不可见时保持未知；外部生产须展示本次任务预览，
-再由创作者明确确认。
+本阶段只拥有审查结论与修订要求（落盘为创作者可读 Markdown，仅引用文件名、标题 ID、行号或短引文，不建 JSON/JSONL、哈希或第二套状态），来源修改一律交回负责技能。
 
 ## 本阶段规则
 
@@ -26,8 +22,6 @@
 | REV-12 | craft_default | When the project's rhythm profile has status `accepted`, review checks the episode against it by arithmetic on the accepted values only and reports a deviation as a non-blocking finding citing field, accepted value, measured value, and location; the creator may keep the episode with a stated reason. A missing or proposed profile leaves the check inactive, and no finding compares against another project's or a suite-wide number. |
 | REV-13 | craft_default | Beyond the whole-episode read, three local passes each read one part only: an opening-hook pass on the first segment, which also reads the first beat alone as the opening frame, an ending-suspense pass on the last segment, and a reversal-density pass on the middle. |
 | REV-14 | craft_default | A revision request is a patch at a cited location with a preserve set, never a whole-episode rewrite; a strong hook, payoff line, or comic beat removed by polishing is logged with its prior location and quote so the owner can restore it. |
-| REV-15 | craft_default | A `production_outputs` review, or a `full_episode` review that covers the rendered cut, first judges each clip against its storyboard shot job (job, start, single action, end and sound), then sorts each observed defect into cut, post-fix, keep or must-regenerate. Single-frame or sub-second glitches, slight sync offsets, and background extras or props that briefly duplicate or vanish default to cut, post-fix or keep and do not block delivery unless they break the shot job; the creator may override. Must-regenerate applies only when the clip fails its shot job and editing cannot work around it. Each defect is still a REV-02 finding: must-regenerate is `blocker`; cut and post-fix are `minor`, with the edit or post-production action as the required fix; keep is `note`, with "keep, no change" as the required fix. In a rendered-cut review, shot jobs are judged on what the viewer sees and hears across cuts (a line may carry over a cut); a job missing from the film that edit can restore, by changing a `CUT-...` in or out point or by post-production, is a `blocker` routed to edit. The verdict is `APPROVE`, `APPROVE_WITH_NOTES`, `REVISE` when any clip must be regenerated or any edit restore is needed, or `PROVISIONAL` when neither applies but some clip's shot job was not observed; a `REVISE` fix list names only the must-regenerate clips and the cuts edit must restore. |
+| REV-15 | craft_default | A `production_outputs` or rendered-cut `full_episode` review judges each clip against its storyboard shot job (purpose, start, single action, end, sound) and sorts each defect into `cut`/`post-fix` (`minor`), `keep` (`note`), or `must-regenerate` (`blocker`, used only when the shot job fails and editing cannot work around it; missing shot jobs restorable by edit are `blocker` routed to edit). Verdict is `REVISE` when any `must-regenerate` or edit-restore `blocker` exists, `PROVISIONAL` when some shot job was unobserved, or `APPROVE` / `APPROVE_WITH_NOTES` otherwise (details in `generated-media-review.md`). |
 
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+规则分级：`structural_invariant`（结构缺陷，阻断）、`reviewed_invariant`（需证据判断，阻断）、`craft_default`（常用做法，可由创作者说明理由覆盖）、`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。

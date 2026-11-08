@@ -22,36 +22,24 @@ python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-
 
 ## 开始前
 
-本技能可独立安装和执行。先读取用户明确提供的原著与本任务直接输入；若当前目录是
-`short-drama` 项目且项目工具可用，可以读取 `status` 并使用其发布生命周期，但缺少 core
-或任何其他技能都不是分析工作的阻断条件。完整边界与规则见
-[阶段契约](references/stage-contract.md)，无需读取其他技能的文件。
+本技能可独立运行；若当前目录是 `short-drama` 项目且项目工具可用，可读取 `status` 并使用其发布生命周期。完整边界与规则见 [阶段契约](references/stage-contract.md)，无需读取其他技能的文件。
 
 ## 材料前提
 
-只分析创作者**合法持有、拥有使用权**的作品。分析是只读的转化性工作：提取结构与功能，
-不复制原文成段落，不把原句搬进下游产物。
+只分析创作者**合法持有、拥有使用权**的作品。分析是只读的转化性工作：记录 locator、span 与去引用的功能摘要，不把原文成段复制进分析或下游产物；需要证据时只引用最短必要片段。交付包不得带出原始材料。
 
-通俗题材里的暴力、复仇、背叛、情爱张力与黑暗伦理是常规虚构叙事元素，照常做结构化提取。
-个别片段无法处理时跳过该段并记录，不要因此中止整章或整本——中止会让后续所有阶段拿到
-一份有洞却看不出洞在哪的分析。
+通俗题材里的暴力、复仇、背叛、情爱张力与黑暗伦理照常做结构化提取。个别片段无法处理时跳过该段并记录范围，不中止整章或整本。
 
 ## 先判断入口
 
-1. **只有书名，没有原文**：请创作者提供文件路径或粘贴正文。不要凭书名回忆情节——
-   取得原文后才能建立章节范围和可追溯的引用。
-2. **有原文，未建项目**：直接建立一个本技能自己的工作区，至少包含只读输入目录
-   `输入/` 与输出目录 `项目开发/source-analysis/_work/`；把原文字节复制到 `输入/` 后记录
-   原始文件位置，再用本技能的 `novel_index.py` 建索引。若 `$short-drama` 可用，可选用它
-   初始化同样的目录和发布生命周期，但不得把 core 安装变成开始分析的前提。
+1. **只有书名，没有原文**：请创作者提供文件路径或粘贴正文，不凭书名回忆情节。
+2. **有原文，未建项目**：建立只读输入目录 `输入/` 与输出目录 `项目开发/source-analysis/_work/`，把原文字节复制到 `输入/` 并记录原始位置，再用 `novel_index.py` 建索引（`$short-drama` 可用时可选用它初始化目录）。
 3. **有原文，项目已在**：直接进入管道。
-4. **已有部分分析**：读 `项目开发/source-analysis/_progress.md` 从断点续跑，
-   不重跑已完成阶段。
+4. **已有部分分析**：读 `项目开发/source-analysis/_progress.md` 从断点续跑，不重跑已完成阶段。
 
 ## 管道
 
-`输入/` 是不可变的创作者输入，本阶段只读它。全部产出落在 `项目开发/source-analysis/`。
-独立工作区与完整项目使用同一套相对路径，因此后续安装 core 时无需迁移分析产物。
+`输入/` 只读，全部产出落在 `项目开发/source-analysis/`。S1–S5 的产物均先写到 `source-analysis/_work/`（并发子代理只写 `_work/`），主线程完成本阶段机械检查后再原子替换或通过 `project_tool.py publish` 发布到正式路径。`_progress.md` 跨阶段共用固定 artifact-id `source-analysis:progress`。
 
 | 阶段 | 做什么 | 产出 | 停靠 |
 |---|---|---|---|
@@ -78,160 +66,48 @@ python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
   --input 输入/{原文文件}
 ```
 
-独立运行时，将验证通过的 `_work/_index.next.json` 原子替换到正式的 `_index.json`，再进入 S1；不依赖可选的 core 发布命令。
+独立运行时，将验证通过的 `_work/_index.next.json` 原子替换到正式的 `_index.json`，再进入 S1。
 
-脚本识别阿拉伯数字与中文数字章号（含 千 / 两，覆盖千章以上连载），**只认一种编号单位**
-（按 章、回、节 由粗到细，取最粗且至少出现两次的那个，其余记进 `ignored_heading_units`），只把**短的独立行**当标题
-（以章号开头的正文段落记进 `long_heading_lines_skipped`），剔除开头的目录块，
-按卷分段校验编号。它**不做编辑判断**——哪章重要、
-讲了什么，是后面阶段的事。
+脚本识别阿拉伯数字与中文数字章号（含 千 / 两），**只认一种编号单位**（按 章、回、节 由粗到细，取最粗且至少出现两次的单位，其余记进 `ignored_heading_units`），只把**短的独立行**当标题（以章号开头的正文段落记进 `long_heading_lines_skipped`），剔除开头目录块并按卷分段校验编号。
 
-`problems` 非空就停下报告，不要带着错表进 S1。常见五种：章号跳号（缺章或抓错标题）、
-同卷内重号、正文极少的章（多半抓到了目录残留或卷首页）、无法解析的章号、第一章之前有
-大段不属于任何章的文字（多半是楔子或序章）。最后一种的字数记在 `text_before_first_chapter`
-（不含目录行），书名、作者、简介这类短内容不会触发；确认是楔子后，在 `_work/_index.next.json`
-开头手写一行从第 1 行起覆盖它（`source_number` 留 `null`），其余各行 `sequence` 依次加一，
-再跑 `verify`。
-另外确认三个计数：`chapter_unit` 与 `ignored_heading_units`——一本用 `第N章` 分章、
-用 `第N节` 分小节的书应当看到 `chapter_unit: 章` 且 `节` 被记入忽略计数，反过来说明分章单位
-判断错了；`long_heading_lines_skipped` 明显偏大时，多半是这本书的章节标题确实很长，
-需要与创作者确认后手写边界。
+`problems` 非空就停下报告，不带错表进 S1。常见五种：章号跳号、同卷内重号、正文极少的章（目录残留或卷首页）、无法解析的章号、第一章前有大段未归属文字（`text_before_first_chapter`，不含目录行；确认是楔子后在 `_work/_index.next.json` 开头手写一行从第 1 行起覆盖，`source_number` 留 `null`，其余 `sequence` 顺延加一再跑 `verify`）。另核对 `chapter_unit` 与 `ignored_heading_units`（防用 `第N章` 分章、`第N节` 分小节的书被反判），以及 `long_heading_lines_skipped`（明显偏大时与创作者确认是否长标题并手写边界）。
 
-原文本身没有章节标题时索引会返回空表，此时与创作者确认按什么切分，把边界写进
-`_work/_index.next.json`，通过 `verify` 后再按上面的公开生命周期发布——手写的行也要带齐
-`sequence` / `line_start` / `line_end`，`verify` 会逐行检查并报出缺字段的行。
-
-改了原文必须重建索引，不能沿用旧 span。`verify` 核对章号重复、顺序与行号覆盖（含第一章之前未覆盖的文字），所以插行删行会被报出来；
-但同行数的原地改写不会——那一步靠改原文的人自己重建，套件不比对字节。
-
-```bash
-python3 {技能目录}/scripts/novel_index.py verify \
-  项目开发/source-analysis/_index.json 输入/{原文文件}
-```
+原文无章节标题时索引返回空表，与创作者确认切分方式后把边界（含 `sequence` / `line_start` / `line_end`）写入 `_work/_index.next.json`，通过 `verify` 后发布。改了原文必须重建索引（`verify` 查章号与行号覆盖，不查同行数原地改写）。
 
 ### S1 改编价值快评
 
-回答**这本书值不值得花全量拆解的成本**。判据是全书的改编密度——`screen_ready` 单元占多少、
-`prose_only` 占多少、制作负担压在哪几段——所以快评横跨整本书，用脚本抽样：
-
-```bash
-python3 {技能目录}/scripts/novel_index.py sample \
-  项目开发/source-analysis/_index.json --count 12
-```
-
-抽样确定、可复现、首尾必取，跑第二次引用的是同一批章。按
-[改编价值快评](references/adaptation-triage.md) 写 `triage.md`，覆盖六件事：
-故事框架、三类判定比例、开篇替换点、制作负担量级、最大的三处改编风险、分集候选量级。
-第一行写覆盖率（脚本返回的 `coverage_ratio`），所有结论限于抽样范围。
-
-**这里停靠问创作者**：给出快评与全量拆解的预计耗时（按章数粗估），问是否继续。
-创作者一开始就明确说「一次跑完」时仍写 `triage.md`，但不停下等待——它是 S5 要回填
-对照的第一版假设。
-
-停靠时把 `_progress.md` 的状态写成 `paused_after_triage`，断点写「下一步：S2 逐章提取」。
-
-S1–S5 的 Agent 创作产物同样先写到 `source-analysis/_work/`，完成本阶段机械检查后再发布到
-上表中的正式路径。项目工具可用时用 `project_tool.py publish` 和稳定 artifact-id；独立运行时
-原子替换正式文件。不要用半成品覆盖 `_index.json`、`_progress.md`、`chapters/*.md` 或聚合产物。
-`_work/` 是候选工作区，不是权威分析层，也不进入交付包。
-
-**并发子代理写 `_work/`，主线程发布到正式路径**。子代理只落
-`_work/chapters/ch-<N>-extract.md`，主线程机械自检后发布到 `chapters/`，再检查正式目录的覆盖率。
-
-`_progress.md` 每个阶段都会重写，而发布要求一个路径只有一个 owner，所以它用一个固定
-artifact-id：`source-analysis:progress`，owner 是 `short-drama-novel-analyze`，
-S0–S5 每次停靠都用同一个 id 重新发布。
+按 [改编价值快评](references/adaptation-triage.md) 用 `novel_index.py sample --count 12` 抽样评估改编密度并写出 `triage.md`（首行写 `coverage_ratio`，结论限于抽样范围）。写完后给出快评与全量拆解预计耗时，**停靠问创作者是否继续**（`_progress.md` 状态写 `paused_after_triage`，断点写「下一步：S2 逐章提取」）；创作者已声明「一次跑完」时仍写 `triage.md` 供 S5 回填对照，但不停靠。
 
 ### S2 逐章功能提取
 
-按 [章节提取](references/chapter-extraction.md) 处理每一章。能并发子代理就分批并发
-（每批 5–8 章，等一批写完再发下一批），不支持就串行——两条路径的写法要求和自检是同一份，
-只是速度不同。
-
-每章提取完落到 `chapters/ch-<N>-extract.md`，`<N>` 是索引里的 `sequence`，不是原文章号
-（多卷书的原文章号会重复，sequence 不会）。全部写入磁盘后跑覆盖率：
+按 [章节提取](references/chapter-extraction.md) 提取每章到 `chapters/ch-<N>-extract.md`（`<N>` 为索引 `sequence`）。能并发子代理则每批 5–8 章并发，否则串行。全部落盘后检查覆盖率：
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py coverage \
   项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters
 ```
 
-先检查 `unmatched_files`：命名错误的提取文件不计入覆盖，对应章仍会列入 `missing`；先更正文件名，再补跑真正缺失的章。
-**覆盖率不足时不进入 S3**。
-
-单章连续失败两次，先记录到 `_progress.md`，继续提取其他章。S2 结束后补齐失败章；仍有缺章时停在 S2，报告缺失范围，不进入全量聚合。
+先修正 `unmatched_files` 中的命名错误，再补跑 `missing` 章。单章连续失败两次先记入 `_progress.md` 继续提取其余章，S2 结束前统一补齐；**仍有缺章时停在 S2 报告缺失范围，不进入 S3**。
 
 ### S3 剧情单元与节奏
 
-从逐章提取聚合；事实或指代不清时按定位定点回查原文，不重新通读全书。按 [聚合与实体](references/aggregation-and-entities.md) 先识别故事框架
-（框架决定按什么切单元），再产出：
-
-- `story-units.md`：把情节点归成有始有终的单元，每个单元记录进入状态、冲突、代价与出去状态；
-- `rhythm-and-emotion.md`：关键信息如何逐章推进、情绪触动点的铺垫→释放→余波、
-  跨章伏笔与兑现，以及按观众收益排名的爽点表。
-
-聚合完成后跑同一文件里的三条阈值自检（归属置信、覆盖率、重叠率）与散落情节兜底。
-阈值是边界复核信号；重叠率偏高时，先区分多线交叉与边界重叠，再判断是否合并。
+从逐章提取聚合（事实或指代不清时按定位回查原文，不通读全书）。按 [聚合与实体](references/aggregation-and-entities.md) 先识别故事框架，再产出 `story-units.md` 与 `rhythm-and-emotion.md`（含按观众收益排名的爽点表），最后执行三条阈值自检与散落情节兜底。
 
 ### S4 人物与设定
 
-按 [聚合与实体](references/aggregation-and-entities.md) 归并人物（跨章去重、别名归一、
-分级），并从提及数据归纳世界规则、力量体系与势力。专名、绰号及“姓氏＋头衔”只有在同指证据充分时才能合并；
-泛指的外貌称谓或职务不触发合并。
-
-**人物归并是候选，不是资产**。 这里的人物条目带 `unresolved` 与来源引用，
-交给 `$short-drama-develop` 定改编决定、`$short-drama-write` 写进剧本之后，
-才由 `$short-drama-assets` 从已接受剧本建立真正的资产身份。绕过这条链直接建资产，
-等于让原著的人物表冒充剧本的出现证据。
+按 [聚合与实体](references/aggregation-and-entities.md) 归并人物（跨章去重、别名归一、分级）并归纳世界规则、力量体系与势力。人物归并条目带 `unresolved` 与来源引用，仅为供 `$short-drama-develop` 决策的**候选**；正式资产身份须等 `$short-drama-write` 写进剧本后由 `$short-drama-assets` 建立。
 
 ### S5 改编价值与分集候选
 
-这是本技能与通用拆书的分水岭。按 [改编价值](references/adaptation-value.md) 产出：
-
-- `adaptation-value.md`：哪些单元在竖屏短剧里能直接成立、哪些要换载体、哪些是纯文字快感
-  （内心戏、叙述性诡计、长铺垫）在画面上无法兑现；制作负担落在哪里。
-- `episode-candidates.jsonl`：按**爽点分布、当集戏剧结果与精确交接**切出的候选集，不按章号
-  或字数平均切。每条带来源 span、承担的功能、承接的爽点以及未决项。
-
-同时**回填快评**：把 S1 中被全量结果推翻的判断及原因写进 `adaptation-value.md` 开头。
-
-样例见 [分集候选样例](assets/episode-candidate.example.jsonl)。
+按 [改编价值](references/adaptation-value.md) 产出 `adaptation-value.md`（开头回填对照 S1 快评中印证或推翻的判断）与 `episode-candidates.jsonl`（按爽点分布、当集戏剧结果与精确交接切分，样例见 [分集候选样例](assets/episode-candidate.example.jsonl)）。
 
 ### 交接
 
-S5 完成后向创作者说明：拆了多少章、跳过哪些、分了多少个候选集、
-最大的三处改编风险、以及快评里被推翻的判断。然后交给 `$short-drama-develop`——
-由它把候选变成 `项目开发/adaptation-map.jsonl` 与改编契约。
-
-**本技能不写 `adaptation-map.jsonl`**，那是 develop 的产物。需要质量结论时交给独立的
-`$short-drama-review`（范围 `source_analysis`）。
-
-## 规则分级
-
-- **`structural_invariant`**：索引与 span 的可证明性、引用完整性、覆盖率。可由脚本阻断。
-- **`reviewed_invariant`**：功能提取是否忠于原文、归并是否保住戏剧作用等语义义务。
-- **`craft_default`**：通常有帮助的做法；创作者说明理由后可覆盖。
-- **`taste_option`**：从哪里开篇、保留哪条线等选择；不得单独阻断。
-
-不要用固定的章数配方、情节点数量或篇幅比例替代因果判断。
+S5 完成后向创作者汇报拆解章数、跳过范围、候选集数、三处最大改编风险及快评对照结果，再交给 `$short-drama-develop` 生成 `项目开发/adaptation-map.jsonl` 与改编契约。需要独立审查时调用 `$short-drama-review`（范围 `source_analysis`）。
 
 ## 产物与边界
 
-本技能只拥有 `项目开发/source-analysis/` 下的文件：`_index.json`、`_progress.md`、
-`chapters/*.md`、`triage.md`、`story-units.md`、`rhythm-and-emotion.md`、
-`characters.md`、`world.md`、`adaptation-value.md`、`episode-candidates.jsonl`。
-
-它不改写 `输入/`，不写 `项目开发/` 下其他技能的产物，不建资产、不写场景与台词、
-不写提示词、不生成媒体，也不签发终审结论。
-
-**不把原文成段复制进分析**。记录 locator、span 与去引用的功能摘要；需要证据时引用
-最短的必要片段。交付包不得把原始材料带出边界。
-
-## 语言
-
-分析产物是创作者读的：项目内跟随 `short-drama.json#/language`，独立运行时跟随用户使用的
-语言，不在本技能内硬编码语言。本技能不产生提示词正文，与
-`#/format/prompt_language` 无关。
+本技能只拥有 `项目开发/source-analysis/` 下的阶段产物（见上表），不改写 `输入/`、不写其他技能产物、不签发终审结论；分析产物语言跟随 `short-drama.json#/language`（独立运行时跟随用户语言），详见 [阶段契约](references/stage-contract.md)。
 
 ## 按需加载
 

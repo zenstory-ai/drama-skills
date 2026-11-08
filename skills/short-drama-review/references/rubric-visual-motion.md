@@ -1,199 +1,35 @@
 # Storyboard, Keyframe, And Motion Rubric
 
-## 目录
+## Coverage, shot purpose, and geography (`SHT-01`–`SHT-31`)
 
-- [Coverage](#coverage-and-meaning)
-- [Shot](#shot-purpose-and-geography)
-- [Keyframe](#frozen-keyframe)
-- [Motion](#motion)
-- [Continuity](#cross-shot-continuity)
-- [Rhythm profile](#rhythm-profile-shots)
-- [Findings](#common-findings)
-- [Production risks and authorized observations](#production-risk-and-authorized-observation-checklist-rev-08)
-
-## Coverage and meaning
-
-- Can every production-relevant action, line, sound, or on-screen text in `剧本.md` be traced to a shot or an explicit omission reason?
-- Are omissions/repeats explained?
-- Does each shot preserve the source action, dialogue, information, and reaction?
-- Has downstream work invented or deleted a story fact?
-
-## Shot purpose and geography
-
-- For a high-value scene with an accepted coverage audition: did the approaches
-  genuinely differ — in knowledge timing, audience alignment, performance space,
-  strongest image, landing, losses, or production fit?
-- Do the final shots in `分镜.md` implement the approach the creator selected?
-- When a scene visual plan was used: do its start/end audience positions, spatial
-  pressure, camera rhythm, reaction landing, and sound movement carry **one** dramatic turn?
-- Does that plan stay clear of owning shot boundaries? (Ordinary scenes need no plan
-  merely to satisfy a form.)
-- What changes for audience or character by the shot end?
-- Why is this a new shot?
-- Do framing and camera behavior serve attention, alignment, pressure, reveal, or
-  rhythm rather than decorate the prose?
-- Does each shot's `运镜` line state a behavior and a reason chosen from the shot's
-  purpose (`SHT-04`)? A stated lock-off with its reason passes. An episode locked on
-  nearly every shot while its peak gets no movement is a finding; so is a missing line,
-  which leaves the choice to the video-prompt stage; a bare 「运镜：固定」 with no reason
-  is also a finding.
-- Are Location/View, axis, screen direction, eyelines, entrances, positions,
-  hands, and props coherent?
-- Are exact asset variants bound?
-- Does the shot expose every fact it must carry while protecting
-  facts the source withholds until a later action or cut?
-- Do crop, occlusion, focus, back view, and offscreen space serve that information
-  permission rather than accidentally reveal or conceal it?
+- **Coverage & meaning**: every production-relevant action, line, sound, and `[画面文字]` in `剧本.md` traces to a shot or an explicit omission reason without inventing or deleting story facts.
+- **Audition & scene plan**: when a coverage audition was used, approaches must differ in knowledge timing, alignment, performance space, or landing, and `分镜.md` must implement the selected option. When a scene visual plan was used, its start/end audience positions, spatial pressure, camera rhythm, reaction landing, and sound movement carry one dramatic turn without taking over individual shot boundaries.
+- **Shot purpose, `运镜` & geography (`SHT-04`)**:
+  - Each shot changes audience/character state and protects information permissions (crop, occlusion, back view, and offscreen space neither leak withheld facts early nor hide required evidence/reaction).
+  - Every shot's `运镜` line states a behavior and a reason tied to the shot's purpose (`SHT-04`; fail on missing `运镜`, bare `运镜：固定` with no reason, or an episode locked on nearly every shot including its peak).
+  - Axis is recorded as two named anchors, a working side, and per-character screen positions; shot-reverse-shot directions are complementary; bare left/right means screen left/right (subject-relative sides must name the subject).
+- **Cross-shot continuity**: trace Look, injury, dirt/wetness, emotion/knowledge, position/facing/gaze, hands, held prop, prop owner/state, location/time/weather/light, axis, and screen direction across cuts (distinguishing contradiction from declared montage/ellipsis/dream).
 
 ## Rhythm profile: shots
 
-Under the `REV-12` conditions in the [story rubric](rubric-story-script.md#rhythm-profile-rev-12),
-measure two storyboard fields: the average shot length per scene (scene duration divided
-by its shot count) against `target_avg_shot_seconds`, and the share of close-range shots
-across the episode against `close_shot_share_min`. Close-range shots include 近景、特写、大特写 and 细节镜头;
-divide their count by the episode's total shot count. The average is a
-scene-level target; one long or short shot is not a finding. Also report durations folded
-from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
+Under the `REV-12` conditions in the [story rubric](rubric-story-script.md#rhythm-profile-rev-12), measure two storyboard fields: average shot length per scene (scene duration ÷ shot count) against `target_avg_shot_seconds`, and the episode share of close-range shots (近景、特写、大特写、细节镜头 ÷ total shots) against `close_shot_share_min`. Also flag shot durations derived from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
 
-## Frozen keyframe
+## Frozen keyframe (`SHT-17`, `SHT-22`, `SHT-24`, `SHT-25`)
 
-- Can all described facts exist in one still instant?
-- Does it project the start state written for this shot?
-- Are focal hierarchy, composition, camera/lens, geography, pose/gaze/hands/prop,
-  expression, and light legible?
-- Does it avoid ordered actions, performance arcs, camera moves, or transforming
-  environments?
-- Read the finished keyframe text, not the shot's intent: is every visible character,
-  place, and prop whose identity, Look, or geography must stay recognizable listed in
-  this shot's `视觉依据` (`SHT-22`)? A second body that entered the composition while the
-  frame was being written is the usual miss.
-- Does each declared 控制 scope stay inside what this frame can carry, and is nothing
-  bound merely because it was bound in the previous shot (`SHT-24`)?
-- When real reference images are bound, does every `REF-...` slot declare a 用途, so the
-  shot says which start frame and which identity/geography/prop pictures it sends
-  (`SHT-25`, `VID-24`)?
-- Is anything the frames need kept consistent across shots — a carried prop, a garment —
-  absent from `视觉设定.md` entirely, so it can appear in no shot's basis at all? The
-  mechanical check cannot see this: an entry that does not exist cannot be reported missing.
+- **Single still instant**: projects the shot's start state (or end state for an optional closing keyframe per `SHT-17`) with legible focal hierarchy, composition, camera/lens, geography, pose/gaze/hands/prop, expression, and light; fail if it contains ordered actions (“first/then/finally”), performance arcs, camera moves, or transforming environments.
+- **Visual basis & reference scope**:
+  - Every visible character, place, and prop in the finished keyframe text whose identity, Look, or geography must stay recognizable is listed in `视觉依据` (`SHT-22`), and any cross-shot recurring prop/garment missing from `视觉设定.md` altogether is flagged.
+  - Each `控制` scope stays within what this frame carries and is not copied over from the previous shot out of habit (`SHT-24`).
+  - Every real reference image (`REF-...`) declares a valid `用途` (`SHT-25`, `VID-24`).
 
-## Motion
+## Motion and production-risk checks (`VID-01`–`VID-28`, `REV-08`)
 
-- Does it start from the accepted frame/boundary?
-- Are subject actions ordered and feasible within the accepted duration while preserving the intended performance?
-- Does performance change express the story move rather than stack synonyms?
-- In multi-character motion: do the actors who actually change have distinct,
-  readable triggers, choices, leaks, or landings — as this shot needs, not one
-  identical arc per actor?
-- Is attention handed off only where it truly transfers, rather than for
-  synchronized reaction?
-- Does any text-readiness claim cite the current creator-visible inputs and a real blocking gap?
-- Does it avoid any claim about generated media quality or create a second readiness truth?
-- Is camera behavior coherent and motivated?
-- Are environment motion, dialogue, SFX, and audio included only when relevant?
-- Does the described end match the storyboard's written end state without rewriting the next shot?
-- When a reference frame carries appearance/composition, does motion prose retain only the visual facts this shot needs?
-- Does every claim about text-bearing reference pixels cite a creator/reference-owner
-  description or an authorized input-reference observation? Without that evidence,
-  is admission still `unverified` instead of pretending a negative prompt solved it?
-- For any selective transform, are the accepted trigger, exact target scope,
-  end geometry/state, and preserve set explicit? Do non-target people, props,
-  text surfaces, and spatial anchors keep their required position, count, and state?
-- Does each media reference state its exact purpose, what may be copied, and what
-  must not be copied, rather than treating all visible pixels as authority?
-
-For a copyable body (`VID-22`, `VID-23`), check that actions and sound match the
-source and that the timeline accounts for the intended ambience or silence.
-A summary must not introduce a layer absent from the shot. H3's
-`non_diegetic_music: N/A` is a valid empty music layer.
-
-Report a concrete contradiction, omission or ambiguity. A negative clause is
-not a defect by itself; do not impose a clause count or assume that negation
-causes the model to generate the excluded content. Keep model-specific
-observations scoped to their tested model and execution path.
-
-For a pickup or alternate, ask these separately:
-
-- Does the pickup/alternate identify its master? Keep candidate differences in ordinary notes and one formal `MOTION-...` with one copyable body per `SHOT-...`; a separate pickup first needs its own storyboard shot.
-- Is every source obligation assigned to the master, this version, another named version or a requested storyboard revision?
-- Are the changed items and the items that must remain unchanged explicit?
-- Is replacement only requested here? The review Markdown decides whether to adopt the candidate; the owning skill then updates the formal body.
-
-For music, ask these separately (`VID-14`):
-
-- Is intent written as a relative entry/exit/duck against neighbouring shots,
-  rather than an independent cue per shot?
-- Do adjacent annotations actually join?
-- Does the text ask for a per-shot music bed against an accepted timeline-layer plan?
-- Whether a rendered clip carries a baked-in track is **not decidable here**. Cite it
-  only from an authorized text observation record; otherwise keep it `unverified`
-  and never infer a mix result from prose.
-
-Explicit timing that does not sum exactly to its shot's accepted duration—over or
-under—is a structural error. Untimed overload is a
-reviewed feasibility question: cite which action/performance/story beat would be
-lost, not a universal verbs-per-second formula.
-
-Container arithmetic is a separate structural check (`VID-13`). Count the accepted
-shots a delivery container carries, then confirm its duration equals the sum of
-their accepted durations. For a multi-shot container, confirm the members are
-contiguous in source order, share one geography/asset binding chain, do not cross a
-scene boundary, and each remains independently reviewable. A space or subject jump
-belongs on a member boundary; the same jump inside a member's timed segment is a
-hidden cut. Report an arithmetic mismatch and a hidden cut as two findings, not one.
-
-- Is the axis recorded as two named anchors, a stated working side, and a per-character
-  screen position — rather than a placeholder?
-- In a shot-reverse-shot pair, are the two screen directions complementary?
-- Bare left/right always means **screen** left/right. Where a subject's own side is
-  meant, does the text name the subject?
-
-## Cross-shot continuity
-
-Trace Look, injury, dirt/wetness, emotion/knowledge, position/facing/gaze, hands,
-held prop, prop owner/state, location/time/weather/light, axis, and screen
-direction. Distinguish unexplained contradiction from declared montage,
-ellipsis, dream, or deliberate disorientation.
-
-## Common findings
-
-- beautiful shot with no dramatic purpose;
-- dialogue covered but consequential reaction absent;
-- anonymous asset or wrong variant;
-- cross-location/time action hidden in one ordinary shot;
-- keyframe contains “first/then/finally”;
-- locked camera also pans or pushes in the same interval;
-- motion invents a grab, injury, transfer, relationship change, or line;
-- a selective transform removes, copies, or reshapes a non-target person, prop,
-  text surface, or spatial anchor because its preserve set was unspecified;
-- end pose/prop state disagrees with next start;
-- every emotional beat uses the same close-up/push template;
-- provider batching is mistaken for editorial shot structure.
-- a narrowed pickup silently replaces the master and drops dialogue, reaction,
-  reveal, end-state, or creator-directive obligations.
-
-## Production-risk and authorized-observation checklist (REV-08)
-
-本套件不查看媒体。先把下列项目当作文字风险，引用准确的 prompt/spec 说明为什么会造成
-执行歧义或违背已接受约束；只有创作者提供了授权的文字观察记录时，才能称为已观察缺陷，
-并把该记录作为外部证据引用。没有观察记录时保持结果未知，不从任务成功、结果地址或提示词
-存在推断成片质量。
-
-需要项目校准时，先区分输入参考与生成结果。后一种观察须绑定准确的提示词/镜头标题、参考顺序、
-制作形态/配置、观察方法和限制；先按 `REV-11` 选择处置，需要改动时再写最小修改项与保持项。
-结论只在该项目和版本条件下有效。
-
-短剧生产中需要防范的文字风险或获授权观察包括：
-
-- on-screen text or subtitle residue despite a declared no-text constraint;
-- a text-bearing reference admitted under no-text or exact-readable policy
-  without an allowed surface or a crop, clean, mask, or replace decision;
-- background music implied where the audio boundary allows sound effects only;
-- wardrobe or look drift against the bound reference (re-describing clothes the
-  reference already fixes invites drift — flag redundant appearance prose);
-- 180° axis violation or eyeline mismatch across consecutive shots without a
-  declared transition;
-- lip-sync mismatch: dialogue bound to the wrong character, inner monologue
-  written as mouthed speech, or extra lines the source dialogue never contained;
-- explicit segment timings that do not sum exactly to the shot duration, in either direction;
-- emotion-intensity mismatch between stated level and described performance
-  (a declared 9/10 rage performed as mild irritation, or the reverse).
+- **Action, performance & end boundary**: starts from the accepted frame/boundary; ordered actions fit within the accepted duration (explicit segment timings not summing to shot duration fail structurally; untimed overload fails when a beat/reaction is crowded out); multi-character shots give distinct triggers/choices/leaks/landings only to actors who change and record real `attention_handoffs[]`; end state matches the storyboard's written end state without inventing grabs, injuries, transfers, or lines.
+- **Sound, music & container rules (`VID-13`, `VID-14`, `VID-22`, `VID-23`)**:
+  - Copyable body actions and sound match the source and account for intended ambience or silence (`VID-22`, `VID-23`; H3 `non_diegetic_music: N/A` is valid).
+  - Music intent is written as relative entry/exit/duck against adjacent shots rather than an independent per-shot music bed (`VID-14`; never infer whether a rendered clip has baked-in music without an authorized observation record).
+  - Delivery container duration equals the sum of its accepted member shot durations (`VID-13`), members are contiguous in source order within one scene and binding chain, and any space/subject jump inside a member's timed segment is reported as a hidden cut separate from arithmetic mismatch.
+- **Text-risk and authorized-observation checklist (`REV-08`)**: flag as text risks (or as observed defects when backed by an authorized observation record; see [项目校准](project-calibration.md)):
+  - On-screen text/subtitle residue under `no-text`, or a text-bearing reference admitted without an allowed surface or crop/clean/mask/replace decision;
+  - Redundant prose re-describing clothes/appearance already fixed by a bound reference (inviting wardrobe drift);
+  - Contradictory camera flags in the same interval (e.g. locked camera + pan/push), 180° axis breaks, lip-sync/VO-mouthing mismatches, or emotion-intensity mismatch between stated level and described performance.

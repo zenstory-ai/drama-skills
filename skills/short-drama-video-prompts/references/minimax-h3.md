@@ -13,15 +13,21 @@
 }
 ```
 
-H3 的结构字段用英文；这不等于把中文对白翻成英文。每句中文对白保持原文并写成
-`<d>[Chinese] 逐字台词</d>`，由稳定说话人 ID 引出。不要在对白前增加外语、语气词或未写入剧本的开场句。
+H3 的结构字段与描述用英文；中文对白保留原文并写成 `<d>[Chinese] 逐字台词</d>`，由稳定说话人 ID `(S1)`、`(S2)` 引出，不在对白前加外语或语气词。
 
-点名 MiniMax H3 只选定模型与方言，不表示创作者选了文生视频。当镜头需要人物、场景、道具或起始构图一致性时，
-先按主 Skill 完成真实图片发现与缺口列表。有任何必要图片仍缺失时，不因 H3 同时支持 Base 模式就默默改用文生视频。
+## 模式选择（由槽位 `用途` 组合决定）
 
-## Base / 首帧 / 首尾帧
+| 本镜绑定的参考图（`REF-...` 与 `PLAN-...` 同权） | H3 模式 | 正文结构 |
+|---|---|---|
+| 无图（创作者已明确选择文生视频） | Base（文生） | 三段 |
+| 仅 1 张 `用途：起始帧` | `first_frame` | 三段 |
+| 1 张 `用途：起始帧` + 1 张 `用途：结束帧` | `first_last_frame` | 三段 |
+| 其他任何组合（起始帧与身份/地理/道具图并存，或仅有后者） | `reference`（full-reference） | 六段 |
 
-文生视频、首帧和首尾帧使用三段结构：
+- 本套件不使用只给尾帧推断开场的 L2VA 模式（`结束帧` 只在同时绑定 `起始帧` 时出现）。
+- **首/尾帧与 full-reference 互斥**：「起始帧 + 角色板 + 场景板」或连续段「上一段实际视频 + 实际尾帧」统一走 full-reference，起始帧或实际尾帧以 `reference_image`（`<Picture 1>`）送入，上一段实际视频以 `reference_video`（`<Video 1>`）送入。「生成方式」字段仍只写 `文生视频` 或 `图生视频`。
+
+## Base / 首帧 / 首尾帧（三段结构）
 
 ```text
 integrated_multimodal_description: [Shot 1] ...
@@ -29,70 +35,15 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-- `integrated_multimodal_description` 按 `[Shot 1]`、`[Shot 2]` 写画面、动作、说话人、逐字对白和同步声音；
-  单镜也保留 `[Shot 1]`。第一镜不加切镜时间戳，后续切镜用 `[Shot 2] At 00:03.500, ...`，时间递增且落在本次生成时长内。
-  小样本观察到切点接近要求，但仍有偏差；交付要求精确时应检查实际切点并在剪辑中调整。
-- `overall_soundscape` 汇总环境声、物理音效和非语言人声，不重复对白；对白事件留在上面的主时间线。
-  无非画内配乐时写 `non_diegetic_music: N/A`，不要留空让模型补乐——这一条有实测支撑，见
-  [无对白镜](#无对白镜)。
-- 首帧模式从输入帧的可见姿态开始；首尾帧模式只能到达上游已接受终点，不发明过渡后的新状态。
+- `integrated_multimodal_description`：按 `[Shot 1]`、`[Shot 2]` 写画面、动作、说话人、逐字对白与同步声音（单镜也保留 `[Shot 1]`；首镜不加时间戳，后续切镜写 `[Shot 2] At 00:03.500, ...`）。
+- `overall_soundscape`：汇总环境声、物理音效与非语言人声，不重复对白；无对白镜优先描述所需声轨（嘴部状态按实际表演写，必要时可补“无对白”）。
+- `non_diegetic_music`：无非画内配乐时显式写 `non_diegetic_music: N/A`（省略该层易导致模型自行补乐）。
+- **文生模式守住非实拍画风（`craft_default`）**：H3 文生偏向真人实拍。非实拍文生须在首句（如 `A 2D hand-drawn anime animation ... not live-action, not photographed, no real actors`）与每个 `[Shot N]` 后重复声明媒介并排除 `realistic`/`photorealistic`；三维 CG 文生仍易滑向真人，建议每个容器开场挂一张已接受画风的三维起始帧走首帧模式。
+- **转身与出画方向（`craft_default`）**：首帧模式下 H3 常忽略提示词中的转身方向。需靠转身或出画方向接戏时，优先在起始帧先摆出朝向或多抽候选挑选，挑不出时交 `$short-drama-edit` 在转身前切走。
 
-### 文生模式守住画风
+## Full-reference（六段结构，一次整体提交）
 
-H3 文生模式偏向真人实拍。2026-11-03 一组 720P 对照里，正文写「国漫二次元、线稿、平涂」的 9:16 容器 8 次中
-5 次出成真人，写「半写实三维国漫、风格化写实 CG 脸」的 16:9 容器 6 次全部出成真人。同一段内容改成正文第一句先
-写媒介（`A 2D hand-drawn anime animation ... not live-action, not photographed, no real actors`），并在每个
-`[Shot N]` 后重复一次媒介、删去 `realistic` 一类词，二维容器 2 次都保持了动画。同样的写法换成三维 CG 媒介，4 次仍
-全部是真人；给同一个容器挂一张三维画风的起始帧走首帧模式，2 次三个切镜都保持了三维，切点照样准。
-
-**`craft_default`**：文生模式下非实拍形态的正文，第一句写媒介和「不是真人实拍」，每个 `[Shot N]` 后重复媒介，
-人物与材质描述里不写 `realistic`、`photorealistic`。形态是三维国漫这类风格化三维时，这样写仍不够：在提出文生视频
-之前告诉创作者，建议每个容器的开场挂一张已接受画风的起始帧（见[选哪一种模式](#选哪一种模式)）。生成后逐段看画风，不以
-提示词写了形态为准。
-
-### 转身与出画方向
-
-首帧模式下，H3 基本不听转身朝哪边。一次实测里，起始帧上的人正对镜头，提示词写“转向画面左侧的门”，6 条全部
-转向画面右侧；改成“转向她自己的右手边，也就是画面左侧的门”，3 条仍全部转向右侧。
-
-**`craft_default`**：相邻两镜要靠转身或出画方向接上时，不要只靠提示词保证方向。能在起始帧里先摆出朝向的，
-让起始帧带上；也可以多出几条候选挑方向对的。挑不出来时，交 `$short-drama-edit` 在转身开始之前切走。
-
-## 无对白镜
-
-在 `overall_soundscape` 写清全镜的环境声、音效或静默。
-**`craft_default`**：优先描述需要的声轨；必要时可以补「无对白」，不因用了否定句判错。
-人物嘴部状态按实际表演写，不能把无对白一律改成全程闭嘴。
-
-无非画内配乐时保留 `non_diegetic_music: N/A`。小样本中省略这一层出现过额外配乐，
-显式写空可作为 H3 的默认写法，不保证所有生成都遵守。
-时间线总结只列本镜实际存在的声音层，不照抄包含对白的模板。
-
-## 选哪一种模式
-
-模式由本镜「输入参考图」里各槽位的 `用途` 决定，不由“想不想用多模态”决定：
-
-| 本镜绑定的图 | H3 模式 | 正文结构 |
-|---|---|---|
-| 没有图，且创作者已明确选择文生视频 | Base（文生） | 三段 |
-| 只有一张 `用途：起始帧` | `first_frame` | 三段 |
-| 一张 `用途：起始帧` + 一张 `用途：结束帧` | `first_last_frame` | 三段 |
-| 其他任何组合（起始帧与人物/地点/道具图同时存在，或只有人物/地点/道具图） | `reference`（full-reference） | 六段 |
-
-`REF-...` 和 `PLAN-...` 在这张表里同权：模式由 `用途` 组合决定，与图片此刻在不在项目里无关。
-创作者在 H3 的网页界面里自己挂图时，正文照这张表写，`顺序` 就是他挂图的次序。
-
-H3 官方另有只给尾帧、由模型推断开场的 L2VA 模式。本套件不使用它：开场由分镜已接受的起点决定，
-把它交给模型推断会让 `SHOT-...` 的起点失去权威。因此 `结束帧` 只在同时绑定 `起始帧` 时出现。
-
-第四行是最常见、也最容易写错的一种。H3 的首/尾帧输入与参考输入**互斥**，所以「起始帧 + 角色板 +
-场景板」不能拆成 `first_frame` 加 `reference_image`：整组统一走 full-reference，起始帧也以
-`reference_image` 送入，正文按下面的标签编号引用。用哪一种模式在《视频提示词.md》里由 `用途` 组合读出，
-不写进「生成方式」字段——该字段仍只有「文生视频」和「图生视频」两个值。
-
-## Full-reference
-
-任何 `reference_image`、`reference_video` 或 `reference_audio` 进入任务时，改用六段结构，段名和正文说明均用英文：
+任何 `reference_image`、`reference_video` 或 `reference_audio` 进入任务时使用六段英文结构（同一 `MOTION-...` 的六段作为一条完整提示词一次提交）：
 
 ```text
 subject_definitions: ...
@@ -103,77 +54,18 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-**这六段是一条提示词，一次整体提交。** 它们是同一个 `MOTION-...` 的可复制正文，从第一段到最后一段
-一起放进那一次生成的提示词框，不是六次生成、也不是只提交第一段。三段结构的 Base / 首帧 / 首尾帧同理。
-默认一镜一次生成，下一镜换成它自己那条完整正文；几个镜头装进同一次生成的条件见
-[多镜容器](#多镜容器每切一张关键帧)。
+### 素材编号与保留职责
 
-### 素材标签怎么编号
+- `<Picture N>`、`<Video N>`、`<Audio N>` 按同类素材在本镜「输入参考图 / 参考音频」中的 `顺序` 从 1 递增编号，`<Subject N>` 指向可复用主体（`REF-...` 与 `PLAN-...` 正文写法完全一致）。
+- `subject_definitions` 绑定主体与标签（`<Subject 1> is the ... in <Picture 2>, with ...`）；`retention_analysis` 写明保留强度与出现镜次（视觉用 `fully_preserved` / `partially_preserved` / `attribute_transfer` / `weak_reference`，音频用 `fully_copy` / `partially_copy` / `reference` / `weak_reference`）。
+- **各用途边界**：`起始帧` 管开场构图与姿态；`身份` 管跨镜长相与体态；`地理` 管空间关系；`造型状态` 管服装与损污。无起始帧时地点图易拉宽景别，须在 `detailed_description` 写明具体取景边界（见[目标模型能力档案](target-model-profile.md#参考条件方式)）。
+- **近景/特写加挂面部识别板（`craft_default`）**：无起始帧且脸占画面大块的近景/特写/说话镜，若身份槽只有全身板，由 `$short-drama-image-prompts` 加出一张同 Look 面部识别板作为第二个 `用途：身份` 槽，在 `subject_definitions` 同时绑两张图（`<Subject 1> is the woman in <Picture 1> and <Picture 2>...`）并在 `retention_analysis` 分工五官发际与体态服装，生成后核对五官与痣位。
 
-正文用 `<Picture N>`、`<Video N>`、`<Audio N>` 指向本次 job 的实际素材，`<Subject N>` 指向可复用的可见内容。
-**编号按同类素材在本镜「输入参考图」里的 `顺序` 递增**：第 1 张图片是 `<Picture 1>`，第 2 张是 `<Picture 2>`，
-视频和音频各自从 1 开始。生产端 compiler 按同一顺序附加引用契约，所以文档里手写的编号必须和 `顺序` 一致；
-两套编号不一致时模型会收到互相矛盾的素材说明，而接口不会报错。
-
-因此写 full-reference 正文前，先把本镜的槽位按 `顺序` 列一遍，例如：
-
-```text
-REF-SHOT-START（顺序：1；用途：起始帧）  -> <Picture 1>
-REF-XIAOYU-SHEET（顺序：2；用途：身份）  -> <Picture 2>
-REF-STUDY-PLATE（顺序：3；用途：地理）    -> <Picture 3>
-```
-
-这份清单不依赖文件路径，只依赖 `顺序` 和 `用途`，所以图片由创作者自己挂载时它照样成立：
-把上面的 `REF-` 换成 `PLAN-`，定位符换成 `SHOT-...` 或 `IMG-...`，正文一个字都不用改。
-创作者按 `顺序` 在生成界面里挂图，`<Picture N>` 就对得上。
-
-`PLAN-...` 的图套件没有看过，所以 `subject_definitions` 和 `retention_analysis` 写的是
-**这张图按它的 `用途` 必须保留什么**，事实取自《视觉设定.md》和本镜冻结关键帧，而不是对像素的观察结论。
-两种槽位的句式相同：`用途` 决定保留什么，本来就不是看图看出来的。不要因为图没进项目就改写成
-「未验证」或省略保留强度——那会让执行端收不到本镜真正的保留要求。
-
-`subject_definitions` 把每个主体绑到它的标签上，句式为
-`<Subject 1> is the ... in <Picture 2>, with ...`；`retention_analysis` 逐条写保留强度和出现的镜次，
-视觉素材用 `fully_preserved`、`partially_preserved`、`attribute_transfer`、`weak_reference`，
-音频素材用 `fully_copy`、`partially_copy`、`reference`、`weak_reference`，例如
-`<Subject 1> (appears in [Shot 1]): fully_preserved - 短发轮廓、连帽外套配色与鞋型保留`。
-每个标签在六段里保持同一写法，不留下没有定义的标签。
-
-### 每张图带什么、不带什么
-
-`用途` 决定这一张在正文里被要求保留什么，具体到哪几项由该槽位自己写下的 `控制` 范围决定。
-
-需要保留构图时，在 `控制` 中点名构图、站位或机位高度。
-`不得控制` 记录不应照搬的内容，生成后仍需检查实际参考影响，不能把文字声明当成模型保证。
-本镜没有起始帧时，地点图会把景别拉宽，要在 `detailed_description` 里写具体取景，见
-[目标模型能力档案](target-model-profile.md#参考条件方式)。
-
-`起始帧` 只锚定开场构图与姿态，`身份` 锚定这个人跨镜不变的长相与体态（角色板同时固定本集造型时，
-`控制` 里会写明），
-`地理` 只锚定空间关系，`造型状态` 只锚定服装与损污。把这条差异写进 `retention_analysis`，
-不要让角色板顺带决定构图，也不要让场景板顺带决定人物长相。
-
-**`craft_default`**：近景、特写或说话镜里脸占画面大块，本镜又没有起始帧锚住脸、身份槽只有一张全身身份板时，
-给同一角色再挂一张同一 Look 的面部识别板，作为第二个 `用途：身份` 槽；这张板由 `$short-drama-image-prompts` 出。远景和全身镜不需要。
-`subject_definitions` 把两张都绑到同一个主体：`<Subject 1> is the woman in <Picture 1> and <Picture 2>, ... <Picture 1> shows her full body; <Picture 2> is a head-and-shoulders view of her face.`；
-`retention_analysis` 写明哪张管五官与发际、哪张管体态与服装，构图、姿势和表情仍由本镜决定。
-一组无起始帧的夜景近景说话镜小样本里（两个角色，只挂身份板与加挂面部板各 3 次），加挂面部板的片段盲评更接近原脸；
-但两种挂法都把脸拍得更老、更饱满，加挂面部板时女角色的痣还有 2 次画成并排两点，所以面部板不能替代生成后逐项比脸。
-
-角色始终使用同一个说话人 ID；中文对白只出现在 `<d>[Chinese] ...</d>` 内。禁字幕写进可见文字约束，
-与已批准的画内文字分开。
-Full-reference 的逐字对白与同步声音放在 `detailed_description` 的对应事件里，`overall_soundscape` 仍只汇总底声与音效。
-不要为了“多模态”把所有资产图都带上；每镜只绑定它真正可见且需要保持的起始帧、人物、地点或关键道具图。
-
-### 一个完整例子
-
-分镜里的槽位（三张图：本镜起始帧、角色板、场景板）：
+### 完整例子
 
 ```markdown
 - 输入参考图：REF-SHOT002-START（顺序：1）· 剧集/EP001/制作成果/images/SHOT-EP001-002.png《SHOT-EP001-002 起始帧》（用途：起始帧；控制：起始构图、双人站位；不得控制：尚未发生的动作、终态）；REF-XIAOYU-SHEET（顺序：2）· 输入/参考图/小雨定妆.png《小雨定妆照》（用途：身份；控制：脸型、发型剪影、身高比例；不得控制：构图、动作、表情）；REF-STUDY-PLATE（顺序：3）· 输入/参考图/家庭书房.png《家庭书房场景图》（用途：地理；控制：书桌方位、书架墙、灯位；不得控制：人物身份、动作、道具状态）
 ```
-
-对应的 full-reference 正文（`生成方式：图生视频`，模式为 `reference`）：
 
 ```text
 subject_definitions: <Subject 1> is the elementary-school boy in <Picture 2>, with a round short black haircut and a light grey-blue hooded jacket over a white inner shirt. <Subject 2> is the home study in <Picture 3>, with the desk against the window wall, a full bookshelf on the left and a warm desk lamp. <Picture 1> is the opening composition of this shot.
@@ -184,132 +76,30 @@ overall_soundscape: ...
 non_diegetic_music: N/A
 ```
 
-三张图各自只负责一件事：`<Picture 1>` 给构图，`<Picture 2>` 给身份，`<Picture 3>` 给地理。
-把这条差异写进 `retention_analysis`，生成后检查身份、构图与地理是否分别保留。
-
 ### 多镜容器：每切一张关键帧
 
-**`taste_option`**：几个相邻镜头可以装进同一次 full-reference 生成，每切挂它自己的已接受关键帧。
-**`craft_default`**：装容器的条件是三条都满足：
-
-- 每个成员镜头都有已接受的起始帧图片（`REF-...` 或 `PLAN-...`，`用途：起始帧`）；缺一张就逐镜生成；
-- 成员已接受时长之和在 4–15 秒内，且成员资格与容器算术按 [交付形态](delivery-profile.md) 的多镜容器记账；
-- 容器用一份参考清单：各切关键帧按切的顺序排在前面，共用的身份、地点图接在后面，
-  `<Picture N>` 按这份清单的 `顺序` 编号，不照抄逐镜时的编号。
-
-正文第一行、`subject_definitions` 之前，写一句对齐句把每张关键帧钉到它那一切的起点：
+**`taste_option`**：相邻镜头可装进同一次 full-reference 生成，每切挂各自的已接受关键帧。
+**`craft_default`**：须同时满足：① 每个成员镜头都有已接受起始帧图片（缺一张即逐镜生成）；② 成员时长之和在 4–15 秒内，按[交付形态](delivery-profile.md)记账；③ 共用一份参考清单（各切关键帧按切序排最前，共用身份/地点图排后面）。在 `subject_definitions` 前首行写对齐句：
 
 ```text
 <Picture 1> aligns with the 0.00-second mark as the opening frame of [Shot 1]; <Picture 2> aligns with the 3.00-second mark as the frame of [Shot 2]; <Picture 3> aligns with the 6.00-second mark as the frame of [Shot 3].
 ```
 
-`detailed_description` 里后续各切照常写 `[Shot 2] At 00:03.000, ...`，秒数与对齐句一致；
-`retention_analysis` 为每张关键帧写它负责的那一切。一组 9 秒三切的小样本（要求 3.0/6.0 秒切）：
-每切挂关键帧，切点落在 2.88–3.04 / 6.00–6.04 秒，各切与关键帧的构图相似度接近三次逐镜首帧生成，
-生成次数为三分之一；只挂第一切的关键帧时，切点偏到 2.92–3.88 / 5.88–6.21 秒，第 2、3 切的构图
-明显偏离关键帧，还出现过一次多出来的切。所以没有逐切关键帧时不装容器。这条只管 full-reference；文生、首帧
-模式本来就按[上文](#base--首帧--首尾帧)用 `[Shot N]` 在一次生成里切多镜，不需要逐切关键帧。
+`detailed_description` 后续各切写 `[Shot 2] At 00:03.000, ...` 与对齐句一致（只挂首切关键帧会导致后续切点偏离或出现多余切镜）。文生与首帧模式直接用 `[Shot N]` 切多镜，无需逐切关键帧。
 
-## 素材数量上限
+## 素材上限与时长
 
-一次生成最多 1 张首帧、1 张尾帧、9 张 `reference_image`、3 段 `reference_video`、3 段 `reference_audio`；
-视频与音频每段 2–15 秒，且各自合计不超过 15 秒。分辨率取 `768P` 或 `2K`（`MiniMax-H3-Max` 另为 `480P`/`768P`）。
-超过上限时在分镜阶段按重要性取舍，并写明放弃了哪些参考，不在正文里假装它们仍然生效。
+- **素材上限**：单次最多 1 张首帧、1 张尾帧、9 张 `reference_image`、3 段 `reference_video`、3 段 `reference_audio`（音视频每段 2–15 秒且各自合计 ≤15 秒）；分辨率 `768P` 或 `2K`。内置生产选择器尚不支持绑定续接视频，投产按[交付路线的接口边界](delivery-profile.md#从已生成结果续接)停靠，不把视频塞进图片 `REF-...`。
+- **时长（`structural_invariant`）**：`MiniMax-H3` 的 `duration` 必填，取 4–15 的任一整数秒（非仅 5/10/15 三档）。`MiniMax-H3-Max` 为 5–15 秒、480P/768P，仅支持文生和首/尾帧，不支持 full-reference。
 
-本镜还没有起始帧图片时有两条路：由 `$short-drama-produce` 从 `分镜.md` 的 `SHOT-...` 冻结关键帧生成，
-拿到真实文件后由分镜 owner 绑成 `用途：起始帧` 的 `REF-...`；或者由创作者把该镜的冻结关键帧正文复制到
-自己的工具里出图，本轮先记成 `PLAN-...（用途：起始帧）`、定位符写本镜 `SHOT-...`。
-两种写法本阶段都原样抄入，正文写法相同。
+## 对白、说话人绑定与参考音频
 
-`输入参考图` 只登记参考**图片**。连续段的实际视频不写进这个字段；下面说明支持双输入的执行端
-怎样绑定视频与尾帧。当前内置 creator-first 生产选择器尚不能绑定续接视频，投产时按
-[交付路线的接口边界](delivery-profile.md#从已生成结果续接)停靠，不把视频路径塞进图片 `REF-...`。
-
-## 连续段
-
-H3 的首/尾帧模式与 full-reference 模式互斥，不能在同一请求混用 `first_frame`/`last_frame` 和
-`reference_image`/`reference_video`/`reference_audio`。连续段需要上一段实际视频和实际尾帧时，统一走
-full-reference：
-
-- 上一段实际视频：`reference_video`，正文称 `<Video 1>`，控制动作、节奏和声音连续；
-- 该视频的实际尾帧：`reference_image`，正文称 `<Picture 1>`，只作为新段开场的可见姿态与构图锚点。
-
-实际尾帧在该模式下使用 `reference_image`，以满足首尾帧输入与 full-reference 输入互斥的接口契约。
-
-## 时长
-
-**`structural_invariant`（执行端契约）**：MiniMax-H3 的 `duration` 必填，为 4–15 的任一整数秒，
-并非只有 5/10/15 三档。网页界面或 job 的时长设置要与分镜时长和正文终点一致；写在提示词里的秒数
-不能替代生成设置。短动作在合法镜长内完成并保持已接受终点；超过 15 秒的镜头回分镜按闭合状态拆开。
-本阶段不偷改镜头秒数。
-
-`MiniMax-H3-Max` 是另一型号：5–15 秒、480P/768P，仅支持文生和首/尾帧，不支持 full-reference。
-不能把本页 H3 的参考音频路径或 4 秒下限套到 Max。
-
-### 对白容量与自然语速
-
-**`craft_default`**：按 [对白预算](performance-action-timing.md#对白预算) 先核对完整发声需要多久，
-再给主时间线安排开口、停顿与落点。分镜镜长够长但开口太晚，一样会赶词。
-H3 中文小样本可参考约 4.1 个可发声字/秒；用实际可发声区间估算，生成后核对台词完整性。
-样本出现过赶词与无报错截断，不能据此确定通用截断阈值。
-开口时刻常比预期晚，写了秒数也管不住：一次 13 镜的首帧实测里，正文写了“约 0.2 秒开口”，实际多在 1.3–2.4 秒
-才出声。镜长按台词预算排时把这段等待算进去；开头没人动、画面也不动的等待，`$short-drama-edit` 可以剪掉。
-单独喊一个两字人名时发音最不稳：同一次实测里，三条候选喊同一个名字，逐字转写出来是三个不同的近音名。
-这类镜头生成后逐字听，名字念错而画面可用时，交 `$short-drama-edit` 换掉这一声。
-口语语言、声线与语速描述放在 `<d>` 外；`<d>` 内只放语言标签和逐字台词，不放秒数或表演指令。
-稳定说话人用 `(S1)`、`(S2)`；full-reference 中说话人物同时写 `<Subject N> (Sx)`。
-
-无参考音频时，以自然语言交代说话方式、开口 cue、句间停顿和说完后的动作；文本估时区间只留在镜头说明中，
-不把每个词硬塞进小数秒槽。实际有音频对齐依据或已接受的精确时点时，才据此细化声音时序。
-H3 官方接口未提供独立 `speech_rate` 参数，也没有公布「中文每秒固定几字」的可靠公式；
-提示词中的语速与时机是生成指导，不能当作秒级执行保证。仅追加“自然语速”无法补上缺失的发声时间。
-
-同一次生成内，已接受的对白跨切镜时可以用 `<scenetrans>` 并声明声音连续；它不会增加总时长，也不能
-保证两个独立 job 的音频无缝衔接。`<cutoff>` 表示视频结束时有意截断发声，只用于剧本已要求的截断，
-不用于处理装不下的完整台词。
-
-### 说话人绑定
-
-**`craft_default`**：说话人第一次出现时，在 `<d>` 外交代他在画内还是画外、以及音色（年龄、性别、高低），
-台词跟在他的可见动作句后面（仍只出现一次），不集中列在正文末尾：
-`<Subject 1> (S1), the boy on-screen with a clear high voice, opens his mouth and calls out: <d>[Chinese] ...</d>`。
-台词期间画里还有别人的正脸时，把那个人明写成不说话：
-`The messenger does not speak; his lips remain completely closed.`——与官方画外音写法
-`while his lips remain completely closed` 是同一句式。
-
-一镜实测（远处小孩喊一句，近处骑手不说话，骑手在台词期间仍正对镜头）：现行写法 3 次中 2 次口型落在骑手、
-小孩闭嘴；加上述两条后 3 次全部落在小孩。19 条样本的发声基频都在儿童区间——模型没有选错声音，
-只是把口型放到画面里最显眼的正脸上。骑手已出画或背对时，两种写法 12 次全部正确。所以分镜能安排时，
-先让不说话的人出画或背身；不能时才靠这两条兜底，生成后仍核对口型落在谁脸上。
-
-`<d>` 外的音色描述只能在一镜之内区分说话人，锁不住跨镜的同一个声音。一次 13 镜实测里，每个角色的音色描述
-逐字写死，没有绑定参考音频：H3 的口型和自带声音同步得很好，但每条都重新挑一次声音，同一个人换一镜就换一种
-嗓子。**`craft_default`**：角色在两个以上镜头里开口，就按下一节给他绑定参考音频（取《视觉设定.md》里他的
-声音参考）；没有参考音频的说话镜头，生成前列为缺口，不靠文字描述凑。
-
-### 有配音或参考音频时
-
-**`craft_default`**：已有同句同表演音频时，先测实际发声与停顿，再确定镜长。没有现成音频仍可按文本估计
-写提示词，不为完成本阶段自动调用 TTS 或生成服务。
-
-- 只参照音色、情绪或说话方式：使用 `reference`；它会重新表演本镜台词，不能拿参考音频的文件长度
-  当作新台词时长，也不携带参考音频里无关的原话。
-- 已接受完整声音轨原样复用：`fully_copy` 表示整条最终音轨；只用对白层或片段并另加环境声时使用
-  `partially_copy`，写清源片段与目标时间的对应。复用用到的发声区间要完整容纳，不为适配镜长压缩语速。
-- 参考音频走 full-reference，配合至少一张参考图或一段参考视频；每段音频 2–15 秒，最多三段、合计
-  不超过 15 秒。图片改用 `reference_image`，不能与 `first_frame`/`last_frame` 混用。
-
-`fully_copy` 等是官方提示词的复用意图，不是逐样本一致的验收证明。生成后核听逐字内容、语速、停顿、
-尾音完整性与口型；项目需要精确锁定已有音轨时，以后期保留该音轨并核对画面同步作为最终依据。
-
-### Context-IR 的作用
-
-H3-Context-IR 把多模态输入增强成结构化提示词，本身不生成视频，且仍要求调用方先给出 4–15 秒的
-`duration`。它不能代替对白预算。若执行端使用该服务，检查增强后的逐字台词、声音时间线与原时长一致，
-不因使用官方增强就跳过容量检查。
+- **对白容量与延迟开口（`craft_default`）**：按[对白预算](performance-action-timing.md#对白预算)核对发声时长（H3 中文常速约 4.1 可发声字/秒）。首帧模式下模型常在约 1.3–2.4 秒才出声，排镜长须计入前置等待（静止等待可由 `$short-drama-edit` 剪除）；单喊两字人名发音易漂移，画面可用时交剪辑换音。口语语言、声线与语速写在 `<d>` 外，`<d>` 内只放 `[Chinese] 逐字台词`。同次生成内跨切发声可用 `<scenetrans>`；剧本要求尾字截断才用 `<cutoff>`。
+- **说话人绑定与同框闭嘴（`craft_default`）**：说话人首次出现时在 `<d>` 外交代画内/画外与音色，台词紧跟其可见动作句：`<Subject 1> (S1), the boy on-screen with a clear high voice, opens his mouth and calls out: <d>[Chinese] ...</d>`。同框有不说话的正脸时须显式写闭嘴：`The messenger does not speak; his lips remain completely closed.`（防止口型误落到近景不说话者；分镜能安排不说话者背身或出画时更稳）。
+- **跨镜音色与参考音频（`craft_default`）**：仅靠文字描述锁不住跨镜同一嗓音。角色在两镜以上开口时须绑定《视觉设定.md》中的参考音频（走 full-reference，配合至少一张图或视频）：只参照音色/情绪用 `reference`；原样复用整轨用 `fully_copy`，复用局部对白层加环境声用 `partially_copy`。
+- **Context-IR**：H3-Context-IR 只做多模态提示词增强、不生成视频且仍需调用方传入 4–15 秒 `duration`，启用后仍须核对增强后的逐字台词与时长容量。
 
 官方依据（2026-09-07 核对）：
-
 - [Base 提示词指南](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt)：对白位置、说话人、语速描述、切镜时间戳与跨镜发声。
 - [Full-reference 指南](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/ref-en.txt)：六段结构、音频引用与复用语义。
 - [视频生成 API](https://platform.minimax.io/docs/api-reference/video-generation-v2-create)：必填时长、型号差异和输入模式互斥。

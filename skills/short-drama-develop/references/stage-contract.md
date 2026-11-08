@@ -1,55 +1,19 @@
 # 开发阶段契约
 
-## 目录
-
-- [独立运行与项目集成](#独立运行与项目集成)
-- [所有权边界](#所有权边界)
-- [制作形态需要什么](#制作形态需要什么)
-- [本阶段规则](#本阶段规则)
-
-本契约包含预检、所有权、制作形态输入与规则表，独立使用本技能时即可据此执行。
-
-## 独立运行与项目集成
-
-本技能可以单独安装并运行；项目工具可用时，按以下方式集成。
-
-1. **读取直接输入**：只读取用户明确提供或当前任务实际需要的文件，不批量加载整个项目。
-2. **可选项目集成**：若存在 `short-drama.json` 且 core 项目工具可用，可以运行
-   `python3 <core>/scripts/project_tool.py status <project>`，使用返回的目录布局和语言设置；
-   core 不可用时，直接基于已提供输入产出本阶段文件。
-3. **可选发布生命周期**：项目工具可用时，用 `publish` 原子发布并用 `--input <path>`
-   声明直接输入；`accept`、`review` 与 `package` 继续承担确认、复核与交付。
-4. **保持职责分离**：创作者确认、内容修订和复核是不同动作；reviewer 提修改要求，负责人改文件。
-
 ## 所有权边界
 
-- **本阶段拥有**：系列承诺、冲突引擎、弧线、已规划的单集契约；已规划的知识/目标/关系/
-  交接状态；改编取舍与题材选择。
+- **本阶段拥有**：系列承诺、冲突引擎、弧线、已规划的单集契约；已规划的知识/目标/关系/交接状态；改编取舍与题材选择。
 - **本阶段继承**：创作者已接受的方向、约束、题材与受众承诺。
-- **本阶段不越权**：不写逐镜事实，不指定供应商字段，不代替剧本决定场景怎么演。剧本环节
-  只落实本契约，不复制它；契约变化时由本阶段发出修订，让下游刷新引用。
+- **本阶段不越权**：不写逐镜事实，不指定供应商字段，不代替剧本决定场景怎么演。剧本环节只落实本契约，不复制它；契约变化时由本阶段发出修订，让下游刷新引用。
 
 ## 制作形态需要什么
 
-创作者已接受的视觉方向与制作形态由项目层决定并传入。**本技能不加载形态卡，也不自行选择
-形态**，而是据此明确叙事职责、运动预算、未决试验和节奏起点。
+创作者已接受的视觉方向与制作形态由项目层传入（属 `craft_default`，不改写身份、地理、持物归属与可读文字政策）。本阶段不加载形态卡，而是就形态向创作简报写清四件事（造型、材质、光线和镜头字段由后续环节负责）：
 
-形态决定属于 `craft_default`：创作者说明理由即可覆盖。形态不能创造新的
-`structural_invariant`，也不能改写身份、地理、持物归属与可读文字政策。审查者不得单凭
-形态偏好阻断交付。
-
-形态差异要落实到**必须出现和可以省略的字段**，让后续环节能够执行和审查；只加风格
-前缀无法交代这些职责。
-
-本阶段要向形态决定问四件事，答案写进创作简报，不写进剧本：
-
-- **叙事职责**：这种形态要帮观众更快看懂什么、感到什么——不能只写“高级”“电影感”。
-- **运动预算**：哪些段落必须全动作，哪些可以靠保持姿态、局部循环、视差或剪辑完成。
-  这直接决定分集地图里哪些场面写得起、哪些要换写法。
-- **未决试验**：哪些形态能力还没验证过，需要先做小样。
-- **节奏起点**：这种形态的项目节奏档案从哪组默认值起步（`STY-26`）。
-
-本阶段记录叙事职责、形态假设、运动预算、未决试验与节奏档案候选；造型、材质、光线和镜头字段由后续环节负责。
+- **叙事职责**：这种形态要帮观众更快看懂什么、感到什么（不写“高级”“电影感”等空泛词）。
+- **运动预算**：哪些段落必须全动作，哪些可靠保持姿态、局部循环、视差或剪辑完成，据此约束分集地图场面规模。
+- **未决试验**：哪些形态能力尚未验证、需先做小样。
+- **节奏起点**：项目节奏档案从哪组默认值起步（`STY-26`）。
 
 ## 本阶段规则
 
@@ -87,7 +51,3 @@
 | STY-28 | craft_default | Compress an adaptation by keeping the source's hottest plot points first, then cutting subplots and merging duplicate-function characters; episode count follows the payoff distribution rather than one chapter per episode. |
 | STY-29 | reviewed_invariant | An adaptation mapping marked `move_earlier` or `cold_open` states the setup it depends on and where and through which carrier that setup appears first, or how the viewer is oriented in time, and what happens at the beat's original position. The reviewer checks the mapping against the episode record and screenplay; a moved beat that lands before the audience has the facts it needs is the defect. |
 | STY-30 | craft_default | Material the source does not contain—a new character, an invented scene, a new or replaced opponent—is registered as its own `add` mapping stating the function it serves, why existing source characters and events cannot carry that function, and which source facts were checked against it, and it is listed in the brief for the creator to confirm. Opposition an episode needs is drawn first from source characters and what they actually do; where the source has none, the rhythm-profile deviation is reported instead of hardening an ally or inventing an opponent. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
