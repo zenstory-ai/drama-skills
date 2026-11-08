@@ -1,12 +1,6 @@
 # Adapter Contract
 
-The bundled provider compilers accept video-reference roles, but the current creator-first Markdown
-source selector declares only image references and character voice references. It cannot bind the
-previous segment's video, so continuation segments cannot be submitted through this path. The creator
-chooses once how they run: `independent_starts` (each segment from its own accepted start frame) or
-`relay_external` (submitted in the creator's own tool). The choice is stored as `continuation_route`
-in the production profile `choices`; the workflow is under video in SKILL.md「输入选择」. Do not omit
-the source selector to work around this.
+The creator-first Markdown source selector declares only image and character-voice references, so video continuation segments cannot be submitted directly through this path; follow the `continuation_route` workflow in `SKILL.md` (`independent_starts` vs `relay_external`) without omitting the source selector.
 
 ## Job file
 
@@ -37,70 +31,18 @@ the source selector to work around this.
 }
 ```
 
-- `modality`: `image`, `video`, `tts`, or `music`. `tts` is one bounded spoken
-  utterance; `music` is a separately accepted timeline-level cue or song and
-  must not be smuggled into every shot's video job.
-- `source`: optional current project text/spec that owns the prompt.
-- `source_entry`: for a creator-first job, the exact uppercase H2 ID inside a
-  canonical `剧集|episodes/<EP>/` creator document, matched to that document:
-  `图片提示词.md` takes `IMG-*` (image), `视频提示词.md` takes `MOTION-*` (video),
-  and `分镜.md` takes `SHOT-*` (image, whose prompt is the shot's
-  `### 冻结关键帧提示词` body rather than `### 可复制提示词`). A new image/video job using one of these canonical sources must
-  provide the matching selector; an arbitrary Markdown file cannot impersonate a
-  creator source. `prepare` selects that section and requires `prompt` to exactly
-  equal its copyable prompt after Markdown quote markers are removed.
-- `reference_bindings`: zero to sixteen ordered semantic bindings. Every entry has
-  `slot_id`, contiguous `order`, project-relative `path`, Chinese `label`,
-  non-empty `role`, and non-empty `may_control` / `must_not_control` lists. When
-  `source_entry` is present, these fields must exactly match that entry's
-  `参考` (IMG) or `输入参考图` (SHOT/MOTION) declaration (except `role`, which is
-  production metadata). Allowed and prohibited scopes may not overlap.
-  The creator declaration also carries a `用途` — what this picture decides in
-  this shot, from the closed set in the storyboard skill. `role` is its
-  production-side translation and is chosen per provider, so the two are not
-  compared; a binding whose `role` contradicts the declared `用途` is a defect
-  the creator document, not this schema, is the authority on. This schema keeps
-  `role` free-form because an external adapter names its own inputs, but the
-  bundled video adapters read it as the provider's own role and accept only
-  their implemented vocabulary: `first_frame`, `last_frame`, `reference_image`,
-  `reference_video`, and `reference_audio` for both MiniMax and Seedance.
-  Supported combinations still depend on the configured model. A video job carrying references without bindings fails
-  closed there rather than having a role guessed for it.
-  A `MOTION-*` entry's `参考音频` line binds after the pictures: its slots follow
-  the `输入参考图` bindings in audio `顺序`, continuing the job's `order`, each with
-  role `reference_audio` and `character` copied exactly from its `角色` field. Only those
-  slots may use that role. Leaving a declared voice or its character out, or swapping
-  characters, fails `prepare`. Adapters must preserve this character binding; bundled
-  compilers derive the voice label from `character`, not the free-form asset `label`.
-  For a job rendering a SHOT's own start frame, `prepare` may omit the creator-supplied
-  `PLAN-...` slots because those external pictures are not this job's inputs;
-  the declared real `REF-...` files must still match, and their remaining order must be
-  contiguous from 1. If skipping PLAN leaves gaps, the storyboard owner first revises
-  the source declaration; renumbering the job alone fails source matching.
-  Binding paths must also be unique. Two creative slots may describe different uses of
-  one picture, but this interface cannot submit both with the same path. Have the owning
-  skill and creator decide whether to revise the reference duties or wait for interface
-  support; do not silently merge or omit slots in the job.
-  A job that needs to send the PLAN
-  pictures instead must first bind actual project files as REF slots.
-- `references`: zero to sixteen current project files actually sent to production.
-  It may be omitted when `reference_bindings` is present, in which case the paths
-  are derived in binding order. If both are present, they must match exactly.
-- `outputs`: one to sixteen unique paths rooted at top-level `production/` or
-  `剧集|episodes/<EP>/制作成果|production/`; extensions must match the modality.
-  A nested directory merely named `production` does not grant write access to
-  protected input or delivery trees.
-- `parameters`: provider-neutral public settings only. Image/video jobs carry the resolved
-  `prompt_language` so a bundled compiler writes its appended reference contract in the same
-  language as the copyable prompt; this execution-only setting is not forwarded as a provider
-  request field. Secret-like keys are rejected.
-- `overwrite`: must be explicitly true to replace an existing result.
+- `modality`: `image`, `video`, `tts` (one spoken utterance), or `music` (one timeline-level cue or song).
+- `source` & `source_entry`: for canonical `剧集|episodes/<EP>/` documents, `图片提示词.md` takes `IMG-*` (image), `视频提示词.md` takes `MOTION-*` (video), and `分镜.md` takes `SHOT-*` (image, matching `### 冻结关键帧提示词`). A `music` job uses the timeline music section of `视频提示词.md` without a `MOTION-*` selector. `prepare` requires `prompt` to equal the selected copyable prompt after stripping Markdown quote markers.
+- `reference_bindings`: 0–16 ordered bindings (`slot_id`, contiguous `order` from 1, unique project-relative `path`, Chinese `label`, non-empty `role`, and disjoint non-empty `may_control` / `must_not_control` lists).
+  - When `source_entry` is present, all fields except provider-specific `role` must match the entry's `参考` (`IMG-*`) or `输入参考图` (`SHOT-*` / `MOTION-*`). Bundled video adapters accept `first_frame`, `last_frame`, `reference_image`, `reference_video`, and `reference_audio` (a video job with references but no bindings fails closed).
+  - A `MOTION-*` entry's `参考音频` slots follow the image bindings in audio `顺序` with `role: "reference_audio"` and `character` copied verbatim from `角色`. Bundled compilers derive the voice label from `character`.
+  - When rendering a `SHOT-*` start frame from `分镜.md`, `prepare` may omit `PLAN-...` slots only if the remaining `REF-...` bindings stay contiguous from 1. Duplicate binding paths are rejected.
+- `references`: 0–16 project-relative file paths; derived in binding order when omitted, or verified to match `reference_bindings` when present.
+- `outputs`: 1–16 unique paths rooted at top-level `production/` or `剧集|episodes/<EP>/制作成果|production/` with modality-matching extensions.
+- `parameters`: provider-neutral settings only (secret-like keys rejected). Image/video jobs carry `prompt_language` so bundled compilers append reference contracts in the prompt's language without forwarding `prompt_language` to the provider.
+- `overwrite`: must be `true` to replace an existing file.
 
-`prepare` records internal digests of source/reference bytes and returns the exact confirmation phrase. Callers never
-calculate those digests. A changed input requires prepare and confirmation again.
-A `music` job uses the timeline music section of canonical `视频提示词.md` without pretending that section is a
-`MOTION-*` entry; other new image/video jobs using canonical creator paths must use
-their matching selector.
+`prepare` records internal byte digests of source and reference files and returns the one-time confirmation phrase; any input change invalidates prior confirmations.
 
 ## Adapter config
 
@@ -117,71 +59,24 @@ Keep this file outside the project:
 }
 ```
 
-`command` is an argv array, never a shell string. Timeout is 1–3600 seconds. Do not put credentials in this file;
-let the adapter read its environment or operating-system credential store.
-
-A profile may add `"reference_roles": [...]`, the roles its configured model accepts. When present,
-`run` refuses any binding whose role is not listed. A `reference_audio` binding always requires
-that declaration, so an unsupported model cannot silently drop a voice. A role rejection happens
-before confirmation is consumed or the adapter starts. List `reference_audio` only for a model
-known to accept reference audio.
-
-## Capability sources
-
-Use the provider's current API reference for roles, limits and supported combinations.
-A relay can expose a different subset, reject inputs itself or transform requests.
-Record the tested execution path and distinguish its observations from the native API contract.
+- `command`: argv array (never a shell string); `timeout_seconds`: `1–3600`. Credentials must come from the environment or OS credential store, never this file.
+- `reference_roles` (optional list): roles the configured model accepts. When present, `run` rejects unlisted roles before consuming confirmation; `reference_audio` always requires explicit listing in `reference_roles`.
 
 ## Adapter stdin
 
-The adapter receives one UTF-8 JSON document as raw stdin bytes. Read the
-binary stream (for example `json.load(sys.stdin.buffer)`) rather than relying
-on the machine locale. The document contains the confirmed job plus:
+The adapter reads one UTF-8 JSON document from raw stdin (`sys.stdin.buffer`) containing the confirmed job plus:
 
-- `run_id`: the original attempt's unique ID, also reused when collecting that attempt;
-- `project_root`: on a run call, the local absolute path to a private, run-scoped snapshot containing
-  the exact confirmed `source` and `references`. It is not the live creator
-  project and is deleted after the attempt.
-- `output_root`: empty private, run-scoped staging directory owned by the
-  production tool. Every adapter output source must be a direct regular-file
-  child of this directory. The whole directory is deleted after success or
-  failure.
-- `handle_path`: on a run call, the absolute path where the adapter records the provider's task id
-  **as soon as it has one, before it starts polling** — write
-  `{"provider_job_id": "<id>"}`, atomically. Unlike `output_root` this path
-  survives the attempt.
-- `collect_provider_job_id`: present only on a collect call. When it is set the
-  adapter must **not submit anything**; it polls and downloads that existing
-  task and returns its outputs as usual. A collect call has no input snapshot or
-  `project_root`; it must not reopen the source or reference files.
+- `run_id`: unique attempt ID (reused on `collect`).
+- `project_root`: on `run`, absolute path to a temporary run-scoped snapshot of confirmed `source` and `references` (deleted after the attempt).
+- `output_root`: temporary staging directory where every adapter output must be written as a direct regular-file child (deleted after the attempt).
+- `handle_path`: on `run`, persistent path where the adapter atomically writes `{"provider_job_id": "<id>"}` **before polling** so interrupted tasks can be recovered via `collect`.
+- `collect_provider_job_id`: present only on `collect`; the adapter must poll and download that existing task without submitting a new request or reading `project_root`.
 
-## Recovering a submitted task
-
-Record the provider task ID before polling so an interrupted task can be collected without resubmission.
-A local handle-write failure is non-fatal after submission. The tool copies the handle into the attempt
-record on success or failure; `audit` reports unfinished tasks as `orphaned_provider_job` with
-`action: collect_before_retry`.
-
-`production_tool.py collect` retrieves the existing task without new submission or confirmation.
-
-It may translate provider-neutral parameters into its chosen SDK/API. Optional
-provider adapters under `scripts/` document and implement known translations;
-the project job remains provider-neutral, and adapter selection, model access,
-polling and credentials stay in the external runtime configuration.
-
-The confirmed document includes `source_entry` and `reference_bindings`. Bundled
-image/video compilers append an ordered reference contract to the provider prompt so the Chinese
-label, role, allowed controls, and prohibited controls survive the handoff. Its prose follows
-`parameters.prompt_language`; model-native compilers also use that model's actual reference tokens,
-such as Seedance `@图片1` or H3 `<Picture 1>`, rather than adding a second generic numbering scheme.
-External adapters must preserve equivalent semantics
-or reject the job; silently reducing the input to an unlabelled file list is invalid.
+Bundled image/video compilers append an ordered reference contract (`label`, `role`, `may_control`, `must_not_control`) in `parameters.prompt_language` using the model's native tokens (`@图片1`, `<Picture 1>`), and encode confirmed local project files inline as base64 data URIs after verifying file signatures and size caps (30MB/image, 50MB/video, 15MB/audio, 64MB combined base64 references). External adapters must preserve equivalent semantics or reject the job.
 
 ## Adapter stdout
 
-On success, write one bounded UTF-8 JSON object to stdout. Portable adapters
-should ASCII-escape JSON strings so Windows locale settings cannot corrupt
-project paths:
+On success, write one UTF-8 JSON object (ASCII-escaped for portability) to stdout:
 
 ```json
 {
@@ -195,13 +90,9 @@ project paths:
 }
 ```
 
-Targets must appear in exactly the confirmed order. Sources must be direct
-regular-file children of `output_root`, not symlinks. The tool opens each source
-without following links, copies the pinned bytes into the project, records
-size/media type/checksum, and removes staging. It never stores adapter
-stdout/stderr or environment values.
+Targets must match the confirmed order; sources must be direct regular-file children of `output_root` (no symlinks).
 
-On a provider failure, an adapter may write only this whitelisted evidence to stdout:
+On failure, write only whitelisted error metadata to stdout (never prompts, response bodies, paths, or credentials):
 
 ```json
 {
@@ -216,32 +107,8 @@ On a provider failure, an adapter may write only this whitelisted evidence to st
 }
 ```
 
-Never include provider messages, response bodies, prompts, paths or credentials.
-The production run record keeps only validated fields; malformed failure output
-is replaced with a generic adapter exit code.
-
-A nonzero exit, timeout, malformed response or mismatched output marks the run failed. Because the adapter may have
-submitted paid work before failing locally, confirmation is consumed as soon as execution starts; retry only after a
-new creator confirmation. A job with an unresolved `running` attempt cannot be prepared, confirmed, or run again;
-wait for its terminal record or investigate the interrupted attempt first.
+Confirmation is consumed as soon as `run` starts. A nonzero exit, timeout, malformed response, or mismatched output marks the attempt failed; retry requires a new confirmation, and a job with an unresolved `running` attempt blocks new `prepare`/`confirm`/`run` calls.
 
 ## Operational reconciliation
 
-`production_tool.py audit <project>` reads only local production metadata and the
-current output bytes. It reports terminal failures, retryable failures, recovered
-jobs, unresolved running attempts, repeated content fingerprints, and missing or
-changed outputs. Terminal state, recovery, and repeated output claims are ordered
-by validated completion time rather than start time. For paths written more than
-once, the latest completed successful claim is authoritative for this operational
-check. Only attempts bound to the current stored job fingerprint can claim its
-current outputs; older fingerprints remain visible as `superseded` attempt history.
-A successful record must declare exactly the current job's output set and media
-types before any output claim is trusted. Jobs, confirmations, run records, and the
-production lock use pinned no-follow directories where directory FDs are available,
-and reparse/identity checks on the portable fallback. A linked parent chain fails
-closed instead of redirecting state outside the project.
-
-The audit deliberately returns `quality_verdict: not_assessed`. A provider success,
-retry recovery, file presence, size, or checksum proves execution/custody only; it
-does not prove identity, performance, continuity, lip-sync, mix, edit, or audience
-quality. Those claims require an authorized observation and a separate review.
+`production_tool.py audit <project>` inspects local metadata and output bytes to report terminal/retryable failures, `orphaned_provider_job` (`action: collect_before_retry`), `running_attempt`, `repeated_content`, `superseded` history, and missing or modified outputs. Claims are ordered by validated completion time and must match the current job fingerprint's exact output set and media types. `audit` always returns `quality_verdict: not_assessed`: execution custody never implies creative or media quality.

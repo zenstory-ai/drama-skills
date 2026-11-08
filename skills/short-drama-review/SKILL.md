@@ -6,15 +6,11 @@ license: MIT
 
 # 短剧审查
 
-优先由未参与当前版本创作的 reviewer 执行；条件不允许时可以自检并如实说明。本技能定位问题、影响和
-必须达到的修订结果，将修改交回负责技能；审查与修改分开执行。
+优先由未参与当前版本创作的独立 reviewer 执行；自检时必须如实标注。本技能只定位问题、影响与必须达到的修订结果，将修改交回负责技能，审查与修改严格分离。
 
 ## Quick Start
 
-直接读取用户点名的当前文件。单集审查需要保存文件时写 `审查/EP001-审查.md`；独立文件审查使用
-`审查/<主题>-审查.md`。用户只要口头结论时直接回复，不为“完整”创建审查文件。
-
-审查 Markdown 建议结构：
+直接读取用户点名的当前文件。需落盘时单集写 `审查/EP001-审查.md`，专项写 `审查/<主题>-审查.md`；仅需口头结论时直接回复。引用只使用文件名、标题 ID、行号或短引文，不建 sources 声明、哈希或 record ID：
 
 ```markdown
 # EP001 审查
@@ -31,85 +27,34 @@ license: MIT
 - 规则：SHT-01 · structural_invariant
 ```
 
-引用只使用文件名、标题 ID、行号或短引文；不建立 sources 声明、哈希、record ID 或第二套状态。
+## 选择审查范围与按需资料
 
-## 选择审查范围
-
-- `source_analysis`
-- `story_script`
-- `assets_continuity`
-- `image_prompts`
-- `storyboard_keyframes`
-- `video_prompts`
-- `production_outputs`
-- `full_episode`
-- `delivery_privacy`
-- `project_calibration`
-
-只读对应资料，不预加载整个项目：
+按范围（`source_analysis`、`story_script`、`assets_continuity`、`image_prompts`、`storyboard_keyframes`、`video_prompts`、`production_outputs`、`full_episode`、`delivery_privacy`、`project_calibration`）只读对应参考资料，不预加载整个项目：
 
 - 原著分析：[原著分析审查表](references/rubric-source-analysis.md)
-- 故事、场景、行动与对白，改编是否守住原著人物与主线，已接受节奏档案的核对，开场、结尾与中段的局部检查：[故事剧本审查表](references/rubric-story-script.md)
-- 身份、变体、连续性、时代与图片提示词：[资产提示词审查表](references/rubric-assets-prompts.md)
-- 原文落实、镜头、关键帧与视频运动：[视觉运动审查表](references/rubric-visual-motion.md)
-- 完整审查方法：[审查方法](references/review-method.md)
-- 生成素材与剪好的成片（`production_outputs`，或审到成片的 `full_episode`），逐段判镜头职责、给瑕疵归类并给出交付结论：[生成素材审查](references/generated-media.md)
-- 制作端常见缺陷：[生产质量门](references/production-quality-gates.md)
-- 授权生产观察的项目内校准：[项目校准](references/project-calibration.md)
-- 模板感、重复手法或 AI 味：[反模板修订](references/anti-template-repair.md)
-- 阶段边界、参考媒体与规则表：[阶段契约](references/stage-contract.md)
+- 故事、剧本、改编忠实度、已接受节奏档案与三遍局部检查：[故事剧本审查表](references/rubric-story-script.md)
+- 身份/变体、连续性、时代锚点与图片提示词：[资产提示词审查表](references/rubric-assets-prompts.md)
+- 原文覆盖、镜头、冻结关键帧与视频运动：[视觉运动审查表](references/rubric-visual-motion.md)
+- 证据化审查与补丁复审方法：[审查方法](references/review-method.md)
+- 生成素材与成片职责判定、四类瑕疵分流（`REV-15`）：[生成素材审查](references/generated-media.md)
+- 跨环节返工原因、指令优先级与改写回归（`REV-09`）：[生产质量门](references/production-quality-gates.md)
+- 授权生产观察与项目内单变量校准（`REV-10`、`REV-11`）：[项目校准](references/project-calibration.md)
+- 模板感诊断、反例与修订目标（`REV-05`）：[反模板修订](references/anti-template-repair.md)
+- 阶段边界与 `REV-01`–`REV-15` 规则表：[阶段契约](references/stage-contract.md)
 
 ## 工作流
 
-### 1. 确定范围
-
-写清当前要审哪些文件、章节、镜头或提示词，以及创作者已经明确的限制。目标在审查中发生变化时，
-重新读取再下结论。
-
-### 2. 先查可证明事实
-
-- 五文档的可见 ID、引用和时长是否一致；
-- 剧本对白、动作、声音、画面文字是否都有画面/声音承载；
-- 人物、地点、道具状态和镜头起止是否连续；
-- 提示词是否从准确起点到准确终点；
-- 目标模型画音同轨时，声音内容、时序和发声边界是否与来源一致；无对白镜是否交代底声或静默
-  （`VID-22`、`VID-23`，见 [视觉运动审查表](references/rubric-visual-motion.md)）；
-- 私有输入、凭据、绝对路径或内部流程文字是否泄漏。
-
-缺少必要输入时只停止依赖它的判断，其他问题可以继续汇总。
-
-### 3. 带证据审内容
-
-每个 finding 包含位置、必要短引文或冲突事实、观众/制作影响、必须达到的修订结果、负责技能、严重
-程度、规则等级和 `open` / `closed` 状态。“AI 味”“不够电影感”或无证据分数不能替代这些内容。
-
-### 4. 跨文档综合
-
-```text
-剧本事实 -> 视觉设定 -> 镜头职责与边界 -> 冻结关键帧 -> 视频运动 -> 下一状态
-```
-
-优先守住原意、知情时机与连续性，不奖励脱离来源的华丽提示词。
-
-### 5. 结论与分派
-
-- `APPROVE`：没有阻断问题；
-- `APPROVE_WITH_NOTES`：只有不阻断的改进；
-- `REVISE`：存在阻断交付的结构缺陷、经证据确认的内容缺陷或已接受限制冲突；
-- `PROVISIONAL`：关键输入不足，暂时无法完成判断。
-
-按负责技能分组修订要求。本轮完成后交还控制权；修改和复审只有用户明确请求时开始。
-
-## 严重程度
-
-- `blocker`：不安全、不可交付或会让流程走错；
-- `major`：明显破坏剧情理解、连续性或制作结果；
-- `minor`：有具体影响但不阻断；
-- `note`：创作选择或可选润色。
+1. **确定范围**：明确本次受审文件、章节、镜头或提示词及创作者已选限制；目标在审查中变化时重读后再下结论。
+2. **先查可证明事实（`REV-01`）**：核对五文档可见 ID/引用/时长一致性、剧本全要素（对白/动作/声音/画面文字）承载、人物/地点/道具状态与镜头起止连续性、画音同轨模型的声音时序与无对白底声/静默交代（`VID-22`、`VID-23`），以及私有输入/凭据/绝对路径泄漏。缺某项输入时只停止依赖它的判断。
+3. **带证据写 Finding（`REV-02`）**：每条包含位置、短引文或冲突事实、观众/制作影响、修订结果与保持集、负责技能、严重程度、规则等级及 `open`/`closed` 状态，禁用无证据的“AI 味”“不够电影感”或空泛打分。
+4. **跨文档溯源**：按 `剧本事实 -> 视觉设定 -> 镜头职责与边界 -> 冻结关键帧 -> 视频运动 -> 下一状态` 核对原意、知情时机与连续性。
+5. **给出结论与分派**：
+   - 结论：`APPROVE`（无阻断问题）、`APPROVE_WITH_NOTES`（仅有非阻断改进）、`REVISE`（存在阻断交付的结构缺陷、经证据确认的内容缺陷或已接受限制冲突）、`PROVISIONAL`（关键输入不足）。
+   - 严重程度：`blocker`（不安全、不可交付或让流程走错）、`major`（破坏剧情理解、连续性或制作结果）、`minor`（有具体影响但不阻断）、`note`（创作选择或可选润色）。
+   - 按负责技能分组修订要求后交还控制权；修改与复审仅在用户明确请求时启动。
 
 ## 边界
 
-- 不提交图片、视频、TTS 或音乐任务，不配置 adapter，不把 Dashboard 操作当生产授权。
-- 无法读取媒体时明确限制，不从文字或 adapter 状态推断脸部一致、表演、口型、混音或市场表现。
-- 生产观察必须绑定准确输入、提示词、参考、配置和结果版本；不能泛化成通用规则。
-- 审查文件只保留修订所需的最小证据，不复制完整私有输入。
+- 不提交任何媒体生产任务，不配置 adapter，不修改受审源文件。
+- 未直接读取或无授权观察记录的媒体一律标为未知，不从文字、任务状态或文件存在推断画面、表演、口型或混音质量。
+- 生产观察仅在当前项目、提示词版本与配置下成立，不泛化为通用定律；审查文件只保留最小证据，不复制完整私有输入。

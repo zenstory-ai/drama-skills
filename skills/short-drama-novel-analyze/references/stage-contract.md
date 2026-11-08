@@ -1,43 +1,10 @@
 # 原著分析阶段契约
 
-## 目录
-
-- [独立运行与项目集成](#独立运行与项目集成)
-- [所有权边界](#所有权边界)
-- [材料授权与只读转化](#材料授权与只读转化)
-- [本阶段规则](#本阶段规则)
-
-## 独立运行与项目集成
-
-本技能可独立运行；项目工具可用时按下列方式集成。
-
-1. **读取直接输入**：只读取用户明确提供或当前任务实际需要的文件，不批量加载整个项目。
-2. **可选项目集成**：若存在 `short-drama.json` 且 core 项目工具可用，可以运行
-   `python3 <core>/scripts/project_tool.py status <project>`，使用返回的目录布局和语言设置；
-   core 不可用时，直接基于已提供输入产出本阶段文件。
-3. **可选发布生命周期**：项目工具可用时，用 `publish` 原子发布并用 `--input <path>`
-   声明直接输入；`accept`、`review` 与 `package` 继续承担确认、复核与交付。
-4. **保持职责分离**：创作者确认、内容修订和复核是不同动作；reviewer 提修改要求，负责人改文件。
-
 ## 所有权边界
 
-- **本阶段拥有**：`项目开发/source-analysis/` 下的章节索引、改编价值快评、逐章提取、
-  剧情单元、节奏情绪、人物与设定候选、改编价值评估与分集候选。
+- **本阶段拥有**：`项目开发/source-analysis/` 下的章节索引、改编价值快评、逐章提取、剧情单元、节奏情绪、人物与设定候选、改编价值评估与分集候选。
 - **本阶段继承**：创作者提供的原始材料与授权说明、项目语言、已接受的形式约束与制作形态。
-- **本阶段不越权**：不改写 `输入/`；不写改编契约、创作简报、故事引擎或
-  `adaptation-map.jsonl`（`$short-drama-develop` 拥有）；不建资产身份；不写场景、台词、
-  分镜与提示词；不生成媒体；不批准自己的产物。
-
-分析记录证据和候选判断，改编契约记录创作者已确认的承诺。分开保存后，推翻分析不会自动撤销已确认的决定。
-
-## 材料授权与只读转化
-
-- 只处理创作者声明**合法持有、拥有使用权**的作品；授权不清时保留问题，不替创作者定案。
-- 分析是转化性的：提取结构与功能，不复制原文成段落，不模仿原作文风生成新文本。
-- 引用采用最短必要片段，并绑定 span。功能摘要必须是**去引用**的重述。
-- 通俗题材的暴力、复仇、背叛、情爱张力与黑暗伦理照常提取；个别片段无法处理时跳过并记录，
-  不中止整章或整本。
-- `输入/` 与其中的原始材料不进入交付包。
+- **本阶段不越权**：不改写 `输入/`；不写改编契约、创作简报、故事引擎或 `adaptation-map.jsonl`（`$short-drama-develop` 拥有）；不建资产身份；不写场景、台词、分镜与提示词；不生成媒体；不批准自己的产物。
 
 ## 本阶段规则
 
@@ -58,7 +25,3 @@
 | NVA-11 | craft_default | Triage a deterministic spread of chapters across the whole book and stop for the creator before committing to a full pass. |
 | NVA-12 | taste_option | Where to open, which line to keep and which ending to promise remain creator choices; analysis may argue but never blocks. |
 | NVA-13 | craft_default | Before cutting episode candidates, rank the book's plot points by audience payoff — face-slap, spectacle, reversal, identity reveal, reward delivered, crisis — counting payoffs a bystander or crowd delivers; candidates follow the payoff distribution rather than one chapter per episode and cite the payoffs they carry. The opening replacement point is the strongest payoff that can also establish the protagonist's identity, crisis and goal, and a stronger later peak is reported as a cold-open option. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。

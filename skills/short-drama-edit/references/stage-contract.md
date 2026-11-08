@@ -1,11 +1,6 @@
 # 剪辑阶段契约
 
-本阶段只拥有 `剧集/<EP>/剪辑单.md` 中的 `CUT-...` 项、交付规格章节，以及渲染到
-`剧集/<EP>/制作成果/成片/` 的成片与中间文件。它继承镜序、镜头职责、台词原文和已生产的素材
-字节，不回写剧本、视觉设定、分镜或视频提示词。
-
-剪辑单记录素材取舍、时间与后期处理。可以缩短、重排或省略素材，但不回写上游的台词、
-镜头职责和状态；确需改变故事内容时交由上游修订。
+本阶段只拥有 `剧集/<EP>/剪辑单.md`（交付规格与 `CUT-...` 条目）及 `剧集/<EP>/制作成果/成片/` 下的渲染产物，不回写《剧本.md》《视觉设定.md》《分镜.md》或《视频提示词.md》。
 
 ## 本阶段规则
 
@@ -24,7 +19,7 @@
 | EDT-09 | craft_default | Do not mechanically redistribute trimmed time. Extend another beat only when its performance or readability benefits, and preserve explicit delivery-duration requirements. |
 | EDT-10 | reviewed_invariant | Listen to joins for unintended changes in ambience or music. Use an appropriate documented audio treatment when needed; the built-in renderer does not execute prose mixing instructions. |
 | EDT-11 | reviewed_invariant | Record unused shots with a reason: missing material, unusable quality, or an intentional narrative omission. |
-| EDT-12 | craft_default | The delivered film is loudness-normalized to one declared target, and burned subtitles are the default for vertical short drama. Completion reports the measured integrated loudness and true peak. The default delivery tolerance is ±1 LU around the target, with true peak at or below the declared ceiling (-1.5 dBTP when none is declared); the creator may override it on the `交付响度` line. If the film still misses after one external treatment, report the measured values and the gap to the creator whatever the size, and stop iterating. When the creator accepts the miss, record the accepted range as the tolerance on the `交付响度` line; the film then counts as complete. |
+| EDT-12 | craft_default | Normalize the delivered film to one declared loudness target (default tolerance ±1 LU, true peak ≤ -1.5 dBTP unless overridden on `交付响度`) with burned subtitles by default; report measured integrated loudness and true peak, or stop and report the gap after one external treatment so the creator can accept or revise. |
 | EDT-13 | craft_default | Distinguish a reference target from a required delivery duration. Report the gap and satisfy a fixed requirement or identify the material needed to do so. |
 | EDT-14 | taste_option | Cut rhythm, whether a beat is held or clipped, and whether a moment repeats are creator choices; the suite records them and does not treat any of them as defects. |
 | EDT-15 | structural_invariant | Rendering, duration match and file existence are technical outcomes. None of them may be reported as a statement about whether the film is good; quality goes to review or to the creator. |
@@ -33,24 +28,6 @@
 | EDT-18 | taste_option | Optional grain is declared once in the delivery spec and applied dynamically after assembly by the built-in renderer. Its supported range is a tool limit, not a quality standard; other treatments may use external grading tools. |
 | EDT-19 | craft_default | A dialogue cut enters about 0.25 s before the line's speech onset and leaves about 0.4 s after the line ends, and lasts at least about 1.2 s. Locate these from the sounds that belong to the scripted line, so noise never stretches the cut. |
 | EDT-20 | craft_default | Within one scene, the built-in renderer pulls each cut partway toward the scene's median exposure and colour and reports the values it applied. A cut's stated correction or 「不校」 replaces the automatic match, and the delivery spec can turn it off. |
-| EDT-21 | craft_default | A fight's multi-shot clip is cut at its generated shot boundaries and each beat is trimmed hard: the impact close-up keeps only the fist's entry through the hit (about 0.3–0.5 s to start), the wind-up only what reads as effort, the aftermath until the receiver's state is clear; cuts land mid-motion rather than after the move settles, and the hold that generation leaves between a dodge and the counter is cut out. |
-| EDT-22 | craft_default | When a line provokes someone else's reaction, cut to the listener before the line ends and let the line finish over the reaction (L-cut), or let the next speaker's voice lead the picture (J-cut); in multi-person scenes reactions overlap lines instead of queueing after them. This replaces EDT-19's post-line hold for that cut. The rest of the line is cut from the same source with an external tool, recorded, and placed as a `配音` line starting at 0 on the listener's cut; the subtitle stays on the speaker's cut. |
-| EDT-23 | craft_default | `verify` lists for listening each cut where the sound level changes by more than 10 dB, measured as RMS over about 0.4 s on each side of the cut. This is a listing threshold, not a quality gate: intended impacts, moves into or out of silence and scene changes also cross it, so listening under EDT-10 decides each listed cut, and the list never blocks delivery. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
-
-## 与上游阶段的分工
-
-| 问题 | 归属 |
-|---|---|
-| 这句台词该怎么说 | `剧本.md` |
-| 这一镜承担什么、起终状态是什么 | `分镜.md` |
-| 这一镜怎么动、生成时说什么 | `视频提示词.md` |
-| 这一段素材怎么来的、花了多少钱 | 生产运行记录 |
-| **这一段素材哪几帧进成片** | **`剪辑单.md`** |
-| 成片好不好看 | 审查，或创作者本人 |
-
-生成结果与上游声明不符时，剪辑记录事实并取舍，同时把不符点名报告；不在剪辑单里修改上游声明
-来让它们看起来一致。
+| EDT-21 | craft_default | Split multi-shot fight clips at generated shot boundaries and trim static head/tail holds so cuts land mid-motion (impact close-up ~0.3–0.5 s through hit, wind-up only what reads as effort, aftermath until receiver's state reads). |
+| EDT-22 | craft_default | When a line provokes a reaction or multi-person exchange, cut to the listener before the line ends (L-cut) or lead with the next voice (J-cut) instead of holding 0.4 s after the line; carry the overhanging audio across the cut via an extracted `配音` clip while keeping the subtitle on the speaker's cut. |
+| EDT-23 | craft_default | `verify` lists cuts where RMS sound level (~0.4 s each side) jumps by > 10 dB as a listening prompt under EDT-10, never as a blocking gate. |
