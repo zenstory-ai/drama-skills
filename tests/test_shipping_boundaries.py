@@ -372,7 +372,7 @@ class ShippingBoundaryTests(unittest.TestCase):
             f"shipped scripts disagree on the Python floor: {declared}",
         )
         major, minor = next(iter(declared.values()))
-        for readme in ("README.md", "README_EN.md"):
+        for readme in ("README.md", "README_EN.md", "README_JA.md"):
             self.assertIn(
                 f"Python {major}.{minor}",
                 (SUITE / readme).read_text(encoding="utf-8"),
