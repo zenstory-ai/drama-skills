@@ -111,12 +111,18 @@ class ChapterIndexTests(unittest.TestCase):
         index = build_from(dense + "\n\n" + chapters(["四", "五", "六"]) + "\n")
         self.assertEqual(index["contents_entries_dropped"], 0)
         self.assertEqual(index["chapter_count"], 6)
+        self.assertEqual(index["problems"], [])
+        self.assertTrue(
+            any("almost no body text" in warning for warning in index["warnings"]),
+            index["warnings"],
+        )
 
     def test_numbering_jump_is_reported(self) -> None:
         index = build_from(chapters(["一", "二", "五"]) + "\n")
+        self.assertEqual(index["problems"], [])
         self.assertTrue(
-            any("jumps" in problem for problem in index["problems"]),
-            index["problems"],
+            any("jumps" in warning for warning in index["warnings"]),
+            index["warnings"],
         )
 
     def test_source_with_no_heading_reports_rather_than_inventing_spans(self) -> None:
@@ -138,19 +144,25 @@ class NumberingValidationScopeTests(unittest.TestCase):
 
     def test_stray_duplicate_does_not_hide_a_later_gap(self) -> None:
         # Regression: treating any repeated number as a multi-volume book
-        # skipped every numbering check, so this 15-chapter hole came back with
-        # an empty problem list.
+        # skipped every numbering check, so this 15-chapter hole came back
+        # unreported. Both duplicate and gap surface in warnings with exit 0.
         index = build_from(chapters(["一", "二", "二", "三", "四", "二十"]) + "\n")
+        self.assertEqual(index["problems"], [])
         self.assertTrue(
-            any("jumps from 4 to 20" in problem for problem in index["problems"]),
-            index["problems"],
+            any("duplicate chapter number 2" in warning for warning in index["warnings"]),
+            index["warnings"],
+        )
+        self.assertTrue(
+            any("jumps from 4 to 20" in warning for warning in index["warnings"]),
+            index["warnings"],
         )
 
     def test_restart_too_short_to_be_a_volume_is_reported(self) -> None:
         index = build_from(chapters(["一", "二", "一", "二", "三", "四"]) + "\n")
+        self.assertEqual(index["problems"], [])
         self.assertTrue(
-            any("restarts after only" in problem for problem in index["problems"]),
-            index["problems"],
+            any("restarts after only" in warning for warning in index["warnings"]),
+            index["warnings"],
         )
 
     def test_gap_inside_a_real_volume_is_still_reported(self) -> None:
@@ -158,9 +170,10 @@ class NumberingValidationScopeTests(unittest.TestCase):
         second = chapters(["一", "二", "九"])
         index = build_from(first + "\n\n" + second + "\n")
         self.assertTrue(index["volume_numbering_restarts"])
+        self.assertEqual(index["problems"], [])
         self.assertTrue(
-            any("volume 2" in problem for problem in index["problems"]),
-            index["problems"],
+            any("volume 2" in warning for warning in index["warnings"]),
+            index["warnings"],
         )
 
 
@@ -249,6 +262,25 @@ class ChapterUnitTests(unittest.TestCase):
         self.assertEqual(index["chapter_unit"], "节")
         self.assertEqual(index["chapter_count"], 3)
         self.assertEqual(index["problems"], [])
+
+    def test_markdown_heading_prefixes_and_episodic_units_index_cleanly(self) -> None:
+        for unit in ("集", "话", "話", "幕"):
+            with self.subTest(unit=unit):
+                text = (
+                    f"# 第1{unit} 开局\n{prose()}\n\n"
+                    f"## 第2{unit} 升温\n{prose()}\n\n"
+                    f"###### 第 3 {unit} 反转\n{prose()}\n"
+                )
+                index, verified = index_and_verify(text)
+                self.assertEqual(index["chapter_unit"], unit)
+                self.assertEqual(index["chapter_count"], 3)
+                self.assertEqual(
+                    [row["title"] for row in index["chapters"]],
+                    ["开局", "升温", "反转"],
+                )
+                self.assertEqual(index["problems"], [])
+                self.assertEqual(index["warnings"], [])
+                self.assertTrue(verified["verified"], verified)
 
 
 
@@ -352,8 +384,6 @@ class VerifyTests(unittest.TestCase):
 
 
     def test_duplicate_source_number_is_reported(self) -> None:
-        # Regression: verify ignored source_number, so a hand-written index
-        # with two rows claiming the same chapter passed.
         def duplicate_second(document: dict[str, Any]) -> dict[str, Any]:
             rows = [dict(row) for row in document["chapters"]]
             rows[1]["source_number"] = rows[0]["source_number"]
@@ -363,10 +393,11 @@ class VerifyTests(unittest.TestCase):
         _, verified = index_and_verify(
             chapters(["一", "二", "三"]) + "\n", duplicate_second
         )
-        self.assertFalse(verified["verified"], verified)
+        self.assertTrue(verified["verified"], verified)
+        self.assertEqual(verified["problems"], [])
         self.assertTrue(
-            any("duplicate" in problem for problem in verified["problems"]),
-            verified["problems"],
+            any("duplicate" in warning for warning in verified["warnings"]),
+            verified["warnings"],
         )
 
     def test_unnumbered_rows_and_volume_restarts_are_not_duplicates(self) -> None:
@@ -608,10 +639,50 @@ class CommandLineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "book.txt"
-            source.write_text(chapters(["一", "二", "五"]) + "\n", encoding="utf-8")
+            source.write_text(prose() + "\n", encoding="utf-8")
             index_path = root / "_index.json"
             self.assertEqual(
                 novel_index.main(["index", str(source), "--out", str(index_path)]), 1
+            )
+
+    def test_author_gap_duplicate_and_short_chapter_emit_warnings_with_exit_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "book.txt"
+            source.write_text(
+                "第一章 卷首语\n短短几个字。\n\n"
+                + f"第二章 正文甲\n{prose()}\n\n"
+                + f"第二章 正文乙\n{prose()}\n\n"
+                + f"第五章 跳号章\n{prose()}\n",
+                encoding="utf-8",
+            )
+            index_path = root / "_index.json"
+            self.assertEqual(
+                novel_index.main(["index", str(source), "--out", str(index_path)]), 0
+            )
+            document = json.loads(index_path.read_text(encoding="utf-8"))
+            self.assertEqual(document["problems"], [])
+            self.assertTrue(any("almost no body text" in w for w in document["warnings"]))
+            self.assertTrue(any("duplicate chapter number 2" in w for w in document["warnings"]))
+            self.assertTrue(any("jumps from 2 to 5" in w for w in document["warnings"]))
+
+            self.assertEqual(
+                novel_index.main(["verify", str(index_path), str(source)]), 0
+            )
+            verified = novel_index.verify_index(index_path, source)
+            self.assertTrue(verified["verified"])
+            self.assertEqual(verified["problems"], [])
+            self.assertEqual(len(verified["warnings"]), 3)
+
+            # Corrupting sequence or line continuity still fails verify with exit 1.
+            tampered = dict(document)
+            tampered_rows = [dict(row) for row in document["chapters"]]
+            tampered_rows[1]["sequence"] = 9
+            tampered["chapters"] = tampered_rows
+            bad_index = root / "_bad_seq.json"
+            bad_index.write_text(json.dumps(tampered), encoding="utf-8")
+            self.assertEqual(
+                novel_index.main(["verify", str(bad_index), str(source)]), 1
             )
 
     def test_verify_and_sample_run_end_to_end(self) -> None:

@@ -130,6 +130,59 @@ class ShotMatchTests(unittest.TestCase):
             self.assertFalse(edit.parse_cut_list(path)[0].shot_match)
 
 
+class ReplayOverlapTests(unittest.TestCase):
+    def test_explicit_replay_reason_exempts_same_source_overlap_while_unmarked_overlap_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory) / "剧集" / "EP001"
+            (episode / "media").mkdir(parents=True)
+            (episode / "media" / "shared.mp4").write_bytes(b"")
+            cut_list = episode / edit.CUT_LIST_NAME
+
+            def write_cuts(second_extra="", third_block=""):
+                motions = "## MOTION-1\n\n## MOTION-2\n" + ("\n## MOTION-3\n" if third_block else "")
+                (episode / edit.MOTION_DOCUMENT).write_text(motions, encoding="utf-8")
+                cut_list.write_text(
+                    "# 剪辑单\n\n"
+                    "## CUT-1 · 正片\n"
+                    "- 来源：MOTION-1 · media/shared.mp4\n"
+                    "- 入点：0.00\n- 出点：2.00\n- 时长：2.00\n- 声音：保留原声\n\n"
+                    "## CUT-2 · 回放\n"
+                    "- 来源：MOTION-2 · media/shared.mp4\n"
+                    "- 入点：0.50\n- 出点：1.50\n- 时长：1.00\n- 声音：保留原声\n"
+                    + second_extra + "\n" + third_block,
+                    encoding="utf-8",
+                )
+                return edit.parse_cut_list(cut_list)[1]
+
+            unmarked = write_cuts()
+            self.assertEqual(len(edit.check_cuts(episode, unmarked, Path(directory), probe=False)), 1)
+
+            excused = write_cuts("- 重放：高潮受击瞬间慢镜闪回\n")
+            self.assertEqual(excused[1].replay, "高潮受击瞬间慢镜闪回")
+            self.assertEqual(edit.check_cuts(episode, excused, Path(directory), probe=False), [])
+
+            # A third cut overlapping CUT-1 without 重放 is still caught.
+            third = (
+                "## CUT-3 · 误重用\n"
+                "- 来源：MOTION-3 · media/shared.mp4\n"
+                "- 入点：1.00\n- 出点：2.00\n- 时长：1.00\n- 声音：保留原声\n"
+            )
+            partial_excuse = write_cuts("- 重放：高潮受击瞬间慢镜闪回\n", third)
+            findings = edit.check_cuts(episode, partial_excuse, Path(directory), probe=False)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("CUT-1", findings[0])
+            self.assertIn("CUT-3", findings[0])
+
+            none_replay = write_cuts("- 重放：无\n")
+            self.assertIsNone(none_replay[1].replay)
+            self.assertEqual(len(edit.check_cuts(episode, none_replay, Path(directory), probe=False)), 1)
+
+            for malformed in ("- 重放：\n", "- 重放：   \n", "- 重放：闪回\n- 重放：再写一遍\n"):
+                with self.subTest(malformed=malformed):
+                    with self.assertRaises(edit.EditError):
+                        write_cuts(malformed)
+
+
 class FrameReportTests(unittest.TestCase):
     def test_one_frame_unlike_both_neighbours_is_flagged(self):
         frames = [frame(100)] * 6 + [bytes([255]) * 16 + bytes([100]) * 48] + [frame(100)] * 6

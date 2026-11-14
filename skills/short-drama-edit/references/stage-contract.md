@@ -1,33 +1,32 @@
-# 剪辑阶段契约
+# 剪辑阶段职责与规则
 
-本阶段只拥有 `剧集/<EP>/剪辑单.md`（交付规格与 `CUT-...` 条目）及 `剧集/<EP>/制作成果/成片/` 下的渲染产物，不回写《剧本.md》《视觉设定.md》《分镜.md》或《视频提示词.md》。
+本阶段只负责维护与输出 `剧集/<EP>/剪辑单.md`（交付规格与 `CUT-...` 条目）及 `剧集/<EP>/制作成果/成片/` 下的渲染成片，不反向改写《剧本.md》《视觉设定.md》《分镜.md》或《视频提示词.md》等上游定稿文档。实操细则与默认参考参数见 [短剧剪辑实务指南](editing-guide.md)。
 
 ## 本阶段规则
 
 ### `EDT`
 
-| ID | Class | Knowledge |
+| 编号 | 分级 | 规则说明 |
 |---|---|---|
-| EDT-01 | structural_invariant | Every `CUT-...` binds one existing source item and one currently readable media file: `MOTION-...` for video, or `SHOT-...` / `IMG-...` for a still. A cut with no material source cannot exist. |
-| EDT-02 | structural_invariant | 入点, 出点 and 时长 are self-consistent (`出点 - 入点 == 时长`) and non-negative. A video's 出点 does not exceed its measured source duration; a still starts at 0 and has 出点 equal to its declared 时长 of at least 0.50 seconds. |
-| EDT-03 | structural_invariant | Editing selects and orders existing frames. It never rewrites dialogue, shot purpose, start/end state, or any upstream declared duration; a needed semantic change is reported to the owning document instead. |
-| EDT-04 | reviewed_invariant | Dialogue retained in the film remains audibly complete. Picture may cut during a line if the sound remains continuous and the narrative is clear. The built-in renderer trims a video's original audio with its picture, while independent 配音 files may cross cuts; extracting or replacing the video's original audio requires an external tool. |
-| EDT-05 | structural_invariant | When subtitles are requested, every retained spoken line has a cue copied verbatim, including punctuation, from the screenplay into the cut list. Rendering may transform punctuation for display. Transcription locates speech but does not replace the source text. |
-| EDT-06 | structural_invariant | Two cuts drawn from the same video do not overlap in source time. Deliberate video repetition is declared and states why the second appearance still earns its place. A still image may be reused across cuts. |
-| EDT-07 | reviewed_invariant | Each cut's in-point and out-point land inside that material's usable band, and 取舍 names what is visible at each boundary rather than citing an abstract need for pace. |
-| EDT-08 | craft_default | Check adjacent cuts for unintended visual jumps and duplicated information. Similar framing, deliberate repetition and jump cuts are valid when they serve the accepted narrative. |
-| EDT-09 | craft_default | Do not mechanically redistribute trimmed time. Extend another beat only when its performance or readability benefits, and preserve explicit delivery-duration requirements. |
-| EDT-10 | reviewed_invariant | Listen to joins for unintended changes in ambience or music. Use an appropriate documented audio treatment when needed; the built-in renderer does not execute prose mixing instructions. |
-| EDT-11 | reviewed_invariant | Record unused shots with a reason: missing material, unusable quality, or an intentional narrative omission. |
-| EDT-12 | craft_default | Normalize the delivered film to one declared loudness target (default tolerance ±1 LU, true peak ≤ -1.5 dBTP unless overridden on `交付响度`) with burned subtitles by default; report measured integrated loudness and true peak, or stop and report the gap after one external treatment so the creator can accept or revise. |
-| EDT-13 | craft_default | Distinguish a reference target from a required delivery duration. Report the gap and satisfy a fixed requirement or identify the material needed to do so. |
-| EDT-14 | taste_option | Cut rhythm, whether a beat is held or clipped, and whether a moment repeats are creator choices; the suite records them and does not treat any of them as defects. |
-| EDT-15 | structural_invariant | Rendering, duration match and file existence are technical outcomes. None of them may be reported as a statement about whether the film is good; quality goes to review or to the creator. |
-| EDT-16 | reviewed_invariant | Compare shots within the same scene and lighting state using comparable image regions. Record corrections, then inspect the output. Whole-frame averages alone do not establish a mismatch; intentional lighting changes are valid. |
-| EDT-17 | structural_invariant | After material is regenerated, re-measure the spoken spans and update its subtitle windows before rendering. The material-mtime warning is a prompt to check, not proof of alignment. |
-| EDT-18 | taste_option | Optional grain is declared once in the delivery spec and applied dynamically after assembly by the built-in renderer. Its supported range is a tool limit, not a quality standard; other treatments may use external grading tools. |
-| EDT-19 | craft_default | A dialogue cut enters about 0.25 s before the line's speech onset and leaves about 0.4 s after the line ends, and lasts at least about 1.2 s. Locate these from the sounds that belong to the scripted line, so noise never stretches the cut. |
-| EDT-20 | craft_default | Within one scene, the built-in renderer pulls each cut partway toward the scene's median exposure and colour and reports the values it applied. A cut's stated correction or 「不校」 replaces the automatic match, and the delivery spec can turn it off. |
-| EDT-21 | craft_default | Split multi-shot fight clips at generated shot boundaries and trim static head/tail holds so cuts land mid-motion (impact close-up ~0.3–0.5 s through hit, wind-up only what reads as effort, aftermath until receiver's state reads). |
-| EDT-22 | craft_default | When a line provokes a reaction or multi-person exchange, cut to the listener before the line ends (L-cut) or lead with the next voice (J-cut) instead of holding 0.4 s after the line; carry the overhanging audio across the cut via an extracted `配音` clip while keeping the subtitle on the speaker's cut. |
-| EDT-23 | craft_default | `verify` lists cuts where RMS sound level (~0.4 s each side) jumps by > 10 dB as a listening prompt under EDT-10, never as a blocking gate. |
+| EDT-01 | structural_invariant | 每条 `CUT-...` 必须绑定一个真实存在的上游条目和一个当前可读的媒体文件：视频段对应 `MOTION-...`，静帧段对应 `SHOT-...` 或 `IMG-...`。无对应素材文件的剪辑段不得写入剪辑单。 |
+| EDT-02 | structural_invariant | `入点`、`出点` 与 `时长` 必须自洽（`出点 - 入点 == 时长`）且均为非负数。视频段的 `出点` 不得超过素材实测总时长；静帧段从 `0` 起算，`出点` 等于声明的 `时长`，硬下限为 `2` 帧（约 `0.08s`），短于 `0.50s` 的快闪静帧归为提醒复核。 |
+| EDT-03 | reviewed_invariant | 剪辑阶段可以对既有素材做裁短、调序、局部试剪或后期换配音等剪辑加工，但不得反向篡改《剧本.md》《分镜.md》《视频提示词.md》等上游定稿文档；确需修改剧情设定、台词文本或补拍新镜时，退回对应上游阶段修订。 |
+| EDT-04 | reviewed_invariant | 成片保留的每句台词必须听感完整可辨。只要声音连贯、叙事清楚，画面可以在台词中途切镜；独立挂载的 `配音` 可跨切点延续，视频原声需跨镜铺底或清除人声时先由外部工具处理。 |
+| EDT-05 | structural_invariant | 开启字幕时，成片保留的每句有声台词都必须从《剧本.md》连同标点一字不差抄入剪辑单。渲染阶段可按屏幕显示惯例转换标点；语音转写仅用于定位发声起止时刻，不得改动剧本原字。 |
+| EDT-06 | structural_invariant | 引用同一条视频素材的两个剪辑段，其源素材时间区间默认不得重叠；确需做闪回或强调重放时，须在分段写明 `- 重放：<叙事理由>` 显式声明；静帧图片可跨多段复用。 |
+| EDT-07 | reviewed_invariant | 每段的入点和出点都必须落在源素材的可用区间内，`取舍` 须具体写明入出点处能看到的动作、表情或画面变化，不得只拿“为了节奏”之类空话敷衍。 |
+| EDT-08 | craft_default | 检查相邻切点是否出现意外跳帧或无意义的信息重复；服务于叙事意图的相似景别、有意重放和跳切均属合理手法。 |
+| EDT-09 | craft_default | 裁短某一段后不要机械把省下的秒数平摊给其他镜头；只有延长后确实能让表演更充分或画面信息更好认读时才延展邻段，同时守住明确约定的成片交付时长。 |
+| EDT-10 | reviewed_invariant | 逐处回听切点前后环境声与配乐是否出现突兀跳变，按需修平接缝；内置渲染器不会执行写在自然语言备注里的混音指令。 |
+| EDT-11 | reviewed_invariant | 全集交付时，未剪进成片的镜头须逐一登记原因（文件缺失、质量不可用或有意的叙事取舍）；使用 `--partial` 做局部试剪时，未入片镜头归入提醒而不阻断试剪渲染。 |
+| EDT-12 | craft_default | 成片默认烧录字幕并按声明响度标准化；如实汇报实测综合响度与真峰，若经一次外部音频处理仍超出容差，停止反复重渲并报创作者拍板接受或返修。 |
+| EDT-13 | craft_default | 区分参考目标时长与硬性交付时长：遇到固定时长硬指标时须达标或列出尚缺素材；属于参考区间时如实汇报实测时长与目标的差值。 |
+| EDT-14 | taste_option | 剪切节奏快慢、某一拍多留还是早切、某个瞬间是否重放均属创作者的风格选择；工具如实记录，不将其判作问题。 |
+| EDT-16 | reviewed_invariant | 同场景、同一光线条件下的相邻镜头，应对照人物肤色、同款衣物或灰白墙面检查色差，记录调色参数后再看片复核；符合剧情的开关灯或冷暖突变无需强拉一致。 |
+| EDT-17 | reviewed_invariant | 素材重新生成后须在交付前重测发声区间并更新字幕与画面文字时间窗；素材修改时间晚于剪辑单作为提醒输出，不直接阻断渲染。 |
+| EDT-18 | taste_option | 可选的全片颗粒在交付规格中统一声明，由内置渲染器在拼接后动态叠加；需要其他胶片质感时交外部调色工具处理。 |
+| EDT-19 | craft_default | 常规对白镜按归属本句的字音起止留出自然入画提前量与句尾反应余量，剔除前后环境杂音干扰。 |
+| EDT-20 | craft_default | 同一场景内默认将各段曝光与色彩向同场中位数适度拉近并输出实际参数；单段写明手动校正或 `不校` 即可覆盖，也可整集关闭。 |
+| EDT-21 | craft_default | 多镜合生的打戏素材先按画面切点拆段并裁净头尾呆立：连续交锋拍切在发力途中，决胜落定拍留稳收尾以交代站位与结果。 |
+| EDT-22 | craft_default | 多人交锋或激起强烈反应时，可在台词后半句切给听者反应（L-cut）或让下一句声音先入画（J-cut）；短尾音自然抢话或标注 `（叠音）` 列入提醒复核。 |
+| EDT-23 | craft_default | `verify` 检测到切点前后音量跳变显著时按 `EDT-10` 列入「请回听」提醒人工核查，不作为报错拦截项。 |

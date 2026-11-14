@@ -35,3 +35,4 @@ Status: implemented
 - **收益**：多人场景的反应和台词同时发生，同一批素材剪出的成片短约 2 秒，节奏不再轮流。
 - **代价**：每处 L-cut 要多一次外部截取并记录区间；听者那段原声里若有人声要先处理。只测了一场戏、一次纸面剪辑，
   节奏的好坏由创作者判断，套件不把交叠与否当缺陷（`EDT-14`）。
+- 后续调整：`edit_tool.py` 放宽短尾音抢话交叠门禁及 `cut-craft.md` 归并入 `editing-guide.md`，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

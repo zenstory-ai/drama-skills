@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
@@ -125,7 +125,7 @@ CREATOR_SOURCE_NAMES = {
 CREATOR_SOURCE_ENTRIES = {
     "图片提示词.md": ("IMG-", r"可复制(?:通用)?提示词", "参考"),
     "视频提示词.md": ("MOTION-", r"可复制(?:通用)?提示词", "输入参考图"),
-    "分镜.md": ("SHOT-", r"冻结关键帧提示词", "输入参考图"),
+    "分镜.md": ("SHOT-", r"首帧提示词", "输入参考图"),
 }
 
 REF_SLOT_RE = re.compile(r"REF-[A-Z0-9][A-Z0-9-]{0,79}")
@@ -136,6 +136,10 @@ PLAN_SLOT_RE = re.compile(
     r"PLAN-[A-Za-z0-9][A-Za-z0-9-]{0,79}（顺序：[1-9]\d*）· "
     r"(?:IMG|SHOT)-[A-Za-z0-9-]+《[^》\n]+》（[^）\n]*）"
 )
+EMPTY_INPUT_REFERENCE_RE = re.compile(
+    r"无(?:（(?:[^（）\n]|（(?:[^（）\n]|（[^（）\n]*）)*）)+）)?。?"
+)
+TRAILING_PENDING_REFERENCE_RE = re.compile(r"；待补参考图：[^；。\n]+。?$")
 SOURCE_ENTRY_RE = re.compile(r"[A-Z][A-Z0-9-]{1,99}")
 REFERENCE_SUFFIX_RE = r"(?:png|jpe?g|webp)"
 # 用途 is the creator-facing question "what does this picture decide here"; the
@@ -147,6 +151,22 @@ REFERENCE_LINE_RE = re.compile(
     rf"([^；\n]+?\.{REFERENCE_SUFFIX_RE})《([^》\n]+)》"
     r"（(?:用途：[^；）\n]+；)?控制：([^；）\n]+)；不得控制：([^）\n]+)）",
     re.IGNORECASE,
+)
+REFERENCE_LINE_WITH_PURPOSE_RE = re.compile(
+    rf"(REF-[A-Z0-9][A-Z0-9-]{{0,79}})（顺序：([1-9]\d*)）· "
+    rf"([^；\n]+?\.{REFERENCE_SUFFIX_RE})《([^》\n]+)》"
+    r"（(?:用途：([^；）\n]+)；)?控制：([^；）\n]+)；不得控制：([^）\n]+)）",
+    re.IGNORECASE,
+)
+BUILTIN_AUDIO_CAPABLE_PROVIDERS = frozenset({"seedance", "minimax-h3"})
+BUILTIN_DEFAULT_VIDEO_ROLES = frozenset(
+    {
+        "first_frame",
+        "last_frame",
+        "reference_image",
+        "reference_video",
+        "reference_audio",
+    }
 )
 
 # A MOTION's `- 参考音频：` line: the speaking character's accepted voice. It
@@ -315,12 +335,48 @@ def _hash_project_file(root: Path, relative: str) -> str:
     return digest.hexdigest()
 
 
+def _read_project_input_bytes(root: Path, relative: str) -> bytes:
+    chunks: list[bytes] = []
+    size = 0
+    with _open_project_input(root, relative) as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > MAX_INPUT_BYTES:
+                raise ValueError(f"job input exceeds the size limit: {relative}")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _hash_job_input(
+    root: Path,
+    relative: str,
+    *,
+    source: str | None,
+    source_entry: str | None,
+) -> str:
+    if (
+        source is not None
+        and source_entry is not None
+        and relative == source
+        and PurePosixPath(relative).suffix.casefold() == ".md"
+    ):
+        raw = _read_project_input_bytes(root, relative)
+        document = raw.decode("utf-8")
+        section = _markdown_section(document, source_entry)
+        return sha256_bytes(section.strip().encode("utf-8"))
+    return _hash_project_file(root, relative)
+
+
 def _snapshot_inputs(
     root: Path, job: Mapping[str, Any], snapshot_root: Path
 ) -> None:
     inputs = job.get("inputs")
     if not isinstance(inputs, Mapping):
         raise ConfirmationRequiredError("stored job inputs are invalid")
+    source_raw = job.get("source")
+    source = str(source_raw) if isinstance(source_raw, str) else None
+    entry_raw = job.get("source_entry")
+    source_entry = str(entry_raw) if isinstance(entry_raw, str) else None
     total = 0
     for relative_value, expected_value in inputs.items():
         relative = _relative_path(relative_value)
@@ -331,6 +387,16 @@ def _snapshot_inputs(
         target = snapshot_root.joinpath(*PurePosixPath(relative).parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256()
+        chunks: list[bytes] | None = (
+            []
+            if (
+                source is not None
+                and source_entry is not None
+                and relative == source
+                and PurePosixPath(relative).suffix.casefold() == ".md"
+            )
+            else None
+        )
         size = 0
         try:
             with _open_project_input(root, relative) as incoming, target.open(
@@ -343,13 +409,24 @@ def _snapshot_inputs(
                         raise ConfirmationRequiredError(
                             "job inputs exceed the production size limit"
                         )
-                    digest.update(chunk)
+                    if chunks is not None:
+                        chunks.append(chunk)
+                    else:
+                        digest.update(chunk)
                     outgoing.write(chunk)
-        except (FileNotFoundError, OSError, ValueError) as exc:
+            if chunks is not None:
+                assert source_entry is not None
+                section = _markdown_section(
+                    b"".join(chunks).decode("utf-8"), source_entry
+                )
+                actual_digest = sha256_bytes(section.strip().encode("utf-8"))
+            else:
+                actual_digest = digest.hexdigest()
+        except (FileNotFoundError, OSError, UnicodeError, ValueError) as exc:
             raise ConfirmationRequiredError(
                 "job inputs changed; prepare and confirm again"
             ) from exc
-        if digest.hexdigest() != expected_value:
+        if actual_digest != expected_value:
             raise ConfirmationRequiredError(
                 "job inputs changed; prepare and confirm again"
             )
@@ -738,9 +815,8 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
             not isinstance(raw_label, str)
             or not raw_label.strip()
             or len(raw_label) > 200
-            or re.search(r"[\u3400-\u9fff]", raw_label) is None
         ):
-            raise ValueError(f"{label} label must contain Chinese text")
+            raise ValueError(f"{label} label must be non-empty bounded text")
         if not isinstance(role, str) or not role.strip() or len(role) > 80:
             raise ValueError(f"{label} role is invalid")
         character = binding.get("character")
@@ -774,13 +850,13 @@ def _normalize_reference_bindings(value: object) -> list[dict[str, Any]]:
     normalized.sort(key=lambda item: int(item["order"]))
     slots = [str(item["slot_id"]) for item in normalized]
     orders = [int(item["order"]) for item in normalized]
-    paths = [str(item["path"]) for item in normalized]
+    path_roles = [(str(item["path"]), str(item["role"])) for item in normalized]
     if len(slots) != len(set(slots)):
         raise ValueError("reference binding slot_ids must be unique")
     if orders != list(range(1, len(orders) + 1)):
         raise ValueError("reference binding order must be unique and contiguous from 1")
-    if len(paths) != len(set(paths)):
-        raise ValueError("reference binding paths must be unique")
+    if len(path_roles) != len(set(path_roles)):
+        raise ValueError("reference binding (path, role) pairs must be unique")
     return normalized
 
 
@@ -828,11 +904,50 @@ def _scope_items(value: str) -> list[str]:
 
 
 def _contains_ref_token(value: str) -> bool:
-    return "ref-" in value.casefold()
+    return (
+        re.search(r"(?<![A-Za-z0-9-])ref-[A-Za-z0-9]", value, re.IGNORECASE)
+        is not None
+    )
 
 
 def _contains_plan_token(value: str) -> bool:
     return "plan-" in value.casefold()
+
+
+def _split_slot_clauses(value: str) -> list[str]:
+    trimmed = value[:-1] if value.endswith("。") else value
+    if not trimmed:
+        raise ValueError("source entry input-reference declaration is invalid")
+    clauses: list[str] = []
+    start = 0
+    paren_depth = 0
+    quote_depth = 0
+    for idx, ch in enumerate(trimmed):
+        if ch == "（":
+            paren_depth += 1
+        elif ch == "）":
+            paren_depth -= 1
+            if paren_depth < 0:
+                raise ValueError("source entry input-reference declaration is invalid")
+        elif ch == "《":
+            quote_depth += 1
+        elif ch == "》":
+            quote_depth -= 1
+            if quote_depth < 0:
+                raise ValueError("source entry input-reference declaration is invalid")
+        elif ch == "；" and paren_depth == 0 and quote_depth == 0:
+            clause = trimmed[start:idx]
+            if not clause:
+                raise ValueError("source entry input-reference declaration is invalid")
+            clauses.append(clause)
+            start = idx + 1
+    if paren_depth != 0 or quote_depth != 0:
+        raise ValueError("source entry input-reference declaration is invalid")
+    tail = trimmed[start:]
+    if not tail:
+        raise ValueError("source entry input-reference declaration is invalid")
+    clauses.append(tail)
+    return clauses
 
 
 def _field_values(section: str, field_name: str) -> list[str]:
@@ -850,24 +965,28 @@ def _field_values(section: str, field_name: str) -> list[str]:
     return values
 
 
-def _markdown_reference_bindings(
+def _markdown_reference_bindings_with_purpose(
     section: str, *, field_name: str, creator_supplied_ok: bool = False
-) -> list[dict[str, Any]]:
+) -> list[tuple[dict[str, Any], str | None]]:
     lines = _field_values(section, field_name)
     if not lines:
         raise ValueError(f"source entry has no {field_name} declaration")
     if len(lines) != 1:
         raise ValueError(f"source entry has duplicate {field_name} declarations")
     value = lines[0].strip()
+    if creator_supplied_ok and field_name == "输入参考图":
+        value = TRAILING_PENDING_REFERENCE_RE.sub("", value).strip()
     if (
         field_name == "输入参考图"
         and not _contains_ref_token(value)
-        and re.fullmatch(r"无(?:（[^）\n]+）)?。?", value)
+        and not PLAN_SLOT_HEAD_RE.search(value)
+        and EMPTY_INPUT_REFERENCE_RE.fullmatch(value)
     ):
         return []
     if (
         field_name == "参考"
         and not _contains_ref_token(value)
+        and not PLAN_SLOT_HEAD_RE.search(value)
         and re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", value)
     ):
         return []
@@ -877,36 +996,62 @@ def _markdown_reference_bindings(
     # way it already does for 「待补参考图」 -- so only the job that would have
     # sent these pictures as model inputs refuses. Matched as a slot head rather
     # than a bare substring, or a real file named `plan-sheet.png` would refuse.
-    if PLAN_SLOT_HEAD_RE.search(value):
-        if not creator_supplied_ok:
-            raise ValueError(
-                "source entry declares creator-supplied references (PLAN-...); "
-                "bind the real files as REF-... before producing"
-            )
-        value = PLAN_SLOT_RE.sub("", value).strip("；;。 ")
-        if not value:
-            return []
-    matches = list(REFERENCE_LINE_RE.finditer(value))
-    if not matches:
-        raise ValueError("source entry input-reference declaration is invalid")
-    cursor = 0
-    for index, match in enumerate(matches):
-        separator = value[cursor : match.start()]
-        if separator != ("" if index == 0 else "；"):
+    clauses = _split_slot_clauses(value)
+    had_plan_slots = False
+    parsed: list[tuple[dict[str, Any], str | None]] = []
+    for clause in clauses:
+        if PLAN_SLOT_HEAD_RE.search(clause):
+            if not creator_supplied_ok:
+                raise ValueError(
+                    "source entry declares creator-supplied references (PLAN-...); "
+                    "bind the real files as REF-... before producing"
+                )
+            if PLAN_SLOT_RE.fullmatch(clause) is None:
+                raise ValueError("source entry input-reference declaration is invalid")
+            had_plan_slots = True
+            continue
+        match = REFERENCE_LINE_WITH_PURPOSE_RE.fullmatch(clause)
+        if match is None:
             raise ValueError("source entry input-reference declaration is invalid")
-        cursor = match.end()
-    if value[cursor:] not in {"", "。"}:
+        parsed.append(
+            (
+                {
+                    "slot_id": match.group(1),
+                    "order": int(match.group(2)),
+                    "path": _relative_path(match.group(3)),
+                    "label": match.group(4).strip(),
+                    "may_control": _scope_items(match.group(6)),
+                    "must_not_control": _scope_items(match.group(7)),
+                },
+                match.group(5),
+            )
+        )
+    if not parsed:
+        if had_plan_slots:
+            return []
         raise ValueError("source entry input-reference declaration is invalid")
+    if creator_supplied_ok and had_plan_slots:
+        original_orders = [int(binding["order"]) for binding, _ in parsed]
+        if len(original_orders) != len(set(original_orders)):
+            raise ValueError("reference binding order must be unique and contiguous from 1")
+        parsed.sort(key=lambda item: int(item[0]["order"]))
+        parsed = [
+            ({**binding, "order": index}, purpose)
+            for index, (binding, purpose) in enumerate(parsed, start=1)
+        ]
+    return parsed
+
+
+def _markdown_reference_bindings(
+    section: str, *, field_name: str, creator_supplied_ok: bool = False
+) -> list[dict[str, Any]]:
     return [
-        {
-            "slot_id": match.group(1),
-            "order": int(match.group(2)),
-            "path": _relative_path(match.group(3)),
-            "label": match.group(4).strip(),
-            "may_control": _scope_items(match.group(5)),
-            "must_not_control": _scope_items(match.group(6)),
-        }
-        for match in matches
+        binding
+        for binding, _ in _markdown_reference_bindings_with_purpose(
+            section,
+            field_name=field_name,
+            creator_supplied_ok=creator_supplied_ok,
+        )
     ]
 
 
@@ -918,7 +1063,11 @@ def _markdown_audio_bindings(section: str) -> list[dict[str, Any]]:
     if len(lines) != 1:
         raise ValueError("source entry has duplicate 参考音频 declarations")
     value = lines[0].strip()
-    if not _contains_ref_token(value) and re.fullmatch(r"无(?:（[^）\n]+）)?。?", value):
+    if (
+        not _contains_ref_token(value)
+        and not PLAN_SLOT_HEAD_RE.search(value)
+        and EMPTY_INPUT_REFERENCE_RE.fullmatch(value)
+    ):
         return []
     matches = list(AUDIO_REFERENCE_LINE_RE.finditer(value))
     cursor = 0
@@ -947,6 +1096,62 @@ def _markdown_audio_bindings(section: str) -> list[dict[str, Any]]:
     if [binding["order"] for binding in bindings] != list(range(1, len(bindings) + 1)):
         raise ValueError("source entry 参考音频 order must be contiguous from 1")
     return bindings
+
+
+def _purpose_to_provider_role(purpose: str | None) -> str:
+    if purpose is None:
+        return "reference_image"
+    cleaned = purpose.strip()
+    folded = cleaned.casefold()
+    if cleaned in {"起始帧", "首帧"} or folded in {"first_frame", "start_frame"}:
+        return "first_frame"
+    if cleaned in {"结束帧", "尾帧"} or folded in {"last_frame", "end_frame"}:
+        return "last_frame"
+    if cleaned in {"参考视频", "前序接戏视频"} or folded in {
+        "reference_video",
+        "continuity_video",
+    }:
+        return "reference_video"
+    return "reference_image"
+
+
+def _extract_markdown_source_defaults(
+    root: Path, *, source: str, source_entry: str
+) -> tuple[str, list[dict[str, Any]]]:
+    source_path = _project_file(root, source)
+    if source_path.suffix.casefold() != ".md":
+        raise ValueError("source_entry requires a Markdown source")
+    document = source_path.read_text(encoding="utf-8")
+    section = _markdown_section(document, source_entry)
+    _, heading, field_name = CREATOR_SOURCE_ENTRIES[source_path.name]
+    extracted_prompt = _copyable_prompt(section, heading)
+    creator_supplied_ok = source_path.name == "分镜.md"
+    declared_pictures = _markdown_reference_bindings_with_purpose(
+        section,
+        field_name=field_name,
+        creator_supplied_ok=creator_supplied_ok,
+    )
+    picture_bindings = [
+        {
+            **binding,
+            "role": _purpose_to_provider_role(purpose),
+        }
+        for binding, purpose in declared_pictures
+    ]
+    audio = (
+        _markdown_audio_bindings(section)
+        if source_path.name == "视频提示词.md"
+        else []
+    )
+    audio_bindings = [
+        {
+            **binding,
+            "order": len(picture_bindings) + int(binding["order"]),
+            "role": AUDIO_REFERENCE_ROLE,
+        }
+        for binding in audio
+    ]
+    return extracted_prompt, picture_bindings + audio_bindings
 
 
 def _verify_markdown_source(
@@ -1023,9 +1228,6 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
     adapter = raw.get("adapter")
     if not isinstance(adapter, str) or JOB_ID_RE.fullmatch(adapter) is None:
         raise ValueError("adapter must be a portable profile name")
-    prompt = raw.get("prompt")
-    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
-        raise ValueError("prompt must be non-empty and at most 100000 characters")
     source_raw = raw.get("source")
     source = _relative_path(source_raw) if source_raw is not None else None
     source_entry = raw.get("source_entry")
@@ -1059,19 +1261,38 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         or not source_entry.startswith(expected_entry_prefix)
     ):
         raise ValueError("source_entry does not match the job modality")
+    extracted_prompt: str | None = None
+    extracted_bindings: list[dict[str, Any]] | None = None
+    if source_entry is not None and (
+        raw.get("prompt") is None or raw.get("reference_bindings") is None
+    ):
+        extracted_prompt, extracted_bindings = _extract_markdown_source_defaults(
+            root, source=str(source), source_entry=source_entry
+        )
+    prompt = raw.get("prompt") if raw.get("prompt") is not None else extracted_prompt
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
+        raise ValueError("prompt must be non-empty and at most 100000 characters")
     references_supplied = "references" in raw
     supplied_references = [
         _relative_path(path)
         for path in _string_list(raw.get("references", []), label="references", limit=16)
     ]
-    reference_bindings = _normalize_reference_bindings(raw.get("reference_bindings"))
+    raw_bindings = (
+        raw.get("reference_bindings")
+        if raw.get("reference_bindings") is not None
+        else extracted_bindings
+    )
+    reference_bindings = _normalize_reference_bindings(raw_bindings)
     binding_references = [str(binding["path"]) for binding in reference_bindings]
+    dedup_binding_references = list(dict.fromkeys(binding_references))
     if (
         references_supplied
         and (reference_bindings or source_entry is not None)
-        and supplied_references != binding_references
+        and supplied_references not in (binding_references, dedup_binding_references)
     ):
         raise ValueError("references must match reference_bindings order")
+    if not reference_bindings and len(set(supplied_references)) != len(supplied_references):
+        raise ValueError("source and references must be unique")
     references = binding_references if reference_bindings else supplied_references
     if source_entry is not None:
         _verify_markdown_source(
@@ -1098,10 +1319,15 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         raise ValueError("job parameters must not contain credentials or secrets")
     if len(_canonical(parameters)) > 64 * 1024:
         raise ValueError("job parameters are too large")
-    input_paths = ([source] if source is not None else []) + references
-    if len(set(input_paths)) != len(input_paths):
+    if source is not None and source in references:
         raise ValueError("source and references must be unique")
-    input_hashes = {path: _hash_project_file(root, path) for path in input_paths}
+    unique_input_paths = ([source] if source is not None else []) + list(
+        dict.fromkeys(references)
+    )
+    input_hashes = {
+        path: _hash_job_input(root, path, source=source, source_entry=source_entry)
+        for path in unique_input_paths
+    }
     execution = {
         "schema_version": JOB_SCHEMA,
         "job_id": job_id,
@@ -1185,8 +1411,10 @@ def _validate_stored_job(
         or source is None
     ):
         raise ValueError("stored job source entry is invalid")
-    expected_entry_prefix = {"image": "IMG-", "video": "MOTION-"}.get(
-        str(modality)
+    expected_entry_prefix = (
+        CREATOR_SOURCE_ENTRIES[PurePosixPath(str(source)).name][0]
+        if source is not None and PurePosixPath(str(source)).name in CREATOR_SOURCE_ENTRIES
+        else {"image": "IMG-", "video": "MOTION-"}.get(str(modality))
     )
     if source_entry is not None and (
         expected_entry_prefix is None
@@ -1237,11 +1465,15 @@ def _validate_stored_job(
         raise ValueError("stored job parameters are invalid")
     if not isinstance(document.get("overwrite"), bool):
         raise ValueError("stored job overwrite flag is invalid")
-    input_paths = ([source] if source is not None else []) + references
-    if len(input_paths) != len(set(input_paths)):
+    if source is not None and source in references:
         raise ValueError("stored job inputs are duplicated")
+    if not reference_bindings and len(references) != len(set(references)):
+        raise ValueError("stored job inputs are duplicated")
+    unique_input_paths = ([source] if source is not None else []) + list(
+        dict.fromkeys(references)
+    )
     inputs = document.get("inputs")
-    if not isinstance(inputs, Mapping) or set(inputs) != set(input_paths):
+    if not isinstance(inputs, Mapping) or set(inputs) != set(unique_input_paths):
         raise ValueError("stored job input hashes are invalid")
     if any(
         not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
@@ -1322,10 +1554,27 @@ def _inputs_current(root: Path, job: Mapping[str, Any]) -> bool:
     inputs = job.get("inputs")
     if not isinstance(inputs, Mapping):
         return False
+    source_raw = job.get("source")
+    source = str(source_raw) if isinstance(source_raw, str) else None
+    entry_raw = job.get("source_entry")
+    source_entry = str(entry_raw) if isinstance(entry_raw, str) else None
     try:
-        return all(_hash_project_file(root, str(path)) == digest for path, digest in inputs.items())
-    except (FileNotFoundError, OSError, ValueError):
+        return all(
+            _hash_job_input(root, str(path), source=source, source_entry=source_entry)
+            == digest
+            for path, digest in inputs.items()
+        )
+    except (FileNotFoundError, OSError, UnicodeError, ValueError):
         return False
+
+
+def _is_builtin_audio_capable_command(command: Sequence[str]) -> bool:
+    for index, part in enumerate(command):
+        if PurePosixPath(part.replace("\\", "/")).name == "provider_adapters.py":
+            return any(
+                arg in BUILTIN_AUDIO_CAPABLE_PROVIDERS for arg in command[index + 1 :]
+            )
+    return False
 
 
 def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str], int, frozenset[str] | None]:
@@ -1348,11 +1597,14 @@ def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str
     if not isinstance(timeout, int) or isinstance(timeout, bool) or not 1 <= timeout <= MAX_TIMEOUT_SECONDS:
         raise ValueError(f"adapter timeout must be 1-{MAX_TIMEOUT_SECONDS} seconds")
     roles = selected.get("reference_roles")
-    declared = (
-        frozenset(_string_list(roles, label="adapter reference_roles"))
-        if roles is not None
-        else None
-    )
+    if roles is not None:
+        declared: frozenset[str] | None = frozenset(
+            _string_list(roles, label="adapter reference_roles")
+        )
+    elif _is_builtin_audio_capable_command(command):
+        declared = BUILTIN_DEFAULT_VIDEO_ROLES
+    else:
+        declared = None
     return command, timeout, declared
 
 
@@ -1397,6 +1649,25 @@ def _generic_adapter_error(
     }
 
 
+def _safe_error_detail(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    collapsed = " ".join(value.split())
+    if not collapsed or len(collapsed) > 160:
+        return None
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in collapsed):
+        return None
+    if re.search(
+        r"://|(?<![\w.])/(?:Users|home|private|var|tmp)/|\b[A-Za-z]:[\\/]"
+        r"|\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}"
+        r"|\b(?:authorization|password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]",
+        collapsed,
+        re.IGNORECASE,
+    ):
+        return None
+    return collapsed
+
+
 def _parse_public_adapter_error(
     raw: bytes, *, profile: str, returncode: int
 ) -> dict[str, Any]:
@@ -1420,6 +1691,8 @@ def _parse_public_adapter_error(
         "http_status",
         "request_id",
         "retryable",
+        "submitted",
+        "detail",
     }:
         return fallback
     provider = error.get("provider")
@@ -1453,6 +1726,18 @@ def _parse_public_adapter_error(
         ):
             return fallback
         result["request_id"] = request_id
+    submitted = error.get("submitted")
+    if submitted is not None:
+        if not isinstance(submitted, bool):
+            return fallback
+        result["submitted"] = submitted
+    detail = error.get("detail")
+    if detail is not None:
+        if not isinstance(detail, str):
+            return fallback
+        safe_detail = _safe_error_detail(detail)
+        if safe_detail is not None:
+            result["detail"] = safe_detail
     return result
 
 
@@ -1821,17 +2106,55 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 _write_run(root, job_id, run)
         except Exception as exc:
             with _project_lock(root):
-                run["status"] = "failed"
-                run["finished_at"] = utc_now()
-                if isinstance(exc, AdapterError) and exc.public_error is not None:
-                    run["error"] = exc.public_error
-                # A timeout or a killed adapter does not cancel the provider's
-                # task. Carry the handle onto the failed record so `audit` can
-                # say "collect this" instead of the creator paying twice.
                 orphan = _read_provider_handle(root, job_id, run_id)
-                if orphan is not None:
-                    run["provider_job_id"] = orphan
-                _write_run(root, job_id, run)
+                public_error = (
+                    exc.public_error
+                    if isinstance(exc, AdapterError) and exc.public_error is not None
+                    else None
+                )
+                unsubmitted_preflight = (
+                    orphan is None
+                    and public_error is not None
+                    and "http_status" not in public_error
+                    and (
+                        public_error.get("submitted") is False
+                        or public_error.get("code") == "adapter_start_failed"
+                    )
+                )
+                if unsubmitted_preflight:
+                    try:
+                        _metadata_unlink(
+                            root, ("runs", _job_key(job_id)), f"{run_id}.json"
+                        )
+                    except FileNotFoundError:
+                        pass
+                    receipt["consumed_at"] = None
+                    receipt["run_id"] = None
+                    _metadata_atomic_json(
+                        root,
+                        ("confirmations",),
+                        f"{_job_key(job_id)}.json",
+                        receipt,
+                    )
+                else:
+                    run["status"] = "failed"
+                    run["finished_at"] = utc_now()
+                    if public_error is not None:
+                        run["error"] = public_error
+                    # A timeout or a killed adapter does not cancel the provider's
+                    # task. Carry the handle onto the failed record so `audit` can
+                    # say "collect this" instead of the creator paying twice.
+                    if orphan is not None:
+                        run["provider_job_id"] = orphan
+                    _write_run(root, job_id, run)
+            if unsubmitted_preflight:
+                detail = public_error.get("detail") if public_error else None
+                reason = f": {detail}" if isinstance(detail, str) and detail else ""
+                raise AdapterError(
+                    "adapter preflight failed before remote submission; "
+                    f"confirmation remains valid{reason}",
+                    public_error=public_error,
+                ) from exc
             raise
     return {
         "job_id": job_id,
@@ -1954,10 +2277,14 @@ def job_status(root: Path, *, job_id: str) -> dict[str, Any]:
             receipt = None
         if latest and latest.get("status") == "running":
             state = "running"
+        elif (
+            isinstance(receipt, Mapping)
+            and receipt.get("consumed_at") is None
+            and receipt.get("fingerprint") == job.get("fingerprint")
+        ):
+            state = "confirmed"
         elif latest and latest.get("status") in {"succeeded", "failed"}:
             state = str(latest["status"])
-        elif isinstance(receipt, Mapping) and receipt.get("consumed_at") is None:
-            state = "confirmed"
         else:
             state = "needs_confirmation"
     return {
@@ -2267,20 +2594,326 @@ def audit_project(root: Path) -> dict[str, Any]:
     }
 
 
+def _job_spec_summary(job: Mapping[str, Any]) -> dict[str, Any]:
+    params = job.get("parameters", {})
+    summary: dict[str, Any] = {
+        "job_id": job["job_id"],
+        "modality": job["modality"],
+        "adapter": job["adapter"],
+        "source_entry": job["source_entry"],
+        "count": len(job["outputs"]),
+        "outputs": list(job["outputs"]),
+        "overwrite": job["overwrite"],
+    }
+    if isinstance(params, Mapping):
+        for key in ("model", "duration", "ratio", "resolution", "size", "width", "height"):
+            if key in params:
+                summary[key] = params[key]
+    return summary
+
+
+def prepare_batch(
+    root: Path,
+    job_files: Sequence[Path],
+    *,
+    batch_id: str | None = None,
+) -> dict[str, Any]:
+    root = find_project(root)
+    if not job_files or len(job_files) > 256:
+        raise ValueError("prepare-batch requires between 1 and 256 job files")
+    jobs: list[dict[str, Any]] = []
+    seen_job_ids: set[str] = set()
+    seen_outputs: set[str] = set()
+    for job_file in job_files:
+        if job_file.stat().st_size > MAX_JOB_BYTES:
+            raise ValueError(f"job file is too large: {job_file.name}")
+        raw = json.loads(job_file.read_text(encoding="utf-8"))
+        job = _normalize_job(root, raw)
+        jid = str(job["job_id"])
+        if jid in seen_job_ids:
+            raise ValueError(f"duplicate job_id in batch: {jid}")
+        seen_job_ids.add(jid)
+        for output in job["outputs"]:
+            if output in seen_outputs:
+                raise ValueError(f"duplicate output path across batch jobs: {output}")
+            seen_outputs.add(str(output))
+        jobs.append(job)
+
+    batch_fingerprint = sha256_bytes(
+        _canonical(
+            [{"job_id": job["job_id"], "fingerprint": job["fingerprint"]} for job in jobs]
+        )
+    )
+    resolved_batch_id = batch_id or f"batch-{batch_fingerprint[:12]}"
+    if JOB_ID_RE.fullmatch(resolved_batch_id) is None:
+        raise ValueError("batch_id must be a portable 1-80 character identifier")
+
+    with _project_lock(root):
+        for job in jobs:
+            if _active_run(root, str(job["job_id"])) is not None:
+                raise RuntimeError(f"job is already running: {job['job_id']}")
+        for job in jobs:
+            job_name = f"{_job_key(str(job['job_id']))}.json"
+            _metadata_atomic_json(root, ("jobs",), job_name, job)
+            try:
+                _metadata_unlink(root, ("confirmations",), job_name)
+            except FileNotFoundError:
+                pass
+        batch_doc = {
+            "schema_version": JOB_SCHEMA,
+            "batch_id": resolved_batch_id,
+            "job_ids": [str(job["job_id"]) for job in jobs],
+            "job_fingerprints": {
+                str(job["job_id"]): str(job["fingerprint"]) for job in jobs
+            },
+            "fingerprint": batch_fingerprint,
+            "prepared_at": utc_now(),
+        }
+        _metadata_atomic_json(
+            root,
+            ("batches",),
+            f"{_job_key(resolved_batch_id)}.json",
+            batch_doc,
+        )
+
+    all_outputs = [str(output) for job in jobs for output in job["outputs"]]
+    adapters = sorted({str(job["adapter"]) for job in jobs})
+    return {
+        "batch_id": resolved_batch_id,
+        "job_count": len(jobs),
+        "output_count": len(all_outputs),
+        "adapters": adapters,
+        "jobs": [_job_spec_summary(job) for job in jobs],
+        "outputs": all_outputs,
+        "confirmation": f"CONFIRM BATCH {resolved_batch_id} {batch_fingerprint[:12]}",
+        "state": "needs_confirmation",
+    }
+
+
+def _read_batch(root: Path, batch_id: str) -> dict[str, Any]:
+    if JOB_ID_RE.fullmatch(batch_id) is None:
+        raise ValueError("invalid batch_id")
+    document = _metadata_read_json(
+        root,
+        ("batches",),
+        f"{_job_key(batch_id)}.json",
+        maximum=MAX_JOB_BYTES,
+    )
+    if (
+        not isinstance(document, dict)
+        or document.get("schema_version") != JOB_SCHEMA
+        or document.get("batch_id") != batch_id
+        or not isinstance(document.get("job_ids"), list)
+        or not document["job_ids"]
+        or not isinstance(document.get("job_fingerprints"), Mapping)
+        or not isinstance(document.get("fingerprint"), str)
+    ):
+        raise ValueError("stored batch record is invalid")
+    return document
+
+
+def confirm_batch(
+    root: Path, *, confirmation: str, batch_id: str | None = None
+) -> dict[str, Any]:
+    root = find_project(root)
+    parts = confirmation.strip().split()
+    if len(parts) != 4 or parts[0] != "CONFIRM" or parts[1] != "BATCH":
+        raise ConfirmationRequiredError(
+            "batch confirmation must use 'CONFIRM BATCH <batch_id> <code>'"
+        )
+    parsed_batch_id = parts[2]
+    if batch_id is not None and batch_id != parsed_batch_id:
+        raise ConfirmationRequiredError("batch_id does not match confirmation token")
+    with _project_lock(root):
+        try:
+            batch = _read_batch(root, parsed_batch_id)
+        except FileNotFoundError as exc:
+            raise ConfirmationRequiredError("batch is not prepared") from exc
+        expected = f"CONFIRM BATCH {parsed_batch_id} {str(batch['fingerprint'])[:12]}"
+        if confirmation.strip() != expected:
+            raise ConfirmationRequiredError(
+                "confirmation does not match the exact current batch"
+            )
+        verified_jobs: list[dict[str, Any]] = []
+        for jid in batch["job_ids"]:
+            job_id = str(jid)
+            if _active_run(root, job_id) is not None:
+                raise RuntimeError(f"job is already running: {job_id}")
+            job = _read_job(root, job_id)
+            if job["fingerprint"] != batch["job_fingerprints"].get(job_id):
+                raise ConfirmationRequiredError(
+                    f"job changed after prepare-batch: {job_id}"
+                )
+            if not _inputs_current(root, job):
+                raise ConfirmationRequiredError(
+                    f"job inputs changed after prepare-batch: {job_id}"
+                )
+            verified_jobs.append(job)
+        now = utc_now()
+        for job in verified_jobs:
+            job_id = str(job["job_id"])
+            receipt = {
+                "schema_version": JOB_SCHEMA,
+                "job_id": job_id,
+                "fingerprint": job["fingerprint"],
+                "batch_id": parsed_batch_id,
+                "confirmed_at": now,
+                "consumed_at": None,
+                "run_id": None,
+            }
+            _metadata_atomic_json(
+                root, ("confirmations",), f"{_job_key(job_id)}.json", receipt
+            )
+    return {
+        "batch_id": parsed_batch_id,
+        "job_ids": [str(job["job_id"]) for job in verified_jobs],
+        "job_count": len(verified_jobs),
+        "state": "confirmed",
+    }
+
+
+def run_batch(
+    root: Path,
+    *,
+    adapter_config: Path,
+    batch_id: str | None = None,
+    job_ids: Sequence[str] | None = None,
+    stop_on_error: bool = True,
+) -> dict[str, Any]:
+    root = find_project(root)
+    if (batch_id is None) == (job_ids is None):
+        raise ValueError("specify exactly one of batch_id or job_ids")
+    with _project_lock(root):
+        batch: dict[str, Any] | None = None
+        if batch_id is not None:
+            batch = _read_batch(root, batch_id)
+            targets = [str(item) for item in batch["job_ids"]]
+        else:
+            assert job_ids is not None
+            if not job_ids:
+                raise ValueError("job_ids must be non-empty")
+            targets = [str(item) for item in job_ids]
+        seen_jobs: set[str] = set()
+        for job_id in targets:
+            if job_id in seen_jobs:
+                raise ValueError(f"duplicate job_id in batch: {job_id}")
+            seen_jobs.add(job_id)
+        seen_outputs: set[str] = set()
+        for job_id in targets:
+            if _active_run(root, job_id) is not None:
+                raise RuntimeError(f"job is already running: {job_id}")
+            job = _read_job(root, job_id)
+            if batch is not None:
+                expected_fp = batch.get("job_fingerprints", {}).get(job_id)
+                if expected_fp != job.get("fingerprint"):
+                    raise ConfirmationRequiredError(
+                        f"batch_inputs_changed: job {job_id} changed since prepare-batch; "
+                        "prepare and confirm again"
+                    )
+            _, _, roles = _load_adapter(adapter_config, str(job["adapter"]), root)
+            _require_adapter_roles(job, roles)
+            if not _inputs_current(root, job):
+                raise ConfirmationRequiredError(
+                    f"job inputs changed; prepare and confirm again: {job_id}"
+                )
+            try:
+                receipt = _metadata_read_json(
+                    root,
+                    ("confirmations",),
+                    f"{_job_key(job_id)}.json",
+                    maximum=MAX_RUN_RECORD_BYTES,
+                )
+            except FileNotFoundError as exc:
+                raise ConfirmationRequiredError(
+                    f"job needs explicit confirmation: {job_id}"
+                ) from exc
+            if (
+                not isinstance(receipt, dict)
+                or receipt.get("fingerprint") != job.get("fingerprint")
+                or receipt.get("consumed_at") is not None
+            ):
+                raise ConfirmationRequiredError(
+                    f"job needs a new explicit confirmation: {job_id}"
+                )
+            for output in job["outputs"]:
+                if output in seen_outputs:
+                    raise ValueError(
+                        f"duplicate output path across batch jobs: {output}"
+                    )
+                seen_outputs.add(output)
+                target = _project_file(root, output)
+                if target.exists() and not job["overwrite"]:
+                    raise FileExistsError(
+                        f"output exists and overwrite is false: {output}"
+                    )
+
+    succeeded: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for index, job_id in enumerate(targets):
+        try:
+            succeeded.append(
+                run_job(root, job_id=job_id, adapter_config=adapter_config)
+            )
+        except Exception as exc:
+            entry: dict[str, Any] = {"job_id": job_id, "error": str(exc)}
+            if isinstance(exc, AdapterError) and exc.public_error is not None:
+                entry["public_error"] = exc.public_error
+            failed.append(entry)
+            if stop_on_error:
+                remaining = targets[index + 1 :]
+                return {
+                    "batch_id": batch_id,
+                    "state": "failed",
+                    "succeeded": succeeded,
+                    "failed": failed,
+                    "remaining": remaining,
+                }
+    return {
+        "batch_id": batch_id,
+        "state": "failed" if failed else "succeeded",
+        "succeeded": succeeded,
+        "failed": failed,
+        "remaining": [],
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run confirmed short-drama media jobs.")
     commands = parser.add_subparsers(dest="command", required=True)
     prepare = commands.add_parser("prepare", help="Validate and preview a media job.")
     prepare.add_argument("project")
     prepare.add_argument("--job", required=True)
-    confirm = commands.add_parser("confirm", help="Confirm the exact prepared job.")
+    prepare_batch_cmd = commands.add_parser(
+        "prepare-batch", help="Validate and preview a batch of media jobs."
+    )
+    prepare_batch_cmd.add_argument("project")
+    prepare_batch_cmd.add_argument("--jobs", nargs="+", required=True)
+    prepare_batch_cmd.add_argument("--batch-id")
+    confirm = commands.add_parser(
+        "confirm", help="Confirm an exact prepared job or prepared batch."
+    )
     confirm.add_argument("project")
-    confirm.add_argument("--job-id", required=True)
+    confirm.add_argument("--job-id")
+    confirm.add_argument("--batch-id")
     confirm.add_argument("--confirmation", required=True)
+    confirm_batch_cmd = commands.add_parser(
+        "confirm-batch", help="Confirm an exact prepared batch."
+    )
+    confirm_batch_cmd.add_argument("project")
+    confirm_batch_cmd.add_argument("--batch-id")
+    confirm_batch_cmd.add_argument("--confirmation", required=True)
     run = commands.add_parser("run", help="Execute a confirmed job through an adapter.")
     run.add_argument("project")
     run.add_argument("--job-id", required=True)
     run.add_argument("--adapter-config", required=True)
+    run_batch_cmd = commands.add_parser(
+        "run-batch", help="Execute a confirmed batch of jobs sequentially."
+    )
+    run_batch_cmd.add_argument("project")
+    run_batch_cmd.add_argument("--batch-id")
+    run_batch_cmd.add_argument("--job-ids", nargs="+")
+    run_batch_cmd.add_argument("--adapter-config", required=True)
+    run_batch_cmd.add_argument("--continue-on-error", action="store_true")
     collect = commands.add_parser(
         "collect",
         help="Fetch the result of an already-submitted provider task without paying again.",
@@ -2303,9 +2936,34 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "prepare":
             result = prepare_job(Path(args.project), Path(args.job))
+        elif args.command == "prepare-batch":
+            result = prepare_batch(
+                Path(args.project),
+                [Path(item) for item in args.jobs],
+                batch_id=args.batch_id,
+            )
         elif args.command == "confirm":
-            result = confirm_job(
-                Path(args.project), job_id=args.job_id, confirmation=args.confirmation
+            if args.batch_id or args.confirmation.strip().startswith("CONFIRM BATCH "):
+                if args.job_id:
+                    raise ValueError("cannot combine --job-id with batch confirmation")
+                result = confirm_batch(
+                    Path(args.project),
+                    confirmation=args.confirmation,
+                    batch_id=args.batch_id,
+                )
+            else:
+                if not args.job_id:
+                    raise ValueError("--job-id is required when confirming a single job")
+                result = confirm_job(
+                    Path(args.project),
+                    job_id=args.job_id,
+                    confirmation=args.confirmation,
+                )
+        elif args.command == "confirm-batch":
+            result = confirm_batch(
+                Path(args.project),
+                confirmation=args.confirmation,
+                batch_id=args.batch_id,
             )
         elif args.command == "run":
             result = run_job(
@@ -2313,6 +2971,16 @@ def main(argv: list[str] | None = None) -> int:
                 job_id=args.job_id,
                 adapter_config=Path(args.adapter_config),
             )
+        elif args.command == "run-batch":
+            result = run_batch(
+                Path(args.project),
+                adapter_config=Path(args.adapter_config),
+                batch_id=args.batch_id,
+                job_ids=args.job_ids,
+                stop_on_error=not args.continue_on_error,
+            )
+            print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+            return 0 if result["state"] == "succeeded" else 2
         elif args.command == "collect":
             result = collect_job(
                 Path(args.project),

@@ -1,71 +1,56 @@
-# Story And Script Rubric
+# 故事大纲与剧本核查清单
 
-## Story promise, episode shape, and serial memory
+## 1. 全剧看点、单集骨架与跨集连戏
 
-- **Promise & engine (`STY-01`–`STY-06`)**: protagonist, active pursuit, costly opposition, and recurring audience payoff are stated concretely rather than replaced by a genre label; escalation alters power, knowledge, relationship, exposure, cost, or time rather than repeating the same misunderstanding, humiliation, rescue, or reveal; setups/payoffs and episode handoffs resolve to explicit records.
-- **Episode arc & agency (`STY-13`, `SCR-13`, `SCR-15`)**:
-  - Opening pressure, protagonist want, resisting force, directional turn, local dramatic result before the outgoing hook, and exact next-episode entry state are legible from the screenplay alone (an episode that pauses an unfinished action without landing a local result fails `STY-13`).
-  - The protagonist's choice causes the result (or earlier action triggered the external arrival and present response).
-  - When a turn is framed as a consequential choice (`SCR-13`), both directions protect a live value and the chosen action causes a perceptible cost (leave inactive for single-path pursuit; fail if one direction was already valueless/impossible or if a cost/deadline was invented at decision time).
-  - Payoffs preserve established residue rather than replacing meaning with a slogan (`SCR-15`), and post-result beats do not contradict consequences declared irreversible.
-  - Capacity estimates (`STY-16`) are informational only; rhythm checks use only an accepted profile ([below](#rhythm-profile-rev-12)).
-- **Foreknowledge & authorized ability (`STY-17`)**: separate the **contract layer** (scope, failure conditions, cost, reliability accepted in the story engine before first use) from the **disclosure layer** (current episode knowledge). Partial disclosure is normal suspense, not a defect. Fail when:
-  - A later ability or exemption traces to no contract clause (retroactive widening), or a disclosed rule is violated without an unreliable-device contract;
-  - Stripping the device leaves no protagonist choice, or the author invents ad-hoc timeline limits/costs to weaken the protagonist or dilute genre payoff;
-  - An on-screen readable device carrier conflicts with a global `no-text` policy.
-- **Entry, character arc, and contested evidence (`STY-12`, `STY-15`, `SCR-14`)**:
-  - First episode enters on an active window rather than dumping the backstory reservoir; world truth, character beliefs, and audience knowledge stay distinct; serial memory preserves relationship state, information permissions, setup debt, and physical handoff.
-  - Every claimed character change shows a pressure test, choice/retreat, local result, cost, and changed visible strategy (`STY-12`).
-  - Each evidence carrier separates what it directly proves from unresolved inference (`STY-15`). When a belief change hinges on contested evidence (`SCR-14`), response stays within what was proved (or intentionally preserves uncertainty), at least one visible state change narrows live explanations or alters the next action (mere photographing/bagging/logging is not a turn), and any continuity-dependent proof (sealing, position, lack of contact) is preserved by preceding action rather than asserted by a label.
+- **核心看点与升级脉络（`STY-01`–`STY-06`）**：主角诉求、核心阻力与每集看点具体可感，不靠贴题材标签敷衍；冲突或调查每推进一轮都带来真实的局面变化（知情范围扩大、关系洗牌、把柄易手、风险迫近或代价累加），不把同一套误会或天降救兵原地车轱辘重演；前文埋设的伏笔与集尾悬念前后呼应。
+- **单集进展、主角行动与两难抉择（`STY-13`、`SCR-13`、`SCR-15`）**：
+  - 单集内部立得住开场处境、本集行动推进、阶段性结果落定与集尾留钩（不能动作演到一半无故硬掐断导致当集毫无实质进展）。
+  - 关键破局或线索推进由主角自身行动、判断与取舍驱动，配角有各自相称的立场算计而非木头背景板。
+  - 剧本明确写成重大两难抉择的节点（`SCR-13`），两条路都须有真实得失并在选定后落地相应后果；单一目标追查到底的戏不套用两难公式。
+  - **高潮与阶段结算形态随题材调性而定（`craft_default`）**：强冲突对抗剧在爆发后展现硬代价、连锁反应与人物状态变化属常规有效做法，但**不拿“高潮三要素缺一不可”作一刀切扣分门槛**——悬疑剧揭开关键拼图即收、规则怪谈留白寒意收束、生活流以克制日常动作落点同样成立；仅当后文动作公然推翻前文已写死的硬代价或伤病后果时，才按前后吃书硬伤报错（`CON-02`、`SCR-15`）。
+- **金手指规则、人物转变与物证边界（`STY-12`、`STY-15`、`STY-17`、`SCR-14`）**：
+  - 重生预知或系统异能分清底表规则与剧中揭晓进度：层层揭秘属正常悬念，仅拦截毫无铺垫临时加挂、无故违背前文已亮明规则、或依赖看清系统面板真字却与全剧 `no-text` 禁字设定正面冲突的穿帮。
+  - 人物性格或立场大转弯有受压经历与取舍铺垫（`STY-12`）；物证交锋分清“当场坐实的事实”与“尚待核实的推论”，不破坏后文验真假所依赖的封存或原位前提（`STY-15`、`SCR-14`）。
 
-## Adaptation fidelity (`STY-07`, `STY-30`, `REV-03`)
+## 2. 原著改编忠实度与新增项登记（`STY-07`、`STY-30`、`REV-03`）
 
-Active only when adapting a source (`项目开发/adaptation-map.jsonl`):
+仅在含原著改编对照表（`项目开发/adaptation-map.jsonl`）的项目中核查：
 
-- **Core character stance & main line (`STY-07`)**: core characters keep their source stance toward the protagonist, mode of action, and relationships unless the creator accepted the change (turning a supporter into an oppressor or reversing a relationship without acceptance is a finding citing source fact + screenplay line per `REV-03`).
-- **Explicit `add` mappings (`STY-30`)**: every character, scene, or opponent absent from the source must be registered as its own `add` mapping with its function, why existing source material cannot carry it, checked source facts, and a brief line for the creator (hiding additions inside `change_carrier`/`merge`/`move_earlier` is a `craft_default` finding; manufacturing an opponent solely to hit `opposed_reversals_per_episode_min` is reported as a profile deviation instead).
+- **守住核心人物立场与主线关系（`STY-07`）**：未经创作者明确拍板，不得擅自颠倒原著主要人物的善恶立场与核心关系（违背时按 `REV-03` 并列原著依据与剧本行号报错）。
+- **原著外新增项如实单列 `add`（`STY-30`）**：新增角色、场次或支线单列 `add` 说明戏剧作用与不冲突依据请创作者确认，不藏入其他改编类别，更不为凑反转次数硬塞工具人反派。
 
-## Scene, action, and dialogue (`SCR-01`–`SCR-24`)
+## 3. 场次推进、制作标记与对白交锋（`SCR-01`–`SCR-24`）
 
-- **Scene test**: conflict/pursuit scenes must establish agenda, opposing force, traceable leverage/cost/choice that breaks the prior strategy (an opponent merely falling silent or leaving without lost leverage fails), and an exit state pressuring the next scene. Quiet, atmospheric, ritual, montage, or consequence-processing scenes pass when they deliver a legible change in knowledge, relationship, pressure, rhythm, or state.
-- **Action & production meaning (`SCR-16`, `SCR-17`)**:
-  - Internal states use playable behavior, evidence, or tagged `[VO]`/`[OS]`; on-screen text (`[画面文字]`), prop text, `[音效]`, and `[转场]` are explicitly tagged; prose avoids camera/prompt boilerplate; redundant `[连续性]` tags repeating an already explicit exit action are flagged.
-  - Central participants supplying leverage or cost remain strategically active through the turn rather than turning into passive props, and obstacles are not erased by newly invented resources/permissions or ungrounded outside rescue.
-  - Foregrounded literal deadlines (`SCR-16`) must have a feasible action chain or legible compression/method change/failure (never upgrade qualitative urgency into invented timestamps).
-  - Bounded attempt/turn/breath counts (`SCR-17`) must complete their required visible state inside each unit boundary.
-- **Dialogue (`SCR-08`, `SCR-09`)**:
-  - Lines respond to the prior move and alter the next with distinct character voices, without restating a just-performed action or explaining an already visible mechanism a second time.
-  - Parentheticals contain only simultaneous delivery/tactic cues, leaving physical actions and prop changes to action lines (`SCR-08`).
-  - Splitting a long speech requires an inserted action that changes tactic and provides a sourced cut point; speeches with no internal turn are shortened rather than split with a filler glance/pause (`SCR-09`).
+- **场次推进按类型适配评估（`craft_default`）**：
+  - 正面交锋与爽剧打脸场次通常以筹码互换、强弱易位或当面反转立住戏剧张力（`craft_default` 参考）；
+  - **不把“每场戏必有正面对手翻转”当成跨题材死门槛**——悬疑推理的线索勘验、规则怪谈的异常铺垫与试探、情感与生活流的暗流拉扯及过场呼吸戏，只要实打实推进了信息增量、悬念压迫感、关系分寸或连戏状态即完全合格，绝不误杀非爽剧场次。
+- **可演外化、倒计时与限次核对（`SCR-16`、`SCR-17`）**：心理活动落成可见动作、物证或合规 `[VO]`/`[OS]`；必读 `[画面文字]`、`[SFX]`、`[转场]` 标记清楚且不混入镜头景别或生图咒语；台面写死的精确倒计时（`SCR-16`）与限定回合次数（`SCR-17`）在篇幅与结果上前后自洽。
+- **对白与括注（`SCR-08`、`SCR-09`）**：台词推动局面或暗藏潜台词，不复述刚演完的动作；台词括注只放边说边做的语气与微神态，独立肢体动作与道具交接归入动作段（`SCR-08`）；长台词仅在变调换招处结合真动作切分，不硬塞“顿了顿、看了一眼”假拆句（`SCR-09`）。
 
-## Rhythm profile (`REV-12`)
+## 4. 节奏设定核对（REV-12）
 
-Active only when `short-drama.json#/creator_authority/rhythm_profile` has `status: "accepted"` (inactive when missing, `unset`, or `proposed`). Measure arithmetic against the current screenplay (using declared pacing or a labelled real-time read estimate) and report deviations as non-blocking `craft_default` findings citing field, accepted value, measured value, and location:
+仅当 `short-drama.json#/creator_authority/rhythm_profile` 为 `status: "accepted"` 时启用（缺失、`unset` 或 `proposed` 一律跳过）。对照项目确认的目标值做算术核对，超出区间处记为不阻断交付的 `craft_default` 提醒项（写明指标名、目标值、实测值与位置）：
 
-| Field | What the reviewer measures |
+| 指标字段 | 核对口径 |
 |---|---|
-| `first_hook_seconds` | Seconds from episode start to the first crisis, conflict, anomaly, or spectacle already happening on screen. |
-| `beat_interval_seconds_max` | Longest gap between consecutive emotional touchpoints (conflict line, situation-changing action, or new information). |
-| `opposed_reversals_per_episode_min` | Reversals driven or suffered by a human opponent with an agenda (system/number/environment-only changes do not count). |
-| `end_on_peak` | Whether the last beat sits on or just before the peak, with no afterglow, summary, or quiet coda after it. |
-| `reprise_previous_last_beat` | Whether the opening replays the previous episode's last beat (not applicable to EP001). |
-| `vo_share_max` | `[VO]` characters divided by all dialogue characters (whitespace and parentheticals removed, punctuation kept; `[OS]` in denominator only). |
-| `first_major_payoff_by_episode` | Series review only: episode in which the first major payoff lands. |
+| `first_hook_seconds` | 开集起算到首个危机、反常现象、冲突交锋或核心悬念落地的秒数。 |
+| `beat_interval_seconds_max` | 相邻两处有效戏剧触点（冲突推进、关键动作或新信息揭晓）之间的最大间隔秒数。 |
+| `opposed_reversals_per_episode_min` | 本集由带自身诉求的对手推动或受挫的反转次数。 |
+| `end_on_peak` | 全集末拍是否收在高潮点或悬念引爆瞬间，未拖沓平缓总结。 |
+| `reprise_previous_last_beat` | 开场是否重演衔接上一集末拍（`EP001` 不适用）。 |
+| `vo_share_max` | `[VO]` 字数占总台词字数比例（去空白与括注、留标点；`[OS]` 仅计入分母）。 |
+| `first_major_payoff_by_episode` | 全剧联审时核对首次重大看点兑现落在第几集。 |
 
-Storyboard rhythm fields (`target_avg_shot_seconds`, `close_shot_share_min`) are checked in the [visual rubric](rubric-visual-motion.md#rhythm-profile-shots).
+分镜层面的 `target_avg_shot_seconds` 与 `close_shot_share_min` 见 [分镜与视频动态核查清单](rubric-visual-motion.md#2-镜头节奏指标核对)。
 
-## Local passes (`REV-13`)
+## 5. 三轮局部专项抽查（`REV-13`）
 
-After the whole-episode read, run three isolated passes (with or without a rhythm profile):
+通读全集后，结合本项目题材调性做三轮局部抽查：
 
-1. **Opening hook**: read only the first segment (up to `first_hook_seconds` or the first scene) to verify whether the hook is already happening rather than being set up; then read the opening beat alone (`SCR-22`, and `STY-25` for EP001) to check whether the first still frame raises a question by itself without needing text read, character recognition, or the next line heard first.
-2. **Ending suspense**: read only the closing beats of the final scene to verify the accepted ending function (`end_on_peak` or open/line/image hook growing out of this episode's landed result).
-3. **Mid-episode reversal density**: read only the middle segment, listing each human-driven reversal and flagging dead stretches or end-bunched reversals.
+1. **开场钩子抽查（`SCR-22`、`STY-25`，`craft_default`）**：单读开场前几拍，核查是否迅速切入情境而未堆砌冗长背景。强视觉快切题材优先评估开场首帧定格画面的反常抓力（`craft_default`），但**全面放行契合题材的文字钩子与声音钩子**——规则怪谈的诡异告示字卡、悬疑剧的黑屏画外求救声/电话录音、生活流一句刺破假象的冷开场台词，只要当场立住悬念或戏剧张力即予认可，绝不因首拍依赖文字或声音一刀切判不过。
+2. **集尾收束抽查**：单读末场最后几拍，核查集尾钩子、反转余震或情绪落点是否干脆利落。
+3. **中段推进抽查**：单读全集中段，对抗爽剧排查对手交锋反转是否头轻脚重，悬疑/怪谈/生活流排查线索递进、规则试探或人物关系拉扯是否存在原地踏步的水戏。
 
-## Replaceable realization (`SCR-10`)
+## 6. 备选拍法核查（`SCR-10`）
 
-Active **only** on beats explicitly marked by the creator (never flag unmarked beats or predict platform censorship):
-
-- Dramatic function must state *who is proven or changed* (never a vague label like “高潮”);
-- The fallback must deliver the same affected person, cost, downstream payoffs (`payoff_refs`), and next-episode entry state without requiring unestablished setups, concrete enough to film (never “酌情处理” or bare scene deletion without naming which existing beat absorbs the function);
-- Flag any depiction weakened preemptively without a stated creator requirement.
+仅核查创作者主动标注需备选拍法的节点（未标注处不查，不替平台臆测审核口径）：核对戏剧作用是否写清受影响人物，备选拍法是否保住同等的代价、伏笔回收与下集开场衔接且具体可拍；创作者未提限制却被执笔人自行磨平冲突的，指明打回。

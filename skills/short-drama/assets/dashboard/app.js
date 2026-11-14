@@ -105,7 +105,7 @@ const SCALE_RUNG = { "远景": 1, "全景": 1, "中景": 2, "中近景": 3, "近
 
 const SEVERITY_LABEL = { must: "必须改", should: "建议改", could: "可以更好" };
 
-const COPYABLE_PROMPT_HEADINGS = new Set(["可复制提示词", "冻结关键帧提示词"]);
+const COPYABLE_PROMPT_HEADINGS = new Set(["可复制提示词", "首帧提示词", "尾帧提示词"]);
 const IMAGE_SUFFIXES = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const VIDEO_SUFFIXES = new Set(["mp4", "webm", "mov"]);
 const AUDIO_SUFFIXES = new Set(["wav", "mp3", "m4a", "aac", "flac", "opus"]);
@@ -139,7 +139,7 @@ const INTERNAL_EXACT_KEYS = new Set([
 ]);
 
 const FILE_LABELS = {
-  "readme.md": "项目说明", "creative-brief.md": "创作简报", "story-engine.md": "故事引擎",
+  "readme.md": "项目说明", "creative-brief.md": "创作简报", "story-engine.md": "核心设定",
   "director-brief.md": "导演阐述", "adaptation-map.jsonl": "改编要点", "series-arc.json": "全剧走向",
   "episode-map.jsonl": "分集安排", "characters.jsonl": "人物设定", "looks.jsonl": "造型设定",
   "locations.jsonl": "场景设定", "location-views.jsonl": "场景视角", "props.jsonl": "关键道具",
@@ -411,19 +411,35 @@ function seriesTodos(rows, limit = 3) {
 /** A gauge: is the measured value inside what the accepted profile allows? */
 function rhythmChecks(metrics, profile, target) {
   const checks = [];
-  if (target && metrics.shots) {
+  if (target != null && metrics?.shots) {
     checks.push({ key: "seconds", label: "全集时长", value: metrics.seconds, unit: " 秒", rule: "目标", goal: target, ok: null });
   }
-  if (profile && metrics.avg != null) {
+  if (profile?.target_avg_shot_seconds != null && metrics?.avg != null) {
     checks.push({ key: "avg", label: "平均镜长", value: metrics.avg, unit: " 秒", rule: "目标", goal: profile.target_avg_shot_seconds, ok: null });
   }
-  if (profile && metrics.close != null) {
+  if (profile?.close_shot_share_min != null && metrics?.close != null) {
     checks.push({ key: "close", label: "近景类占比", value: metrics.close, share: true, rule: "不少于", goal: profile.close_shot_share_min, ok: metrics.close >= profile.close_shot_share_min });
   }
-  if (profile && metrics.vo != null) {
+  if (profile?.vo_share_max != null && metrics?.vo != null) {
     checks.push({ key: "vo", label: "旁白占台词", value: metrics.vo, share: true, rule: "不超过", goal: profile.vo_share_max, ok: metrics.vo <= profile.vo_share_max });
   }
   return checks;
+}
+
+function rhythmProfileRows(profile) {
+  if (!profile) return [];
+  const rows = [];
+  if (profile.form != null && profile.form !== "") rows.push(["制作形态", String(profile.form)]);
+  if (profile.first_hook_seconds != null) rows.push(["第一个钩子最迟", `${num(profile.first_hook_seconds)} 秒`]);
+  if (profile.target_avg_shot_seconds != null) rows.push(["目标平均镜长", `${num(profile.target_avg_shot_seconds)} 秒`]);
+  if (profile.close_shot_share_min != null) rows.push(["近景类镜头不少于", pct(profile.close_shot_share_min)]);
+  if (profile.vo_share_max != null) rows.push(["旁白占台词不超过", pct(profile.vo_share_max)]);
+  if (profile.beat_interval_seconds_max != null) rows.push(["情绪触点最长间隔", `${num(profile.beat_interval_seconds_max)} 秒`]);
+  if (profile.opposed_reversals_per_episode_min != null) rows.push(["每集至少反转", `${profile.opposed_reversals_per_episode_min} 次`]);
+  if (profile.end_on_peak != null) rows.push(["集尾停在峰值", profile.end_on_peak ? "是" : "否"]);
+  if (profile.reprise_previous_last_beat != null) rows.push(["承接上集尾钩", profile.reprise_previous_last_beat ? "是" : "否"]);
+  if (profile.first_major_payoff_by_episode != null) rows.push(["第一个大爽点不晚于", `第 ${profile.first_major_payoff_by_episode} 集`]);
+  return rows;
 }
 
 /** Subtitles the cut list quotes verbatim: the only line-to-shot link trusted. */
@@ -1064,13 +1080,9 @@ function viewOverview() {
     <div class="r3"><span>${STAGES.filter((stage) => row.has[stage.key]).length}/8 · ${row.seconds ? fmt(row.cutSeconds || row.seconds) : "—"}</span><span>${esc(next.kind === "done" ? "可以导出" : next.text)}</span></div></a>`; }).join("")}</div>` : `<div class="empty"><h3>还没有分集</h3><p>分集建立在「剧集/EP001」这样的文件夹里。</p></div>`}
 
   <div class="twocol">
-    <div><div class="section-t"><h3>节奏档案</h3><span class="n">${profile ? "已接受 · 分镜与审查按它核对" : "尚未接受"}</span></div>
-      ${profile ? `<div class="card profile">${[
-        ["第一个钩子最迟", `${num(profile.first_hook_seconds)} 秒`], ["目标平均镜长", `${num(profile.target_avg_shot_seconds)} 秒`], ["近景类镜头不少于", pct(profile.close_shot_share_min)],
-        ["旁白占台词不超过", pct(profile.vo_share_max)], ["情绪触点最长间隔", `${num(profile.beat_interval_seconds_max)} 秒`], ["每集至少反转", `${profile.opposed_reversals_per_episode_min} 次`],
-        ["集尾停在峰值", profile.end_on_peak ? "是" : "否"], ["第一个大爽点不晚于", `第 ${profile.first_major_payoff_by_episode} 集`],
-      ].map(([key, value]) => `<div class="row"><span class="k">${key}</span><span class="v">${esc(value)}</span></div>`).join("")}</div>`
-      : `<div class="empty"><p>还没有接受节奏档案，所以不对照平均镜长、近景类与旁白占比。</p>${askButton("请为这部剧提出节奏档案，我确认后写入项目。", false, "复制给助手")}</div>`}</div>
+    <div><div class="section-t"><h3>节奏目标</h3><span class="n">${profile ? "已确认 · 分镜与审查按它核对" : "尚未设定"}</span></div>
+      ${(() => { const pRows = rhythmProfileRows(profile); return pRows.length ? `<div class="card profile">${pRows.map(([key, value]) => `<div class="row"><span class="k">${key}</span><span class="v">${esc(value)}</span></div>`).join("")}</div>`
+      : `<div class="empty"><p>还没有设定节奏目标，暂不对照平均镜长、近景类与旁白占比。</p>${askButton("请为这部剧提出节奏目标，我确认后写入项目。", false, "复制给助手")}</div>`; })()}</div>
     <div><div class="section-t"><h3>人物</h3><span class="n">来自各集视觉设定</span></div>
       ${series.cast.length ? `<div class="card cast">${series.cast.map((person) => `<a class="person" href="#/${esc(person.ep)}/settings/${encodeURIComponent(person.name)}"><span class="tile">${esc(person.name[0] || "?")}</span><div><div class="pn">${esc(person.name)}</div><div class="pd">${esc(person.desc)}</div><div class="pd">${esc(person.ep)} · ${person.shots} 镜</div></div></a>`).join("")}</div>` : '<div class="empty"><p>视觉设定写好后，人物会列在这里。</p></div>'}</div>
   </div>
@@ -1103,7 +1115,7 @@ function viewEpisode(row, E) {
   const facts = {
     script: E.script ? `${C.scenes.length} 场 · ${spoken} 句台词${E.metrics.vo != null ? ` · 旁白 ${pct(E.metrics.vo)}` : ""}` : "按原文阅读",
     settings: E.settings ? `${E.settings.items.length} 项${E.settings.era.period ? ` · 时代：${E.settings.era.period}` : ""}` : "按原文阅读",
-    board: E.board ? `${C.shots.length} 镜 · ${num(C.total)} 秒 · 平均 ${num(E.metrics.avg)} 秒` : "按原文阅读",
+    board: E.board ? `${C.shots.length} 镜 · ${num(C.total)} 秒${E.metrics.avg != null ? ` · 平均 ${num(E.metrics.avg)} 秒` : ""}` : "按原文阅读",
     prompts: `图片 ${E.imagePrompts?.length ?? "—"} 条 · 视频 ${E.videoPrompts?.length ?? "—"} 条`,
     film: E.cutlist ? `${C.cuts.length} 段 · ${fmt(C.cutTotal)}${E.media.film ? " · 已渲染成片" : " · 未渲染"}` : E.media.film ? "已有成片" : "按原文阅读",
     review: E.review ? `${E.review.verdict || "已写"} · 必须改 ${counts.must} · 建议改 ${counts.should}` : "按原文阅读",
@@ -1127,11 +1139,11 @@ function viewEpisode(row, E) {
   return `<div class="wrap" data-view="episode"><div class="ephome">
     <div>${poster}</div>
     <div>
-      <div class="head"><div><div class="eyebrow">${esc(row.id)}</div><h2 class="serif">${esc(row.title || "未命名")}</h2><div class="sub">${[C.scenes.length ? `${C.scenes.length} 场` : "", C.shots.length ? `${C.shots.length} 镜` : "", C.shots.length ? `${num(C.total)} 秒${C.target ? `（目标 ${C.target} 秒）` : ""}` : ""].filter(Boolean).join(" · ") || "还没有正文"}</div></div></div>
+      <div class="head"><div><div class="eyebrow">${esc(row.id)}</div><h2 class="serif">${esc(row.title || "未命名")}</h2><div class="sub">${[C.scenes.length ? `${C.scenes.length} 场` : "", C.shots.length ? `${C.shots.length} 镜` : "", C.shots.length ? `${num(C.total)} 秒${C.target != null ? `（目标 ${C.target} 秒）` : ""}` : ""].filter(Boolean).join(" · ") || "还没有正文"}</div></div></div>
       ${problemNotices(E)}
       ${next.kind !== "done" ? `<div class="card next"><div class="todo"><span class="num">!</span><div><div class="t">${esc(next.text)}</div><div class="d">${esc(todoDetail(row, next))}</div></div>
         <div class="acts">${askButton(next.ask)}${next.href !== `#/${row.id}` ? `<a class="btn sm" href="${esc(next.href)}">去看</a>` : ""}</div></div></div>` : ""}
-      ${checks.length ? `<div class="section-t"><h3>对照节奏档案</h3><span class="n">只做算术，不替你判断好坏</span></div><div class="gauges">${checks.map((check) => gauge(check, C)).join("")}</div>` : ""}
+      ${checks.length ? `<div class="section-t"><h3>对照节奏目标</h3><span class="n">仅核对数值，供创作参考</span></div><div class="gauges">${checks.map((check) => gauge(check, C)).join("")}</div>` : ""}
       <div class="section-t"><h3>本集文档</h3></div>
       <div class="card pipeline">${docRows.map(([key, name, present, doc]) => present
         ? `<a class="pl-row" href="#/${esc(row.id)}/${key}"><span class="pip ${key === "review" && counts.must ? "warn" : "on"}">${key === "review" && counts.must ? icon("alert") : icon("check")}</span><span><div class="nm">${name}</div><div class="muted small">${esc(doc)}</div></span><span class="fx">${esc(facts[key])}</span><span class="go">${icon("right")}</span></a>`
@@ -1168,7 +1180,7 @@ function gauge(check, C) {
     foot = `${C.E.metrics.closeCount || 0} / ${C.shots.length} 镜；${C.E.metrics.unsized} 镜没写景别`;
   } else {
     fill = check.value; zone = [0, check.goal]; tick = check.goal;
-    foot = "按可发声字数；[OS] 画外对白不算";
+    foot = "按实际念出声的字数算；[OS] 画外对白不计入旁白";
   }
   const clamp = (x) => Math.max(0, Math.min(100, x * 100));
   return `<div class="card gauge" data-gauge="${check.key}" ${check.ok == null ? "" : ` data-ok="${check.ok ? 1 : 0}"`}><div class="k"><span>${check.label}</span>${check.ok == null ? gap(check.value, check.goal) : statusMark(check.ok)}</div>
@@ -1210,7 +1222,7 @@ function viewScript(row, E, arg) {
     </article>
     <aside class="rail right">
       <div><h4>台词</h4><div class="card speakers">${Object.entries(speakers).sort((a, b) => b[1] - a[1]).map(([who, n]) => `<div class="spk"><span>${esc(who)}</span><span class="bar"><i data-css="width:${(n / most) * 100}%"></i></span><span class="c">${n}</span></div>`).join("") || '<span class="muted small">没有台词</span>'}</div></div>
-      ${C.profile && E.metrics.vo != null ? `<div><h4>旁白占比</h4>${gauge(rhythmChecks(E.metrics, C.profile, null).find((check) => check.key === "vo"), C)}</div>` : ""}
+      ${C.profile?.vo_share_max != null && E.metrics.vo != null ? `<div><h4>旁白占比</h4>${gauge(rhythmChecks(E.metrics, C.profile, null).find((check) => check.key === "vo"), C)}</div>` : ""}
       ${sceneFindings.length ? `<div><h4>本剧本的审查意见</h4>${sceneFindings.map((finding) => `<a class="card rail-card" href="#/${esc(row.id)}/review/${esc(finding.id)}"><span class="tag ${finding.sev}">${SEVERITY_LABEL[finding.sev]}</span><div class="t">${esc(finding.title)}</div></a>`).join("")}</div>` : ""}
     </aside></div></div>`;
 }
@@ -1292,9 +1304,9 @@ function viewBoard(row, E, arg, q) {
   ${E.board.note ? `<p class="muted small" id="boardNote">${esc(E.board.note)}</p>` : ""}
   ${blockingHTML((E.board.blocking || []).filter((block) => !sceneFilter || block.scene === sceneFilter))}
   <div class="metrics" id="boardMetrics">
-    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
-    ${metric("平均镜长", `${num(M.avg)}<small> 秒</small>`, P ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有接受节奏档案", null)}
-    ${metric("近景类", pct(M.close), P ? `不少于 ${pct(P.close_shot_share_min)}` : "没有接受节奏档案", P ? M.close >= P.close_shot_share_min : null)}
+    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target != null ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
+    ${metric("平均镜长", M.avg != null ? `${num(M.avg)}<small> 秒</small>` : "—", P?.target_avg_shot_seconds != null && M.avg != null ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有设定节奏目标", null)}
+    ${metric("近景类", M.close != null ? pct(M.close) : "—", P?.close_shot_share_min != null ? `不少于 ${pct(P.close_shot_share_min)}` : "没有设定节奏目标", P?.close_shot_share_min != null && M.close != null ? M.close >= P.close_shot_share_min : null)}
     ${metric("没写景别", `${M.unsized}<small> 镜</small>`, "算不进近景类占比", M.unsized === 0)}
   </div>
   <section class="card strip-card"><div class="strip-head"><h3>节奏条</h3><span class="muted small">宽度 = 时长，颜色 = 景别；点一格看这一镜</span></div>${stripHTML(C, row, arg, sceneFilter || entityFilter ? keep : null)}</section>
@@ -1348,13 +1360,14 @@ function renderInspector(row, E, id) {
     </div>
     ${shot.purpose ? `<div class="ins-sec"><h4>目的</h4><p class="purpose">${esc(shot.purpose)}</p></div>` : ""}
     ${(() => { const block = (E.board?.blocking || []).find((item) => item.scene === shot.scene); return block ? `<div class="ins-sec" id="insBlocking"><h4>场景站位</h4>${blockingRows(block)}</div>` : ""; })()}
-    <div class="ins-sec"><h4>动作</h4><div class="timeline3"><div><b>起点</b>${esc(shot.start || "—")}</div><div class="mid"><b>唯一动作</b>${esc(shot.action || "—")}</div><div><b>终点</b>${esc(shot.end || "—")}</div></div></div>
+    <div class="ins-sec"><h4>动作</h4><div class="timeline3"><div><b>起点</b>${esc(shot.start || "—")}</div><div class="mid"><b>本镜动作</b>${esc(shot.action || "—")}</div><div><b>终点</b>${esc(shot.end || "—")}</div></div></div>
     <div class="ins-sec"><h4>声音</h4><p>${esc(shot.sound || "—")}</p>${cut?.subs.length ? `<div>${cut.subs.map((sub) => `<span class="subline">「${esc(sub.text)}」</span>`).join("")}</div>` : ""}</div>
     ${shot.screenText || cut?.texts.length ? `<div class="ins-sec"><h4>画面文字</h4>${shot.screenText ? `<p>${esc(shot.screenText)}</p>` : ""}${(cut?.texts || []).map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</div>` : ""}
     <div class="ins-sec"><h4>画面里有</h4><div class="pills">${shot.basis.map((entry) => `<a class="pill" href="#/${esc(row.id)}/settings/${encodeURIComponent(entry.name)}" title="${esc(`控制：${entry.ctl}`)}">${icon(entry.cat === "人物" || entry.cat === "造型" ? "person" : entry.cat === "地点" ? "place" : "prop")}${esc(entry.name)}</a>`).join("") || '<span class="muted">无</span>'}</div></div>
     <div class="ins-sec"><h4>参考图</h4><div class="refstate ${refClass}">${icon(refClass === "bound" ? "check" : refClass === "pending" || refClass === "missing" ? "alert" : "text")}<div><b>${esc(refLabel)}</b>${shot.refs.map((slot) => `<div class="slot">${slot.order}. ${esc(slot.name)}${slot.use ? ` · ${esc(slot.use)}` : ""} · <span class="mono">${esc(slot.path || slot.target)}</span></div>`).join("")}</div></div>
       ${shot.imgs.length ? `<div class="pills">${shot.imgs.map((img) => `<a class="pill id" href="#/${esc(row.id)}/prompts/image?id=${esc(img.id)}" title="${esc(`${img.name} · 控制：${img.ctl}`)}">${esc(img.id)}</a>`).join("")}</div>` : ""}</div>
-    ${shot.keyframe ? `<div class="ins-sec"><h4>冻结关键帧提示词<span class="act">${copyButton(shot.keyframe, `kf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.keyframe)}</div></div>` : ""}
+    ${shot.keyframe ? `<div class="ins-sec"><h4>首帧提示词<span class="act">${copyButton(shot.keyframe, `kf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.keyframe)}</div></div>` : ""}
+    ${shot.closing_keyframe ? `<div class="ins-sec"><h4>尾帧提示词<span class="act">${copyButton(shot.closing_keyframe, `ckf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.closing_keyframe)}</div></div>` : ""}
     ${prompt?.prompt ? `<div class="ins-sec"><h4>视频提示词${prompt.mode ? ` · ${esc(prompt.mode)}` : ""}<span class="act">${copyButton(prompt.prompt, prompt.id)}</span></h4><div class="prompt clamp" data-act="expand">${esc(prompt.prompt)}</div></div>` : ""}
     <div>${editButton(E.docs["分镜.md"], shot.id, "在分镜.md 里编辑这一镜")}</div>
   </div>`;
@@ -1367,6 +1380,11 @@ function presence(C, item) {
   return C.shots.filter((shot) => shot.basis.some((entry) => entry.name === item.name)).map((shot) => shot.id);
 }
 
+function entryLocks(item) {
+  if (Array.isArray(item?.locks)) return item.locks.filter(Boolean);
+  return item?.lock ? [item.lock] : [];
+}
+
 function viewSettings(row, E) {
   if (!row.has.settings) return missingView(row, "settings");
   if (!E.settings) return rawFallback(E, E.docs["视觉设定.md"], "视觉设定");
@@ -1374,16 +1392,17 @@ function viewSettings(row, E) {
   const settings = E.settings;
   const card = (item) => {
     const seen = new Set(presence(C, item));
-    const locked = new Set(item.lock?.shots || []);
-    const anchor = item.fields["识别锚点"];
-    const rest = Object.entries(item.fields).filter(([key]) => key !== "识别锚点");
+    const itemLocks = entryLocks(item);
+    const locked = new Set(itemLocks.flatMap((lock) => lock.shots || []));
+    const anchor = item.fields["外观特征"];
+    const rest = Object.entries(item.fields).filter(([key]) => key !== "外观特征");
     return `<article class="card asset" id="a-${esc(item.name)}" data-entry="${esc(item.name)}">
-      <div class="asset-h"><span class="tile">${item.cat === "人物" ? esc(item.name[0]) : icon(item.cat === "地点" ? "place" : item.cat === "造型" ? "person" : "prop")}</span><div><div class="nm">${esc(item.name)}</div><div class="cat">${esc(item.cat)}${item.designators.length ? ` · 画面代称 <span class="mono">${esc(item.designators.join("、"))}</span>` : ""}</div></div></div>
+      <div class="asset-h"><span class="tile">${item.cat === "人物" ? esc(item.name[0]) : icon(item.cat === "地点" ? "place" : item.cat === "造型" ? "person" : "prop")}</span><div><div class="nm">${esc(item.name)}</div><div class="cat">${esc(item.cat)}${item.designators.length ? ` · 提示词名称 <span class="mono">${esc(item.designators.join("、"))}</span>` : ""}</div></div></div>
       ${item.overlay ? '<span class="overlay-note">只在后期叠加，不进生成画面</span>' : ""}
       ${item.desc.map((line) => `<p class="desc">${esc(line)}</p>`).join("")}
-      ${anchor ? `<div class="anchor"><b>识别锚点</b>${esc(anchor)}</div>` : ""}
+      ${anchor ? `<div class="anchor"><b>外观特征</b>${esc(anchor)}</div>` : ""}
       ${rest.map(([key, value]) => `<div class="field"><span class="muted">${esc(key)}：</span>${esc(value)}</div>`).join("")}
-      ${item.lock ? `<div class="lock"><div class="ln">${icon("lock")}连续性锁《${esc(item.lock.name)}》</div><span class="surface">${esc(item.lock.surface)}</span><div class="muted small">${lockReach(C, item.lock)} · 每条相关提示词都要逐字带上这段</div></div>` : ""}
+      ${itemLocks.map((lock) => `<div class="lock"><div class="ln">${icon("lock")}连戏锁《${esc(lock.name)}》</div><span class="surface">${esc(lock.surface)}</span><div class="muted small">${lockReach(C, lock)} · 每条相关提示词都要逐字带上这段</div></div>`).join("")}
       ${C.shots.length ? `<div class="presence"><div class="pk"><span>出现在 ${seen.size} 镜</span>${seen.size ? `<a href="#/${esc(row.id)}/board?entity=${encodeURIComponent(item.name)}">在分镜里筛出 ${icon("right")}</a>` : ""}</div>
         <div class="pstrip" aria-hidden="true">${C.shots.map((shot) => `<i data-css="flex-grow:${Math.max(0.2, shot.sec)}" class="${seen.has(shot.id) ? (locked.has(shot.id) || locked.has("全集") ? "lk" : "on") : ""}" title="${esc(shot.n)}"></i>`).join("")}</div></div>` : ""}
     </article>`;
@@ -1391,17 +1410,17 @@ function viewSettings(row, E) {
   return `<div class="wrap" data-view="settings">
     <div class="head"><div><h2>视觉设定</h2><div class="sub">${esc(settings.form)}</div></div><div class="actions">${editButton(E.docs["视觉设定.md"])}</div></div>
     ${problemNotices(E)}
-    ${settings.era.period || settings.era.facets.length ? `<section class="card era"><div class="era-l"><div class="eyebrow">时代锚点</div><div class="p">${esc(settings.era.period)}</div><div class="f">画面里的一切都要属于这个年代</div></div>
+    ${settings.era.period || settings.era.facets.length ? `<section class="card era"><div class="era-l"><div class="eyebrow">时代背景</div><div class="p">${esc(settings.era.period)}</div><div class="f">画面里的一切都要属于这个年代</div></div>
       <div class="era-r">${settings.era.facets.map((facet) => `<div><div class="k">${esc(facet.k)}</div><div class="v">${esc(facet.v)}</div></div>`).join("")}</div></section>` : ""}
     ${["人物", "造型", "地点", "道具"].map((category) => { const items = settings.items.filter((item) => item.cat === category); if (!items.length) return "";
-      return `<div class="section-t"><h3>${category}</h3><span class="n">${items.length}</span>${category === "人物" && C.shots.length ? '<span class="more">出场条：每格一镜，宽度按时长；朱红 = 连续性锁生效</span>' : ""}</div><div class="assets">${items.map(card).join("")}</div>`; }).join("")}
+      return `<div class="section-t"><h3>${category}</h3><span class="n">${items.length}</span>${category === "人物" && C.shots.length ? '<span class="more">出场条：每格一镜，宽度按时长；朱红 = 连戏锁生效</span>' : ""}</div><div class="assets">${items.map(card).join("")}</div>`; }).join("")}
   </div>`;
 }
 
 /** How far a continuity lock reaches, in the words its scope was written in. */
 function lockReach(C, lock) {
   if (lock.shots.includes("全集")) return `锁定全集 ${C.shots.length} 镜`;
-  if (lock.scope === "入画") return C.shots.length ? `入画 · 锁定 ${lock.shots.length} 镜` : "入画 · 分镜写完后按视觉依据生效";
+  if (lock.scope === "入画") return C.shots.length ? `入画 · 锁定 ${lock.shots.length} 镜` : "入画 · 分镜写完后在出场镜头生效";
   return `锁定 ${lock.shots.length} 镜`;
 }
 
@@ -1427,12 +1446,25 @@ function videoCopyUnits(row, E) {
   return units;
 }
 
+function keyframeCopyUnits(shots) {
+  const units = [];
+  for (const shot of shots || []) {
+    if (shot.keyframe) {
+      units.push({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "首帧"], text: shot.keyframe });
+    }
+    if (shot.closing_keyframe) {
+      units.push({ key: `ckf-${shot.id}`, id: `${shot.id}-closing`, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "尾帧"], text: shot.closing_keyframe });
+    }
+  }
+  return units;
+}
+
 function viewPrompts(row, E, arg, q) {
   if (!row.has.imgp && !row.has.vidp && !row.has.board) return missingView(row, "prompts");
   const C = context(E);
   const sets = {
     video: videoCopyUnits(row, E),
-    keyframe: C.shots.filter((shot) => shot.keyframe).map((shot) => ({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "冻结关键帧"], text: shot.keyframe })),
+    keyframe: keyframeCopyUnits(C.shots),
     image: (E.imagePrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [esc(prompt.use), `被 ${C.shots.filter((shot) => shot.imgs.some((img) => img.id === prompt.id)).length} 镜引用`], text: prompt.prompt })),
   };
   const tab = ["video", "keyframe", "image"].includes(arg) ? arg : sets.video.length ? "video" : sets.keyframe.length ? "keyframe" : "image";
@@ -1453,7 +1485,7 @@ function viewPrompts(row, E, arg, q) {
       <div><div class="pid">${esc(item.id)}</div><div class="pt">${esc(item.title)}</div><div class="pm">${item.meta.filter(Boolean).map((line) => `<span>${line}</span>`).join("")}</div></div>
       <div class="ptext ${open === item.id ? "" : "clamp"}" data-act="expand">${esc(item.text)}</div>
       <div class="pact">${copyButton(item.text, item.key)}<span class="cc">${item.text.length} 字符</span></div></article>`).join("")}</div>`
-      : `<div class="empty"><h3>这一类还没有提示词</h3><p>${tab === "keyframe" ? "分镜里写了「冻结关键帧提示词」的镜头会列在这里。" : "写好后这里会逐条列出。"}</p></div>`}
+      : `<div class="empty"><h3>这一类还没有提示词</h3><p>${tab === "keyframe" ? "分镜里写了「首帧提示词」或「尾帧提示词」的镜头会列在这里。" : "写好后这里会逐条列出。"}</p></div>`}
   </div>`;
 }
 
@@ -1594,7 +1626,7 @@ function viewFiles() {
   }
   const order = [...groups.keys()].sort((a, b) => (a === "全剧" ? -1 : b === "全剧" ? 1 : a.localeCompare(b, "zh-CN", { numeric: true })));
   const rank = (file) => SECTION_ORDER.indexOf(creatorSection(file.path, S.status?.ownership));
-  return `<div class="wrap" data-view="files"><div class="head"><div><h2>全部文件</h2><div class="sub">${visible.length} 份 · 工程记录不在这里显示</div></div></div>
+  return `<div class="wrap" data-view="files"><div class="head"><div><h2>全部文件</h2><div class="sub">${visible.length} 份 · 系统内部文件不在这里显示</div></div></div>
     ${(S.tree?.warnings || []).length ? '<div class="notice">部分内容暂时无法读取，已列出其余文件。</div>' : ""}
     ${order.map((key) => `<div class="file-group"><h4>${esc(key)}</h4><div class="card files-list">${groups.get(key).sort((a, b) => rank(a) - rank(b) || fileLabel(a.path).localeCompare(fileLabel(b.path), "zh-Hans-CN")).map(fileRow).join("")}</div></div>`).join("") || '<div class="empty"><p>项目里还没有创作文件。</p></div>'}
   </div>`;
@@ -1710,7 +1742,7 @@ async function save() {
     $("#editNotice").innerHTML = "";
     $("#editState").textContent = `已保存 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     setDirty(!savedContentIsCurrent(content, editor.value));
-    toast("已保存。结构视图会按新内容重新读取。");
+    toast("已保存，页面内容已同步更新。");
     try { await refreshProject(); } catch (_error) { toast("内容已保存，但刷新失败，请稍后重试"); }
   } catch (error) {
     if (S.edit !== edit) return;
@@ -1943,7 +1975,10 @@ async function onClick(event) {
       const route = parseRoute(location.hash);
       const next = copy.dataset.next ? copy.dataset.key : null;
       await render();
-      if (next) document.getElementById(`p-${next.replace(/^kf-/, "")}`)?.scrollIntoView({ block: "center" });
+      if (next) {
+        const domId = next.startsWith("ckf-") ? `${next.slice(4)}-closing` : next.replace(/^kf-/, "");
+        document.getElementById(`p-${domId}`)?.scrollIntoView({ block: "center" });
+      }
       if (route.view !== "prompts") $(`#inspector [data-key="${CSS.escape(copy.dataset.key)}"]`)?.focus();
     }
     return;
@@ -2089,11 +2124,13 @@ if (typeof module !== "undefined" && module.exports) {
     creatorSection,
     creatorStatus,
     creatorTitle,
+    entryLocks,
     episodeName,
     fileLabel,
     formatBytes,
     friendlyFailure,
     friendlyKey,
+    keyframeCopyUnits,
     lineShot,
     lineShots,
     mediaKind,
@@ -2102,6 +2139,7 @@ if (typeof module !== "undefined" && module.exports) {
     readJsonLines,
     renderMarkdown,
     rhythmChecks,
+    rhythmProfileRows,
     savedContentIsCurrent,
     seriesTodos,
     viewForPath,

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -28,13 +29,19 @@ class EditMeasurementsTests(unittest.TestCase):
             for i in (1, 2):
                 (root / f"{i}.mp4").touch()
             first = {"width": 1344, "height": 768, "fps": 24, "duration": 5}
-            for changes, expected in (({}, 0), ({"width": 1282, "height": 718}, 1),
-                                      ({"fps": 30}, 1)):
+            cases = (
+                ({}, 0, 0),
+                ({"width": 1282, "height": 718}, 0, 1),
+                ({"fps": 30}, 0, 1),
+                ({"width": 768, "height": 1344}, 1, 0),
+            )
+            for changes, expected_findings, expected_notices in cases:
                 with self.subTest(changes=changes), patch.object(
                     edit, "probe_stream", side_effect=[first, {**first, **changes}]
                 ):
-                    findings = edit.check_cuts(root, cuts, root, probe=True)
-                self.assertEqual(len(findings), expected)
+                    findings, notices = edit._inspect_cuts(root, cuts, root, probe=True)
+                self.assertEqual(len(findings), expected_findings, findings)
+                self.assertEqual(len(notices), expected_notices, notices)
 
     def test_a_tolerance_written_on_the_loudness_line_keeps_its_target(self):
         for line in (
@@ -123,17 +130,28 @@ class StillProject:
     def parse(self):
         return edit.parse_cut_list(self.episode / edit.CUT_LIST_NAME)
 
-    def findings(self, *, sounds=None):
+    def findings(self, *, sounds=None, partial=False):
         delivery, cuts, unused = self.parse()
         if sounds is None:
             return edit.check_cuts(self.episode, cuts, self.root, probe=False,
-                                   unused=unused, delivery=delivery)
+                                   unused=unused, delivery=delivery, partial=partial)
         # The only media fact the voice rules need is where each file is audible.
         with patch.object(edit, "probe_stream", return_value={}), patch.object(
             edit, "probe_audible", side_effect=lambda media: sounds[media.name]
         ):
             return edit.check_cuts(self.episode, cuts, self.root, probe=True,
-                                   unused=unused, delivery=delivery)
+                                   unused=unused, delivery=delivery, partial=partial)
+
+    def notices(self, *, sounds=None, partial=False):
+        delivery, cuts, unused = self.parse()
+        if sounds is None:
+            return edit.collect_notices(self.episode, cuts, self.root, probe=False,
+                                        unused=unused, delivery=delivery, partial=partial)
+        with patch.object(edit, "probe_stream", return_value={}), patch.object(
+            edit, "probe_audible", side_effect=lambda media: sounds[media.name]
+        ):
+            return edit.collect_notices(self.episode, cuts, self.root, probe=True,
+                                        unused=unused, delivery=delivery, partial=partial)
 
 
 class StillCutParsingTests(unittest.TestCase):
@@ -212,7 +230,7 @@ class StillCutCheckTests(unittest.TestCase):
     def test_a_still_starts_at_zero_lasts_long_enough_and_needs_a_delivery_frame(self):
         cases = {
             "late in-point": (still_block(1, "SHOT-1 · media/1.png", start=0.5, end=2.0), SPEC_LINE),
-            "flash-short": (still_block(1, "SHOT-1 · media/1.png", end=0.3), SPEC_LINE),
+            "sub-two-frame": (still_block(1, "SHOT-1 · media/1.png", end=0.04), SPEC_LINE),
             "no frame to draw at": (still_block(1, "SHOT-1 · media/1.png"), ""),
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -221,8 +239,12 @@ class StillCutCheckTests(unittest.TestCase):
                 with self.subTest(name):
                     project.write(block, head=head + EXCUSE_TWO)
                     self.assertEqual(len(project.findings()), 1, project.findings())
+            project.write(still_block(1, "SHOT-1 · media/1.png", end=0.3), head=SPEC_LINE + EXCUSE_TWO)
+            self.assertEqual(project.findings(), [])
+            self.assertEqual(len(project.notices()), 1, project.notices())
             project.write(still_block(1, "SHOT-1 · media/1.png", end=0.5), head=SPEC_LINE + EXCUSE_TWO)
             self.assertEqual(project.findings(), [])
+            self.assertEqual(project.notices(), [])
 
     def test_ids_resolve_in_their_own_documents(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -287,14 +309,21 @@ class StillCutCheckTests(unittest.TestCase):
                 "## MOTION-1\n- 分镜：SHOT-1\n", encoding="utf-8")
             project.write(still_block(1, "MOTION-1 · media/1.mp4"), still_block(2, "SHOT-2 · media/2.jpg"))
             delivery, cuts, unused = project.parse()
-            for video, expected in (({"width": 180, "height": 320, "fps": 24.0}, 0),
-                                    ({"width": 1080, "height": 1920, "fps": 24.0}, 1)):
+            cases = (
+                ({"width": 180, "height": 320, "fps": 24.0}, 0, 0),
+                ({"width": 1080, "height": 1920, "fps": 24.0}, 0, 1),
+                ({"width": 1920, "height": 1080, "fps": 24.0}, 1, 0),
+            )
+            for video, expected_findings, expected_notices in cases:
                 with self.subTest(video), patch.object(
                     edit, "probe_stream", return_value={**video, "duration": 5.0}
                 ):
-                    findings = edit.check_cuts(project.episode, cuts, project.root, probe=True,
-                                               unused=unused, delivery=delivery)
-                self.assertEqual(len(findings), expected, findings)
+                    findings, notices = edit._inspect_cuts(
+                        project.episode, cuts, project.root, probe=True,
+                        unused=unused, delivery=delivery,
+                    )
+                self.assertEqual(len(findings), expected_findings, findings)
+                self.assertEqual(len(notices), expected_notices, notices)
 
     def test_a_move_can_be_written_as_a_speed_and_is_held_to_its_reach(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -402,6 +431,102 @@ class StillCutCheckTests(unittest.TestCase):
             project.write(*blocks, head="- 画幅与帧率：182×322 · 24fps\n")
             self.assertEqual(project.findings(), [])
 
+    def test_odd_dimensions_and_missing_fps_aspect_mismatches_are_caught_on_video_cuts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            (project.episode / "media" / "1.mp4").write_bytes(b"")
+            (project.episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n",
+                encoding="utf-8",
+            )
+            video_cut = still_block(1, "MOTION-1 · media/1.mp4")
+
+            # Odd delivery frame_size on video-only cuts (no stills) fails check.
+            project.write(video_cut, head="- 画幅与帧率：1081×1920 · 24fps\n- 未采用镜头：MOTION-2（理由：叙事取舍——删减）\n")
+            delivery, cuts, unused = project.parse()
+            with patch.object(edit, "probe_stream", return_value={"width": 1081, "height": 1920, "fps": 24.0, "duration": 3.0}):
+                findings = edit.check_cuts(
+                    project.episode, cuts, project.root, probe=True, unused=unused, delivery=delivery, listen=False
+                )
+            self.assertTrue(any("1081×1920" in item and "奇数" in item for item in findings), findings)
+
+            # No delivery frame_size, but first video clip has an odd dimension.
+            project.write(video_cut, head="- 未采用镜头：MOTION-2（理由：叙事取舍——删减）\n")
+            delivery, cuts, unused = project.parse()
+            with patch.object(edit, "probe_stream", return_value={"width": 721, "height": 1280, "fps": 24.0, "duration": 3.0}):
+                findings = edit.check_cuts(
+                    project.episode, cuts, project.root, probe=True, unused=unused, delivery=delivery, listen=False
+                )
+            self.assertTrue(any("721×1280" in item and "奇数" in item for item in findings), findings)
+
+            # Delivery states 1920×1080 WITHOUT fps: 9:16 portrait clip is rejected; 16:9 1280×720 clip is a notice.
+            project.write(video_cut, head="- 画幅与帧率：1920×1080\n- 未采用镜头：MOTION-2（理由：叙事取舍——删减）\n")
+            delivery, cuts, unused = project.parse()
+            with patch.object(edit, "probe_stream", return_value={"width": 1080, "height": 1920, "fps": 24.0, "duration": 3.0}):
+                findings, notices = edit._inspect_cuts(
+                    project.episode, cuts, project.root, probe=True, unused=unused, delivery=delivery, listen=False
+                )
+            self.assertTrue(any("宽高比" in item and "1920×1080" in item for item in findings), findings)
+            self.assertEqual(notices, [])
+
+            with patch.object(edit, "probe_stream", return_value={"width": 1280, "height": 720, "fps": 24.0, "duration": 3.0}):
+                findings, notices = edit._inspect_cuts(
+                    project.episode, cuts, project.root, probe=True, unused=unused, delivery=delivery, listen=False
+                )
+            self.assertEqual(findings, [])
+            self.assertEqual(len(notices), 1)
+
+    def test_voice_overlap_tag_is_bidirectional_even_when_tts_silence_swaps_onset(self):
+        sounds = {
+            "line.wav": edit.Audible(1.4, 0.2, 1.2),
+            "slow_lead.wav": edit.Audible(2.0, 0.60, 1.80),
+            "fast_lead.wav": edit.Audible(1.6, 0.05, 1.50),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            for extra_audio in ("slow_lead.wav", "fast_lead.wav"):
+                (project.episode / "media" / extra_audio).write_bytes(b"")
+            # Tagging 叠音 on the earlier cut's voice permits overlap with the un-tagged reply.
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", ["- 配音：1.50 media/line.wav（叠音）"]),
+                still_block(2, "SHOT-2 · media/2.jpg", ["- 配音：-0.10 media/line.wav"]),
+            )
+            self.assertEqual(project.findings(sounds=sounds), [])
+            self.assertEqual(len(project.notices(sounds=sounds)), 1)
+
+            # Leading TTS silence causes voice 2 (0.20 + 0.05 = 0.25s) to start speaking before
+            # voice 1 (0.00 + 0.60 = 0.60s); tagging 叠音 on either line still permits the overlap.
+            for lines in (
+                ["- 配音 1：0.00 media/slow_lead.wav（叠音）", "- 配音 2：0.20 media/fast_lead.wav"],
+                ["- 配音 1：0.00 media/slow_lead.wav", "- 配音 2：0.20 media/fast_lead.wav（叠音）"],
+            ):
+                with self.subTest(lines=lines):
+                    project.write(
+                        still_block(1, "SHOT-1 · media/1.png", lines),
+                        still_block(2, "SHOT-2 · media/2.jpg"),
+                    )
+                    self.assertEqual(project.findings(sounds=sounds), [])
+                    self.assertEqual(len(project.notices(sounds=sounds)), 1)
+
+    def test_partial_mode_turns_unaccounted_shots_into_notices_but_still_rejects_missing_media(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(still_block(1, "SHOT-1 · media/1.png"), head=SPEC_LINE)
+            delivery, cuts, unused = project.parse()
+            findings, notices = edit._inspect_cuts(
+                project.episode, cuts, project.root, probe=False, unused=unused, delivery=delivery, partial=True
+            )
+            self.assertEqual(findings, [])
+            self.assertTrue(any("SHOT-2" in item for item in notices), notices)
+
+            project.write(still_block(1, "SHOT-1 · media/missing.png"), head=SPEC_LINE)
+            delivery, cuts, unused = project.parse()
+            findings, notices = edit._inspect_cuts(
+                project.episode, cuts, project.root, probe=False, unused=unused, delivery=delivery, partial=True
+            )
+            self.assertEqual(len(findings), 1, findings)
+            self.assertIn("media/missing.png", findings[0])
+
     def test_media_outside_the_project_is_not_read(self):
         with tempfile.TemporaryDirectory() as directory:
             outside = Path(directory) / "outside"
@@ -442,31 +567,39 @@ class StillCutCheckTests(unittest.TestCase):
         # its 1.4 s; reply.wav 0.2-0.5 of its 0.8 s.
         sounds = {"line.wav": edit.Audible(1.4, 0.2, 1.2), "reply.wav": edit.Audible(0.8, 0.2, 0.5)}
         cases = {
-            "runs on over the next cut": ([" 配音：1.50 media/line.wav"], [], 0),
-            "is still talking when the film ends": ([], [" 配音：1.20 media/line.wav"], 1),
-            "only its silent tail passes the end": ([], [" 配音：0.80 media/line.wav"], 0),
-            "is talked over from the next cut": (
-                [" 配音：1.50 media/line.wav"], [" 配音：0.30 media/reply.wav"], 1),
+            "runs on over the next cut": ([" 配音：1.50 media/line.wav"], [], 0, 0),
+            "is still talking when the film ends": ([], [" 配音：1.20 media/line.wav"], 1, 0),
+            "only its silent tail passes the end": ([], [" 配音：0.80 media/line.wav"], 0, 0),
+            "short tail overlap (<0.5s) becomes a notice": (
+                [" 配音：1.50 media/line.wav"], [" 配音：0.30 media/reply.wav"], 0, 1),
+            "long overlap (>=0.5s) without tag is refused": (
+                [" 配音：1.50 media/line.wav"], [" 配音：-0.10 media/line.wav"], 1, 0),
+            "long overlap (>=0.5s) marked 叠音 becomes a notice": (
+                [" 配音：1.50 media/line.wav"], [" 配音：-0.10 media/line.wav（叠音）"], 0, 1),
             "sits tight where only the silences overlap": (
-                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/reply.wav"], [], 0),
-            "starts over the previous cut (J-cut)": ([], [" 配音：-0.50 media/reply.wav"], 0),
-            "reaches back past the previous cut": ([], [" 配音：-2.50 media/reply.wav"], 1),
-            "reaches back from the first cut": ([" 配音：-0.20 media/reply.wav"], [], 1),
-            "starts after its cut": ([" 配音：2.10 media/reply.wav"], [], 1),
-            "is pulled earlier by its in-point": (
-                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/line.wav（起点：0.20）"], [], 1),
-            "starts past everything audible": ([" 配音：0.00 media/line.wav（起点：1.30）"], [], 1),
+                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/reply.wav"], [], 0, 0),
+            "starts over the previous cut (J-cut)": ([], [" 配音：-0.50 media/reply.wav"], 0, 0),
+            "reaches back past the previous cut": ([], [" 配音：-2.50 media/reply.wav"], 1, 0),
+            "reaches back from the first cut": ([" 配音：-0.20 media/reply.wav"], [], 1, 0),
+            "starts after its cut": ([" 配音：2.10 media/reply.wav"], [], 1, 0),
+            "short in-point overlap (<0.5s) becomes a notice": (
+                [" 配音 1：0.00 media/line.wav", " 配音 2：1.00 media/line.wav（起点：0.20）"], [], 0, 1),
+            "long in-point overlap (>=0.5s) is refused": (
+                [" 配音 1：0.00 media/line.wav", " 配音 2：0.50 media/line.wav（起点：0.20）"], [], 1, 0),
+            "starts past everything audible": ([" 配音：0.00 media/line.wav（起点：1.30）"], [], 1, 0),
         }
         with tempfile.TemporaryDirectory() as directory:
             project = StillProject(Path(directory))
-            for name, (first, second, expected) in cases.items():
+            for name, (first, second, expected_findings, expected_notices) in cases.items():
                 with self.subTest(name):
                     project.write(
                         still_block(1, "SHOT-1 · media/1.png", ["-" + line for line in first]),
                         still_block(2, "SHOT-2 · media/2.jpg", ["-" + line for line in second]),
                     )
                     findings = project.findings(sounds=sounds)
-                    self.assertEqual(len(findings), expected, findings)
+                    notices = project.notices(sounds=sounds)
+                    self.assertEqual(len(findings), expected_findings, findings)
+                    self.assertEqual(len(notices), expected_notices, notices)
             project.write(still_block(1, "SHOT-1 · media/1.png", ["- 配音：0.20 media/none.wav"]),
                           head=SPEC_LINE + EXCUSE_TWO)
             self.assertEqual(len(project.findings()), 1, "缺配音文件必须报")
@@ -548,6 +681,64 @@ class StillCutCheckTests(unittest.TestCase):
         self.assertAlmostEqual(sound.head, 0.30, delta=edit.AUDIBLE_WINDOW)
         self.assertAlmostEqual(sound.tail, 0.80, delta=edit.AUDIBLE_WINDOW)
         self.assertEqual(edit._audible_span([0] * 500, rate), edit.Audible(0.5, 0.0, 0.0))
+
+    def test_partial_mode_moves_unaccounted_shots_to_notices_in_check_and_render(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            # SHOT-2 is omitted without an excuse line.
+            project.write(still_block(1, "SHOT-1 · media/1.png"), head=SPEC_LINE)
+            self.assertEqual(len(project.findings(partial=False)), 1)
+            self.assertEqual(project.findings(partial=True), [])
+            self.assertEqual(len(project.notices(partial=True)), 1)
+
+            base_argv = [str(project.episode), "--project-root", str(project.root)]
+            with patch.object(edit, "_which", return_value=None), patch.object(edit, "_emit") as emit:
+                self.assertEqual(edit.main(["check", *base_argv]), 1)
+                self.assertEqual(edit.main(["check", "--partial", *base_argv]), 0)
+            partial_check = emit.call_args.args[0]
+            self.assertEqual(partial_check["findings"], [])
+            self.assertEqual(len(partial_check["提醒"]), 1)
+
+            with patch.object(edit, "probe_stream", return_value={}), \
+                    patch.object(edit, "render", return_value={"成片": "ok.mp4"}) as fake_render, \
+                    patch.object(edit, "_emit") as emit:
+                self.assertEqual(edit.main(["render", *base_argv]), 1)
+                self.assertEqual(fake_render.call_count, 0)
+                self.assertEqual(edit.main(["render", "--partial", *base_argv]), 0)
+                self.assertEqual(fake_render.call_count, 1)
+            rendered_payload = emit.call_args.args[0]
+            self.assertEqual(rendered_payload["成片"], "ok.mp4")
+            self.assertEqual(len(rendered_payload["提醒"]), 1)
+
+    def test_stale_media_mtime_is_reported_in_notices_without_blocking_render(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            project.write(
+                still_block(1, "SHOT-1 · media/1.png", ["- 音效：0.10-0.50 media/line.wav"]),
+                head=SPEC_LINE + EXCUSE_TWO,
+            )
+            listing = project.episode / edit.CUT_LIST_NAME
+            newer = listing.stat().st_mtime + 120.0
+            os.utime(project.episode / "media" / "line.wav", (newer, newer))
+            # Video cuts also report stale mtime on their video file.
+            (project.episode / edit.MOTION_DOCUMENT).write_text("## MOTION-1\n", encoding="utf-8")
+            project.write(
+                still_block(1, "MOTION-1 · media/1.mp4", ["- 字幕 1：0.10-1.00 甲"]),
+                head="",
+            )
+            os.utime(project.episode / "media" / "1.mp4", (newer + 60.0, newer + 60.0))
+
+            self.assertEqual(project.findings(), [])
+            notices = project.notices()
+            self.assertTrue(any("素材比剪辑单新" in item for item in notices), notices)
+            with patch.object(
+                edit, "probe_stream", return_value={"width": 180, "height": 320, "fps": 24.0, "duration": 5.0}
+            ), patch.object(edit, "render", return_value={"成片": "ok.mp4"}) as fake_render, \
+                    patch.object(edit, "_emit") as emit:
+                status = edit.main(["render", str(project.episode), "--project-root", str(project.root)])
+            self.assertEqual(status, 0)
+            self.assertEqual(fake_render.call_count, 1)
+            self.assertTrue(any("素材比剪辑单新" in item for item in emit.call_args.args[0]["提醒"]))
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
@@ -842,3 +1033,38 @@ class StillRenderTests(unittest.TestCase):
             power = sum(value * value for value in window) / len(window)
             levels.append(10 * (math.log10(power) if power > 0 else -12))
         return luma, levels
+
+    def test_same_aspect_mixed_resolutions_and_fps_scale_and_conform_at_render(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            media = project.episode / "media"
+            subprocess.run(quiet + [
+                "-f", "lavfi", "-i", "color=c=navy:size=180x320:rate=24:duration=1.5",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", str(media / "1.mp4"),
+            ], check=True)
+            subprocess.run(quiet + [
+                "-f", "lavfi", "-i", "color=c=darkred:size=360x640:rate=30:duration=1.5",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", str(media / "2.mp4"),
+            ], check=True)
+            (project.episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n", encoding="utf-8"
+            )
+            project.write(
+                still_block(1, "MOTION-1 · media/1.mp4", end=1.0),
+                still_block(2, "MOTION-2 · media/2.mp4", end=1.0),
+                head=SPEC_LINE,
+            )
+            delivery, cuts, unused = project.parse()
+            findings, notices = edit._inspect_cuts(
+                project.episode, cuts, project.root, probe=True, unused=unused, delivery=delivery
+            )
+            self.assertEqual(findings, [])
+            self.assertEqual(len(notices), 1)
+            report = edit.render(project.episode, project.root, cuts, delivery, burn_subtitles=False)
+            measured = edit.verify(project.episode, cuts, delivery, project.root)
+            stream = edit.probe_stream(Path(report["成片"]))
+        self.assertEqual((stream["width"], stream["height"]), (180, 320))
+        self.assertAlmostEqual(stream["fps"], 24.0, places=2)
+        self.assertEqual((measured["画幅是否等于交付规格"], measured["帧率是否等于交付规格"]), (True, True))
+        self.assertAlmostEqual(measured["实测时长"], 2.0, delta=0.1)

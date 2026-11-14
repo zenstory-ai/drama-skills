@@ -65,6 +65,7 @@ REMOTION_SOURCE_FILES = (
     "src/screen/ScreenText.tsx",
     "src/screen/tokens.ts",
     "src/screen/chrome.tsx",
+    "src/screen/Caption.tsx",
     "src/screen/Card.tsx",
     "src/screen/SystemPanel.tsx",
     "src/screen/TaskPanel.tsx",
@@ -125,8 +126,12 @@ STILL_AUDIO = (48000, "stereo")
 VOICE_FIELD = re.compile(r"^配音(?:\s*(\d+))?$")
 VOICE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
 VOICE_OVERRUN = 0.05
-# A sound line's trailing 「（起点：<秒>；增益：<dB>）」, either or both, in any order.
-SOUND_OPTIONS = re.compile(r"[（(]\s*((?:起点|增益)[：:][^（）()]*)[）)]\s*$")
+VOICE_OVERLAP_NOTICE = 0.50
+ASPECT_RATIO_TOLERANCE = 0.03
+# A sound line's trailing 「（起点：<秒>；增益：<dB>；叠音）」, in any order.
+SOUND_OPTIONS = re.compile(
+    r"[（(]\s*((?:(?:起点|增益)[：:]|叠音(?=\s*(?:[；;）)]|$)))[^（）()]*)[）)]\s*$"
+)
 SOUND_OPTION = re.compile(r"^(起点|增益)[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*(dB)?$", re.I)
 # What counts as audible in a voice file: a 20 ms window within this many dB of
 # its loudest window. TTS pads each line with a breath of silence at both ends;
@@ -169,7 +174,13 @@ SUBTITLE_KEYWORD_COLOUR = "#FFD400"
 # counts on a monitor -- because video models garble it. It is drawn here, over
 # the finished picture, and every item must come from a [画面文字] line.
 SCREEN_TEXT_FIELD = re.compile(r"^画面文字(?:\s*(\d+))?$")
-SCREEN_TEXT_STYLES = {"卡片": "card", "系统面板": "system", "任务面板": "task", "角标": "corner"}
+SCREEN_TEXT_STYLES = {
+    "字卡": "caption",
+    "卡片": "card",
+    "系统面板": "system",
+    "任务面板": "task",
+    "角标": "corner",
+}
 SCREEN_TEXT = re.compile(
     r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(" + "|".join(SCREEN_TEXT_STYLES) + r")\s+(.+?)\s*$"
 )
@@ -179,9 +190,17 @@ COUNTDOWN_STYLES = {"任务面板", "角标"}
 # 「现金 10 万（传说）」: an item's rarity sets its colour. Unmarked items are 稀有.
 RARITY = re.compile(r"[（(](传说|史诗|稀有)[）)]$")
 RARITY_STYLES = {"系统面板", "任务面板"}
-# The three panels share the top of the frame; the chip has its own corner.
-SCREEN_TEXT_SLOTS = {"卡片": "面板", "系统面板": "面板", "任务面板": "面板", "角标": "角标"}
+# Caption and the three panels share the main upper-frame slot; the chip has its own corner.
+SCREEN_TEXT_SLOTS = {
+    "字卡": "面板",
+    "卡片": "面板",
+    "系统面板": "面板",
+    "任务面板": "面板",
+    "角标": "角标",
+}
 SCREENPLAY_SCREEN_TEXT = re.compile(r"^\s*\[画面文字\]\s*(.+?)\s*$", re.MULTILINE)
+SCREENPLAY_SCENE_HEADING = re.compile(r"^##\s+(?:[A-Za-z0-9]+-)*SC[0-9]+\b(.*)$", re.MULTILINE)
+PROGRESS_ITEM = re.compile(r"^\s*([0-9][0-9,]*)\s*[/／]\s*([0-9][0-9,]*)\s*$")
 # Two pieces of the same screen text that meet at a cut are one piece on
 # screen: a chip that persists across five shots must not re-enter five times.
 SCREEN_TEXT_JOIN_GAP = 0.05
@@ -350,6 +369,10 @@ class Cut(NamedTuple):
     move: Optional[CameraMove] = None
     voices: tuple[Voice, ...] = ()
     bed: Optional[Bed] = None
+    # 「重放：<叙事理由>」 explicitly permits reusing overlapping source video frames.
+    replay: Optional[str] = None
+    # Per-voice 「（叠音）」 flags aligned with `voices`, keeping `Voice` a 4-tuple.
+    voice_overlaps: tuple[bool, ...] = ()
 
     @property
     def still(self) -> bool:
@@ -553,6 +576,15 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
                     "只认「亮度 <数>」「饱和 <数>」「色温 <数>」，不需要校正时写「无」，"
                     f"连自动接镜也不要时写「{PICTURE_UNTOUCHED}」"
                 )
+    replay: Optional[str] = None
+    if "重放" in fields:
+        replay_raw, replay_where = fields["重放"]
+        cleaned_replay = replay_raw.strip()
+        if not cleaned_replay:
+            raise EditError(f"{CUT_LIST_NAME}:{replay_where}: {cut_id} 的「重放」必须写明叙事理由")
+        if cleaned_replay != "无":
+            replay = cleaned_replay
+    voices, voice_overlaps = _parse_voices(fields, cut_id=cut_id, line=line)
     return Cut(
         cut_id=cut_id,
         title=pending["title"],
@@ -568,8 +600,10 @@ def _finish_cut(pending: dict[str, Any]) -> Cut:
         sound_effects=_parse_sound_effects(fields, cut_id=cut_id, line=line),
         untouched=untouched,
         move=_parse_move(fields, cut_id=cut_id, still=still),
-        voices=_parse_voices(fields, cut_id=cut_id, line=line),
+        voices=voices,
         bed=_parse_bed(fields, cut_id=cut_id),
+        replay=replay,
+        voice_overlaps=voice_overlaps,
     )
 
 
@@ -579,7 +613,7 @@ def _parse_bed(fields: dict[str, tuple[str, int]], *, cut_id: str) -> Optional[B
     raw = fields.get(BED_FIELD)
     if raw is None:
         return None
-    value, gain, offset = _sound_options(raw[0], BED_FIELD, cut_id=cut_id, where=raw[1])
+    value, gain, offset, _ = _sound_options(raw[0], BED_FIELD, cut_id=cut_id, where=raw[1])
     found = BED.match(value)
     # A bed has a start, not a window: it runs until the next 环境声 line.
     if not found or SUBTITLE_CUE.match(value):
@@ -667,6 +701,12 @@ def _field_entries(
     return True, numbered
 
 
+def _normalize_screen_item_numbers(text: str) -> str:
+    """Normalize full-width numeric slashes so progress bars and mono digits match."""
+
+    return re.sub(r"([0-9][0-9,]*\s*)／(?=\s*[0-9])", r"\1/", text)
+
+
 def _parse_screen_texts(
     fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
 ) -> tuple[ScreenText, ...]:
@@ -703,7 +743,8 @@ def _parse_screen_texts(
                     f"{CUT_LIST_NAME}:{where}: {cut_id} 的「画面文字 {index}」是{style}，"
                     f"稀有度只用在{'或'.join(sorted(RARITY_STYLES))}上"
                 )
-            items.append(item[: rare.start()].strip() if rare else item)
+            cleaned = item[: rare.start()].strip() if rare else item
+            items.append(_normalize_screen_item_numbers(cleaned))
             rarities.append(rare.group(1) if rare else None)
         if not all(items):
             raise EditError(
@@ -735,20 +776,35 @@ def _parse_screen_texts(
 
 
 def _sound_options(
-    value: str, label: str, *, cut_id: str, where: int
-) -> tuple[str, float, float]:
-    """Split 「（起点：<秒>；增益：<dB>）」 off a sound line: (rest, dB, 起点 seconds)."""
+    value: str,
+    label: str,
+    *,
+    cut_id: str,
+    where: int,
+    allow_overlap: bool = False,
+) -> tuple[str, float, float, bool]:
+    """Split 「（起点：<秒>；增益：<dB>；叠音）」 off a sound line: (rest, dB, 起点, 叠音)."""
 
     stated = SOUND_OPTIONS.search(value)
     if not stated:
-        return value, 0.0, 0.0
+        return value, 0.0, 0.0, False
     options: dict[str, float] = {}
+    overlap = False
     for part in re.split(r"[；;]", stated.group(1)):
-        found = SOUND_OPTION.match(part.strip())
+        token = part.strip()
+        if allow_overlap and token == "叠音" and not overlap:
+            overlap = True
+            continue
+        found = SOUND_OPTION.match(token)
         if not found or found.group(1) in options or (found.group(3) and found.group(1) != "增益"):
+            allowed_desc = (
+                "「起点：<秒>」「增益：<dB>」和「叠音」"
+                if allow_overlap
+                else "「起点：<秒>」和「增益：<dB>」"
+            )
             raise EditError(
-                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「{label}」括号里只写「起点：<秒>」"
-                f"和「增益：<dB>」，各至多一次，用「；」分隔，当前是 {part.strip()!r}"
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 的「{label}」括号里只写{allowed_desc}"
+                f"，各至多一次，用「；」分隔，当前是 {token!r}"
             )
         options[found.group(1)] = float(found.group(2))
     gain, offset = options.get("增益", 0.0), options.get("起点", 0.0)
@@ -760,7 +816,7 @@ def _sound_options(
         )
     if offset < 0:
         raise EditError(f"{CUT_LIST_NAME}:{where}: {cut_id} 的「{label}」起点不能为负")
-    return value[: stated.start()], gain, offset
+    return value[: stated.start()], gain, offset, overlap
 
 
 def _parse_sound_effects(
@@ -773,7 +829,7 @@ def _parse_sound_effects(
     for index, value, where in entries:
         if value.strip() == "无":
             continue
-        value, gain, offset = _sound_options(value, f"音效 {index}", cut_id=cut_id, where=where)
+        value, gain, offset, _ = _sound_options(value, f"音效 {index}", cut_id=cut_id, where=where)
         found = SUBTITLE_CUE.match(value)
         if not found:
             raise EditError(
@@ -788,15 +844,18 @@ def _parse_sound_effects(
 
 def _parse_voices(
     fields: dict[str, tuple[str, int]], *, cut_id: str, line: int
-) -> tuple[Voice, ...]:
-    """Read 「配音 N：<起> <文件>（起点：<秒>；增益：<dB>）」 lines. The file plays to its end."""
+) -> tuple[tuple[Voice, ...], tuple[bool, ...]]:
+    """Read 「配音 N：<起> <文件>（起点：<秒>；增益：<dB>；叠音）」 lines."""
 
     _, entries = _field_entries(fields, VOICE_FIELD, "配音", cut_id=cut_id, line=line)
     voices: list[Voice] = []
+    overlaps: list[bool] = []
     for index, value, where in entries:
         if value.strip() == "无":
             continue
-        value, gain, offset = _sound_options(value, f"配音 {index}", cut_id=cut_id, where=where)
+        value, gain, offset, overlap = _sound_options(
+            value, f"配音 {index}", cut_id=cut_id, where=where, allow_overlap=True
+        )
         found = VOICE.match(value)
         if not found:
             raise EditError(
@@ -804,7 +863,8 @@ def _parse_voices(
                 "「<起> <项目相对路径>」，从起点放到文件结束"
             )
         voices.append(Voice(float(found.group(1)), found.group(2), gain, offset))
-    return tuple(voices)
+        overlaps.append(overlap)
+    return tuple(voices), tuple(overlaps)
 
 
 def _parse_subtitles(
@@ -993,16 +1053,13 @@ def _motion_shots(episode: Path) -> dict[str, str]:
     }
 
 
-def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
-    """Each source ID exists in its document, and each shot is in the film or excused.
-
-    Video prompts are held to coverage when the list has a video cut, storyboard
-    shots when it has a SHOT- still. Across the two, a shot counts once however
-    it reached the film: a MOTION whose storyboard shot went in as a still is
-    accounted for, and so is a SHOT whose MOTION was used or excused.
-    """
+def _source_checks(
+    episode: Path, cuts: Sequence[Cut], unused: Sequence[str], *, partial: bool = False
+) -> tuple[list[str], list[str]]:
+    """Each source ID exists in its document, and each shot is in the film or excused."""
 
     findings: list[str] = []
+    notices: list[str] = []
     documents = (
         ("MOTION-", MOTION_DOCUMENT, MOTION_HEADING),
         ("SHOT-", STORYBOARD_DOCUMENT, SHOT_HEADING),
@@ -1026,16 +1083,21 @@ def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) 
     shot_of = _motion_shots(episode)
     used = {cut.motion for cut in cuts}
     motions, shots = known["MOTION-"], known["SHOT-"]
+    omitted_sink = notices if partial else findings
     if motions is not None:
-        findings.extend(_unaccounted_shots(
+        omitted_sink.extend(_unaccounted_shots(
             motions, cuts, unused, accounted={m for m in motions if shot_of.get(m) in used},
         ))
     if shots is not None:
-        findings.extend(_unaccounted_shots(
+        omitted_sink.extend(_unaccounted_shots(
             shots, cuts, unused,
             accounted={shot_of[m] for m in used | _excused(unused) if m in shot_of},
         ))
-    return findings
+    return findings, notices
+
+
+def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
+    return _source_checks(episode, cuts, unused, partial=False)[0]
 
 
 def probe_audible(media: Path) -> Audible:
@@ -1093,31 +1155,47 @@ def _voice_sounds(episode: Path, project_root: Path, cuts: Sequence[Cut]) -> dic
     return sounds
 
 
+def _voice_spans_with_flags(
+    cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
+) -> list[tuple[float, float, Cut, Voice, bool]]:
+    spans: list[tuple[float, float, Cut, Voice, bool]] = []
+    for cut, cursor, length in _timeline(cuts, lengths):
+        flags = list(cut.voice_overlaps) + [False] * max(0, len(cut.voices) - len(cut.voice_overlaps))
+        for voice, allow_overlap in zip(cut.voices, flags):
+            sound = sounds[voice.path]
+            zero = _at(cut, cursor, length, voice.start) - voice.offset
+            spans.append((
+                zero + max(sound.head, voice.offset),
+                zero + sound.tail,
+                cut,
+                voice,
+                allow_overlap,
+            ))
+    return sorted(spans, key=lambda span: span[0])
+
+
 def _voice_spans(
     cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
 ) -> list[tuple[float, float, Cut, Voice]]:
     """Each voice line's audible span in film seconds, cuts laid end to end at `lengths`."""
 
-    spans: list[tuple[float, float, Cut, Voice]] = []
-    for cut, cursor, length in _timeline(cuts, lengths):
-        for voice in cut.voices:
-            sound = sounds[voice.path]
-            # Where the file's own second zero lands on the film.
-            zero = _at(cut, cursor, length, voice.start) - voice.offset
-            spans.append((zero + max(sound.head, voice.offset), zero + sound.tail, cut, voice))
-    return sorted(spans, key=lambda span: span[0])
+    return [
+        (start, end, cut, voice)
+        for start, end, cut, voice, _ in _voice_spans_with_flags(cuts, sounds, lengths)
+    ]
 
 
-def _voice_findings(
+def _voice_checks(
     cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
-) -> list[str]:
-    """A voice line is heard inside the film and never over another line, across cuts too."""
+) -> tuple[list[str], list[str]]:
+    """Check voice lines against film end and overlaps; short/explicit overlaps become notices."""
 
     total = sum(lengths)
     findings: list[str] = []
-    latest: Optional[tuple[float, float, Cut, Voice]] = None
-    for span in _voice_spans(cuts, sounds, lengths):
-        start, end, cut, voice = span
+    notices: list[str] = []
+    latest: Optional[tuple[float, float, Cut, Voice, bool]] = None
+    for span in _voice_spans_with_flags(cuts, sounds, lengths):
+        start, end, cut, voice, allow_overlap = span
         where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
         if end <= start:
             findings.append(f"{where} 的配音 {voice.path} 起点 {voice.offset:g} 秒之后没有声音")
@@ -1128,13 +1206,24 @@ def _voice_findings(
                 f"超出成片结尾 {total:.2f}；加长末几段或提前起点"
             )
         if latest is not None and start < latest[1] - TOLERANCE:
-            findings.append(
+            overlap_seconds = latest[1] - start
+            message = (
                 f"{where} 的配音 {voice.path}（成片 {start:.2f} 秒开口）压在 {latest[2].cut_id} 的"
                 f"配音 {latest[3].path} 上（说到 {latest[1]:.2f} 秒）"
             )
+            if allow_overlap or latest[4] or overlap_seconds < VOICE_OVERLAP_NOTICE - TOLERANCE:
+                notices.append(message)
+            else:
+                findings.append(message)
         if latest is None or end > latest[1]:
             latest = span
-    return findings
+    return findings, notices
+
+
+def _voice_findings(
+    cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
+) -> list[str]:
+    return _voice_checks(cuts, sounds, lengths)[0]
 
 
 def _subtitle_findings(cuts: Sequence[Cut], lengths: Sequence[float]) -> list[str]:
@@ -1164,7 +1253,23 @@ def _subtitle_findings(cuts: Sequence[Cut], lengths: Sequence[float]) -> list[st
     return findings
 
 
-def check_cuts(
+def _same_aspect_ratio(size_a: tuple[Any, Any], size_b: tuple[Any, Any]) -> bool:
+    w1, h1 = size_a
+    w2, h2 = size_b
+    if not (
+        isinstance(w1, (int, float))
+        and isinstance(h1, (int, float))
+        and isinstance(w2, (int, float))
+        and isinstance(h2, (int, float))
+    ):
+        return False
+    if w1 <= 0 or h1 <= 0 or w2 <= 0 or h2 <= 0:
+        return False
+    lhs, rhs = float(w1) * float(h2), float(w2) * float(h1)
+    return abs(lhs - rhs) <= ASPECT_RATIO_TOLERANCE * max(lhs, rhs)
+
+
+def _inspect_cuts(
     episode: Path,
     cuts: Sequence[Cut],
     project_root: Path,
@@ -1173,20 +1278,18 @@ def check_cuts(
     unused: Sequence[str] = (),
     delivery: Optional[Delivery] = None,
     listen: Optional[bool] = None,
-) -> list[str]:
-    """Every mechanical cross-check the cut list can be held to. Returns findings.
-
-    `probe` reads media with ffprobe; `listen` (default: `probe`) decodes voice
-    files with ffmpeg to find where they are audible.
-    """
+    partial: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Run all mechanical checks and return (blocking_findings, non_blocking_notices)."""
 
     if listen is None:
         listen = probe
 
     findings: list[str] = []
+    notices: list[str] = []
     if not cuts:
         findings.append(f"{CUT_LIST_NAME}: 没有 CUT 条目")
-        return findings
+        return findings, notices
 
     seen: set[str] = set()
     for cut in cuts:
@@ -1194,9 +1297,18 @@ def check_cuts(
             findings.append(f"{CUT_LIST_NAME}:{cut.line_number}: CUT ID 重复: {cut.cut_id}")
         seen.add(cut.cut_id)
 
-    findings.extend(_source_findings(episode, cuts, unused))
-    # Stills are drawn at the delivery frame; video in the same film must match it.
+    source_findings, source_notices = _source_checks(episode, cuts, unused, partial=partial)
+    findings.extend(source_findings)
+    notices.extend(source_notices)
+
     spec: Optional[tuple[Any, Any, float]] = None
+    if delivery is not None and delivery.frame_size is not None and any(
+        side % 2 for side in delivery.frame_size
+    ):
+        findings.append(
+            f"{CUT_LIST_NAME}: 交付画幅 {delivery.frame_size[0]}×{delivery.frame_size[1]} "
+            "有奇数边；编码成 4:2:0 时宽高都要是偶数"
+        )
     if any(cut.still for cut in cuts):
         if delivery is None or delivery.frame_size is None or delivery.fps is None:
             findings.append(
@@ -1205,11 +1317,8 @@ def check_cuts(
             )
         else:
             spec = (*delivery.frame_size, round(delivery.fps, 3))
-            if any(side % 2 for side in delivery.frame_size):
-                findings.append(
-                    f"{CUT_LIST_NAME}: 交付画幅 {delivery.frame_size[0]}×{delivery.frame_size[1]} "
-                    "有奇数边；静帧按它编码成 4:2:0，宽高都要是偶数"
-                )
+    elif delivery is not None and delivery.frame_size is not None and delivery.fps is not None:
+        spec = (*delivery.frame_size, round(delivery.fps, 3))
 
     screenplay = ""
     screenplay_path = episode / SCREENPLAY_DOCUMENT
@@ -1236,11 +1345,6 @@ def check_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，入点必须是 0.00，"
                 "出点等于时长"
             )
-        if cut.still and cut.declared < STILL_MINIMUM - TOLERANCE:
-            findings.append(
-                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，时长 "
-                f"{cut.declared:.2f} 短于 {STILL_MINIMUM:.2f} 秒"
-            )
         media = _resolve_media(episode, project_root, cut.media)
         if media is None:
             findings.append(
@@ -1255,22 +1359,46 @@ def check_cuts(
                 )
         elif probe:
             stream = probe_stream(media)
-            available = stream["duration"]
-            current_format = (stream["width"], stream["height"], stream["fps"])
+            available = float(stream.get("duration", 0.0))
+            current_format: tuple[Any, Any, float] = (
+                stream.get("width"),
+                stream.get("height"),
+                float(stream.get("fps") or 0.0),
+            )
             if media_format is None:
                 media_format = current_format
-            elif current_format != media_format:
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
-                    f"{current_format} 与首段 {media_format} 不一致；"
-                    "先在外部统一素材规格，再更新来源路径与入出点"
-                )
-            if spec is not None and current_format != spec:
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅或帧率 "
-                    f"{current_format} 与交付规格 {spec} 不一致；静帧按交付规格出画，"
-                    "同一条片里的视频段须与之相同"
-                )
+                if (delivery is None or delivery.frame_size is None) and (
+                    isinstance(current_format[0], int)
+                    and isinstance(current_format[1], int)
+                    and (current_format[0] % 2 or current_format[1] % 2)
+                ):
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材画幅 "
+                        f"{current_format[0]}×{current_format[1]} 有奇数边；"
+                        "编码成 4:2:0 时宽高都要是偶数"
+                    )
+            if spec is not None:
+                target_format: tuple[Any, Any, float] = spec
+                target_label = f"交付规格 {spec}"
+            elif delivery is not None and delivery.frame_size is not None:
+                target_format = (*delivery.frame_size, media_format[2])
+                target_label = f"交付规格 {delivery.frame_size[0]}×{delivery.frame_size[1]}"
+            else:
+                target_format = media_format
+                target_label = f"首段 {media_format}"
+            if current_format != target_format:
+                if _same_aspect_ratio(current_format[:2], target_format[:2]):
+                    notices.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的分辨率或帧率 "
+                        f"{current_format} 与{target_label} 不同（同宽高比）；"
+                        "render 会自动缩放并统一帧率"
+                    )
+                else:
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的画幅宽高比 "
+                        f"{current_format} 与{target_label} 不一致；"
+                        "先在外部裁切或留边统一画幅"
+                    )
             if cut.end > available + TOLERANCE:
                 findings.append(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 出点 {cut.end:.2f} "
@@ -1314,6 +1442,21 @@ def check_cuts(
 
     # The film's rate: the spec's, else the one the probe loop read off the video.
     fps = delivery.fps if delivery is not None and delivery.fps else (media_format or (0, 0, 0.0))[2]
+    still_hard_min = round(2.0 / (fps or 24.0), 3)
+    for cut in cuts:
+        if not cut.still:
+            continue
+        if cut.declared < still_hard_min - TOLERANCE:
+            findings.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，时长 "
+                f"{cut.declared:.2f} 短于 2 帧硬下限 {still_hard_min:.2f} 秒"
+            )
+        elif cut.declared < STILL_MINIMUM - TOLERANCE:
+            notices.append(
+                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，时长 "
+                f"{cut.declared:.2f} 短于 {STILL_MINIMUM:.2f} 秒（快闪静帧提醒复核）"
+            )
+
     lengths = _film_spans(cuts, fps)
     for index, cut in enumerate(cuts):
         where = f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id}"
@@ -1343,25 +1486,112 @@ def check_cuts(
     findings.extend(_subtitle_findings(cuts, lengths))
     if listen and voiced and any(cut.voices for cut in cuts):
         try:
-            findings.extend(_voice_findings(cuts, _voice_sounds(episode, project_root, cuts), lengths))
+            voice_findings, voice_notices = _voice_checks(
+                cuts, _voice_sounds(episode, project_root, cuts), lengths
+            )
+            findings.extend(voice_findings)
+            notices.extend(voice_notices)
         except EditError as error:
             findings.append(f"{CUT_LIST_NAME}: {error}")
 
     findings.extend(_screen_text_findings(cuts, screenplay))
     findings.extend(_overlap_findings(cuts))
-    findings.extend(_stale_window_findings(episode, project_root, cuts))
-    return findings
+    notices.extend(_stale_window_findings(episode, project_root, cuts))
+    notices.extend(move_notices(cuts, _scene_keys(episode, cuts), lengths))
+    return findings, notices
+
+
+def check_cuts(
+    episode: Path,
+    cuts: Sequence[Cut],
+    project_root: Path,
+    *,
+    probe: bool,
+    unused: Sequence[str] = (),
+    delivery: Optional[Delivery] = None,
+    listen: Optional[bool] = None,
+    partial: bool = False,
+) -> list[str]:
+    """Every mechanical cross-check the cut list can be held to. Returns findings."""
+
+    return _inspect_cuts(
+        episode,
+        cuts,
+        project_root,
+        probe=probe,
+        unused=unused,
+        delivery=delivery,
+        listen=listen,
+        partial=partial,
+    )[0]
+
+
+def collect_notices(
+    episode: Path,
+    cuts: Sequence[Cut],
+    project_root: Path,
+    *,
+    probe: bool = False,
+    unused: Sequence[str] = (),
+    delivery: Optional[Delivery] = None,
+    listen: Optional[bool] = None,
+    partial: bool = False,
+) -> list[str]:
+    """Collect non-blocking notices (short stills, short/tagged voice overlap, stale mtime, etc.)."""
+
+    return _inspect_cuts(
+        episode,
+        cuts,
+        project_root,
+        probe=probe,
+        unused=unused,
+        delivery=delivery,
+        listen=listen,
+        partial=partial,
+    )[1]
+
+
+def _item_matches_screenplay(
+    item: str,
+    style: str,
+    sources: Sequence[str],
+    scene_headings: Sequence[str],
+) -> bool:
+    norm = _normalize(item)
+    if not norm:
+        return False
+    if any(norm in source for source in sources):
+        return True
+    if style == "任务面板":
+        progress = PROGRESS_ITEM.match(item)
+        if progress and all(
+            any(_normalize(part) in source for source in sources)
+            for part in progress.groups()
+        ):
+            return True
+    if style == "字卡":
+        if any(norm in heading for heading in scene_headings):
+            return True
+        parts = [
+            _normalize(part)
+            for part in re.split(r"[·・\s　/／｜]+", item)
+            if _normalize(part)
+        ]
+        if parts and any(all(part in heading for part in parts) for heading in scene_headings):
+            return True
+    return False
 
 
 def _screen_text_findings(cuts: Sequence[Cut], screenplay: str) -> list[str]:
-    """Screen text is held to 剧本.md's [画面文字] lines, the way subtitles are to dialogue.
+    """Screen text is held to 剧本.md's [画面文字] lines (and scene headings for 字卡).
 
     Without a screenplay the check is skipped exactly as the subtitle one is;
-    with one, a screenplay that declares no screen text traces nothing.
+    with one, a screenplay that declares no matching source rejects invented text.
     """
 
     findings: list[str] = []
     sources = [_normalize(body) for body in SCREENPLAY_SCREEN_TEXT.findall(screenplay)]
+    scene_headings = [_normalize(tail) for tail in SCREENPLAY_SCENE_HEADING.findall(screenplay)]
     counting = False
     for cut in cuts:
         span = cut.end - cut.start
@@ -1373,10 +1603,15 @@ def _screen_text_findings(cuts: Sequence[Cut], screenplay: str) -> list[str]:
                 )
             if screenplay:
                 for item in text.items:
-                    if not any(_normalize(item) in source for source in sources):
+                    if not _item_matches_screenplay(item, text.style, sources, scene_headings):
+                        origin = (
+                            "「[画面文字]」或场头时间地点"
+                            if text.style == "字卡"
+                            else "「[画面文字]」行"
+                        )
                         findings.append(
                             f"{where} 的画面文字在《{SCREENPLAY_DOCUMENT}》的"
-                            f"「[画面文字]」行里找不到: {item}"
+                            f"{origin}里找不到: {item}"
                         )
             if text.resume and not counting:
                 findings.append(
@@ -1434,29 +1669,36 @@ def _stale_window_findings(
 
 
 def _overlap_findings(cuts: Sequence[Cut]) -> list[str]:
-    """Two cuts drawn from one file must not reuse the same frames (EDT-06)."""
+    """Two cuts drawn from one file must not reuse the same frames unless marked 重放 (EDT-06)."""
 
     findings: list[str] = []
     by_media: dict[str, list[Cut]] = {}
     for cut in cuts:
         # A keyframe reused in a shot/reverse-shot is a choice, not repeated footage.
-        if not cut.still:
-            by_media.setdefault(cut.media, []).append(cut)
-    for media, group in by_media.items():
-        ordered = sorted(group, key=lambda item: item.start)
-        for earlier, later in zip(ordered, ordered[1:]):
-            if later.start < earlier.end - TOLERANCE:
-                findings.append(
-                    f"{CUT_LIST_NAME}: {earlier.cut_id} 与 {later.cut_id} 在同一素材 "
-                    f"{media} 上区间重叠（{later.start:.2f} < {earlier.end:.2f}）"
-                )
+        if cut.still:
+            continue
+        earlier_cuts = by_media.setdefault(cut.media, [])
+        if not cut.replay:
+            for earlier in earlier_cuts:
+                if earlier.replay:
+                    continue
+                if max(earlier.start, cut.start) < min(earlier.end, cut.end) - TOLERANCE:
+                    first, second = (
+                        (earlier, cut) if earlier.start <= cut.start else (cut, earlier)
+                    )
+                    findings.append(
+                        f"{CUT_LIST_NAME}: {first.cut_id} 与 {second.cut_id} 在同一素材 "
+                        f"{cut.media} 上区间重叠（{second.start:.2f} < {first.end:.2f}）"
+                    )
+                    break
+        earlier_cuts.append(cut)
     return findings
 
 
 def _normalize(text: str) -> str:
-    """Compare dialogue ignoring punctuation and whitespace, never ignoring characters."""
+    """Compare dialogue and screen text ignoring punctuation and whitespace."""
 
-    return re.sub(r"[\s，。！？、；：…—·\-“”‘’\"'()（）]", "", text)
+    return re.sub(r"[\s,，。！？、；：/／…—·\-“”‘’\"'()（）]", "", text)
 
 
 def _resolve_media(episode: Path, project_root: Path, relative: str) -> Optional[Path]:
@@ -1501,12 +1743,31 @@ def render(
             )
         return _channel_stats(ffmpeg, media, cut.start, cut.end - cut.start)
 
+    probed_streams: dict[Path, dict[str, Any]] = {}
+
+    def get_stream(path: Path) -> dict[str, Any]:
+        if path not in probed_streams:
+            probed_streams[path] = probe_stream(path)
+        return probed_streams[path]
+
     scenes = _scene_keys(episode, cuts)
     pictures, auto = _picture_plan(cuts, scenes, measure, enabled=delivery.shot_match)
     silence = _silent_track(episode, project_root, cuts, delivery)
     sounds = _voice_sounds(episode, project_root, cuts)
     fps = _film_fps(episode, project_root, cuts, delivery, probe=True)
     spans = _film_spans(cuts, fps)
+    target_size: Optional[tuple[int, int]] = delivery.frame_size
+    if target_size is None:
+        for cut in cuts:
+            if cut.still:
+                continue
+            first_media = _resolve_media(episode, project_root, cut.media)
+            if first_media is not None:
+                first_stream = get_stream(first_media)
+                first_w, first_h = first_stream.get("width"), first_stream.get("height")
+                if isinstance(first_w, int) and isinstance(first_h, int) and first_w > 0 and first_h > 0:
+                    target_size = (first_w, first_h)
+                break
 
     eases = _move_ease(cuts, scenes)
     segments: list[Path] = []
@@ -1518,11 +1779,24 @@ def render(
         if cut.still:
             command = _still_command(ffmpeg, media, cut, delivery, silence, match, length, ease)
         else:
+            clip_stream = get_stream(media)
+            clip_w, clip_h = clip_stream.get("width"), clip_stream.get("height")
+            clip_fps = clip_stream.get("fps")
+            clip_duration = float(clip_stream.get("duration") or 0.0)
             # Read enough source for the whole frames the film gives this cut.
             span = max(cut.end - cut.start, length)
+            input_span = span
+            if (
+                fps
+                and isinstance(clip_fps, (int, float))
+                and clip_fps > 0
+                and abs(float(clip_fps) - fps) > 0.01
+                and cut.start + span + 1.0 / float(clip_fps) <= clip_duration + TOLERANCE
+            ):
+                input_span = span + 1.0 / float(clip_fps)
             command = [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-                "-ss", f"{cut.start:.3f}", "-t", f"{span:.3f}", "-i", str(media),
+                "-ss", f"{cut.start:.3f}", "-t", f"{input_span:.3f}", "-i", str(media),
             ]
             if probe_audio(media) is None:
                 rate, layout = silence
@@ -1530,8 +1804,24 @@ def render(
                     "-f", "lavfi", "-t", f"{span:.3f}", "-i", f"anullsrc=r={rate}:cl={layout}",
                     "-map", "0:v", "-map", "1:a",
                 ]
+            vf_stages: list[str] = []
+            if (
+                target_size is not None
+                and isinstance(clip_w, int)
+                and isinstance(clip_h, int)
+                and (clip_w, clip_h) != target_size
+            ):
+                tw, th = target_size
+                vf_stages.append(
+                    f"scale={tw}:{th}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={tw}:{th},setsar=1"
+                )
+            if fps and isinstance(clip_fps, (int, float)) and abs(float(clip_fps) - fps) > 0.01:
+                vf_stages.append(f"fps={fps:g}")
             if match:
-                command += ["-vf", match]
+                vf_stages.append(match)
+            if vf_stages:
+                command += ["-vf", ",".join(vf_stages)]
             if fps:
                 command += ["-frames:v", str(round(length * fps)), "-t", f"{length:.6f}"]
         command += [
@@ -2519,7 +2809,7 @@ def _screen_text_layers(
                 countdown = latest["countdown"] - (start - latest["start"])
             style = SCREEN_TEXT_STYLES[text.style]
             items = [
-                {"text": item, "rarity": rarity}
+                {"text": _normalize_screen_item_numbers(item), "rarity": rarity}
                 for item, rarity in zip(text.items, text.rarities or (None,) * len(text.items))
             ]
             previous = next((layer for layer in reversed(layers) if layer["style"] == style), None)
@@ -3145,6 +3435,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("command", choices=("check", "render", "verify"))
     parser.add_argument("episode", help="剧集/<EP> 目录")
     parser.add_argument("--project-root", default=".", help="项目根目录（解析素材相对路径）")
+    parser.add_argument(
+        "--partial", action="store_true",
+        help="局部试剪：未采用的上游镜头移入提醒，不阻断检查或渲染",
+    )
     parser.add_argument("--no-subtitles", action="store_true", help="render 时不烧字幕")
     parser.add_argument(
         "--subtitles", choices=SUBTITLE_RENDERERS, default="ffmpeg",
@@ -3168,10 +3462,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
         if arguments.command == "check":
-            findings = check_cuts(
+            findings, notices = _inspect_cuts(
                 episode, cuts, project_root,
                 probe=_which("ffprobe") is not None, unused=unused, delivery=delivery,
                 listen=_which("ffmpeg") is not None,
+                partial=arguments.partial,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -3180,7 +3475,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "未采用镜头": unused,
                 "findings": findings,
             }
-            notices = move_notices(cuts, _scene_keys(episode, cuts), _film_spans(cuts, delivery.fps))
             if notices:
                 payload["提醒"] = notices
             unmeasured = []
@@ -3193,19 +3487,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _emit(payload)
             return 1 if findings else 0
         if arguments.command == "render":
-            findings = check_cuts(
-                episode, cuts, project_root, probe=True, unused=unused, delivery=delivery
+            findings, notices = _inspect_cuts(
+                episode, cuts, project_root,
+                probe=True, unused=unused, delivery=delivery,
+                listen=True, partial=arguments.partial,
             )
             if findings:
-                _emit({"findings": findings, "已渲染": False})
+                failed: dict[str, Any] = {"findings": findings, "已渲染": False}
+                if notices:
+                    failed["提醒"] = notices
+                _emit(failed)
                 return 1
-            _emit(render(
+            result = render(
                 episode, project_root, cuts, delivery,
                 burn_subtitles=delivery.burn_subtitles and not arguments.no_subtitles,
                 renderer=arguments.subtitles,
                 remotion_workspace=arguments.remotion_workspace,
                 remotion_concurrency=arguments.remotion_concurrency,
-            ))
+            )
+            if notices:
+                result["提醒"] = notices
+            _emit(result)
             return 0
         _emit(verify(episode, cuts, delivery, project_root))
         return 0

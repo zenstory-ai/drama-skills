@@ -41,8 +41,45 @@ class TranscriptTests(unittest.TestCase):
 
     def test_a_cue_that_ends_before_it_starts_is_refused(self):
         for start, end in ((6, 2), (-1, 2), ("nan", 2)):
-            with self.subTest(start=start, end=end), self.assertRaises(breakdown.BreakdownError):
+            with self.subTest(start=start, end=end), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(
+                breakdown.BreakdownError
+            ):
                 breakdown.parse_transcript(json.dumps([{"start": start, "end": end, "text": "甲"}]), ".json")
+
+    def test_isolated_dirty_cues_are_skipped_with_stderr_notice(self):
+        srt = (
+            "1\n00:00:01,000 --> 00:00:02,000\n正常首句\n\n"
+            "2\n00:00:02,500 --> 00:00:02,500\n零时长脏行\n\n"
+            "3\n00:00:05,000 --> 00:00:04,000\n倒挂脏行\n\n"
+            "4\n00:00:06,000 --> 00:00:07,500\n正常尾句\n"
+        )
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            segments = breakdown.parse_transcript(srt, ".srt")
+        self.assertEqual(
+            segments,
+            [{"s": 1.0, "e": 2.0, "t": "正常首句"}, {"s": 6.0, "e": 7.5, "t": "正常尾句"}],
+        )
+        self.assertIn("2.5–2.5", err.getvalue())
+        self.assertIn("5.0–4.0", err.getvalue())
+
+        json_err = io.StringIO()
+        payload = json.dumps(
+            [
+                {"start": -0.3, "end": 1.0, "text": "负数脏行"},
+                {"start": 1.2, "end": 1.2, "text": "零长脏行"},
+                {"start": 2.0, "end": 3.5, "text": "有效台词"},
+            ],
+            ensure_ascii=False,
+        )
+        with contextlib.redirect_stderr(json_err):
+            json_segments = breakdown.parse_transcript(payload, ".json")
+        self.assertEqual(json_segments, [{"s": 2.0, "e": 3.5, "t": "有效台词"}])
+        self.assertTrue(json_err.getvalue().strip())
+
+        all_dirty_srt = "1\n00:00:03,000 --> 00:00:03,000\n全脏\n"
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(breakdown.BreakdownError):
+            breakdown.parse_transcript(all_dirty_srt, ".srt")
 
     def test_a_file_without_timings_is_refused(self):
         with self.assertRaises(breakdown.BreakdownError):
@@ -313,6 +350,38 @@ class PlanTimelineTests(unittest.TestCase):
             record = breakdown.plan_episode(root / "剧集" / "EP001")
         self.assertIsNone(record["segments"])
         self.assertIsNone(record["duration"])
+
+    def test_spaced_foreign_speaker_with_ascii_parenthetical_cue_is_timed_as_speech(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_words_per_second": 2.5,
+                                "seconds_per_action_paragraph": 3,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ep = root / "剧集" / "EP001"
+            ep.mkdir(parents=True)
+            (ep / "剧本.md").write_text(
+                "## EP001-SC001 内 · 档案室 · 夜\n\n"
+                "She steps back.\n\n"
+                "Dr. Lin (whispering)：Stay back from the door.\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+        numbers = breakdown.episode_numbers(record)
+        self.assertEqual(record["duration"], 5.0)
+        self.assertEqual(record["duration_source"], "script_estimate")
+        self.assertEqual(len(record["segments"]), 1)
+        self.assertEqual(record["segments"][0]["t"], "Stay back from the door.")
+        self.assertEqual(numbers["speech_share"], 0.4)
 
 
 class TranscriptOverrunTests(unittest.TestCase):

@@ -95,7 +95,11 @@ SHOT_HEADING = re.compile(r"^## SHOT-[^\s]+", re.MULTILINE)
 ON_SCREEN_TEXT_TAG = "[画面文字]"
 # A performance note inside a line, ``走。（压低声音）``, is not spoken.
 DIRECTION = re.compile(r"（[^（）]*）|\([^()]*\)")
-CUE_LINE = re.compile(r"^(?:\[(VO|OS)\]\s*)?([^\s：:（(\[]{1,40})(?:（[^）]*）|\([^)]*\))?[：:]\s*(.+)$")
+_SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
+_SPEAKER_LABEL = rf"(?=.{{1,40}}(?:[ \t]*[（(]|[：:]))({_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}})"
+CUE_LINE = re.compile(
+    rf"^(?:\[(VO|OS)\]\s*)?{_SPEAKER_LABEL}(?:[ \t]*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))?[：:]\s*(.+)$"
+)
 SRT_TIME = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{1,3})"
 )
@@ -157,8 +161,7 @@ def _require(name: str) -> str:
     found = shutil.which(name)
     if found is None:
         raise BreakdownError(
-            f"PATH 上没有 {name}。测量真实视频需要 ffmpeg 与 ffprobe；没有它就没有可报告的数字，"
-            "先安装，不用别的手段近似。"
+            f"PATH 上没有 {name}。请先安装 ffmpeg 与 ffprobe 后再测量真实视频。"
         )
     return found
 
@@ -875,8 +878,7 @@ def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
                 raise BreakdownError("JSON 转写的每段都要有 start/end（或 s/e）秒数")
             segments.append({"s": float(start), "e": float(end), "t": str(words).strip()})
         segments = [segment for segment in segments if segment["t"]]
-        _check_intervals(segments)
-        return segments
+        return _filter_valid_intervals(segments)
     pattern = SRT_TIME if suffix == ".srt" else VTT_TIME
     segments = []
     for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n")):
@@ -894,15 +896,29 @@ def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
             break
     if not segments:
         raise BreakdownError("没有读出任何带时间的字幕段；支持 .srt、.vtt 与 JSON segments")
-    _check_intervals(segments)
-    return segments
+    return _filter_valid_intervals(segments)
 
 
-def _check_intervals(segments: List[Dict[str, Any]]) -> None:
+def _filter_valid_intervals(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not segments:
+        return []
+    valid: List[Dict[str, Any]] = []
     for segment in segments:
         start, end = segment["s"], segment["e"]
-        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end):
-            raise BreakdownError(f"转写里有一段时间不成立（{start}–{end} 秒）：开始要不小于 0 且早于结束；先修正这段再挂接")
+        if not (math.isfinite(start) and math.isfinite(end)):
+            raise BreakdownError(
+                f"转写里有一段时间不成立（{start}–{end} 秒）：开始与结束须为有限秒数"
+            )
+        if start < 0 or start >= end:
+            print(
+                f"注意：转写里有一段时间不成立（{start}–{end} 秒），已跳过该字幕行",
+                file=sys.stderr,
+            )
+            continue
+        valid.append(segment)
+    if not valid:
+        raise BreakdownError("转写里没有有效时间段（开始要不小于 0 且早于结束）；先修正字幕再挂接")
+    return valid
 
 
 def attach_transcript(measure: Path, transcript: Path) -> None:

@@ -17,6 +17,15 @@ screenplay_index = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(screenplay_index)
 
 
+DURATION_SCRIPT = SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
+DURATION_SPEC = importlib.util.spec_from_file_location(
+    "short_drama_duration_estimate", DURATION_SCRIPT
+)
+assert DURATION_SPEC and DURATION_SPEC.loader
+duration_estimate = importlib.util.module_from_spec(DURATION_SPEC)
+DURATION_SPEC.loader.exec_module(duration_estimate)
+
+
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
@@ -783,10 +792,6 @@ class EpisodeIdentifierAgreementTests(unittest.TestCase):
             )
         )
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RetiredIdsStayRetiredTests(unittest.TestCase):
     """A retired block ID must never be handed to different content.
 
@@ -844,3 +849,217 @@ class RetiredIdsStayRetiredTests(unittest.TestCase):
             meta = read_jsonl(root / "v2.jsonl")[0]
 
         self.assertEqual(meta["block_id_high_water"].get("EP001-SC001|D"), 2)
+
+
+class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
+    def test_foreign_spaced_speakers_ascii_cues_and_colon_action_prose(self) -> None:
+        long_speaker = "Inspector Alexander Hamilton-Wright"
+        self.assertEqual(screenplay_index.MAX_SPEAKER_LENGTH, 40)
+        self.assertEqual(duration_estimate.MAX_SPEAKER_LENGTH, 40)
+        text = (
+            "# EP001 Night Shift\n\n"
+            "## EP001-SC001 内·档案室·夜\n\n"
+            "他推开虚掩的木门，借着走廊微光看见桌上留着一张字条：今晚九点渡口见。\n\n"
+            "Dr. Lin (quietly)：Stay back from the cabinet.\n\n"
+            "[OS] Agent K (over radio)：Copy that, moving in.\n\n"
+            f"{long_speaker} (calmly)：Seal the exit.\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "剧本.md"
+            output = root / "index.jsonl"
+            source.write_text(text, encoding="utf-8")
+
+            summary = screenplay_index.build_index(
+                source,
+                output,
+                speakers={"Dr. Lin", "Agent K", long_speaker},
+            )
+            self.assertEqual(summary["review_status"], "clean")
+            parsed_blocks = blocks(output)
+            self.assertEqual(
+                [row["kind"] for row in parsed_blocks],
+                ["scene_heading", "action", "dialogue", "production_tag", "dialogue"],
+            )
+            self.assertEqual(parsed_blocks[0]["location"], "档案室")
+            self.assertEqual(parsed_blocks[2]["speaker"], "Dr. Lin")
+            self.assertEqual(parsed_blocks[2]["performance_cue"], "quietly")
+            self.assertEqual(parsed_blocks[3]["speaker"], "Agent K")
+            self.assertEqual(parsed_blocks[3]["performance_cue"], "over radio")
+            self.assertEqual(parsed_blocks[4]["speaker"], long_speaker)
+            self.assertEqual(parsed_blocks[4]["performance_cue"], "calmly")
+
+            counts = duration_estimate.measure(source.read_bytes(), parsed_blocks)
+            self.assertNotIn("unreadable_blocks", counts)
+            self.assertEqual(counts["action_paragraphs"], 1)
+            self.assertEqual(counts["dialogue_lines"], 3)
+            self.assertEqual(counts["voiced_words"], 12)
+
+    def test_duration_estimate_script_flag_runs_in_memory_without_index_file(self) -> None:
+        script_text = (
+            "# EP001 夜班\n\n"
+            "## EP001-SC001 内·客厅·夜\n\n"
+            "陈予安推开门。\n\n"
+            "陈予安 (压低声音)：关窗。\n\n"
+            "Dr. Lin (quietly)：Stay back.\n\n"
+            "[VO] 陈予安：不能让他看见。\n"
+        )
+        project = {
+            "format": {
+                "target_seconds_per_episode": 20,
+                "pacing": {
+                    "spoken_characters_per_second": 4.0,
+                    "spoken_words_per_second": 2.0,
+                    "seconds_per_action_paragraph": 3.0,
+                },
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "剧本.md"
+            project_path = root / "short-drama.json"
+            source.write_text(script_text, encoding="utf-8")
+            project_path.write_text(json.dumps(project), encoding="utf-8")
+
+            direct = subprocess.run(
+                [
+                    sys.executable,
+                    str(DURATION_SCRIPT),
+                    "--script",
+                    str(source),
+                    "--project",
+                    str(project_path),
+                    "--target-seconds",
+                    "15",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(direct.returncode, 0, direct.stderr)
+            self.assertEqual(list(root.glob("*.jsonl")), [])
+            direct_report = json.loads(direct.stdout)
+            self.assertNotIn("incomplete", direct_report)
+            self.assertEqual(direct_report["counts"]["action_paragraphs"], 1)
+            self.assertEqual(direct_report["counts"]["dialogue_lines"], 3)
+            self.assertEqual(direct_report["counts"]["voiced_characters"], 8)
+            self.assertEqual(direct_report["counts"]["voiced_words"], 2)
+            self.assertEqual(direct_report["seconds"], 6.0)
+            self.assertEqual(direct_report["target_seconds"], 15.0)
+
+            index_path = root / "index.jsonl"
+            screenplay_index.build_index(
+                source, index_path, speakers={"陈予安", "Dr. Lin"}
+            )
+            legacy = subprocess.run(
+                [
+                    sys.executable,
+                    str(DURATION_SCRIPT),
+                    str(source),
+                    "--index",
+                    str(index_path),
+                    "--project",
+                    str(project_path),
+                    "--target-seconds",
+                    "15",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(legacy.returncode, 0, legacy.stderr)
+            self.assertEqual(json.loads(legacy.stdout), direct_report)
+
+    def test_duration_estimate_script_flags_colon_action_and_panels_while_honoring_cast_and_speakers(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for label, body in (
+                ("colon_action", "他写下两个字：军宣。\n\n他写下两个字：必胜。\n"),
+                ("panel_label", "第二格：许棠猛地回头。\n\n第三格：走廊灯灭。\n"),
+                ("bracket_tag", "【音效：雷声】\n"),
+            ):
+                with self.subTest(case=label):
+                    source = root / f"{label}.md"
+                    source.write_text(
+                        "# EP001 测试\n\n## EP001-SC001 内 · 办公室 · 夜\n\n" + body,
+                        encoding="utf-8",
+                    )
+                    completed = subprocess.run(
+                        [sys.executable, str(DURATION_SCRIPT), "--script", str(source)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    report = json.loads(completed.stdout)
+                    self.assertEqual(report["counts"]["dialogue_lines"], 0)
+                    self.assertIn("incomplete", report)
+                    self.assertTrue(report["incomplete"]["needs_human_review"])
+                    self.assertEqual(
+                        report["incomplete"]["index_review_status"], "review_required"
+                    )
+
+            # Recurring speaker (>=2 lines) without 人物： or --speaker is auto-enrolled cleanly.
+            recurring = root / "recurring.md"
+            recurring.write_text(
+                "# EP001 测试\n\n## EP001-SC001 内 · 走廊 · 夜\n\n"
+                "门外的人：开门。\n\n门外的人：别装不在。\n",
+                encoding="utf-8",
+            )
+            rec_blocks, rec_review = duration_estimate.parse_script_blocks(
+                recurring.read_bytes()
+            )
+            rec_report = duration_estimate.estimate(
+                recurring.read_bytes(), rec_blocks, None, rec_review
+            )
+            self.assertNotIn("incomplete", rec_report)
+            self.assertEqual(rec_report["counts"]["dialogue_lines"], 2)
+
+            # When 人物： or --speaker is present, ONLY that union is accepted as speakers.
+            cast_script = (
+                "# EP001 测试\n\n"
+                "人物：林岚、Dr. Lin\n\n"
+                "## EP001-SC001 内 · 档案室 · 夜\n\n"
+                "林岚：门锁被人动过。\n\n"
+                "Dr. Lin (quietly)：Stay back.\n\n"
+                "Agent K：Clear the hall.\n"
+            )
+            cast_path = root / "cast.md"
+            cast_path.write_text(cast_script, encoding="utf-8")
+
+            without_extra = subprocess.run(
+                [sys.executable, str(DURATION_SCRIPT), "--script", str(cast_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            unresolved_report = json.loads(without_extra.stdout)
+            self.assertIn("incomplete", unresolved_report)
+            self.assertTrue(unresolved_report["incomplete"]["needs_human_review"])
+            self.assertIn(
+                "ambiguous_dialogue_or_action",
+                unresolved_report["incomplete"]["issue_codes"],
+            )
+
+            with_speaker_flag = subprocess.run(
+                [
+                    sys.executable,
+                    str(DURATION_SCRIPT),
+                    "--script",
+                    str(cast_path),
+                    "--speaker",
+                    "Agent K",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            resolved_report = json.loads(with_speaker_flag.stdout)
+            self.assertNotIn("incomplete", resolved_report)
+            self.assertEqual(resolved_report["counts"]["dialogue_lines"], 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

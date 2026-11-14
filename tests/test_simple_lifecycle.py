@@ -424,11 +424,31 @@ class SimpleLifecycleTests(unittest.TestCase):
                 "update_needed",
             )
 
-    def test_package_requires_current_approval(self) -> None:
+    def test_package_allows_direct_delivery_by_default_and_blocks_under_strict_ledger(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             self.publish_script(root)
             with self.assertRaisesRegex(project_tool.PackageBlockedError, "approved"):
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    includes=["剧集/EP001/screenplay.md"],
+                    strict_ledger=True,
+                )
+            direct = project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                includes=["剧集/EP001/screenplay.md"],
+            )
+            self.assertEqual(len(direct["files"]), 1)
+            self.assertEqual(
+                project_tool.verify_delivery_package(root, episode="EP001")["status"],
+                "verified",
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="EP001:script", decision="rejected"
+            )
+            with self.assertRaisesRegex(project_tool.PackageBlockedError, "rejected"):
                 project_tool.build_delivery_package(
                     root,
                     episode="EP001",
@@ -517,6 +537,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                     root,
                     episode="EP001",
                     includes=["剧集/EP001/screenplay.md"],
+                    strict_ledger=True,
                 )
             self.assertFalse((root / "交付/EP001").exists())
 
@@ -896,9 +917,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             "spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 0}}}
         self.assertEqual(project_tool.profile_notes(manifest), [])
 
-    def test_rhythm_profile_is_declared_only_once_a_complete_profile_is_accepted(self) -> None:
-        # Later stages do arithmetic on these numbers, so a partial or
-        # out-of-range profile must not land; a missing one means "do not check".
+    def test_rhythm_profile_accepts_partial_fields_and_all_forms_while_rejecting_bad_values(self) -> None:
         profile = {
             "form": "motion_comic",
             "first_hook_seconds": 5,
@@ -916,8 +935,9 @@ class SimpleLifecycleTests(unittest.TestCase):
             {"decision_id": "CD-RHYTHM", "accepted_value": profile},
             {
                 "decision_id": "CD-RHYTHM-PARTIAL",
-                "accepted_value": {"form": "ai_live_action", "first_hook_seconds": 5},
+                "accepted_value": {"form": "国漫二次元", "first_hook_seconds": 5},
             },
+            {"decision_id": "CD-RHYTHM-ANIME", "accepted_value": {"form": "anime"}},
             {"decision_id": "CD-RHYTHM-SHARE", "accepted_value": {**profile, "vo_share_max": 1.5}},
             {
                 "decision_id": "CD-RHYTHM-NAN",
@@ -935,7 +955,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                 "decision_id": "CD-RHYTHM-FLOAT-COUNT",
                 "accepted_value": {**profile, "opposed_reversals_per_episode_min": 1.5},
             },
-            {"decision_id": "CD-RHYTHM-FORM", "accepted_value": {**profile, "form": "anime"}},
+            {"decision_id": "CD-RHYTHM-FORM", "accepted_value": {**profile, "form": "spreadsheet"}},
             {"decision_id": "CD-RHYTHM-EXTRA", "accepted_value": {**profile, "hooks_per_minute": 4}},
             {"decision_id": "CD-VO", "accepted_value": 0.6, "field": f"{pointer}/vo_share_max"},
         ]
@@ -976,7 +996,6 @@ class SimpleLifecycleTests(unittest.TestCase):
 
             before = manifest.read_bytes()
             for decision_id, reason in (
-                ("CD-RHYTHM-PARTIAL", "beat_interval_seconds_max is missing"),
                 ("CD-RHYTHM-SHARE", "vo_share_max must be a share"),
                 ("CD-RHYTHM-NAN", "close_shot_share_min must be a share"),
                 ("CD-RHYTHM-INF", "target_avg_shot_seconds must be a positive"),
@@ -993,6 +1012,17 @@ class SimpleLifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not accepted"):
                 bind("CD-VO", f"{pointer}/vo_share_max")
             self.assertEqual(manifest.read_bytes(), before)
+
+            bind("CD-RHYTHM-PARTIAL")
+            self.assertEqual(
+                project_tool.project_status(root)["rhythm_profile"],
+                {"form": "国漫二次元", "first_hook_seconds": 5},
+            )
+            bind("CD-RHYTHM-ANIME")
+            self.assertEqual(
+                project_tool.project_status(root)["rhythm_profile"],
+                {"form": "anime", "first_hook_seconds": 5},
+            )
 
             bind("CD-RHYTHM")
             self.assertEqual(project_tool.project_status(root)["rhythm_profile"], profile)
@@ -1670,3 +1700,273 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                     root, artifact_id="EP001:script", decision="TOTALLY_BOGUS"
                 )
             self.assertEqual(self.states(root), {"EP001:script": "accepted"})
+
+    def test_configure_updates_manifest_and_accepts_authority_without_ledger_ceremony(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "configured"
+            project_tool.initialize_project(
+                root,
+                title="初版剧名",
+                language="zh-CN",
+                aspect_ratio="9:16",
+            )
+            result = project_tool.configure_project(
+                root,
+                title="终版剧名",
+                prompt_language="zh-CN",
+                aspect_ratio="16:9",
+                episode_count=20,
+                target_seconds_per_episode=90,
+                pacing={
+                    "spoken_characters_per_second": 4.2,
+                    "seconds_per_action_paragraph": 2.0,
+                },
+                visual_direction={"look_development": "ink_wash_trial_v1"},
+                production_profile={
+                    "target_video_model": "seedance-2.5",
+                    "video_prompt_language": "zh-CN",
+                    "native_duration_seconds": {"min": 4, "max": 15},
+                    "supported_generation_modes": ["text", "first_frame", "reference"],
+                },
+                rhythm_profile={"form": "水墨笔触", "first_hook_seconds": 4.5},
+            )
+            status = result["status"]
+            self.assertEqual(status["title"], "终版剧名")
+            self.assertEqual(status["language"], "zh-CN")
+            self.assertEqual(status["prompt_language"], "zh-CN")
+            self.assertEqual(status["video_prompt_language"], "zh-CN")
+            self.assertEqual(
+                status["format"],
+                {
+                    "aspect_ratio": "16:9",
+                    "episode_count": 20,
+                    "target_seconds_per_episode": 90,
+                },
+            )
+            self.assertEqual(
+                status["rhythm_profile"],
+                {"form": "水墨笔触", "first_hook_seconds": 4.5},
+            )
+            self.assertEqual(
+                status["video_model_profile"]["target_video_model"], "seedance-2.5"
+            )
+            for value in status["authority"].values():
+                self.assertEqual(value, "bound")
+
+            cli = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "configure",
+                    str(root),
+                    "--json",
+                    json.dumps(
+                        {
+                            "language": "en",
+                            "rhythm_profile": {"target_avg_shot_seconds": 5.0},
+                        }
+                    ),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            updated = json.loads(cli.stdout)["status"]
+            self.assertEqual(updated["language"], "en")
+            self.assertEqual(
+                updated["rhythm_profile"],
+                {
+                    "form": "水墨笔触",
+                    "first_hook_seconds": 4.5,
+                    "target_avg_shot_seconds": 5.0,
+                },
+            )
+
+    def test_creator_first_direct_package_and_security_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory) / "outside.md"
+            outside.write_text("# secret\n", encoding="utf-8")
+            root = Path(directory) / "creator-first"
+            episode_dir = root / "剧集/EP001"
+            episode_dir.mkdir(parents=True)
+            (episode_dir / "剧本.md").write_text("# 第一集\n", encoding="utf-8")
+            (episode_dir / "视觉设定.md").write_text("# 视觉设定\n", encoding="utf-8")
+            (root / ".short-drama").mkdir(parents=True, exist_ok=True)
+            (root / ".short-drama/internal.json").write_text("{}", encoding="utf-8")
+
+            cli = subprocess.run(
+                [sys.executable, str(SCRIPT), "package", str(root), "--episode", "EP001"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            packaged = json.loads(cli.stdout)
+            self.assertEqual(
+                [entry["source"] for entry in packaged["files"]],
+                ["剧集/EP001/剧本.md", "剧集/EP001/视觉设定.md"],
+            )
+            verified = project_tool.verify_delivery_package(root, episode="EP001")
+            self.assertEqual(verified["status"], "verified")
+            self.assertFalse((root / "交付/EP001/artifacts/.short-drama").exists())
+
+            with self.assertRaises(ValueError):
+                project_tool.build_delivery_package(
+                    root, episode="EP001", includes=["../outside.md"]
+                )
+            with self.assertRaises(ValueError):
+                project_tool.build_delivery_package(
+                    root, episode="EP001", includes=[".short-drama/internal.json"]
+                )
+
+            link_path = episode_dir / "分镜.md"
+            try:
+                link_path.symlink_to(outside)
+            except OSError:
+                return
+            with self.assertRaises(project_tool.ProjectConflictError):
+                project_tool.build_delivery_package(root, episode="EP001")
+
+    def test_configure_partial_pacing_q_form_aspect_ratio_and_production_profile_validation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for bad_ratio in ("vertical", "0:16"):
+                with self.subTest(bad_ratio=bad_ratio), self.assertRaises(ValueError):
+                    project_tool.initialize_project(
+                        Path(directory) / f"bad-{bad_ratio.replace(':', '-')}",
+                        title="坏画幅",
+                        language="zh-CN",
+                        aspect_ratio=bad_ratio,
+                        suite_root=SKILL,
+                    )
+
+            root = Path(directory) / "q-project"
+            project_tool.initialize_project(
+                root,
+                title="Q版测试",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            configured = project_tool.configure_project(
+                root,
+                rhythm_profile={"form": "Q 版表达", "first_hook_seconds": 3},
+            )
+            self.assertEqual(
+                configured["status"]["rhythm_profile"]["form"], "Q 版表达"
+            )
+
+            # Seed a legacy child leaf pointer under rhythm_profile and verify configure prunes it.
+            state_path = root / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["authority"]["/creator_authority/rhythm_profile/first_hook_seconds"] = "unbound"
+            project_tool.atomic_json(state_path, state)
+
+            # Partial pacing update (with init's None placeholder on the untouched rate) succeeds.
+            updated = project_tool.configure_project(
+                root,
+                pacing={"spoken_characters_per_second": 4.2},
+                rhythm_profile={"first_hook_seconds": 4.0},
+            )
+            self.assertNotIn(
+                "/creator_authority/rhythm_profile/first_hook_seconds",
+                updated["status"]["authority"],
+            )
+            self.assertEqual(
+                updated["status"]["authority"]["/creator_authority/rhythm_profile"],
+                "bound",
+            )
+            project_tool.configure_project(
+                root, pacing={"seconds_per_action_paragraph": 0}
+            )
+
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(root, aspect_ratio="portrait")
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(root, pacing={"unknown_rate": 1.0})
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(
+                    root, pacing={"spoken_characters_per_second": 0}
+                )
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(
+                    root, production_profile={"unknown_choice": "x"}
+                )
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(
+                    root, production_profile={"video_prompt_language": "123"}
+                )
+            with self.assertRaises(ValueError):
+                project_tool.configure_project(
+                    root,
+                    production_profile={"native_duration_seconds": {"min": 8, "max": 4}},
+                )
+
+    def test_package_relaxed_ledger_blocks_unedited_reject_or_revise_and_allows_edited_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            project_tool.initialize_project(
+                root,
+                title="轻量短剧",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            source = root / "剧集/EP001/screenplay.md"
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama-write",
+                artifact_id="EP001:script",
+                outputs={"剧集/EP001/screenplay.md": "# rejected draft\n"},
+                inputs=[],
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="EP001:script", decision="rejected"
+            )
+            with self.assertRaisesRegex(
+                project_tool.PackageBlockedError, "delivery source was rejected"
+            ):
+                project_tool.build_delivery_package(root, episode="EP001")
+
+            source.write_text("# creator fixed after reject\n", encoding="utf-8")
+            packaged_after_reject = project_tool.build_delivery_package(
+                root, episode="EP001"
+            )
+            self.assertIn(
+                "剧集/EP001/screenplay.md",
+                [item["source"] for item in packaged_after_reject["files"]],
+            )
+
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama-write",
+                artifact_id="EP001:script",
+                outputs={"剧集/EP001/screenplay.md": "# needs revise\n"},
+                inputs=[],
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="EP001:script", decision="accepted"
+            )
+            project_tool.record_review(
+                root,
+                artifact_id="EP001:script",
+                verdict="revise",
+                reviewer="independent reviewer",
+            )
+            with self.assertRaisesRegex(
+                project_tool.PackageBlockedError, "requires revision before packaging"
+            ):
+                project_tool.build_delivery_package(root, episode="EP001")
+
+            source.write_text("# creator fixed after revise\n", encoding="utf-8")
+            packaged_after_revise = project_tool.build_delivery_package(
+                root, episode="EP001"
+            )
+            self.assertIn(
+                "剧集/EP001/screenplay.md",
+                [item["source"] for item in packaged_after_revise["files"]],
+            )

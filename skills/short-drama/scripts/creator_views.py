@@ -212,7 +212,10 @@ def voice_share(script: dict[str, Any]) -> dict[str, int]:
 # ------------------------------------------------------------------ visual settings
 
 FIELD_RE = re.compile(r"^- ([^：\n]+)：(.+)$", re.MULTILINE)
-LOCK_HEAD_RE = re.compile(r"连续性锁：(LOCK-[A-Z0-9-]+)《([^》]+)》")
+LOCK_HEAD_RE = re.compile(
+    r"^[ \t\u3000]*[-*+][ \t\u3000]*连戏锁[：:]\s*(LOCK-[A-Z0-9-]+)《([^》\n]+)》",
+    re.MULTILINE,
+)
 OVERLAY_ONLY_RE = re.compile(r"只在后期叠加")
 
 
@@ -223,7 +226,7 @@ def parse_settings(text: str) -> dict[str, Any]:
     heads = list(check.VISUAL_SETTING_HEADING_RE.finditer(text))
     preamble = text[: heads[0].start()] if heads else text
     meta = dict(FIELD_RE.findall(preamble))
-    era_parts = [part.strip() for part in meta.get("时代锚点", "").split("；") if part.strip()]
+    era_parts = [part.strip() for part in meta.get("时代背景", "").split("；") if part.strip()]
     facets: list[dict[str, str]] = []
     for part in era_parts[1:]:
         key, _, value = part.partition("：")
@@ -238,24 +241,32 @@ def parse_settings(text: str) -> dict[str, Any]:
         loose = [
             line[2:].strip()
             for line in body.splitlines()
-            if line.startswith("- ") and not FIELD_RE.match(line)
+            if line.startswith("- ")
+            and not FIELD_RE.match(line)
+            and not check.LOCK_LINE_RE.match(line)
+            and not check.SCREEN_NAME_LINE_RE.match(line)
         ]
-        lock = None
-        named = LOCK_HEAD_RE.search(body)
-        if named and named.group(1) in locks:
-            found = locks[named.group(1)]
-            lock = {
-                "id": found.lock_id, "name": named.group(2), "surface": found.surface,
-                "shots": list(found.shots), "images": list(found.images),
-            }
+        entry_locks: list[dict[str, Any]] = []
+        for named in LOCK_HEAD_RE.finditer(body):
+            if named.group(1) in locks:
+                found = locks[named.group(1)]
+                entry_locks.append({
+                    "id": found.lock_id,
+                    "name": named.group(2),
+                    "surface": found.surface,
+                    "shots": list(found.shots),
+                    "images": list(found.images),
+                })
+        lock = entry_locks[0] if entry_locks else None
         designators = list(entry.designators) if entry else []
         items.append({
             "cat": category,
             "name": name,
             "designators": [item for item in designators if item != name],
             "desc": loose,
-            "fields": {k: v for k, v in fields.items() if k not in ("连续性锁", "画面代称")},
+            "fields": {k: v for k, v in fields.items() if k not in ("连戏锁", "提示词名称")},
             "lock": lock,
+            "locks": entry_locks,
             "overlay": bool(OVERLAY_ONLY_RE.search(body)),
         })
     if not items:
@@ -270,7 +281,7 @@ NOTE_RE = re.compile(r"^> (.+)$", re.MULTILINE)
 BLOCKING_HEADING_RE = re.compile(r"场景站位 · (\S+)(?: · (.+))?")
 BULLET_FIELD_RE = re.compile(r"^- ([^：\n]+)：(.+)$", re.MULTILINE)
 REF_STATES = {
-    "t2v": "文生视频（创作者已选择不用图）",
+    "t2v": "文生视频（不用参考图）",
     "pending": "待补参考图",
     "bound": "已写参考图",
     "none": "未写参考图",
@@ -318,7 +329,7 @@ def parse_storyboard(text: str) -> dict[str, Any]:
         reference = fields.get("输入参考图", "")
         slots = _slots(reference)
         scene = check.SCENE_ID_RE.search(fields.get("来源", ""))
-        basis_text = fields.get("视觉依据", "").split(check.OFFSCREEN_PREFIX)[0]
+        basis_text = fields.get("出场设定", "").split(check.OFFSCREEN_PREFIX)[0]
         seconds = check._declared_seconds(fields.get("时长", ""))
         shots.append({
             "id": shot_id,
@@ -334,7 +345,7 @@ def parse_storyboard(text: str) -> dict[str, Any]:
             "move": move,
             "moveKind": re.split(r"[；;，,]", move)[0].strip(),
             "start": fields.get("起点", ""),
-            "action": fields.get("唯一动作", ""),
+            "action": fields.get("动作", ""),
             "end": fields.get("终点", ""),
             "sound": fields.get("声音", ""),
             "screenText": fields.get("画面文字", ""),
@@ -349,7 +360,8 @@ def parse_storyboard(text: str) -> dict[str, Any]:
                 {"cat": category, "name": name, "ctl": control}
                 for category, name, control in check.VISUAL_BASIS_ENTRY_RE.findall(basis_text)
             ],
-            "keyframe": check._copyable_prompt(section, "冻结关键帧提示词") or "",
+            "keyframe": check._copyable_prompt(section, "首帧提示词") or "",
+            "closing_keyframe": check._copyable_prompt(section, "尾帧提示词") or "",
         })
     if not shots:
         raise ValueError("没有找到 `## SHOT-EP001-001 · 标题` 这样的镜头")
@@ -403,7 +415,9 @@ def parse_image_prompts(text: str) -> list[dict[str, Any]]:
             "prompt": check._copyable_prompt(section) or "",
         })
     if not prompts:
-        raise ValueError("没有找到 `## IMG-… · 标题` 这样的图片提示词条目")
+        if re.search(r"^#{2,4}[ \t\u3000]*IMG(?:-|\b)", text, re.MULTILINE):
+            raise ValueError("没有找到 `## IMG-… · 标题` 这样的图片提示词条目")
+        return []
     return prompts
 
 
@@ -420,7 +434,7 @@ def parse_video_prompts(text: str) -> list[dict[str, Any]]:
             "shot": shot.group(0) if shot else "",
             "sec": check._declared_seconds(fields.get("时长", "")) or 0,
             "mode": fields.get("生成方式", ""),
-            "chain": fields.get("状态链", ""),
+            "chain": fields.get("动作过程", ""),
             "prompt": check._copyable_prompt(section) or "",
         })
     if not prompts:
@@ -532,13 +546,15 @@ VOICE_RE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$")
 WINDOW_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
 CUE_RE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
 KEYWORDS_RE = re.compile(r"[（(]重点[：:]\s*(.+?)\s*[）)]\s*$")
-SCREEN_TEXT_STYLES = ("卡片", "系统面板", "任务面板", "角标")
+SCREEN_TEXT_STYLES = ("卡片", "系统面板", "任务面板", "角标", "字卡")
 SCREEN_TEXT_RE = re.compile(
     r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(" + "|".join(SCREEN_TEXT_STYLES) + r")\s+(.+?)\s*$"
 )
 COUNTDOWN_RE = re.compile(r"[（(]倒计时[：:]\s*([0-9]+(?:\.[0-9]+)?|接续)\s*[）)]\s*$")
 RARITY_RE = re.compile(r"[（(](传说|史诗|稀有)[）)]$")
-OPTIONS_RE = re.compile(r"[（(]\s*((?:起点|增益)[：:][^（）()]*)[）)]\s*$")
+OPTIONS_RE = re.compile(
+    r"[（(]\s*((?:(?:起点|增益)[：:]|叠音(?=\s*(?:[；;）)]|$)))[^（）()]*)[）)]\s*$"
+)
 OPTION_RE = re.compile(r"^(起点|增益)[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*(?:dB)?$", re.I)
 NUMBERED_RE = {
     "字幕": re.compile(r"^字幕(?:\s*(\d+))?$"),
@@ -658,7 +674,7 @@ def _sound_effects(fields: dict[str, str]) -> list[dict[str, Any]]:
     for value in _entries(fields, "音效")[1]:
         if value.strip() == "无":
             continue
-        value, gain, offset = _options(value)
+        value, gain, offset, _ = _options(value)
         found = CUE_RE.match(value)
         if not found:
             continue
@@ -669,18 +685,24 @@ def _sound_effects(fields: dict[str, str]) -> list[dict[str, Any]]:
     return effects
 
 
-def _options(value: str) -> tuple[str, float, float]:
-    """Split 「（起点：<秒>；增益：<dB>）」 off a sound line: (rest, gain, 起点)."""
+def _options(value: str, *, allow_overlap: bool = False) -> tuple[str, float, float, bool]:
+    """Split 「（起点：<秒>；增益：<dB>；叠音）」 off a sound line: (rest, gain, 起点, 叠音)."""
 
     stated = OPTIONS_RE.search(value)
     if not stated:
-        return value, 0.0, 0.0
-    options = {}
+        return value, 0.0, 0.0, False
+    options: dict[str, float] = {}
+    overlap = False
     for part in re.split(r"[；;]", stated.group(1)):
-        found = OPTION_RE.match(part.strip())
-        if found:
-            options[found.group(1)] = float(found.group(2))
-    return value[: stated.start()], options.get("增益", 0.0), options.get("起点", 0.0)
+        token = part.strip()
+        if allow_overlap and token == "叠音":
+            overlap = True
+            continue
+        found = OPTION_RE.match(token)
+        if not found:
+            return value, 0.0, 0.0, False
+        options[found.group(1)] = float(found.group(2))
+    return value[: stated.start()], options.get("增益", 0.0), options.get("起点", 0.0), overlap
 
 
 def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
@@ -688,10 +710,18 @@ def _voices(fields: dict[str, str]) -> list[dict[str, Any]]:
     for value in _entries(fields, "配音")[1]:
         if value.strip() == "无":
             continue
-        value, gain, offset = _options(value)
+        value, gain, offset, overlap = _options(value, allow_overlap=True)
         found = VOICE_RE.match(value)
         if found:
-            voices.append({"s": float(found.group(1)), "path": found.group(2), "gain": gain, "from": offset})
+            entry: dict[str, Any] = {
+                "s": float(found.group(1)),
+                "path": found.group(2),
+                "gain": gain,
+                "from": offset,
+            }
+            if overlap:
+                entry["overlap"] = True
+            voices.append(entry)
     return voices
 
 
@@ -700,7 +730,7 @@ def _bed(fields: dict[str, str]) -> Optional[dict[str, Any]]:
 
     if "环境声" not in fields:
         return None
-    value, gain, offset = _options(fields["环境声"])
+    value, gain, offset, _ = _options(fields["环境声"])
     found = BED_RE.match(value)
     if not found:
         return None
@@ -876,16 +906,20 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     groups = usable_groups(documents.get(VIDEO_PROMPTS), problems, documents) if videos else []
     if settings:
         # `入画` is resolved the way the checker resolves it: every shot whose
-        # 视觉依据 lists the entry. Without a storyboard there are none yet.
+        # 出场设定 lists the entry. Without a storyboard there are none yet.
         for item in settings["items"]:
-            lock = item["lock"]
-            if lock and lock["shots"] == [check.IN_FRAME_SCOPE]:
-                lock["scope"] = check.IN_FRAME_SCOPE
-                lock["shots"] = [
-                    shot["id"]
-                    for shot in (board or {}).get("shots", [])
-                    if any(b["cat"] == item["cat"] and b["name"] == item["name"] for b in shot["basis"])
-                ]
+            item_locks = item.get("locks") or ([item["lock"]] if item.get("lock") else [])
+            for lock in item_locks:
+                if lock and lock["shots"] == [check.IN_FRAME_SCOPE]:
+                    lock["scope"] = check.IN_FRAME_SCOPE
+                    lock["shots"] = [
+                        shot["id"]
+                        for shot in (board or {}).get("shots", [])
+                        if any(
+                            b["cat"] == item["cat"] and b["name"] == item["name"]
+                            for b in shot["basis"]
+                        )
+                    ]
     cutlist = _attempt(problems, CUT_LIST, parse_cut_list, documents.get(CUT_LIST))
     parsed_review = _attempt(problems, "审查意见", parse_review, review)
     return {
@@ -928,7 +962,8 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
     for shot in (episode.get("board") or {}).get("shots", []):
         add("镜头", f"{shot['n']} {shot['scale']}".strip(), shot["title"],
             " ".join([shot["purpose"], shot["framing"], shot["move"], shot["start"], shot["action"],
-                      shot["end"], shot["sound"], shot["screenText"]]), "board", shot["id"])
+                      shot["end"], shot["sound"], shot["screenText"], shot.get("closing_keyframe", "")]),
+            "board", shot["id"])
     for scene in (episode.get("script") or {}).get("scenes", []):
         short = _number(scene["id"])
         for block in scene["blocks"]:
@@ -940,8 +975,17 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
             else:
                 add("剧本动作", f"SC{short}", block["text"], "", "script", scene["id"])
     for item in (episode.get("settings") or {}).get("items", []):
+        item_locks = item.get("locks") or ([item["lock"]] if item.get("lock") else [])
+        lock_terms = [
+            part
+            for lk in item_locks
+            if lk
+            for part in (lk.get("id", ""), lk.get("name", ""), lk.get("surface", ""))
+            if part
+        ]
         add("设定", item["cat"], item["name"],
-            " ".join([*item["desc"], *item["fields"].values(), *item["designators"]]), "settings", item["name"])
+            " ".join([*item["desc"], *item["fields"].values(), *item["designators"], *lock_terms]),
+            "settings", item["name"])
     group_of = {member: group["id"] for group in episode.get("videoGroups") or [] for member in group["members"]}
     known_shots = {shot["id"] for shot in (episode.get("board") or {}).get("shots", [])}
     for group in episode.get("videoGroups") or []:

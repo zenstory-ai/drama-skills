@@ -1,52 +1,46 @@
-# 视频提示词阶段契约
+# 视频提示词阶段职责与规则
 
-本阶段只拥有 `剧集/<EP>/视频提示词.md` 中的 `MOTION-...`、`GROUP-...` 项与按需的时间线音乐章节。它继承分镜的起点、终点、时长、对白和冻结关键帧，不回写分镜边界或视觉设定（参考准备中由分镜 owner 原地刷新「输入参考图」「视觉依据」除外）；不另建隐藏 JSON/QA 记录。
+本阶段负责维护 `剧集/<EP>/视频提示词.md` 中的 `MOTION-...`、`GROUP-...` 条目及按需增补的成片配乐章节。镜头起点、终点、时长、台词和首帧均沿用分镜定稿，不反向改写分镜起止状态或视觉设定（整理参考图时可请 `$short-drama-storyboard` 就地同步「输入参考图」与「出场设定」），不另建隐藏 JSON 或质检台账。
 
 ## 本阶段规则
 
 ### `VID`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| VID-01 | structural_invariant | Motion reads but cannot rewrite shot start/end/duration/dialogue and next-shot state; the `时长` declared by a `MOTION` must equal its `SHOT` duration. |
-| VID-02 | craft_default | Write start anchor, ordered subject motion, camera behavior, timing, and end report; add performance change and environment/audio only when this shot actually carries them. |
-| VID-03 | structural_invariant | Choose image-to-video only when the storyboard's reference set (`REF-...` and/or `PLAN-...`) is complete and copied unchanged; choose text-to-video only after explicit creator consent and carry a non-empty static visual anchor in the copyable text; withhold final output when `待补参考图` remains. |
-| VID-04 | structural_invariant | Explicit non-overlapping segment timings sum(or union for declared overlaps) exactly to the shot's accepted duration, with neither overrun nor unallocated remainder. |
-| VID-05 | reviewed_invariant | Untimed action load must be feasible enough to preserve the intended performance and story change. |
-| VID-06 | structural_invariant | Locked and moving camera instructions cannot govern the same interval without an explicit transition. |
-| VID-07 | taste_option | Camera may be locked or moving; audio/lip-sync detail follows the chosen production profile. |
-| VID-08 | reviewed_invariant | Structured motion names this shot's exact subjects, actions, contacts, and results rather than reusable placeholders. |
-| VID-09 | structural_invariant | The next start names an existing `SHOT-...` or is explicitly unresolved; never invent a hidden source key, record or hash. |
-| VID-10 | craft_default | Resolve one accepted production profile for the current delivery scope; local variants may coexist when their range and precedence are explicit. |
-| VID-11 | reviewed_invariant | A selective transform names its trigger, exact target scope, end geometry/state, and preserve set so non-target people, props, text surfaces, and spatial anchors do not change with it. |
-| VID-12 | reviewed_invariant | A pickup or alternate names stable `MOTION-...` IDs and maps each source requirement to this version, the master, another pickup, or a requested storyboard revision; it never silently replaces the master. |
-| VID-13 | structural_invariant | A multi-shot delivery group (`GROUP-...`) contains contiguous shots from one scene with one geography/asset chain, its duration equals the sum of member shots, and grouping preserves shot boundaries and per-shot reviewability. |
-| VID-14 | craft_default | Music intent may be annotated per shot as relative entry/exit/duck, but realization belongs to the timeline layer; deliverables carry no baked-in music bed unless accepted or diegetic. |
-| VID-15 | structural_invariant | Within one episode a shot belongs to at most one delivery group; grouped and loose shots account for the visible shot set exactly once. |
-| VID-16 | reviewed_invariant | Multi-character motion differentiates the actors who actually carry performance change and keeps each signal readable in the accepted framing without duplicating one emotion across the cast. |
-| VID-17 | reviewed_invariant | Multiple references use stable visible IDs and an explicit order, so reordering cannot silently change which reference controls which property. |
-| VID-18 | reviewed_invariant | Readiness is reported from current visible inputs and real blocking gaps, never claiming generated identity, performance, lip-sync, mix, or edit quality from text alone. |
-| VID-19 | reviewed_invariant | When the creator profile declares required literal trigger tokens for a delivery route, the delivery text preserves them byte-for-byte outside the verbatim-dialogue fence. |
-| VID-20 | reviewed_invariant | Packing routes change delivery granularity only (long-form multi-shot generation is billed under VID-13/VID-15); continuation routes start from an observed prior result (`generated_result` + tail frame) while keeping the accepted shot start boundary as sole authority. |
-| VID-21 | craft_default | For generated imagery, actions are written as high-frequency whole-body or single-limb movements; precise interception, invisible internal states, negative actions, and 3+ step two-handed choreography are rewritten into common-action combinations without changing shot boundaries or screenplay facts. |
-| VID-22 | reviewed_invariant | Copyable text describes only the intended image, action, sound, and constraints (no IDs, workflow status, hashes, or file paths), prohibiting non-diegetic subtitles/captions by default while preserving approved in-scene text. |
-| VID-23 | reviewed_invariant | For same-pass audio-video models, specify a closed timeline of dialogue, VO, OS, vocalizations, effects, ambience, and silence with source, speaker, language, and verbatim dialogue boundaries. |
-| VID-24 | structural_invariant | An image-to-video shot copies the storyboard's `REF-...` and `PLAN-...` slots unchanged with their `用途`; reference mode (first frame, first/last frame, or multi-slot reference) is read from the `用途` combination and translated by the target model dialect. |
-| VID-25 | structural_invariant | Every run of four or more Han characters inside `<d>` or quotation marks in a copyable body resolves (ignoring punctuation/spacing) to text in `剧本.md`, `视觉设定.md`, or `分镜.md`. |
-| VID-26 | craft_default | Absent a director's choice, performance intensity follows form and genre: outward whole-body/whole-face poses at motion-comic and wish-fulfilment peaks, subtler realism with one readable peak beat in AI live action. |
-| VID-27 | structural_invariant | A voice reference is bound on its own `参考音频` line of a `MOTION-...` entry (`用途：音色`), pointing to the speaking character's `声音参考` path in `视觉设定.md`, and numbering audio `顺序` from 1 separately from pictures. |
-| VID-28 | craft_default | Fight shots follow the storyboard's exchange order as timed segments with one attacker per segment, stating strike path, receiver reaction along the line of force, character-relative limbs, set-anchor directions, and start/end weapon ownership. |
+| VID-01 | structural_invariant | 视频提示词沿用分镜的起点、终点、时长、台词及下一镜衔接状态，不得私自改写；每条 `MOTION-...` 填写的 `时长` 必须与对应 `SHOT-...` 的时长完全相等。 |
+| VID-02 | craft_default | 正文交代开场姿态、按先后排列的主体动作、运镜方式、时间节奏与结尾状态；只有本镜确实存在神情变化、环境动态或现场声时才写对应描写，不硬凑空话。 |
+| VID-03 | structural_invariant | 绑定了 `REF-...` 或 `PLAN-...` 参考项时填写 `生成方式：图生视频`；未垫参考图走文生路线时（`输入参考图` 写 `无（文生视频）` 或简写 `无`）填写 `生成方式：文生视频`，并提供非空的 `开场画面` 交代起点人物、造型、场景、构图与光线（不要求将 `开场画面` 逐字原样粘贴进可复制提示词）。 |
+| VID-04 | structural_invariant | 精确标秒的互不重叠分段时长相加（声明重叠的时段按合并覆盖区间计算）必须刚好等于本镜分镜时长，既不超时截断，也不留空白余秒。 |
+| VID-05 | reviewed_invariant | 未标具体秒数的动作总量必须与本镜时长匹配，确保人物能从容做完关键表演与剧情变化，不塞成走马灯。 |
+| VID-06 | reviewed_invariant | 同一时间段内不得同时下达“固定机位”和“移动运镜”指令；由静转动必须写成互不重叠的前后分段。 |
+| VID-07 | taste_option | 机位选固定还是移动、镜头焦段选用以及口型与现场声写到多细，均随项目选定的制作形态与模型配置而定。 |
+| VID-08 | craft_default | 每条动作提示词写清本镜具体的人物、触发原因、动作路线、接触物体与阶段结果，不写放进哪一镜都能套用的空泛套话。 |
+| VID-10 | craft_default | 同一交付范围内采用统一的目标模型配置（未指定具体模型时默认按 `generic` 通用档编写）；个别镜头有局部特殊写法时标清适用镜号。 |
+| VID-11 | reviewed_invariant | 画面发生局部变形、碎裂或消失时，写清触发动静、变化部位、变化后的形状状态，以及同框不参与变化的人物、道具、带字表面与室内外参照物保持原状。 |
+| VID-12 | reviewed_invariant | 局部补拍版或备选版沿用固定的 `MOTION-...` 编号，说明动作、反应、台词、信息揭晓与终点分别采用哪一版或是否退回分镜调整，不悄悄顶替主镜头版。 |
+| VID-13 | structural_invariant | 多镜合生分组（`GROUP-...`）只能收录同一场次内镜号紧邻、共用同一空间布局与人物道具设定的子镜头，分组总时长等于各子镜头时长之和，且不改变各子镜头的起止状态与逐镜可核查性。 |
+| VID-14 | craft_default | 逐镜可备注配乐切入、淡出或遇对白压低音量的相对位置，实际铺乐留给后期剪辑阶段完成；除非属于画内声源或创作者明确要求，单镜生成片不混入背景音乐。 |
+| VID-15 | structural_invariant | 同一集内每个镜头最多归入一个合生分组；合生分组的子镜头加上未分组的单拍镜头，必须不重不漏地覆盖本集全部入画镜头。 |
+| VID-16 | craft_default | 多人同框时优先给真正发生状态变化的角色写差异化表演，使表情动作在当前景别清晰可辨，不给在场所有人套用同一种情绪标签。 |
+| VID-17 | reviewed_invariant | 绑定多张参考图时使用固定编号与明确排列顺序，确保正文中每一处指代都准确对应各自的参考图，避免因顺序变动串图换脸。 |
+| VID-19 | reviewed_invariant | 若项目配置为某种生成路径规定了必需的固定触发字样，提示词在台词引号或标签之外原字保留该字样，不改字换词。 |
+| VID-20 | reviewed_invariant | 多镜合生只改变单次生成的打包粒度（按 VID-13/VID-15 核对时长与镜号）；跨镜硬切接同一连续动作需从上一段成片续接时，基于实看结果传入上一段视频或真实末帧，并以分镜确认的开场状态为准绳。 |
+| VID-21 | craft_default | 画面由 AI 模型生成时，优先写成日常连贯、全身或单侧肢体即可完成的动作；双人半途截停争抢、纯心理活动、否定式动作、多步双手精细操作、复杂手指交互与镜面反射，可在不改分镜起止状态和剧本事实的前提下改写动作组合或借构图技巧化解。 |
+| VID-22 | reviewed_invariant | 可复制提示词只写要拍出来的画面、动作、声音和必要的画面限制（不写内部编号、流程状态或文件路径）；防字幕负面词按模型特性与文字风险场景按需添加，同时保住剧本批准的画内文字。 |
+| VID-23 | craft_default | 使用音画同出模型时，按声源类型、说话人、口语语种与台词定界标记写出清晰的声音时间线，交代对白、VO、OS、呼吸动作声与环境底声。 |
+| VID-24 | structural_invariant | 图生视频镜头的 `输入参考图` 可在分镜绑定基础上按目标视频模型实际需要合理增减静态设定板或承接帧，保持每项 `REF-...` 与 `PLAN-...` 的 `用途` 清晰明确，并按 `用途` 组合转换成首帧、首尾帧或多图参考写法。 |
+| VID-25 | structural_invariant | 可复制提示词不得编造《剧本.md》与《分镜.md》未声明的人物发声台词；人物开口说出的台词须与上游定稿一致。 |
+| VID-26 | craft_default | 导演未另行指定时，表演幅度随制作形态与题材调整：动态漫与强冲突爽剧在高潮处用鲜明外放的全身姿态与整脸神情，AI 真人剧保持生活化克制并在重头处给出一记干净清晰的变化重拍。 |
+| VID-27 | structural_invariant | 角色音色参考单独写在 `MOTION-...` 的 `- 参考音频：` 行（`用途：音色`），路径指向《视觉设定.md》中该说话角色的 `- 声音参考：`，音频 `顺序` 与图片分开单独从 1 编号。 |
+| VID-28 | craft_default | 打戏镜头按分镜交手回合拆成标秒时段，每段只让一人出招，写清出招路线、受击方顺着来力的受击反应、人物自身左右手脚、现场参照物方位，以及开场和结尾器械归属。 |
 
 ### `CON`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| CON-01 | structural_invariant | Linked end and next start states match or have an explicit owner revision. |
-| CON-02 | reviewed_invariant | Knowledge, injury, ownership, weather, light, or physical state does not teleport/regress without story cause. |
-| CON-03 | craft_default | Track downstream-relevant deltas, not the whole 设定集 in every shot. |
-| CON-04 | structural_invariant | A continuity change states before, after, cause/source scene, effective range, and affected visible IDs. |
-| CON-05 | taste_option | Declared montage, ellipsis, dream, or subjective imagery may intentionally break ordinary continuity. |
-| CON-06 | structural_invariant | A continuity change names every existing downstream document it affects; future work is described, not pre-created. |
-| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one verbatim surface plus its shot and image scope; every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+| CON-01 | reviewed_invariant | 上一镜终点与下一镜起点的衔接状态必须前后一致；对不上时先退回负责技能修订。 |
+| CON-02 | reviewed_invariant | 人物知情范围、伤痕污渍、道具归属、天气、光线或空间状态没有剧情原因不得凭空跳变或自动复原。 |
+| CON-03 | craft_default | 每镜只追踪会影响后续镜头的连戏变化，不必在每条提示词里重复抄写整本视觉设定。 |
+| CON-05 | taste_option | 明确标明的蒙太奇、时间省略、梦境、闪回或主观幻觉段落，可按创作意图主动打破常规时空连戏。 |
+| CON-07 | structural_invariant | 《视觉设定.md》声明的连戏锁（`LOCK-...`）仅要求在范围内的静态图片提示词、首帧提示词以及未绑定起始帧或角色主体图的文生视频提示词中原字保留锁定词；已挂起始帧或主体参考图的图生视频提示词专注动作与状态演变，不强制重复粘贴静态外观锁词。 |

@@ -600,7 +600,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(authority["visual_direction"]["status"], "unset")
         self.assertEqual(authority["production_profile"]["status"], "unset")
         self.assertTrue(
-            (SUITE / "skills/short-drama/assets/creator-decision.example.jsonl").is_file()
+            (AUTHORING_RECORDS / "creator-decision.example.jsonl").is_file()
         )
 
     def test_template_field_refs_resolve_to_owned_example_fields(self) -> None:

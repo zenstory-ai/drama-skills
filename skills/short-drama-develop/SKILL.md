@@ -1,111 +1,82 @@
 ---
 name: short-drama-develop
-description: 将中文小说、短剧或漫剧想法、梗概、改编材料、已有系列笔记或多集完整剧本发展成可追溯的改编方案、戏剧方向、创作简报、导演阐述、故事引擎与分集地图，并按题材与制作形态（画风）选择写法。用户提出“导入小说做短剧”“从多集整稿生成/补分集地图”“开发短剧/漫剧”“做故事设定/系列大纲/分集规划”“写导演阐述”“这个题材怎么写”“定画风/制作形态”“把这个点子变成短剧”或需要梳理人物冲突与集间交接时使用；已有单集剧本可直接进入写作、资产或审查流程，不强制补开发文件。
+description: 将中文小说、短剧或漫剧点子、梗概、改编材料、系列笔记或多集完整剧本整理成有据可查的改编方案、故事走向、立项简报、导演阐述、核心冲突设定与分集大纲，并按题材与制作形态（画风）匹配写法。用户提出“导入小说做短剧”“从多集剧本生成/补分集大纲”“开发短剧/漫剧”“做故事设定/系列大纲/分集规划”“写导演阐述”“这个题材怎么写”“定画风/制作形态”“把这个点子变成短剧”或需要梳理人物冲突与上下集交接时使用；已有单集剧本可直接进入剧本写作、视觉设定或审查流程，不强制补开发文件。
 license: MIT
 ---
 
 # 短剧开发
 
-把创作者的意图变成能持续制造**选择、代价与状态变化**的故事系统，保留创作者对题材、结局和尺度的选择。流行套路只能作为候选方法。
+把创作者的原始想法落成能推着人物做抉择、付代价、变局面的故事框架，守住创作者对题材、结局走向和尺度的拍板权。常见桥段套路仅作备选参考。
 
-## Quick Start
+## 快速开始
 
-离线验证多集整稿的精确索引、按集切分和源文件变更检测：
+离线验证多集完整剧本的精确索引、按集切分和原稿改动检测：
 
 ```bash
 python3 {技能目录}/scripts/selftest.py
-python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <episode-intake-index.json>
+python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --out <episode-intake-index.json>
 ```
 
 ## 开始前
 
-本技能可独立运行；若在 `short-drama` 项目内且项目工具可用，可读取 `status` 并使用其发布生命周期。[阶段契约](references/stage-contract.md) 定义本阶段边界、制作形态输入与规则表，无需读取其他技能的文件。
+本技能可独立运行；若在 `short-drama` 项目内且项目工具可用，可读取 `status` 并接入其发布流程。[开发阶段职责与规则](references/stage-contract.md) 说明本环节职责范围、画风/制作形态要求与 `STY-*` 规则表，无需读取其他技能的文件。
 
-## 先判断入口
+## 按体量选入口，不设多余门禁
 
-1. **只有想法、题材或情绪目标**：完成方向探索，再建立创作简报与故事引擎。
-2. **已有梗概、小说、改编材料或系列笔记**：保存来源并列出已承诺事实、可改范围、来源片段与待确认项。长材料先做语义分段、功能账本和候选分集，不用正则命中直接发布剧集或资产。
-3. **方向已定，只需规划分集**：读取既有简报与引擎，直接制作或修订分集地图。
-4. **已有单集剧本**：不补造开发材料；写/改剧本交给 `$short-drama-write`，拆资产或后续制作从对应技能直接进入。
-5. **已有多集整稿，要生成或补分集地图**：保留原文件，只加载 [多集整稿接入与断点续跑](references/multi-episode-intake.md)。由 Agent 按文件实际结构决定边界与本轮批次；脚本只做精确索引、单集切分、校验和续跑。
+1. **轻量单集或迷你短篇项目**：支持直接在 `creative-brief.md` 写一份**合一简纲**（意图 + 核心冲突 + 简明分场/分集脉络），不强制拆 `story-engine.md` 与 `episode-map.jsonl`，写完即可交 `$short-drama-write` 开写剧本。
+2. **已有明确设定、详细梗概或原著材料**：**直接顺着既有方向深挖落地，不再强行停下来凑 2～3 个备选方向等拍板**；只在缺失信息会颠覆主角立场、核心矛盾或结局底线时才追问。
+3. **只有模糊点子、题材或情绪**：给出两三个打法真正不同的备选方向（换破局手段、压制方式或代价落点，不只改剧名职业）供创作者挑选。
+4. **已有单集剧本**：不硬补开发文档；写剧本或改稿交 `$short-drama-write`，拆视觉设定或后续制作直接从对应技能切入。
+5. **已有多集完整剧本/选集稿，要生成或更新分集大纲**：原稿不动，加载 [多集完整剧本导入与分段续拆](references/multi-episode-intake.md)（支持从非第 1 集起步、跳集选拆与批次覆盖更新）。
 
-信息足够时直接工作；仅当缺口会改变主角、冲突引擎、结局承诺或改编边界时才提问。
+## 核心开发步骤（按项目体量裁剪）
 
-## 每次执行
+### 1. 敲定创作底线与核心看点
 
-### 1. 锁定创作者契约
+理清不能改的关键事实/主题/人物/结局走向、可发挥的留白、制作条件限制与核心看点兑现。新项目复制 [creative-brief.md](assets/creative-brief.md)；改动已确认设定时说明改动点及下游影响，不静默覆盖。
 
-读取创作者输入和已接受文件，区分：不可改的事实/主题/角色/结局承诺、可探索的空白、形式与制作边界、目标观众反复获得的回报。新项目复制 [creative-brief.md](assets/creative-brief.md)；若改动已接受事实，先展示语义差异与下游影响，不直接覆盖。
+- 核心看点与主线矛盾推演（含系统/规则类的机制循环）：读 [story-craft.md](references/story-craft.md)。
+- 题材落位：从 [genre-cards.md](references/genre-cards.md) 按需查取 **1 张**主赛道题材卡找准阻力与细节（内部参考，不写入交付文档）。
+- 跨题材开场钩子对比，或带有重生预知、系统外挂等高概念奇招：读 [genre-and-hook-playbook.md](references/genre-and-hook-playbook.md)（首集 3 秒强冲突拍脸仅作常规爽剧默认做法，悬疑、温情生活流、年代情感等题材可采用环境异象、点睛独白或日常切口开场）。
 
-### 2. 探索真正不同的方向
+### 2. 搭好核心矛盾与人物关系网（中长篇适用）
 
-方向未定时，提出少量**机制不同**的候选（改变主角策略、对抗来源、代价或冲突持续方式，而非只换标题或职业）；方向明确时直接深化。每个候选说明戏剧承诺、主角追求、对抗机制、反复回报、可升级状态、终止条件与制作负担，交创作者选择或组合并记录理由（未选方案不进入既定事实）。
+多集连载项目复制 [story-engine.md](assets/story-engine.md)，写清危机触发、主角破局路数与软肋、对手变招反扑、主要人物小传与双向拿捏关系、信息差与伏笔台账。人物成长线或跨集连戏较重时，配合读 [serial-character-and-memory.md](references/serial-character-and-memory.md)。
 
-- 深化承诺与冲突机制：读 [story-craft.md](references/story-craft.md)。
-- 题材已确定时：从 [genre-cards.md](references/genre-cards.md) 按索引取**一张**题材卡校准压力来源、场面细节与制作负担（仅作内部参考，不进入交付物）。
-- 主角带已知经历或外部授权能力开局时：另读 [premise-devices.md](references/premise-devices.md) 为装置设定边界与代价。
+### 3. 按需编制分集大纲 (`episode-map.jsonl`)
 
-### 3. 建立故事引擎
+`episode-map.jsonl` 定位为**多集连载长剧的按需分集状态账**。需要排多集连载时，读 [episode-design.md](references/episode-design.md) 并复制 [episode-map.jsonl](assets/episode-map.jsonl)，每集只记本集核心推进（钩子、目标、阻力、转折动作、阶段结果、信息揭晓）与单向交接给下一集的 `handoff_state`，不重复抄写上一集状态。
 
-复制 [story-engine.md](assets/story-engine.md)，写清：压力如何启动与主角应对策略、对手/系统如何反制及退出成本、每轮冲突改变什么状态、人物各自的目标/筹码/底线/关系压力、引擎终止条件、视听与规模边界。
+- 常规连载集在抛出集尾悬念前宜先落定一个本集阶段结果；单元温情剧也可在情绪落点舒缓收束。
+- 按制作形态提出节奏参考起点，经创作者确认后由 `$short-drama` 写入 `creator_authority.rhythm_profile`。写单集剧本时若发现原分集切分或节奏排布存在结构卡点，路由回 `$short-drama-develop` 更新 `episode-map.jsonl` / `adaptation-map.jsonl`，不由下游技能直接改写。
 
-连续剧、长篇改编或人物纵向变化较重时，另读 [serial-character-and-memory.md](references/serial-character-and-memory.md)，建立前史储备（不直接倒进首集对白）、叙事切入窗口、信念压力测试、信息权限与跨集记忆。
+### 4. 自检并交接
 
-### 4. 把全剧脉络落到分集
-
-读取 [episode-design.md](references/episode-design.md)，复制 [episode-map.jsonl](assets/episode-map.jsonl)。每集记录进入状态、开场、当集追求、阻力、局势转折、当集结果、信息释放、出去的压力及下一集继承事实。
-
-- 每集必须先落地一个当集戏剧结果，相邻集精确交接，再安排外部压力与情感负荷双轨节奏。
-- 第 1 集入口先比较时序入口、收益入口与冷开；改编项目按原著分析爽点表把高光排到观众尽早拿到的位置。
-- 按制作形态从分集设计默认值提出项目节奏档案，写入创作简报交创作者接受后，由 `$short-drama` 写入 `creator_authority.rhythm_profile`。
-
-### 5. 做所有者检查并交接
-
-提交预览前自检：
-
-- 分集、铺垫和兑现引用可解析，未决项已显式标记；
-- 选定方向贯穿简报、引擎与分集地图，每次升级均改变权力、信息、关系、暴露、资源、时间或代价；
-- 每集先兑现部分当集承诺，再留下具体决定、危险或问题；
-- 改编项目保留核心人物立场、核心关系与主线（创作者已接受的改动除外），原著没有的新增内容均登记为 `add` 并列入简报。
-
-展示创作者可读的新增/修改摘要请创作者接受。需要独立质量结论时调用 `$short-drama-review`。若项目需要导演阐述，按 [director-brief-craft.md](references/director-brief-craft.md) 产出 `项目开发/director-brief.md` 候选并标明 `visual_direction` / `production_profile` 语义差异，创作者接受后由 `$short-drama` 写入权威配置。
+提交前核对：集号与伏笔埋收编号前后一致、未定项已标明；每次冲突升级带来实质处境变化；改编项目保住原著核心人物立场与主线脉络，重要新增项已单列说明。需要独立审稿结论时调用 `$short-drama-review`；需要起草全剧视听总纲或拆解对标材料时读 [director-brief-craft.md](references/director-brief-craft.md)。
 
 ## 产物与边界
 
-规则分级（`structural_invariant` / `reviewed_invariant` / `craft_default` / `taste_option`）与 `STY-01`–`STY-30` 规则表见 [stage-contract.md](references/stage-contract.md)；不用固定的情节点、转折时刻、篇幅比例或数量配方替代因果判断。本技能只拥有：
+规则分级与 `STY-01`–`STY-30` 见 [stage-contract.md](references/stage-contract.md)。本技能按需维护：
 
-- `项目开发/creative-brief.md`
-- `项目开发/story-engine.md`
+- `项目开发/creative-brief.md`（轻量项目可直接含合一简纲）
+- `项目开发/story-engine.md`（中长篇或复杂人物关系按需使用）
+- `项目开发/episode-map.jsonl`（多集连载按需分集状态账）
 - `项目开发/director-brief.md`（按需）
-- `项目开发/adaptation-map.jsonl`（长材料改编时，只记 locator/span、去引用功能摘要、去向与未决项，例见 [adaptation-map.example.jsonl](assets/adaptation-map.example.jsonl)）
+- `项目开发/adaptation-map.jsonl`（百万字级长篇或大跨度重排按需使用，例见 [adaptation-map.example.jsonl](assets/adaptation-map.example.jsonl)）
 - `项目开发/series-arc.json`（按需）
-- `项目开发/episode-intake-index.json`（多集整稿接入时的可重建机械索引）
-- `项目开发/episode-map.jsonl`
+- `项目开发/episode-intake-index.json`（多集剧本导入时可随时重建的字节索引）
 
-不写场景动作与台词（归 `$short-drama-write`），不拆资产，不写提示词，不生成媒体，也不签发终审结论。
+不写具体场次动作与台词（归 `$short-drama-write`），不拆视觉设定，不写生图/视频提示词，不生成媒体文件，也不出具终审结论。
 
 ## 按需加载
 
-- **承诺、引擎、人物压力、升级与铺垫兑现**：[story-craft.md](references/story-craft.md)
-- **分集契约、因果节拍、集间交接、首集入口、门槛集与项目节奏档案**：[episode-design.md](references/episode-design.md)
-- **已有多集完整剧本/散稿，要避免整稿进入上下文并可中断续跑**：
-  [multi-episode-intake.md](references/multi-episode-intake.md)
-- **人物驱动力、前史与切入、跨集变化、信息权限、双轨节奏与恢复记忆**：
-  [serial-character-and-memory.md](references/serial-character-and-memory.md)
-- **有原材料、需要按爽点压缩、提前或冷开后文、合并人物场景、把信息视觉化**：
-  [adaptation-craft.md](references/adaptation-craft.md)
-- **创作者提供对标作品、样例剧本或提示词，希望学习机制而非仿写表达**：
-  [creative-reference-intake.md](references/creative-reference-intake.md)
-- **单元故事里同一套机制被反复运行，或中段开始重复、越写越薄**：
-  [mechanism-loop.md](references/mechanism-loop.md)
-- **需要区分揭示、反转、回报和钩子，或按题材选压力机制**：
-  [reveal-reversal-payoff.md](references/reveal-reversal-payoff.md)
-- **按题材选择冲突推进方式、设计开场或规划集尾钩子时的定性案例方法**：
-  [genre-and-hook-playbook.md](references/genre-and-hook-playbook.md)
-- **已确定题材，需要该题材更常用的压力、具体场面细节、钩子取向与制作难点**：
-  [genre-cards.md](references/genre-cards.md)（索引与召回规范；一次只读一张卡）
-- **主角带着已知结果开局，或获得外部授权的能力**：
-  [premise-devices.md](references/premise-devices.md)（装置层，叠加在题材卡之上）
-- **起草项目级视觉方向与生产规则（导演阐述）**：
-  [director-brief-craft.md](references/director-brief-craft.md)
-- **本阶段拥有什么、继承什么、不越权什么**：[stage-contract.md](references/stage-contract.md)
+- **核心看点、主线矛盾框架、机制循环（系统/规则/博弈类）、人物推力与伏笔台账**：[story-craft.md](references/story-craft.md)
+- **分集状态账设计、前因后果节拍、单向交接、付费卡点与节奏参考标准**：[episode-design.md](references/episode-design.md)
+- **已有多集完整剧本/选集稿，精确切片、分段续拆与批次覆盖合并**：[multi-episode-intake.md](references/multi-episode-intake.md)
+- **人物前史切入、弧光转变、信息差、张弛节奏与跨集连戏备忘**：[serial-character-and-memory.md](references/serial-character-and-memory.md)
+- **小说改编必保取舍、支线删并、文字外化与高光前移因果修补**：[adaptation-craft.md](references/adaptation-craft.md)
+- **区分信息揭秘、局势反转、看点兑现与集尾钩子**：[reveal-reversal-payoff.md](references/reveal-reversal-payoff.md)
+- **跨题材推进对比、多元开场留钩语法与高概念奇招（重生/系统限制底表）**：[genre-and-hook-playbook.md](references/genre-and-hook-playbook.md)
+- **题材目录与 15 张赛道参考卡（每次按需读一张）**：[genre-cards.md](references/genre-cards.md)
+- **导演阐述写法、对标作品门道提炼与分集字数参考区间**：[director-brief-craft.md](references/director-brief-craft.md)
+- **本阶段职责边界、制作形态四要素与 `STY` 规则表**：[stage-contract.md](references/stage-contract.md)

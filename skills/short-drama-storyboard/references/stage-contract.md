@@ -1,57 +1,50 @@
-# 分镜阶段契约
+# 分镜阶段规则
 
-本阶段只拥有 `剧集/<EP>/分镜.md` 中的 `SHOT-...`、镜头职责、来源、时长、起止边界、声音、三条依据和冻结关键帧。它继承剧本事实与视觉设定，不改写剧情或资产身份；场次视觉计划、拍法比选与调度推演留在上下文，不另建隐藏记录文件。
+本阶段负责维护 `剧集/<EP>/分镜.md` 中的 `SHOT-...` 镜头条目、镜头目的、剧本来源、时长、起止画面、声音、三项关联字段以及首尾帧提示词。分镜以定稿剧本和 `视觉设定.md` 为准，不越界擅改剧情走向或角色场景设定，不另建隐藏草稿或 JSON 台账文件。
 
-## 本阶段规则
+## 本阶段规则表
 
 ### `SHT`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| SHT-01 | structural_invariant | Every production-relevant scene action, line, sound and on-screen text is carried by a shot or explicitly omitted on the `未拍场次` line with a creative reason. Each shot's `来源` names scene IDs that exist in `剧本.md`. |
-| SHT-02 | reviewed_invariant | Each shot has a single dramatic/viewing purpose and preserves its source meaning. |
-| SHT-03 | craft_default | Keep a short shot focused on the smallest action/reaction unit that carries its purpose; combine or split according to performance, information, and continuity rather than a fixed count. |
-| SHT-04 | craft_default | Change framing/camera because attention, pressure, alignment, reveal, or rhythm changes. Each shot states its camera behavior, start/stop, and reason (including lock-offs); short push-ins, freeze frames, and white flashes are reserved for peaks. |
-| SHT-05 | structural_invariant | A keyframe projects one shot boundary and the shot's declared visual basis. Any `IMG-...` used is an existing image-prompt heading, not a claim that generated media exists; when none is suitable, write `无`. |
-| SHT-06 | reviewed_invariant | A keyframe is one freezeable instant, not an ordered action chain. |
-| SHT-07 | taste_option | Lens vocabulary, tempo, and locked/handheld/formal style follow visual direction. |
-| SHT-08 | reviewed_invariant | Each authoritative source action is realized once; repeated coverage adds reaction/detail/recontextualization, except for a declared peak impact repetition (`冲击重复：SHOT-...`) where every repeat runs from the same before-state to the same after-state. |
-| SHT-09 | reviewed_invariant | Exact Location/View orientation and visible anchors match the camera side used by the shot. |
-| SHT-10 | reviewed_invariant | Rendered keyframe prose contains only facts from the boundary that keyframe declares (start or end); neither frame borrows the other's facts. |
-| SHT-11 | craft_default | When information changes another person's power, relationship, knowledge, or choice, preserve that reception visibly; shot count, framing, and duration follow the consequence and project profile. |
-| SHT-12 | reviewed_invariant | Each audience-visibility fact binds its exact source, carrier, permission, trigger, and protection method; framing neither reveals that fact early nor hides the carrier this shot must communicate. |
-| SHT-13 | reviewed_invariant | Multi-character blocking projects sourced, directed relationships into compatible positions, gaze, distance, and action lines for the current boundary. |
-| SHT-14 | reviewed_invariant | A contested moving object preserves ownership, trajectory, direction, time/round state, and end location across cuts unless an authorized ellipsis says otherwise. |
-| SHT-15 | reviewed_invariant | When delivery-surface overlay regions are declared, essential visual information (face/gaze, readable evidence text, decisive hand action) does not sit only inside those regions. An undeclared surface leaves the rule inactive. |
-| SHT-16 | structural_invariant | The episode duration is the arithmetic sum of visible shot durations; an unresolved duration stays visibly unresolved, and a target delta is reported rather than used as a quality gate. |
-| SHT-17 | structural_invariant | A keyframe declares which boundary it freezes (`起点` by default; optional `终点` only when consumed downstream). Handing over a start/end pair delegates intermediate motion to interpolation, so a decisive action cannot rest on that gap alone. |
-| SHT-18 | craft_default | For a key scene where directing choice materially changes audience knowledge, alignment, spatial pressure, or landing, a scene visual plan may bridge project direction and shots in context without owning screenplay facts or shot boundaries. |
-| SHT-19 | reviewed_invariant | When a coverage audition is used, its approaches genuinely differ by knowledge timing, alignment, performance space, strongest image, landing, or production fit; the selected approach is stated before formal shots are written. |
-| SHT-20 | reviewed_invariant | Shot revision identity follows directing responsibility: reorder preserves IDs, insertion creates one, split/merge retires replaced IDs and creates successors, and downstream refs are reconciled before delivery. |
-| SHT-21 | reviewed_invariant | A keyframe's copyable text carries only what will be visible; IDs, workflow notes, file paths and craft commentary stay outside the prompt. |
-| SHT-22 | structural_invariant | Each shot carries a required `视觉依据` field written after the frozen keyframe, listing every visible character, place, or prop whose identity, Look, or geography must remain recognizable and resolving to an existing `视觉设定.md` entry. |
-| SHT-23 | structural_invariant | An omitted reference choice is not consent to text-to-video. After reference discovery, each shot binds verified real images as `REF-...`, declares creator-attached pictures as `PLAN-...` (`IMG-...` or `SHOT-...`), records `待补参考图` when the creator asked to wait for files, or records explicit text-to-video consent. |
-| SHT-24 | reviewed_invariant | A visual basis describes this frame, not the episode's cast list. Each declared `控制` scope stays within what this frame can carry, and a binding is not carried forward merely because the subject remains in the scene. |
-| SHT-25 | structural_invariant | Every reference slot declares one `用途` from `身份/造型状态/地理/构图/尺度/效果/起始帧/结束帧/风格`. At most one `起始帧` and one `结束帧` per shot, and `结束帧` requires `起始帧`. |
-| SHT-26 | structural_invariant | Every `视觉设定.md` entry called by name in a shot's `来源` quote is either covered in this shot's `视觉依据` or declared `画外` there, unless the entry opted out with `画面代称：无`. |
-| SHT-27 | reviewed_invariant | When understanding a beat requires seeing its effect on a character, provide a readable reaction or consequence via a separate shot, shared staging, sound, or object state. |
-| SHT-28 | craft_default | Shot durations come from the scene's sound-event timeline and accepted `target_avg_shot_seconds` (never word/paragraph counts); close-range shots meet `close_shot_share_min` when a rhythm profile is accepted. Sub-minimum shots propose a multi-shot container or hold their end state to the native minimum. |
-| SHT-29 | craft_default | Dialogue coverage defaults to one turn/beat per shot, listener reaction on landing lines, shot/reverse-shot on the working side, medium talk framings with close-ups reserved for landing beats, no empty filler shots, and inserts as rhythm tools. |
-| SHT-30 | craft_default | Blocking is recorded in two layers: a scene-level `场景站位` and per-shot `起点/终点` against fixed set anchors from `视觉设定.md`, then translated into camera-relative foreground/background, facing, occlusion, and screen side in keyframe/video prompts. |
-| SHT-31 | craft_default | Fights are cut by exchanges (attacker → answer → result), using multi-shot containers or shortest native duration per exchange; misses/blocks read side-on, body hits sell via same-side occlusion or off-frame impact close-ups plus reaction, and one attacker acts per exchange. |
+| SHT-01 | structural_invariant | `剧本.md` 每个场次都须有至少一个 `SHOT-...` 镜头覆盖，或在文档开头 `- 未拍场次：` 写明略过理由；每镜 `- 来源：` 填写的场景 ID 必须真实存在于 `剧本.md`。 |
+| SHT-02 | reviewed_invariant | 每个镜头都有明确的戏剧或叙事目的，且忠实传达所引剧本段落的原意。 |
+| SHT-03 | craft_default | 短镜头聚焦于能把本镜目的演清楚的最小动作与反应单元；按表演节奏、信息量和前后连戏决定合并或拆镜，不硬套固定镜数。 |
+| SHT-04 | craft_default | 换景别或动镜头由视线与焦点转移、压迫感升降、观众代入视角切换、悬念揭晓或剪辑节奏驱动；运动镜头写明动法与起止落点，固定镜头直接写 `固定` 即可，急推、定格与闪白用于开场强钩子或高潮反转节点。 |
+| SHT-05 | structural_invariant | 首尾帧提示词定格本镜单一边界（开场或收尾）并与本镜 `出场设定` 一致；`- 图片提示词项：` 填写的 `IMG-...` 仅指向《图片提示词.md》已有条目标题，无匹配条目时写 `无`。 |
+| SHT-06 | reviewed_invariant | 首帧或尾帧提示词只画快门按下那一瞬间的静态画面，绝不写成一串有先后顺序的连续动作。 |
+| SHT-07 | taste_option | 焦段透视选择、剪辑快慢以及固定机位、纪实手持呼吸感、剧烈晃动或风格化构图，统一服从项目视觉方向。 |
+| SHT-08 | reviewed_invariant | 剧本每个关键状态转变由主力镜头交代清楚，禁止无意图地把已演完的同一动作从头重演一遍；跨镜切点处的常规动作顺接微重叠（出画接进画、抬手接落手），以及标明 `高潮重播镜：SHOT-...` 的高潮多角度分段重放除外。 |
+| SHT-09 | reviewed_invariant | 本镜绑定的地点与场景视角，其观看朝向和同框 `固定陈设` 必须与本镜 `机位侧` 一致。 |
+| SHT-10 | reviewed_invariant | 首帧提示词只写镜头 `起点` 已成立的画面事实，尾帧提示词只写镜头 `终点` 落定的画面事实；首尾两帧严禁互相借戏抢跑或残留已消失状态。 |
+| SHT-11 | craft_default | 当一句话或一个动作改变了场上另一方的底气、关系、知情范围或下一步抉择时，可用反应单镜、双人同框调度、环境声留白或物件变化把接招一方的后果给清楚；切镜密度与景别随戏份轻重和项目节奏定。 |
+| SHT-12 | reviewed_invariant | 需控制揭晓时机的悬念或底牌须对准剧本知情进度；构图既不能提前漏底，也不能把本镜该亮出的关键证物或脸色挡死。 |
+| SHT-13 | reviewed_invariant | 多人同场调度须把剧本里有据可查的护短、联手、逼压与旁观关系，落成站得住脚的远近站位、身体朝向、眼神落点与走位路线。 |
+| SHT-14 | reviewed_invariant | 跨镜传递或争抢中的运动物件（球、车辆、兵器、证物），在未标明时间跳切或省略时，保持归属、运动轨迹、方向与落点前后连贯。 |
+| SHT-15 | reviewed_invariant | 当项目声明了播放界面 UI 遮挡区时，构图将关键人脸眼神、必读证物字样与核心手部动作安排在干净可见区；未声明时不凭空猜安全框。 |
+| SHT-16 | structural_invariant | 单集总时长等于《分镜.md》各镜头可见时长的算术加总，时长待定的镜头须明文标出不得漏算；与目标集长的差值如实汇总报告，不把固定秒数当硬门槛卡死质量。 |
+| SHT-17 | structural_invariant | 关键帧须明确对应镜头 `起点`（`### 首帧提示词`）还是 `终点`（可选 `### 尾帧提示词`，仅在需锁定收尾构图时补写）；首尾双帧生成依赖模型插值过渡，复杂核心交锋默认优先采用单首帧配动作描述或拆镜处理（后半条插值取舍为 `craft_default`）。 |
+| SHT-18 | craft_default | 遇到不同拍法会显著改变悬念时机、代入视角、空间压迫感或收尾力道的重头戏，可在拆镜前先理清导演构思再落成正式镜头，不越界改动剧本事实。 |
+| SHT-19 | reviewed_invariant | 仅当创作者明确要求比选分镜方案或多机位试排时，先给出在知情时机、代入视角、空间控制、核心画面或场尾落点上真正拉开差距的备选拍法等拍板；常规拆镜请求直接一气呵成落稿。 |
+| SHT-20 | reviewed_invariant | 改分镜时保持 `SHOT-...` 镜号稳定：调顺序或同镜微调保留原号；一镜拆多镜时，承接原起点与已生成首帧的主半镜可保留原号，仅给新拆出的子镜开新号；多镜合并或整镜重拍换新号，停用旧号不重用，并同步对齐下游引用。 |
+| SHT-21 | reviewed_invariant | 首尾帧可复制提示词正文只写画面看得见的内容；条目编号、流程备注、文件路径与「轴线左侧」等分镜黑话一律留在提示词外面。 |
+| SHT-22 | structural_invariant | 每个镜头都必须在首帧成稿后填写 `- 出场设定：`，把首尾帧实际入画的人物、地点、道具对应到 `视觉设定.md` 现有条目。 |
+| SHT-23 | structural_invariant | 用户没有手工点名参考图，不等于选择文生视频；自动查完项目图片后，每镜将核对无误的真实图片绑成 `REF-...`，或将外部自挂图写成 `PLAN-...`（指向 `IMG-...` 或 `SHOT-...`），或按需标明 `无（待补参考图：…）`，确认不垫参考图时写 `无（文生视频）` 或简写 `无`。 |
+| SHT-24 | reviewed_invariant | `出场设定` 只记当前画框里实际看得到的主体，每项 `控制：` 范围不超出本镜景别可见部位，不把上一镜的全身绑定原样照搬到局部特写。 |
+| SHT-25 | structural_invariant | 每个参考图位都必须从 `外貌/主体/造型状态/空间布局/构图/尺度/效果/起始帧/结束帧/风格` 十项中选填唯一 `用途`；每镜最多一张 `起始帧` 和一张 `结束帧`，挂 `结束帧` 时必须同时挂 `起始帧`。 |
+| SHT-26 | structural_invariant | 凡在首帧或尾帧提示词正文里实际入画并点名的 `视觉设定.md` 条目，都须纳入本镜 `- 出场设定：`（不扫描 `- 来源：` 台词引文里的未入画人名物名；条目已登记 `- 提示词名称：无` 时跳过字面匹配）。 |
+| SHT-28 | craft_default | 镜头时长由本场声音与动作时间线推算（不按剧本字数机械折算）；启用节奏目标时，`target_avg_shot_seconds` 与 `close_shot_share_min` 作为全集节奏与近景占比的参考区间，随文戏武戏类型弹性调整。 |
+| SHT-29 | craft_default | 对白戏常规切法默认一镜一回合攻守，重话落地切给听话人反应，正反打守住同一 `机位侧`，日常交锋用中景/中近景而把特写留给关键落点，善用道具插入镜调节呼吸。 |
+| SHT-30 | craft_default | 场面调度先对照 `视觉设定.md` 的 `固定陈设` 定准人物相对位置，再在首尾帧里翻成本镜机位下的前中后景、人物朝向、隔挡家具和画面左右；三人以上群戏或复杂跨轴走位按需在场头写 `场景站位`。 |
+| SHT-31 | craft_default | 多招过手的打戏推荐按交手回合（起手 → 拆招 → 结果）分切，单招突袭或掌掴可一拍落定；闪避格挡优先用侧面中景亮路线，实打受击善用同侧过肩借位、画外入拳特写配顺力反应，站位与先后关系清晰时允许双人同框夹击。 |
 
 ### `CON`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| CON-01 | structural_invariant | Linked end and next start states match or have an explicit owner revision. |
-| CON-02 | reviewed_invariant | Knowledge, injury, ownership, weather, light, or physical state does not teleport/regress without story cause. |
-| CON-03 | craft_default | Track downstream-relevant deltas, not the whole 设定集 in every shot. |
-| CON-04 | structural_invariant | A continuity change states before, after, cause/source scene, effective range, and affected visible IDs. |
-| CON-05 | taste_option | Declared montage, ellipsis, dream, or subjective imagery may intentionally break ordinary continuity. |
-| CON-06 | structural_invariant | A continuity change names every existing downstream document it affects; future work is described, not pre-created. |
-| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one verbatim surface plus its shot and image scope; every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+| CON-01 | reviewed_invariant | 相连镜头或场次的前一镜 `终点` 与下一镜 `起点` 在站位、朝向、持物与环境状态上衔接一致，刻意跳切须写明原因。 |
+| CON-02 | reviewed_invariant | 人物伤势、道具归属与开合、光线天气及角色知情状态不得在切镜间无剧本依据凭空跳变或自行复原。 |
+| CON-03 | craft_default | 每镜只写与本镜取景相关的当前连戏状态与 `控制：` 范围，不照搬整本视觉设定。 |
+| CON-05 | taste_option | 明确标出的蒙太奇、固定机位时间跳切（Jump Cut）、梦境、闪回、主观画面或高潮重播镜可按创作意图打破常规时空连戏。 |
+| CON-07 | structural_invariant | `视觉设定.md` 声明的 `- 连戏锁：` 在其生效镜头范围内，对应镜头的 `### 首帧提示词` 必须原字保留该 `锁定词`。 |

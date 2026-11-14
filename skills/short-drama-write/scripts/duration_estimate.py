@@ -24,12 +24,14 @@ the artifact the rest of the pipeline cites.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import re
-import unicodedata
 import sys
+import unicodedata
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Iterable, Mapping
 
 
@@ -50,9 +52,254 @@ if sys.version_info < MINIMUM_PYTHON:
 # as a deficit the writer pads to fill.
 VOICED_TAGS = {"VO", "OS"}
 VOICE_TAG_PREFIX = re.compile(r"^\[(?:VO|OS)\]\s*")
-# ``角色（提示）：台词`` -- the speaker label may carry a parenthesised direction.
-# Only the spoken half is timed; the direction is a note to the performer.
-DIALOGUE = re.compile(r"^(?P<who>[^：:（(\[\]]{1,24})(?:（[^）]*）|\([^)]*\))?[：:](?P<line>.+)$")
+MAX_SPEAKER_LENGTH = 40
+_SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
+_SPEAKER_LABEL = (
+    rf"(?=.{{1,{MAX_SPEAKER_LENGTH}}}(?:[ \t]*[（(]|：|:))"
+    rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
+)
+# ``角色（提示）：台词`` or ``Dr. Lin (quietly)：...`` -- the speaker label may
+# carry a parenthesised direction in full-width or ASCII parens. Only the
+# spoken half is timed; the direction is a note to the performer.
+DIALOGUE = re.compile(
+    rf"^(?P<who>{_SPEAKER_LABEL})"
+    r"(?:[ \t]*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))?[：:](?P<line>\S[\s\S]*)$"
+)
+
+_SCREENPLAY_INDEX_MODULE: ModuleType | None = None
+
+
+def _load_screenplay_index() -> ModuleType:
+    global _SCREENPLAY_INDEX_MODULE
+    if _SCREENPLAY_INDEX_MODULE is not None:
+        return _SCREENPLAY_INDEX_MODULE
+    script_path = Path(__file__).resolve().with_name("screenplay_index.py")
+    spec = importlib.util.spec_from_file_location(
+        "_short_drama_write_screenplay_index", script_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load screenplay_index.py from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _SCREENPLAY_INDEX_MODULE = module
+    return module
+
+
+CAST_LINE_RE = re.compile(
+    r"^\s*(?:-\s*)?(?:\*\*|__|\*|_)?人物(?:\*\*|__|\*|_)?\s*[：:]\s*(.+?)\s*$"
+)
+PANEL_OR_UNIT_LABEL_RE = re.compile(
+    r"^第[一二三四五六七八九十百千万零〇两\d]+[格幕场镜回章集节拍]$"
+)
+ACTION_PROSE_MARKER_RE = re.compile(
+    r"[写看走转推拉抬低拿握按落响传显现是有在把被]"
+)
+DISQUALIFYING_SPEAKER_PUNCT_RE = re.compile(
+    r"[，。！？；、,;!?”“’‘\"—…《》<>\[\]【】]"
+)
+SPEAKER_PARTICLE_RE = re.compile(r"[的了着过]")
+
+
+def _declared_script_speakers(
+    lines: list[dict[str, Any]],
+) -> tuple[bool, set[str]]:
+    has_cast_line = False
+    declared: set[str] = set()
+    cursor = 0
+    while cursor < len(lines):
+        raw_text = lines[cursor]["text"]
+        stripped = raw_text.strip()
+        if stripped.startswith("<!--"):
+            while cursor < len(lines) and "-->" not in lines[cursor]["text"]:
+                cursor += 1
+            cursor += 1
+            continue
+        match = CAST_LINE_RE.match(stripped)
+        if match is not None:
+            has_cast_line = True
+            for raw_item in re.split(
+                r"[、，,；;｜|/]+|(?<![A-Za-z.\-])\s+(?![A-Za-z])",
+                match.group(1),
+            ):
+                cleaned = re.sub(
+                    r"\s*(?:（[^（）]*）|\([^()]*\))\s*$", "", raw_item
+                ).strip()
+                normalized = " ".join(cleaned.split())
+                if normalized and normalized not in {"无", "待定"}:
+                    declared.add(normalized)
+        cursor += 1
+    return has_cast_line, declared
+
+
+def _is_plausible_auto_speaker(candidate: str, occurrences: int) -> bool:
+    name = " ".join(candidate.split())
+    if not name or name.startswith(("[", "【")):
+        return False
+    if PANEL_OR_UNIT_LABEL_RE.fullmatch(name) is not None:
+        return False
+    if re.search(r"\d", name) is not None:
+        return False
+    if DISQUALIFYING_SPEAKER_PUNCT_RE.search(name) is not None:
+        return False
+    if ACTION_PROSE_MARKER_RE.search(name) is not None:
+        return False
+    if occurrences >= 2:
+        return True
+    clean_chars = re.sub(r"[\s.\-·・]", "", name)
+    return (
+        1 <= len(clean_chars) <= 6
+        and SPEAKER_PARTICLE_RE.search(name) is None
+    )
+
+
+def _discover_script_speakers(idx: ModuleType, screenplay: bytes) -> frozenset[str]:
+    screenplay.decode("utf-8")
+    lines = idx._line_table(screenplay)
+    has_cast_line, cast_speakers = _declared_script_speakers(lines)
+    if has_cast_line:
+        return frozenset(cast_speakers)
+    counts: dict[str, int] = {}
+    episode_id: str | None = None
+    scene_id: str | None = None
+    cursor = 0
+    while cursor < len(lines):
+        stripped = lines[cursor]["text"].strip()
+        if not stripped:
+            cursor += 1
+            continue
+        if stripped.startswith("<!--"):
+            while cursor < len(lines) and "-->" not in lines[cursor]["text"]:
+                cursor += 1
+            cursor += 1
+            continue
+        if stripped.startswith("##"):
+            match = idx.SCENE_HEADING_RE.fullmatch(stripped)
+            if not match:
+                scene_id = None
+            else:
+                heading_episode = match.group("episode")
+                if episode_id and episode_id != heading_episode:
+                    scene_id = None
+                else:
+                    episode_id = heading_episode
+                    scene_id = match.group("scene")
+            cursor += 1
+            continue
+        if stripped.startswith("#"):
+            match = idx.EPISODE_HEADING_RE.fullmatch(stripped)
+            episode_id = match.group("episode") if match else episode_id
+            scene_id = None
+            cursor += 1
+            continue
+        end_cursor = cursor
+        while end_cursor + 1 < len(lines):
+            next_stripped = lines[end_cursor + 1]["text"].strip()
+            if not next_stripped or next_stripped.startswith(("#", "<!--")):
+                break
+            end_cursor += 1
+        if scene_id is not None:
+            span = idx._span(screenplay, lines, cursor, end_cursor)
+            paragraph = span["_text"].strip()
+            paragraph_lines = [
+                line.strip() for line in paragraph.splitlines() if line.strip()
+            ]
+            has_unseparated_tail = len(paragraph_lines) > 1 and any(
+                idx.DIALOGUE_RE.fullmatch(line)
+                or idx.ASCII_DIALOGUE_RE.match(line)
+                or idx.TAG_RE.fullmatch(line)
+                or idx.ANY_TAG_RE.match(line)
+                or idx.MALFORMED_TAG_RE.match(line)
+                for line in paragraph_lines[1:]
+            )
+            if not has_unseparated_tail:
+                tag_match = idx.TAG_RE.fullmatch(paragraph)
+                if tag_match and tag_match.group("tag") in VOICED_TAGS:
+                    voice_match = idx.VOICE_TAG_BODY_RE.fullmatch(
+                        tag_match.group("body")
+                    )
+                    if voice_match:
+                        candidate = " ".join(voice_match.group("speaker").split())
+                        counts[candidate] = counts.get(candidate, 0) + 1
+                elif not (
+                    tag_match
+                    or idx.ANY_TAG_RE.match(paragraph)
+                    or idx.MALFORMED_TAG_RE.match(paragraph)
+                ):
+                    dialogue_match = idx.DIALOGUE_RE.fullmatch(paragraph)
+                    if dialogue_match:
+                        candidate = " ".join(dialogue_match.group("speaker").split())
+                        counts[candidate] = counts.get(candidate, 0) + 1
+        cursor = end_cursor + 1
+    return frozenset(
+        name
+        for name, count in counts.items()
+        if _is_plausible_auto_speaker(name, count)
+    )
+
+
+def _is_cast_declaration_issue(screenplay: bytes, issue: Mapping[str, Any]) -> bool:
+    if issue.get("issue_code") not in {
+        "content_outside_scene",
+        "ambiguous_dialogue_or_action",
+    }:
+        return False
+    start = issue.get("byte_start")
+    end = issue.get("byte_end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return False
+    snippet = screenplay[start:end].decode("utf-8", errors="replace")
+    non_empty = [line.strip() for line in snippet.splitlines() if line.strip()]
+    return bool(non_empty) and all(
+        CAST_LINE_RE.match(line) is not None for line in non_empty
+    )
+
+
+def parse_script_blocks(
+    screenplay: bytes,
+    speakers: Iterable[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Parse ``screenplay`` directly in memory without writing an index file."""
+    idx = _load_screenplay_index()
+    screenplay.decode("utf-8")
+    has_cast_line, cast_speakers = _declared_script_speakers(
+        idx._line_table(screenplay)
+    )
+    if speakers is not None or has_cast_line:
+        explicit_speakers = {
+            " ".join(name.split())
+            for name in (speakers or ())
+            if isinstance(name, str) and name.strip()
+        }
+        speaker_names = frozenset(cast_speakers | explicit_speakers)
+    else:
+        speaker_names = _discover_script_speakers(idx, screenplay)
+    raw_blocks, raw_issues = idx._parse_screenplay(screenplay, speaker_names)
+    issues = (
+        [
+            issue
+            for issue in raw_issues
+            if not _is_cast_declaration_issue(screenplay, issue)
+        ]
+        if has_cast_line and "人物" not in speaker_names
+        else list(raw_issues)
+    )
+    blocks = [
+        {
+            "record_type": "block",
+            "block_id": f"BLK-{number:04d}",
+            **{key: value for key, value in block.items() if not key.startswith("_")},
+        }
+        for number, block in enumerate(raw_blocks, 1)
+    ]
+    review = {
+        "review_status": "review_required" if issues else "clean",
+        "source_issue_count": len(issues),
+        "needs_human_review": bool(issues),
+        "issue_codes": sorted(
+            {str(issue["issue_code"]) for issue in issues if "issue_code" in issue}
+        ),
+    }
+    return blocks, review
 
 
 # Tags that occupy screen time without being spoken. Their seconds depend on how
@@ -289,9 +536,22 @@ def index_blocks(
                 declared, len(screenplay)
             )
         )
+    issue_codes = sorted(
+        {
+            str(row["issue_code"])
+            for row in index
+            if row.get("record_type") == "source_issue" and "issue_code" in row
+        }
+    )
+    source_issue_count = meta.get("source_issue_count")
     review = {
         "review_status": meta.get("review_status"),
-        "source_issue_count": meta.get("source_issue_count"),
+        "source_issue_count": source_issue_count,
+        "needs_human_review": (
+            meta.get("review_status") == "review_required"
+            or (isinstance(source_issue_count, int) and source_issue_count > 0)
+        ),
+        "issue_codes": issue_codes,
     }
     return [row for row in index if row.get("record_type") == "block"], review
 
@@ -387,9 +647,10 @@ def estimate(
     issues = (review or {}).get("source_issue_count")
     unreadable = counts.get("unreadable_blocks") or []
     if isinstance(issues, int) and issues > 0 or unreadable:
-        result["incomplete"] = {
+        incomplete_entry: dict[str, Any] = {
             "index_review_status": (review or {}).get("review_status"),
             "source_issue_count": issues,
+            "needs_human_review": True,
             "unreadable_blocks": unreadable,
             "note": (
                 "the index left some of this screenplay unclassified, so the "
@@ -397,6 +658,10 @@ def estimate(
                 "issues before reading these seconds as the episode's length"
             ),
         }
+        issue_codes = (review or {}).get("issue_codes")
+        if issue_codes:
+            incomplete_entry["issue_codes"] = issue_codes
+        result["incomplete"] = incomplete_entry
 
     untimed = dict(counts.get("untimed_tag_lines") or {})
     if rates["on_screen_text_characters_per_second"] is not None:
@@ -497,12 +762,30 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Estimate screenplay duration from the project's declared rates."
     )
-    parser.add_argument("screenplay", type=Path)
+    parser.add_argument(
+        "screenplay",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="screenplay Markdown path (legacy mode when paired with --index)",
+    )
+    parser.add_argument(
+        "--script",
+        type=Path,
+        default=None,
+        help="screenplay Markdown path to parse and estimate directly in memory",
+    )
     parser.add_argument(
         "--index",
         type=Path,
-        required=True,
+        default=None,
         help="screenplay-index.jsonl built from this screenplay by screenplay_index.py",
+    )
+    parser.add_argument(
+        "--speaker",
+        action="append",
+        default=None,
+        help="optional speaker label filter for --script mode (repeatable)",
     )
     parser.add_argument(
         "--project",
@@ -528,9 +811,24 @@ def main(argv: list[str] | None = None) -> int:
     ):
         raise SystemExit("--target-seconds must be a positive number")
 
-    if not args.screenplay.is_file():
-        raise SystemExit("screenplay not found: {}".format(args.screenplay))
-    if not args.index.is_file():
+    if args.script is not None and args.screenplay is not None:
+        parser.error("pass either --script or positional screenplay, not both")
+    if args.script is not None and args.index is not None:
+        parser.error("--script parses in memory; omit --index")
+    if args.script is None and args.screenplay is None:
+        parser.error(
+            "pass --script <剧本.md> or positional screenplay --index <index.jsonl>"
+        )
+    if args.script is None and args.index is None:
+        parser.error(
+            "positional screenplay mode requires --index; use --script <剧本.md> for direct estimation"
+        )
+
+    source_path = args.script if args.script is not None else args.screenplay
+    assert source_path is not None
+    if not source_path.is_file():
+        raise SystemExit("screenplay not found: {}".format(source_path))
+    if args.index is not None and not args.index.is_file():
         raise SystemExit("screenplay index not found: {}".format(args.index))
 
     project = None
@@ -539,11 +837,18 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("project file not found: {}".format(args.project))
         project = json.loads(args.project.read_text(encoding="utf-8"))
 
-    screenplay = args.screenplay.read_bytes()
-    try:
-        blocks, review = index_blocks(_load_jsonl(args.index), screenplay)
-    except StaleIndex as error:
-        raise SystemExit("{}: {}".format(args.index, error))
+    screenplay = source_path.read_bytes()
+    if args.script is not None:
+        try:
+            blocks, review = parse_script_blocks(screenplay, speakers=args.speaker)
+        except UnicodeDecodeError as error:
+            raise SystemExit("{}: {}".format(source_path, error))
+    else:
+        assert args.index is not None
+        try:
+            blocks, review = index_blocks(_load_jsonl(args.index), screenplay)
+        except StaleIndex as error:
+            raise SystemExit("{}: {}".format(args.index, error))
 
     report = estimate(screenplay, blocks, project, review, args.target_seconds)
     print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))

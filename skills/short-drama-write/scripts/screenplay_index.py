@@ -145,20 +145,31 @@ KIND_CODES = {
 # episode number the lifecycle tool enforces on `episodes/<EP>/`. A fixed three
 # digits would have made EP1000 a legal directory but an illegal heading.
 _EPISODE = r"EP(?:[0-9]{3}|[1-9][0-9]{3,})"
-EPISODE_HEADING_RE = re.compile(rf"^# (?P<episode>{_EPISODE})(?: .+)?$")
+_WS = r"[ \t\u3000]"
+EPISODE_HEADING_RE = re.compile(rf"^#{_WS}+(?P<episode>{_EPISODE})(?:{_WS}+.+)?$")
 # A project that scopes ids by season writes `S01-EP001-SC001`; the episode is
 # still the `EP` segment, and the cross-document checker accepts the same form.
+# Whitespace around `·` is optional so `内·客厅·夜` and `内 · 客厅 · 夜` both
+# parse instead of silently dropping the scene's blocks.
 SCENE_HEADING_RE = re.compile(
-    rf"^## (?P<scene>(?:[A-Za-z0-9]+-)*?(?P<episode>{_EPISODE})-SC[0-9]{{3}}) "
-    r"(?P<space>内外|内|外) · (?P<location>\S(?:.*\S)?) · "
-    r"(?P<time>\S(?:.*\S)?)$"
+    rf"^##{_WS}+(?P<scene>(?:[A-Za-z0-9]+-)*?(?P<episode>{_EPISODE})-SC[0-9]{{3}})"
+    rf"(?:{_WS}+|{_WS}*·{_WS}*)"
+    rf"(?P<space>内外|内|外){_WS}*·{_WS}*(?P<location>[^\s·](?:.*?[^\s·])?){_WS}*·{_WS}*"
+    r"(?P<time>[^\s·](?:.*[^\s·])?)$"
 )
+MAX_SPEAKER_LENGTH = 40
+_SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
+_SPEAKER_LABEL = (
+    rf"(?=.{{1,{MAX_SPEAKER_LENGTH}}}(?:[ \t]*[（(]|：|:))"
+    rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
+)
+_OPTIONAL_CUE = r"(?:[ \t]*(?:（(?P<cue_fw>[^（）\r\n]+)）|\((?P<cue_hw>[^()\r\n]+)\)))?"
+_OPTIONAL_CUE_UNNAMED = r"(?:[ \t]*(?:（[^（）\r\n]+）|\([^()\r\n]+\)))?"
 DIALOGUE_RE = re.compile(
-    r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
-    r"(?:（(?P<cue>[^（）\r\n]+)）)?：(?P<text>\S[\s\S]*)$"
+    rf"^(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
 )
 ASCII_DIALOGUE_RE = re.compile(
-    r"^[^\s：（）:\[\]#]{1,40}(?:（[^（）\r\n]+）)?:\s*\S"
+    rf"^{_SPEAKER_LABEL}{_OPTIONAL_CUE_UNNAMED}:\s*\S"
 )
 TAG_RE = re.compile(r"^\[(?P<tag>VO|OS|SFX|画面文字|连续性|转场)\]\s*(?P<body>\S[\s\S]*)$")
 ANY_TAG_RE = re.compile(r"^\[(?P<tag>[^\]\r\n]+)\]")
@@ -177,12 +188,15 @@ FULLWIDTH_TAG_RE = re.compile(
 )
 MALFORMED_TAG_RE = re.compile(r"^\[(?:VO|OS|SFX|画面文字|连续性|转场)(?:\s|：|:)")
 # A voiced tag carries the same optional performance cue as plain dialogue
-# (``[OS] 角色（提示）：台词``); the duration estimate already times it that way.
+# (``[OS] 角色（提示）：台词`` or ``[OS] Dr. Lin (whispering)：...``).
 VOICE_TAG_BODY_RE = re.compile(
-    r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})"
-    r"(?:（(?P<cue>[^（）\r\n]+)）)?：(?P<text>\S[\s\S]*)$"
+    rf"^(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
 )
 BLOCK_ID_RE = re.compile(r"^BLK-(?P<scope>.+)-(?P<code>[HADPC])(?P<number>\d+)$")
+
+
+def _extract_cue(match: re.Match[str]) -> str | None:
+    return match.group("cue_fw") or match.group("cue_hw")
 
 
 def _newline_style(data: bytes) -> str:
@@ -425,13 +439,18 @@ def _parse_screenplay(
                 voice_match = VOICE_TAG_BODY_RE.fullmatch(body)
                 if not voice_match:
                     issues.append(
-                        _issue(span, "invalid_voice_tag_syntax", f"[{tag}] 写成「[{tag}] 角色（可选提示）：台词」：要有说话者、全角冒号，提示用全角括号。")
+                        _issue(
+                            span,
+                            "invalid_voice_tag_syntax",
+                            f"[{tag}] 写成「[{tag}] 角色（可选提示）：台词」：要有说话者与全角冒号，提示可用全角或半角括号。",
+                        )
                     )
                     index = end_index + 1
                     continue
                 fields["speaker"] = voice_match.group("speaker")
-                if voice_match.group("cue"):
-                    fields["performance_cue"] = voice_match.group("cue")
+                cue = _extract_cue(voice_match)
+                if cue:
+                    fields["performance_cue"] = cue
             append_block("production_tag", span, **fields)
             index = end_index + 1
             continue
@@ -468,7 +487,7 @@ def _parse_screenplay(
                 "dialogue",
                 span,
                 speaker=dialogue_match.group("speaker"),
-                performance_cue=dialogue_match.group("cue"),
+                performance_cue=_extract_cue(dialogue_match),
                 production=False,
             )
             index = end_index + 1
@@ -910,9 +929,9 @@ def build_index(
     raw_speakers = tuple(speakers or ())
     if any(not isinstance(speaker, str) or not speaker.strip() for speaker in raw_speakers):
         raise ValueError("speaker names must be non-empty text")
-    speaker_names = frozenset(speaker.strip() for speaker in raw_speakers)
+    speaker_names = frozenset(" ".join(speaker.split()) for speaker in raw_speakers)
     if any(
-        len(speaker) > 40
+        len(speaker) > MAX_SPEAKER_LENGTH
         or DIALOGUE_RE.fullmatch(f"{speaker}：占位") is None
         for speaker in speaker_names
     ):

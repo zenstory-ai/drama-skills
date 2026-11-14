@@ -200,7 +200,7 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
         expect(page.locator(".blocking-card")).to_have_count(1)
         expect(page.locator('.blocking-card[data-scene="EP001-SC001"] dd').first).to_contain_text("办公桌")
         page.locator(".shot").first.click()
-        expect(page.locator("#insBlocking")).to_contain_text("working side")
+        expect(page.locator("#insBlocking")).to_contain_text("机位侧")
 
     def test_settings_cards_show_locks_and_filter_the_storyboard(self) -> None:
         page = self.open(route="#/EP001/settings")
@@ -466,7 +466,7 @@ class PlantedMarkupBrowserTests(Browser, unittest.TestCase):
         make_creator_project(project)
         episode = project / "剧集/EP001"
         # Free-text fields only: IDs, durations and sources stay parseable, so each view renders its structure.
-        free = "运镜|起点|终点|目的|景别/机位|声音|唯一动作|画面文字|用途|识别锚点|画面代称|本集造型|连续性锁|时代锚点|生成方式|状态链"
+        free = "运镜|起点|终点|目的|景别/机位|声音|动作|画面文字|用途|外观特征|提示词名称|本集造型|连戏锁|时代背景|生成方式|动作过程"
         for path in [*episode.glob("*.md"), *project.glob("审查/*.md")]:
             text = path.read_text(encoding="utf-8")
             text = re.sub(rf"^(## .+ · .+|- (?:{free})：.+|[^#\-\n\[].+)$", lambda m: m.group(1) + cls.MARK, text, flags=re.M)

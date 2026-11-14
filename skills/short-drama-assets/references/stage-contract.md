@@ -1,41 +1,34 @@
-# 视觉设定阶段契约
+# 视觉设定阶段规则
 
-本阶段只拥有 `剧集/<EP>/视觉设定.md` 中的人物/造型、地点/视图、道具/状态、声音身份与跨场连续性；继承剧本事实，不决定镜头瞬态、构图、动作终点或生成提示词。每个出现项在同一文档内写成复用、新身份、新变体或真实未决（来源用场景 ID，跨文档消费用可见标题和稳定 ID），不另建隐藏 JSON 或台账文件。
+本阶段负责维护 `剧集/<EP>/视觉设定.md` 中的人物与造型、地点与视角、道具与状态、角色声线与配音设定及跨场连戏记录；以定稿剧本为准，不越界决定单镜临时动作、左右手拿握、构图景别、动作终点或生图/视频提示词。剧本里的每次出场在同一份文档内定性为沿用旧设定、新建条目、新增造型/状态或待创作者拍板，不另建隐藏 JSON 或反向台账文件。
 
-## 本阶段规则
+## 本阶段规则表
 
 ### `AST`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| AST-01 | structural_invariant | Before creating or reusing an asset, point to the scene ID and visible evidence that establishes it. |
-| AST-02 | reviewed_invariant | Reconcile each occurrence as reuse, new identity, new variant, or unresolved—never guess an ambiguous name/pronoun. |
-| AST-03 | craft_default | Separate Character/Look, Location/View, and Prop/State. |
-| AST-04 | reviewed_invariant | Persistent identifying anchors and mutable state are not mixed. |
-| AST-05 | structural_invariant | Every downstream reference resolves to a visible identity item and the stated current variant in `视觉设定.md`. |
-| AST-06 | craft_default | Track only asset facts needed for recognition, reuse, prompt writing, or continuity. |
-| AST-07 | reviewed_invariant | Persistent voice identity and pronunciation refs stay separate from scene-level breath, emotion, volume, and delivery state. |
-| AST-08 | reviewed_invariant | A voice reference binding states what it controls and what it must not; the take's emotion, its recording space, and its background never enter identity. |
-| AST-09 | reviewed_invariant | A claim about what is audible in a reference requires a creator or rights-holder description, or an authorized listening observation bound to the inspected bytes; otherwise admission stays unverified. |
-| AST-10 | structural_invariant | One accepted pronunciation of a proper noun uses one spelling throughout `视觉设定.md`. |
-| AST-11 | reviewed_invariant | Characters designed together are not bound to confusable references; each names the audible trait telling it apart from its nearest neighbour, and names that character. |
-| AST-12 | craft_default | Selection criteria are few, audible and counter-exampled; they judge a candidate reference or a clone result, they do not stand in for one. |
-| AST-13 | structural_invariant | When the project's prompt language is not the language of the entry headings, every 人物 entry a shot's 视觉依据 references reaches a stated conclusion: `画面代称` carrying the exact spelling prompt bodies use, or `画面代称：无` when no body names it. One accepted name uses one spelling, case included. 地点/道具 declare one only when a body names them. |
-| AST-14 | reviewed_invariant | The era shown in `视觉设定.md` and in the prompts projected from it does not contradict source facts—devices, platforms, slang, stated years. A retro or aged descriptor (旧/老式/复古/褪色/斑驳, old, worn, dusty, period, CRT) cites a source basis or an explicit creator choice. |
-| AST-15 | craft_default | The project visual direction states explicit era anchors: the year or decade, and how devices, uniforms, furniture and lighting look in it. Location, costume and prop entries carry the era-specific form that image and video prompts copy. |
+| AST-01 | reviewed_invariant | 新建或沿用设定条目须对应 `剧本.md` 的场景 ID 及画面可见描写依据。 |
+| AST-02 | reviewed_invariant | 每次出场明确归为沿用旧设定、新建条目、新增造型/状态或待创作者拍板；称呼或代词指代含糊时列清候选待拍板，不硬猜。 |
+| AST-03 | reviewed_invariant | 人物与阶段造型、场景与分视角状态、道具固定形制与可变状态分层记录；跨场不变的 `外观特征` 与随戏变化的临时状态（伤污、淋湿、开合、昼夜停电等）严格分开，互不混写。 |
+| AST-05 | structural_invariant | 下游分镜与提示词引用的每一项设定，都必须能对应到 `视觉设定.md` 里的具体条目与当前有效造型/状态。 |
+| AST-06 | craft_default | 只记录影响认人、跨场复用、提示词编写或前后连戏的外观事实，普通环境陈设不逐件建档。 |
+| AST-07 | reviewed_invariant | 跨集固定的角色本嗓声线、专名读音与单场戏里的喘息、情绪、音量及台词演法严格分开。 |
+| AST-08 | reviewed_invariant | 绑定参考音频时必须写清允许控制与不得控制的范围；参考录音里的情绪、混响空间与背景杂音一律归入 `不得控制`。 |
+| AST-09 | reviewed_invariant | 描述参考音频的听感特征须有创作者/权利人说明或实际试听核验依据；未核验时标明未核验，不得空口保证音色、口音或无底噪。 |
+| AST-10 | structural_invariant | 同一个专有名词确认读法后，在整份 `视觉设定.md` 中只用唯一拼法标注，防止跨集改口。 |
+| AST-11 | craft_default | 同剧主要发声角色一起定声线时拉开音区、质感与说话节奏，避免绑定容易听混的参考音；声线相近的对手角色可补充听感区分点。 |
+| AST-12 | craft_default | 主要发声角色的选音标准保持精炼可听，可附跑偏反例辅助挑音或验收克隆音色，次要配角简写音色与语气即可，不拿文字描述顶替真实参考音。 |
+| AST-13 | structural_invariant | 仅当提示词语言与条目标题语言不同且下游提示词正文实际点名该条目时，填写与正文拼写及大小写一致的 `- 提示词名称：`（混合语言用 `、` 并列；条目名易与普通词重名误判时写 `- 提示词名称：无`）。 |
+| AST-14 | reviewed_invariant | `视觉设定.md` 与下游提示词展现的建筑、设备、制服、传播渠道等器物制式不得与原著或项目已定年代背景冲突；符合角色境遇与场所设定的日常物理旧化质感（磨损、水渍、斑驳、褪色等）正常使用，禁止无依据把现代场景写成旧时代老宅与淘汰设备。 |
+| AST-15 | craft_default | 项目视觉方向写明 `- 时代背景：`（年份或年代，以及设备、制服、家具、照明的年代款式）；受年代影响的地点、造型与道具写清具体年代款式。 |
 
 ### `CON`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| CON-01 | structural_invariant | Linked end and next start states match or have an explicit owner revision. |
-| CON-02 | reviewed_invariant | Knowledge, injury, ownership, weather, light, or physical state does not teleport/regress without story cause. |
-| CON-03 | craft_default | Track downstream-relevant deltas, not the whole 设定集 in every shot. |
-| CON-04 | structural_invariant | A continuity change states before, after, cause/source scene, effective range, and affected visible IDs. |
-| CON-05 | taste_option | Declared montage, ellipsis, dream, or subjective imagery may intentionally break ordinary continuity. |
-| CON-06 | structural_invariant | A continuity change names every existing downstream document it affects; future work is described, not pre-created. |
-| CON-07 | structural_invariant | A continuity lock declared in `视觉设定.md` fixes one verbatim surface plus its shot and image scope; every in-scope frozen keyframe, motion prompt, and named image prompt carries that surface unchanged. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+| CON-01 | reviewed_invariant | 相连镜头或场次的前一收尾状态与下一开场状态必须衔接一致，若有跳变须写明修订说明。 |
+| CON-02 | reviewed_invariant | 人物知情范围、伤势、道具归属、天气、光线或物件状态不得无剧本原因凭空跳变或自行复原。 |
+| CON-03 | craft_default | 只记录影响后续场次、提示词或跨集交接的状态变化，不在每个条目里反向抄录下游镜号台账。 |
+| CON-05 | taste_option | 明确标出的蒙太奇、时间省略、梦境、闪回或主观画面可按创作意图打破常规连戏。 |
+| CON-07 | structural_invariant | `视觉设定.md` 声明的 `- 连戏锁：` 固定一组 `锁定词` 及其生效范围；点名的静态图片提示词、范围内镜头的首帧提示词以及未垫图的文生视频提示词须原字保留该锁定词，已挂首帧或主体参考图的图生视频不必重复硬塞全身服装串。 |

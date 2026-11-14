@@ -2,6 +2,7 @@ import React from "react";
 import { Sequence, useVideoConfig } from "remotion";
 import { ScreenTextStyle } from "../schema";
 import { assertFamilyResolves } from "../font";
+import { Caption } from "./Caption";
 import { Card } from "./Card";
 import { CornerChip } from "./CornerChip";
 import { SystemPanel } from "./SystemPanel";
@@ -10,6 +11,7 @@ import { SANS, StyleProps } from "./tokens";
 
 /** One component per style; swapping a look never touches parsing or timing. */
 const STYLES: Record<ScreenTextStyle, React.FC<StyleProps>> = {
+  caption: Caption,
   card: Card,
   system: SystemPanel,
   task: TaskPanel,
