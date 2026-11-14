@@ -12,7 +12,7 @@ export type Cue = {
   keys: string[];
 };
 
-export type ScreenTextStyle = "card" | "system" | "task" | "corner";
+export type ScreenTextStyle = "caption" | "card" | "system" | "task" | "corner";
 export type Rarity = "传说" | "史诗" | "稀有";
 
 export type ScreenText = {

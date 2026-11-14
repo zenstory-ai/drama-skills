@@ -38,15 +38,19 @@ SCHEMA_VERSION = "1.0.0-draft"
 # included because serialized fiction routinely passes 1000 chapters, and
 # 第两百章 is as common as 第二百章 in that range.
 CHINESE_NUMERALS = "零一二三四五六七八九十百千两"
-# Books number their chapters with 章, 回 or 节 — but a book that uses 章 for
-# chapters may also use 节 for subsections inside them. Matching every unit at
-# once turns those subsections into chapters, so the unit is captured here and
-# a single dominant unit is chosen below.
-CHAPTER_UNITS = ("章", "回", "节")
+# Books and episodic scripts number their chapters with 章, 回, 集, 话/話, 幕 or 节 —
+# but a book that uses 章 for chapters may also use 节 for subsections inside
+# them. Matching every unit at once turns those subsections into chapters, so
+# the unit is captured here and a single dominant unit is chosen below.
+CHAPTER_UNITS = ("章", "回", "集", "话", "話", "幕", "节")
 CHAPTER_RE = re.compile(
-    r"^[ \t　]*第\s*([0-9]+|[" + CHINESE_NUMERALS + r"]+)\s*([章回节])"
-    r"[ \t　]*(.*?)[ \t　]*$"
+    r"^[ \t　]*(?:#{1,6}\s+)?[ \t　]*第\s*([0-9]+|["
+    + CHINESE_NUMERALS
+    + r"]+)\s*(["
+    + "".join(CHAPTER_UNITS)
+    + r"])[ \t　]*(.*?)[ \t　]*$"
 )
+MD_HEADING_PREFIX_RE = re.compile(r"^[ \t　]*#{1,6}\s+")
 CHINESE_DIGITS = {
     "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
     "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
@@ -118,7 +122,8 @@ def find_heading_lines(lines: list[str]) -> tuple[list[dict[str, Any]], int]:
         match = CHAPTER_RE.match(candidate)
         if match is None:
             continue
-        if _visible_width(candidate.strip()) > MAX_HEADING_LINE_WIDTH:
+        stripped_heading = MD_HEADING_PREFIX_RE.sub("", candidate).strip()
+        if _visible_width(stripped_heading) > MAX_HEADING_LINE_WIDTH:
             long_lines += 1
             continue
         headings.append(
@@ -315,11 +320,12 @@ def _line_offsets(lines: list[str]) -> list[int]:
 
 
 def segment_by_restart(chapters: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """Split the chapter list wherever source numbering stops increasing.
+    """Split the chapter list wherever source numbering restarts downward.
 
     Each segment is a candidate volume. Validation then runs *inside* every
     segment, so a book whose volumes restart at 第一章 stays legal while a
-    missing chapter inside any one volume is still reported.
+    missing or duplicated chapter inside any one volume is still surfaced as a
+    warning.
     """
 
     segments: list[list[dict[str, Any]]] = []
@@ -327,7 +333,7 @@ def segment_by_restart(chapters: list[dict[str, Any]]) -> list[list[dict[str, An
     previous: int | None = None
     for chapter in chapters:
         number = chapter["source_number"]
-        if number is not None and previous is not None and number <= previous:
+        if number is not None and previous is not None and number < previous:
             segments.append(current)
             current = []
         if number is not None:
@@ -338,24 +344,16 @@ def segment_by_restart(chapters: list[dict[str, Any]]) -> list[list[dict[str, An
     return segments
 
 
-def validate_chapters(
+def _collect_chapter_warnings(
     chapters: list[dict[str, Any]], segments: list[list[dict[str, Any]]]
 ) -> list[str]:
-    problems: list[str] = []
-    if not chapters:
-        problems.append("no chapter heading matched; the source may need manual spans")
-        return problems
-    unreadable = [
-        chapter["heading"] for chapter in chapters if chapter["source_number"] is None
-    ]
-    if unreadable:
-        problems.append("unreadable chapter numbers: " + ", ".join(unreadable[:5]))
+    warnings: list[str] = []
     for position, segment in enumerate(segments, start=1):
         label = "" if len(segments) == 1 else f" in volume {position}"
         if len(segments) > 1 and len(segment) < MIN_VOLUME_CHAPTERS:
             # Too short to be a volume, so the restart is far more likely to be
             # a duplicated or stray heading than a legal structure.
-            problems.append(
+            warnings.append(
                 f"numbering restarts after only {len(segment)} chapter(s) at "
                 f"sequence {segment[0]['sequence']}; expected a volume boundary, "
                 "check for a stray or duplicated heading"
@@ -365,22 +363,42 @@ def validate_chapters(
             for chapter in segment
             if chapter["source_number"] is not None
         ]
+        reported_duplicate = False
+        reported_gap = False
         for previous, current in zip(numbers, numbers[1:]):
             if current == previous:
-                problems.append(f"duplicate chapter number {current}{label}")
-                break
-            if current != previous + 1:
-                problems.append(
-                    f"chapter numbering jumps from {previous} to {current}{label}"
-                )
-                break
+                if not reported_duplicate:
+                    warnings.append(f"duplicate chapter number {current}{label}")
+                    reported_duplicate = True
+            elif current != previous + 1:
+                if not reported_gap:
+                    warnings.append(
+                        f"chapter numbering jumps from {previous} to {current}{label}"
+                    )
+                    reported_gap = True
     empty = [chapter["sequence"] for chapter in chapters if chapter["char_count"] < 50]
     if empty:
-        problems.append(
+        warnings.append(
             "chapters with almost no body text at sequence "
             + ", ".join(str(item) for item in empty[:5])
         )
-    return problems
+    return warnings
+
+
+def validate_chapters(
+    chapters: list[dict[str, Any]], segments: list[list[dict[str, Any]]]
+) -> tuple[list[str], list[str]]:
+    problems: list[str] = []
+    if not chapters:
+        problems.append("no chapter heading matched; the source may need manual spans")
+        return problems, []
+    unreadable = [
+        chapter["heading"] for chapter in chapters if chapter["source_number"] is None
+    ]
+    if unreadable:
+        problems.append("unreadable chapter numbers: " + ", ".join(unreadable[:5]))
+    warnings = _collect_chapter_warnings(chapters, segments)
+    return problems, warnings
 
 
 def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any]:
@@ -393,7 +411,7 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
     headings, dropped = drop_leading_table_of_contents(headings)
     chapters = build_chapters(lines, headings, text)
     segments = segment_by_restart(chapters)
-    problems = validate_chapters(chapters, segments)
+    problems, warnings = validate_chapters(chapters, segments)
     first_line = chapters[0]["line_start"] if chapters else 1
     unclaimed = text_before_first_chapter(lines, first_line)
     unclaimed_problem = text_before_first_chapter_problem(unclaimed, first_line)
@@ -406,11 +424,7 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
             if ignored_units.get(other)
         ]
         if coarser:
-            # SKILL.md names this exact shape as the sign that the unit judgment
-            # is wrong. Reporting it is what lets a creator act on it; `problems`
-            # coming back empty here is how a subsection index passed for a
-            # chapter index all the way to episode cutting.
-            problems.append(
+            warnings.append(
                 "chapters were indexed as 第N{} while coarser headings were skipped: {}"
                 "; pass --unit to choose the unit yourself".format(
                     unit,
@@ -443,6 +457,7 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
         "chapter_count": len(chapters),
         "chapters": chapters,
         "problems": problems,
+        "warnings": warnings,
     }
 
 
@@ -461,7 +476,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
     raw = source.read_bytes()
     problems: list[str] = []
     if not isinstance(index, dict):
-        return {"verified": False, "problems": ["index must be a JSON object"]}
+        return {"verified": False, "problems": ["index must be a JSON object"], "warnings": []}
     source_record = index.get("source")
     if not isinstance(source_record, dict):
         return {
@@ -469,12 +484,13 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             "problems": [
                 "index is missing its source record"
             ],
+            "warnings": [],
         }
     text = raw.decode("utf-8")
     lines = text.split("\n")
     chapters = index.get("chapters", [])
     if not isinstance(chapters, list) or not chapters:
-        return {"verified": False, "problems": ["index carries no chapters"]}
+        return {"verified": False, "problems": ["index carries no chapters"], "warnings": []}
     chapter_count = index.get("chapter_count")
     if (
         isinstance(chapter_count, bool)
@@ -483,7 +499,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
     ):
         problems.append("chapter_count does not match the chapter rows")
     previous_end: int | None = None
-    previous_number: int | None = None
+    normalized_chapters: list[dict[str, Any]] = []
     for position, chapter in enumerate(chapters, start=1):
         if not isinstance(chapter, dict):
             problems.append(f"chapter row {position} is not an object")
@@ -533,16 +549,37 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             )
             continue
         previous_end = end_line
-        number = chapter.get("source_number")
-        if isinstance(number, int) and not isinstance(number, bool):
-            if number == previous_number:
-                problems.append(f"duplicate chapter number {number} at chapter {sequence}")
-            previous_number = number
+        raw_number = chapter.get("source_number")
+        source_number = (
+            raw_number
+            if isinstance(raw_number, int) and not isinstance(raw_number, bool)
+            else None
+        )
+        raw_chars = chapter.get("char_count")
+        char_count = (
+            raw_chars
+            if isinstance(raw_chars, int) and not isinstance(raw_chars, bool)
+            else _visible_width("\n".join(lines[start_line - 1 : end_line]))
+        )
+        normalized_chapters.append(
+            {
+                "sequence": sequence,
+                "source_number": source_number,
+                "char_count": char_count,
+            }
+        )
     if previous_end is not None and previous_end != len(lines):
         problems.append(
             f"chapter spans end at line {previous_end}; source ends at line {len(lines)}"
         )
-    return {"verified": not problems, "problems": problems}
+    warnings = (
+        _collect_chapter_warnings(
+            normalized_chapters, segment_by_restart(normalized_chapters)
+        )
+        if normalized_chapters
+        else []
+    )
+    return {"verified": not problems, "problems": problems, "warnings": warnings}
 
 
 # The triage stage reads a fraction of the book. A fixed, explainable count beats
@@ -642,7 +679,7 @@ def main(argv: list[str] | None = None) -> int:
         "--unit",
         choices=CHAPTER_UNITS,
         default=None,
-        help="force the chapter unit instead of detecting it (章 / 回 / 节)",
+        help="force the chapter unit instead of detecting it (章 / 回 / 集 / 话 / 話 / 幕 / 节)",
     )
 
     check = sub.add_parser("verify", help="re-check an index against its source")
@@ -672,6 +709,7 @@ def main(argv: list[str] | None = None) -> int:
                         "chapter_unit": document["chapter_unit"],
                         "ignored_heading_units": document["ignored_heading_units"],
                         "problems": document["problems"],
+                        "warnings": document["warnings"],
                         "out": str(args.out),
                     },
                     ensure_ascii=True,

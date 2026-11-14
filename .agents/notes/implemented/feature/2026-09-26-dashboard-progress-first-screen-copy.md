@@ -101,3 +101,4 @@ Status: implemented
 - **已知上限**：
   - 提案第 3 项测试写的是「`视频提示词.md` 的多行引用」，但示例里每条都是单行。多行情形改用合成的 H3 片段覆盖。
   - 本地没有 Playwright 自带的 Chromium 时，浏览器用例在 `setUpClass` 报错。CI 的 `dashboard-browser` job 会安装它。
+- 后续调整：创作台 `FILE_LABELS`（`story-engine.md` 改为「核心设定」）与可复制提示词标题（`首帧提示词`、`尾帧提示词`）的重命名，见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)。

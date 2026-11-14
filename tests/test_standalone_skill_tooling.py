@@ -60,7 +60,7 @@ class StandaloneSkillToolingTests(unittest.TestCase):
         for name in sorted(self.SELFTEST_SKILLS):
             with self.subTest(skill=name):
                 document = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn("## Quick Start", document)
+                self.assertIn("## 快速开始", document)
                 self.assertIn("scripts/selftest.py", document)
                 self.assertNotIn("tools/verify_suite.py", document)
 

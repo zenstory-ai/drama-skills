@@ -303,7 +303,7 @@ SCHEMA_TEMPLATES = {
     "location-views.jsonl": "../tests/fixtures/authoring-records/location-view.example.jsonl",
     # Creator decisions are named after the artifact they accept, so they are
     # matched by their directory rather than by a fixed basename.
-    "创作者决策/": "short-drama/assets/creator-decision.example.jsonl",
+    "创作者决策/": "../tests/fixtures/authoring-records/creator-decision.example.jsonl",
 }
 # A second source of truth for the same artifacts: a real, accepted project.
 # Several of these files legitimately hold more than one record shape -- a

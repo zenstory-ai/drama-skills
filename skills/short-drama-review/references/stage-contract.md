@@ -1,27 +1,24 @@
-# 审查阶段契约
+# 审查阶段职责与规则
 
-本阶段只拥有审查结论与修订要求（落盘为创作者可读 Markdown，仅引用文件名、标题 ID、行号或短引文，不建 JSON/JSONL、哈希或第二套状态），来源修改一律交回负责技能。
+本阶段负责出具审查结论与修改要求（按需存为创作者可读的 Markdown 文档或在对话中直接回复，出处只引用文件名、标题编号、行号或简短原文摘录，不建隐藏 JSON、哈希值或状态副表）；原稿修改一律交回对应负责技能执行。
 
 ## 本阶段规则
 
 ### `REV`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| REV-01 | structural_invariant | Run mechanical checks before spending creative review attention. |
-| REV-02 | structural_invariant | A finding names a visible file and heading/shot/prompt ID, and includes evidence, impact, required fix, owner, severity and status. |
-| REV-03 | reviewed_invariant | Semantic invention cites the source fact and conflicting downstream fact. |
-| REV-04 | craft_default | Prefer a reviewer who did not author the current targets; disclose self-review, and keep reviewer findings separate from owner edits. |
-| REV-05 | craft_default | Diagnose repeated structure or generic language with location and impact; do not label output merely "AI-ish". |
-| REV-06 | taste_option | Alternatives remain notes unless they violate an accepted creator constraint. |
-| REV-07 | structural_invariant | An end-to-end drafting request cannot impersonate creator acceptance; preview chains remain provisional and undeliverable. |
-| REV-08 | craft_default | When authorized text notes report production defects that call for a prompt change (in a generated-media review, only must-regenerate clips under REV-15), trace text/subtitle residue, music-boundary violations, wardrobe drift, axis breaks, or lip-sync mismatch to the exact prompt/spec text and keep unobserved outcomes unknown. |
-| REV-09 | reviewed_invariant | After prompt revision or repackaging, recheck source coverage and every applicable accepted directive; correct asset bindings alone do not prove compliance. |
-| REV-10 | reviewed_invariant | A project-calibration finding distinguishes input-reference from generated-result observation, binds the exact project, the prompt/spec records it observed, stable reference slots, production configuration, method and limits, and—when its disposition calls for a change (see REV-11)—proposes the smallest owner-routed one with a preserve set; it does not generalize across projects or infer quality from task state. |
-| REV-11 | reviewed_invariant | A calibration finding carries `disposition` (keep, post_production, targeted_edit, resubmit, rewrite) and `disposition_rationale` before any revision text, justified by whether the defect is text-controllable and whether it has already recurred. Dispositions that call for no change leave `required_change` empty rather than inventing one. Resubmitting identical text and appending quality adjectives are not repairs; a recurring defect routes to a structural change instead. Findings outside project calibration use `not_applicable`, except generated-media findings, which carry their REV-15 category instead. |
-| REV-12 | craft_default | When the project's rhythm profile has status `accepted`, review checks the episode against it by arithmetic on the accepted values only and reports a deviation as a non-blocking finding citing field, accepted value, measured value, and location; the creator may keep the episode with a stated reason. A missing or proposed profile leaves the check inactive, and no finding compares against another project's or a suite-wide number. |
-| REV-13 | craft_default | Beyond the whole-episode read, three local passes each read one part only: an opening-hook pass on the first segment, which also reads the first beat alone as the opening frame, an ending-suspense pass on the last segment, and a reversal-density pass on the middle. |
-| REV-14 | craft_default | A revision request is a patch at a cited location with a preserve set, never a whole-episode rewrite; a strong hook, payoff line, or comic beat removed by polishing is logged with its prior location and quote so the owner can restore it. |
-| REV-15 | craft_default | A `production_outputs` or rendered-cut `full_episode` review judges each clip against its storyboard shot job (purpose, start, single action, end, sound) and sorts each defect into `cut`/`post-fix` (`minor`), `keep` (`note`), or `must-regenerate` (`blocker`, used only when the shot job fails and editing cannot work around it; missing shot jobs restorable by edit are `blocker` routed to edit). Verdict is `REVISE` when any `must-regenerate` or edit-restore `blocker` exists, `PROVISIONAL` when some shot job was unobserved, or `APPROVE` / `APPROVE_WITH_NOTES` otherwise (details in `generated-media-review.md`). |
-
-规则分级：`structural_invariant`（结构缺陷，阻断）、`reviewed_invariant`（需证据判断，阻断）、`craft_default`（常用做法，可由创作者说明理由覆盖）、`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+| REV-01 | structural_invariant | 审评内容之前，先核清标题编号缺失或重复、内部链接断链、跨文档条目引用悬空、分段与合生分组时长加总不符等确定性结构与算术硬账。 |
+| REV-02 | reviewed_invariant | 每条问题单点名具体文件与标题/镜头/提示词编号，写明原文实据、实际影响、修改要求、不得误伤的保留内容、负责技能与严重程度。 |
+| REV-03 | reviewed_invariant | 指认下游擅自篡改或漏掉上游原意时，必须把上游定稿原文与下游冲突文字成对摆出来核对。 |
+| REV-04 | craft_default | 优先由未参与本轮执笔的独立审稿人审查；执笔人自检须如实注明，且审查问题单绝不能跟直接改稿混为一谈。 |
+| REV-05 | craft_default | 指出套路重复或套话空洞时，标出具体位置并说明对剧情推进或观感的损伤，不空扣“有 AI 味”帽子。 |
+| REV-06 | taste_option | 审稿人的个人审美与拍法偏好除非撞上创作者已拍板的硬性限制，否则一律只记作 `note` 参考建议。 |
+| REV-07 | reviewed_invariant | 用户要求“一口气跑通全流程草稿”不等于已逐环验收定稿；未经创作者确认的预览草稿按待确认稿审视。 |
+| REV-08 | craft_default | 根据创作者看片反馈或实看结果排查成片瑕疵对应的提示词与垫图症结（如残留杂字、意外混入配乐、人物串衣换脸、180° 越轴或口型错位），顺藤摸瓜定位到具体条目与字句。 |
+| REV-09 | reviewed_invariant | 改写提示词或重新编排多镜合生分组后，重新核对剧本关键信息、连戏状态与已确认限制是否完整保留，不单看编号挂对就放行。 |
+| REV-10 | craft_default | 成片与试拍调优先分清是输入参考素材本身的问题还是生成结果的问题，按保留沿用、后期修补、局部改词、原样重抽或重拆重排选定处理办法（结论仅限当前项目与配置）；探索性试拍归因优先每次单改一项变量，明确错漏同轮一并修完并交代不得误伤的保留范围；同一毛病反复重抽仍复现时退回改拆镜或换拍法，不靠堆砌画质空话硬抽。 |
+| REV-12 | craft_default | 仅当项目节奏目标状态为已确认时，拿确认指标与当前稿件做算术核对，超出区间处记为不阻断交付的提醒项（写明指标名、目标值、实测值与位置），创作者说明理由即可保留；未设节奏目标时不套用外部均数硬卡。 |
+| REV-13 | craft_default | 通读整集之外，结合题材特点对开场钩子、集尾收束落点与中段推进密度做局部专项抽查。 |
+| REV-14 | craft_default | 修改要求针对指明位置开局部补丁并写明不得误伤的保留内容，不借局部毛病要求整集推倒重写；若润色压稿误删了抓人钩子、高潮金句或巧妙包袱，单独记下原位置与原句供执笔人取舍。 |
+| REV-15 | craft_default | 审生成素材或整集成片时，对照分镜本镜目的与起止状态，将瑕疵分流为保留沿用（`note`）、裁切避让/后期修补（`minor`）、中度瑕疵建议重抽但可由创作者拍板取舍（`major`）、必须重新生成或成片剪辑补回（`blocker`），按分流结果给出审查结论（细则见 [generated-media.md](generated-media.md)）。 |

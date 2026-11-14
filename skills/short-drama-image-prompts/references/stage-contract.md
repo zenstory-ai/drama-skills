@@ -1,28 +1,22 @@
-# 图片提示词阶段契约
+# 图片提示词阶段规则
 
-本阶段只拥有 `剧集/<EP>/图片提示词.md` 中的 `IMG-...` 项（用途、参考边界与可复制正文）；继承视觉设定与项目视觉方向，不改写资产身份、地理、剧情状态或镜头边界。每项参考写明控制与不得控制范围（无获授权像素观察时保持未验证）；局部修改直接写目标、变化、保持项与连续性影响，不另建隐藏 JSON 或 QA 记录。
+本阶段负责维护 `剧集/<EP>/图片提示词.md` 里的 `IMG-...` 条目（设定图用途、`- 参考：` 边界与 `### 可复制提示词` 正文）；以 `视觉设定.md` 和项目视觉方向为准，不擅自改动角色长相、场景空间布局、剧情状态或分镜起止点，不另建隐藏 JSON 或质检台账。
 
-## 本阶段规则
+## 本阶段规则表
 
 ### `IMG`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| IMG-01 | structural_invariant | Each `IMG-...` item names the exact visual-setting item and current variant it depicts. |
-| IMG-02 | craft_default | Put distinguishing identity, geometry, scale, or state before generic quality language. |
-| IMG-03 | reviewed_invariant | Character sheets preserve identity while depicting one coherent Look. |
-| IMG-04 | reviewed_invariant | Location plates preserve geography, orientation, anchors, material, and light, normally without cast. |
-| IMG-05 | reviewed_invariant | Prop plates preserve scale, shape, material, wear, function, and text policy. |
-| IMG-06 | structural_invariant | Edit prompts declare exact target, changes, preserve set, and expected continuity impact. |
-| IMG-07 | structural_invariant | Readable text cannot coexist with a global no-text constraint. |
-| IMG-08 | reviewed_invariant | A claim about reference pixels requires a creator/reference-owner description or authorized input-reference observation bound to the inspected bytes; otherwise admission stays unresolved, and a negative prompt cannot stand in for evidence. |
-| IMG-09 | reviewed_invariant | Each reference states its purpose, what may be copied, and what must not be copied; a composition-, scale-, or effect-only reference cannot redefine identity, content, text, or story state. |
-| IMG-10 | reviewed_invariant | Views of one Location in the same time/weather state share key-light source, colour-temperature relation, and contrast direction; any difference cites a recorded cause and its delta. |
-| IMG-11 | reviewed_invariant | A lookdev frame binds accepted visual direction and production profile across a declared character-expression, core-location, or high-pressure test axis; a high-pressure frame also binds exact screenplay blocks for story state and information permission, while style references may control only declared surface treatment and never identity, fixed geography, story state, cast count, or prop text. |
-| IMG-12 | reviewed_invariant | Each real input reference has a stable `REF-...` slot binding explicit order, a visible project-relative path or other unambiguous artifact locator, a Chinese label, and may-control/must-not-control scope. Reordering preserves slot identity; replacing media explicitly revises that slot's locator. `IMG-...` remains reserved for image-prompt headings. |
-| IMG-13 | structural_invariant | An `IMG-...` item named by a continuity lock in `视觉设定.md` carries that lock's surface verbatim in its copyable prompt. |
-| IMG-14 | structural_invariant | Every `REF-...` slot an image-prompt item declares carries one 用途 from the closed set 身份/造型状态/地理/构图/尺度/效果/起始帧/结束帧/风格, the same vocabulary the storyboard uses, so one picture answers one question. An asset board normally uses the first six; 起始帧 and 结束帧 belong to a shot. |
-
-规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
-`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、
-`taste_option`（创作者选择，不作缺陷）。创作者已接受的事实优先于本表。
+| IMG-01 | structural_invariant | 每条 `IMG-...` 都必须明确指向 `视觉设定.md` 里对应的条目名称及当前所画的具体造型、视角或状态。 |
+| IMG-02 | craft_default | 提示词优先写清认人认物的核心外观特征、空间方位、尺寸比例与当前状态，不用空泛画质套话喧宾夺主。 |
+| IMG-03 | reviewed_invariant | 角色设定图保持人物五官长相一致；单图默认画同一时段共存的一套妆造，确需同板对照不同状态时须明确声明分栏版式并标清各栏边界。 |
+| IMG-04 | reviewed_invariant | 场景空镜设定图守住房间空间布局、观看朝向、固定陈设、材质与主光方向，默认清场不画演员。 |
+| IMG-05 | reviewed_invariant | 道具设定图守住尺寸比例、外轮廓、材质肌理、关键活动结构与字迹处理规则；单图默认画单一状态，同板展示开合或正反多状态时须明确声明分栏或并列视角。 |
+| IMG-06 | craft_default | 局部改图提示词写清修改目标与具体改动结果，点明紧邻易带偏的 1–2 处不变特征，其余保持原图不变。 |
+| IMG-07 | reviewed_invariant | 要求画面生成清晰可读文字时，不得在同一条提示词里同时挂全局禁字约束。 |
+| IMG-08 | reviewed_invariant | 断言参考图画面干净无杂字水印须有创作者说明或实际看图核验依据；未实看核验时标明未核验，不能指望负面排除词擦掉原图自带杂字。 |
+| IMG-09 | reviewed_invariant | 每张真实输入参考图占用唯一 `REF-...` 图位，从十项固定词表（`外貌`/`主体`/`造型状态`/`空间布局`/`构图`/`尺度`/`效果`/`起始帧`/`结束帧`/`风格`）选填唯一 `用途`，写明排列顺序、项目相对路径、名称及控制与不得控制范围；仅借用 `构图`、`尺度`、`效果` 或 `风格` 的参考图不得带偏人物长相、固定陈设、字样或剧情状态。 |
+| IMG-10 | reviewed_invariant | 同一场景在同一时段与天气下的不同视角图，主光源位置、冷暖色温主次和明暗反差方向必须统一；光线改变须对应剧本或设定状态变化。 |
+| IMG-11 | reviewed_invariant | 视觉定调图（Lookdev）按人物神态、核心场景或重头冲突戏检验项目画风；冲突戏定调图须守住对应场次的剧情进度与悬念藏露边界，`风格` 参考图只控制画风笔触与影调质感。 |
+| IMG-13 | structural_invariant | 凡被 `视觉设定.md` 的 `- 连戏锁：` 点名的 `IMG-...` 条目，都必须把对应的 `锁定词` 原字带入 `### 可复制提示词`。 |

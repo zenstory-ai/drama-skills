@@ -17,11 +17,19 @@ if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.9 or newer")
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
-EXAMPLE_RECORDS = (
-    "assets/creator-decision.example.jsonl",
-    "assets/production-observation.example.jsonl",
-    "assets/reference-observation.example.jsonl",
-)
+SYNTHETIC_DECISION_RECORDS = [
+    {
+        "record_type": "sources",
+        "schema_version": "1.0.0",
+        "sources": {"short-drama": {"owner": "short-drama", "artifact": "short-drama.json"}},
+    },
+    {
+        "decision_id": "CD-VISUAL-001",
+        "decision_kind": "visual_direction",
+        "status": "accepted",
+        "target_locators": [{"src": "short-drama", "field": "/creator_authority/visual_direction"}],
+    },
+]
 
 # ---------------------------------------------------------------------------
 # REFERENCE RESOLVER -- reference implementation.
@@ -179,14 +187,11 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    for relative in EXAMPLE_RECORDS:
-        path = SKILL_ROOT / relative
-        records = read_records(path)
-        declared = load_sources(records)
-        require(bool(declared), f"{relative} declares its upstream snapshots")
-        resolved, findings = check_records(records, path.name)
-        require(not findings, f"{relative} reference findings: {findings}")
-        require(resolved > 0, f"{relative} carries at least one resolvable reference")
+    declared = load_sources(SYNTHETIC_DECISION_RECORDS)
+    require(bool(declared), "synthetic decision records declare upstream snapshots")
+    resolved, findings = check_records(SYNTHETIC_DECISION_RECORDS, "synthetic-decision.jsonl")
+    require(not findings, f"synthetic decision reference findings: {findings}")
+    require(resolved > 0, "synthetic decision records carry at least one resolvable reference")
 
     sources = {"screenplay": {"owner": "short-drama-write", "artifact": "a.md", "hash": "0" * 64}}
     _, undeclared = resolve_ref({"src": "missing", "record_id": "BLK-1"}, sources, "synthetic")

@@ -108,6 +108,8 @@ class AdapterFailure(RuntimeError):
         http_status: int | None = None,
         request_id: str | None = None,
         retryable: bool = False,
+        submitted: bool | None = None,
+        detail: str | None = None,
     ) -> None:
         super().__init__(message)
         self.category = category
@@ -115,6 +117,8 @@ class AdapterFailure(RuntimeError):
         self.http_status = http_status
         self.request_id = _safe_token(request_id)
         self.retryable = retryable
+        self.submitted = submitted
+        self.detail = _safe_detail(detail)
 
     def public(self, provider: str) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -127,7 +131,38 @@ class AdapterFailure(RuntimeError):
             result["http_status"] = self.http_status
         if self.request_id is not None:
             result["request_id"] = self.request_id
+        if self.submitted is not None:
+            result["submitted"] = self.submitted
+        if self.detail is not None:
+            result["detail"] = self.detail
         return result
+
+
+AdapterError = AdapterFailure
+MINIMAX_H3_REFERENCE_LIMITS = {
+    "image_url": 9,
+    "video_url": 3,
+    "audio_url": 3,
+}
+
+
+def _safe_detail(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    collapsed = " ".join(value.split())
+    if not collapsed or len(collapsed) > 160:
+        return None
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in collapsed):
+        return None
+    if re.search(
+        r"://|(?<![\w.])/(?:Users|home|private|var|tmp)/|\b[A-Za-z]:[\\/]"
+        r"|\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}"
+        r"|\b(?:authorization|password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]",
+        collapsed,
+        re.IGNORECASE,
+    ):
+        return None
+    return collapsed
 
 
 def _safe_token(value: object) -> str | None:
@@ -196,7 +231,9 @@ def _http_failure(provider: str, error: urllib.error.HTTPError) -> AdapterFailur
     )
 
 
-def _require_job(job: Mapping[str, Any], modality: str) -> tuple[str, dict[str, Any]]:
+def _require_job(
+    job: Mapping[str, Any], modality: str, *, max_outputs: int = 1
+) -> tuple[str, dict[str, Any]]:
     if not isinstance(job, Mapping) or job.get("modality") != modality:
         raise ValueError(f"adapter requires a {modality} job")
     prompt = job.get("prompt")
@@ -206,9 +243,67 @@ def _require_job(job: Mapping[str, Any], modality: str) -> tuple[str, dict[str, 
     if not isinstance(parameters, Mapping):
         raise ValueError("job parameters must be an object")
     outputs = job.get("outputs")
-    if not isinstance(outputs, list) or len(outputs) != 1 or not isinstance(outputs[0], str):
+    if not isinstance(outputs, list) or not outputs or any(
+        not isinstance(item, str) for item in outputs
+    ):
+        raise ValueError("provider adapter requires at least one output")
+    if max_outputs == 1 and len(outputs) != 1:
         raise ValueError("provider adapter requires exactly one output")
+    if len(outputs) > max_outputs:
+        raise ValueError(f"provider adapter accepts at most {max_outputs} outputs")
     return prompt, dict(parameters)
+
+
+ZH_ROLE_LABELS = {
+    "first_frame": "首帧",
+    "last_frame": "尾帧",
+    "start_frame": "首帧",
+    "end_frame": "尾帧",
+    "reference_image": "参考图",
+    "reference_video": "参考视频",
+    "reference_audio": "参考音频",
+    "identity": "外貌",
+    "identity_and_look": "外貌与造型",
+    "look_state": "造型状态",
+    "look": "造型",
+    "geography": "空间布局",
+    "spatial_geography": "空间布局",
+    "composition": "构图",
+    "scale": "尺度",
+    "effect": "效果",
+    "style": "风格",
+    "continuity_video": "前序接戏视频",
+    "actual_tail_frame": "前镜实际尾帧",
+}
+
+
+def _prompt_already_binds_references(
+    prompt: str,
+    bindings: Sequence[Mapping[str, Any]],
+    reference_tokens: Sequence[str],
+) -> bool:
+    if "retention_analysis:" in prompt:
+        return True
+    if reference_tokens:
+        return all(
+            re.search(rf"{re.escape(token)}(?!\d)", prompt) is not None
+            for token in reference_tokens
+        )
+    count = len(bindings)
+    return bool(count) and (
+        all(
+            re.search(rf"<Picture {index}>(?!\d)", prompt) is not None
+            for index in range(1, count + 1)
+        )
+        or all(
+            re.search(rf"@图片{index}(?!\d)", prompt) is not None
+            for index in range(1, count + 1)
+        )
+        or all(
+            re.search(rf"图{index}(?!\d)", prompt) is not None
+            for index in range(1, count + 1)
+        )
+    )
 
 
 def _prompt_with_reference_contract(
@@ -262,20 +357,25 @@ def _prompt_with_reference_contract(
                 raise ValueError("reference audio character is invalid")
             # The source's explicit speaker wins over the free-form asset label.
             label = f"{character.strip()}音色参考"
+        role_text = role.strip()
         values = {
             "order": index,
             "reference": reference_tokens[index - 1] if reference_tokens else str(index),
             "label": label.strip(),
-            "role": role.strip(),
+            "role": role_text,
             "may": ", ".join(item.strip() for item in may_control),
             "must": ", ".join(item.strip() for item in must_not_control),
         }
         if language.startswith("zh"):
+            zh_values = {
+                **values,
+                "role": ZH_ROLE_LABELS.get(role_text, role_text),
+            }
             instructions.append(
                 f"{zh_reference_prefix} "
                 + (
-                    "{reference}（{label}），用途 {role}。允许控制：{may}。"
-                    "不得控制：{must}。".format(**values)
+                    "{reference}（{label}），用途：{role}。允许控制：{may}。"
+                    "不得控制：{must}。".format(**zh_values)
                 )
             )
         elif language.startswith("en"):
@@ -289,6 +389,8 @@ def _prompt_with_reference_contract(
                     **values
                 )
             )
+    if _prompt_already_binds_references(prompt, bindings, reference_tokens):
+        return prompt
     if language.startswith("zh"):
         heading = zh_heading
     elif language.startswith("en"):
@@ -357,9 +459,7 @@ def compile_seedance_payload(
     ):
         raise ValueError("Seedance duration must be -1 or an integer from 1 to 30")
     if duration is not None and duration != -1:
-        if duration_range is None:
-            raise ValueError("Seedance duration needs an explicit model profile")
-        minimum, maximum = duration_range
+        minimum, maximum = (1, 30) if duration_range is None else duration_range
         if not 1 <= minimum <= maximum <= 30 or not minimum <= duration <= maximum:
             raise ValueError("Seedance duration is outside the configured model profile")
     ratio = parameters.get("ratio")
@@ -368,10 +468,10 @@ def compile_seedance_payload(
     ):
         raise ValueError("Seedance ratio is outside the supported profile")
     if ratio is not None:
-        configured_ratios = set(allowed_ratios or ())
-        if not configured_ratios:
-            raise ValueError("Seedance ratio needs an explicit model profile")
-        if not configured_ratios <= SEEDANCE_RATIOS or ratio.strip() not in configured_ratios:
+        configured_ratios = (
+            set(SEEDANCE_RATIOS) if allowed_ratios is None else set(allowed_ratios)
+        )
+        if not configured_ratios or not configured_ratios <= SEEDANCE_RATIOS or ratio.strip() not in configured_ratios:
             raise ValueError("Seedance ratio is outside the configured model profile")
         ratio = ratio.strip()
     generate_audio = parameters.get("generate_audio")
@@ -470,6 +570,8 @@ def _seedance_runtime_profile(
             "Seedance duration profile is incomplete",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="SEEDANCE_MIN_DURATION and SEEDANCE_MAX_DURATION must be set together",
         )
     try:
         duration_range = (
@@ -482,6 +584,8 @@ def _seedance_runtime_profile(
             "Seedance duration profile is invalid",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="Seedance duration profile must be integer seconds",
         ) from exc
     if allowed_ratios is not None and (
         not allowed_ratios or not allowed_ratios <= SEEDANCE_RATIOS
@@ -490,6 +594,8 @@ def _seedance_runtime_profile(
             "Seedance ratio profile is invalid",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="SEEDANCE_ALLOWED_RATIOS contains unsupported ratios",
         )
     if duration_range is not None and not (
         1 <= duration_range[0] <= duration_range[1] <= 30
@@ -498,6 +604,8 @@ def _seedance_runtime_profile(
             "Seedance duration profile is invalid",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="Seedance duration profile must be within 1..30 seconds",
         )
     return allowed_ratios, duration_range
 
@@ -536,20 +644,21 @@ def compile_minimax_h3_payload(
     duration = parameters.get("duration")
     if not isinstance(duration, int) or isinstance(duration, bool):
         raise ValueError("MiniMax video duration must be an integer number of seconds")
-    if duration_range is None:
-        raise ValueError("MiniMax video duration needs an explicit model profile")
-    minimum, maximum = duration_range
-    if not 1 <= minimum <= maximum or not minimum <= duration <= maximum:
+    minimum, maximum = (1, 30) if duration_range is None else duration_range
+    if not 1 <= minimum <= maximum <= 30 or not minimum <= duration <= maximum:
         raise ValueError("MiniMax video duration is outside the configured model profile")
 
     resolution = parameters.get("resolution")
     if not isinstance(resolution, str) or resolution.strip() not in MINIMAX_VIDEO_RESOLUTIONS:
         raise ValueError("MiniMax video resolution is outside the supported profile")
-    configured_resolutions = set(allowed_resolutions or ())
-    if not configured_resolutions:
-        raise ValueError("MiniMax video resolution needs an explicit model profile")
+    configured_resolutions = (
+        set(MINIMAX_VIDEO_RESOLUTIONS)
+        if allowed_resolutions is None
+        else set(allowed_resolutions)
+    )
     if (
-        not configured_resolutions <= MINIMAX_VIDEO_RESOLUTIONS
+        not configured_resolutions
+        or not configured_resolutions <= MINIMAX_VIDEO_RESOLUTIONS
         or resolution.strip() not in configured_resolutions
     ):
         raise ValueError("MiniMax video resolution is outside the configured model profile")
@@ -558,11 +667,14 @@ def compile_minimax_h3_payload(
     if ratio is not None:
         if not isinstance(ratio, str) or ratio.strip() not in MINIMAX_VIDEO_RATIOS:
             raise ValueError("MiniMax video ratio is outside the supported profile")
-        configured_ratios = set(allowed_ratios or ())
-        if not configured_ratios:
-            raise ValueError("MiniMax video ratio needs an explicit model profile")
+        configured_ratios = (
+            set(MINIMAX_VIDEO_RATIOS)
+            if allowed_ratios is None
+            else set(allowed_ratios)
+        )
         if (
-            not configured_ratios <= MINIMAX_VIDEO_RATIOS
+            not configured_ratios
+            or not configured_ratios <= MINIMAX_VIDEO_RATIOS
             or ratio.strip() not in configured_ratios
         ):
             raise ValueError("MiniMax video ratio is outside the configured model profile")
@@ -576,6 +688,21 @@ def compile_minimax_h3_payload(
             raise ValueError(f"unsupported MiniMax reference role: {role}")
         counters[field] += 1
         reference_tokens.append(f"<{labels[field]} {counters[field]}>")
+    if all(role not in {"first_frame", "last_frame"} for role in reference_roles):
+        for field, limit in MINIMAX_H3_REFERENCE_LIMITS.items():
+            if counters[field] > limit:
+                detail = (
+                    f"MiniMax H3 accepts at most {limit} {field} reference"
+                    + ("s" if limit != 1 else "")
+                )
+                raise AdapterError(
+                    detail,
+                    category="invalid_request",
+                    code="too_many_references",
+                    retryable=False,
+                    submitted=False,
+                    detail=detail,
+                )
     text = _prompt_with_reference_contract(
         prompt,
         job,
@@ -632,21 +759,30 @@ def compile_minimax_h3_payload(
 def _minimax_video_runtime_profile() -> tuple[
     frozenset[str] | None, frozenset[str] | None, tuple[int, int] | None
 ]:
-    def _set(name: str, supported: Collection[str]) -> frozenset[str] | None:
-        raw = os.environ.get(name)
-        if raw is None:
+    def _set(names: Sequence[str], supported: Collection[str]) -> frozenset[str] | None:
+        chosen_name = next((name for name in names if name in os.environ), None)
+        if chosen_name is None:
             return None
+        raw = os.environ[chosen_name]
         values = frozenset(item.strip() for item in raw.split(",") if item.strip())
         if not values or not values <= set(supported):
             raise AdapterFailure(
-                f"MiniMax video profile is invalid: {name}",
+                f"MiniMax video profile is invalid: {chosen_name}",
                 category="configuration",
                 code="invalid_model_profile",
+                submitted=False,
+                detail=f"MiniMax video profile is invalid: {chosen_name}",
             )
         return values
 
-    allowed_ratios = _set("MINIMAX_VIDEO_RATIOS", MINIMAX_VIDEO_RATIOS)
-    allowed_resolutions = _set("MINIMAX_VIDEO_RESOLUTIONS", MINIMAX_VIDEO_RESOLUTIONS)
+    allowed_ratios = _set(
+        ("MINIMAX_VIDEO_ALLOWED_RATIOS", "MINIMAX_VIDEO_RATIOS"),
+        MINIMAX_VIDEO_RATIOS,
+    )
+    allowed_resolutions = _set(
+        ("MINIMAX_VIDEO_ALLOWED_RESOLUTIONS", "MINIMAX_VIDEO_RESOLUTIONS"),
+        MINIMAX_VIDEO_RESOLUTIONS,
+    )
     minimum_raw = os.environ.get("MINIMAX_VIDEO_MIN_DURATION")
     maximum_raw = os.environ.get("MINIMAX_VIDEO_MAX_DURATION")
     if (minimum_raw is None) != (maximum_raw is None):
@@ -654,6 +790,8 @@ def _minimax_video_runtime_profile() -> tuple[
             "MiniMax video duration profile is incomplete",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="MINIMAX_VIDEO_MIN_DURATION and MINIMAX_VIDEO_MAX_DURATION must be set together",
         )
     try:
         duration_range = (
@@ -666,19 +804,25 @@ def _minimax_video_runtime_profile() -> tuple[
             "MiniMax video duration profile is invalid",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="MiniMax video duration profile must be integer seconds",
         ) from exc
-    if duration_range is not None and not 1 <= duration_range[0] <= duration_range[1]:
+    if duration_range is not None and not (
+        1 <= duration_range[0] <= duration_range[1] <= 30
+    ):
         raise AdapterFailure(
             "MiniMax video duration profile is invalid",
             category="configuration",
             code="invalid_model_profile",
+            submitted=False,
+            detail="MiniMax video duration profile must be within 1..30 seconds",
         )
     return allowed_ratios, allowed_resolutions, duration_range
 
 
 def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
     """Compile an image job into GPT Image 2 generation/edit fields."""
-    prompt, parameters = _require_job(job, "image")
+    prompt, parameters = _require_job(job, "image", max_outputs=16)
     parameters = _take(
         parameters,
         {
@@ -738,10 +882,16 @@ def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("GPT Image quality is invalid")
     if "moderation" in parameters and parameters["moderation"] not in {"auto", "low"}:
         raise ValueError("GPT Image moderation is invalid")
-    suffix = Path(job["outputs"][0]).suffix.casefold()
     formats = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp"}
-    if suffix not in formats:
-        raise ValueError("unsupported GPT Image output extension")
+    output_formats: set[str] = set()
+    for target in job["outputs"]:
+        suffix = Path(target).suffix.casefold()
+        if suffix not in formats:
+            raise ValueError("unsupported GPT Image output extension")
+        output_formats.add(formats[suffix])
+    if len(output_formats) != 1:
+        raise ValueError("GPT Image outputs in one job must share an output format")
+    output_format = next(iter(output_formats))
     references = job.get("references", [])
     if not isinstance(references, list) or len(references) > 16:
         raise ValueError("GPT Image accepts at most sixteen references")
@@ -754,8 +904,8 @@ def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "model": OPENAI_MODEL,
         "prompt": prompt,
-        "n": 1,
-        "output_format": formats[suffix],
+        "n": len(job["outputs"]),
+        "output_format": output_format,
         **parameters,
     }
 
@@ -894,6 +1044,8 @@ def _base_url(env_name: str, default: str) -> str:
             "provider base URL is invalid",
             category="configuration",
             code="invalid_base_url",
+            submitted=False,
+            detail=f"{env_name} must be an HTTPS base URL without credentials",
         )
     return value
 
@@ -905,6 +1057,8 @@ def _credential(name: str) -> str:
             "provider credential is not configured",
             category="configuration",
             code="missing_credential",
+            submitted=False,
+            detail=f"{name} is not configured",
         )
     return value
 
@@ -1057,6 +1211,8 @@ def _binding_roles(
             "carrying the provider role for that file",
             category="configuration",
             code="missing_reference_roles",
+            submitted=False,
+            detail=f"{provider} references require matching reference_bindings",
         )
     roles: list[str] = []
     for binding in bindings:
@@ -1068,6 +1224,8 @@ def _binding_roles(
                 + f"; got {role!r}",
                 category="configuration",
                 code="invalid_reference_role",
+                submitted=False,
+                detail=f"{provider} reference role is unsupported",
             )
         roles.append(role)
     return roles
@@ -1089,6 +1247,8 @@ def _inline_reference_urls(
                 f"{provider} {role} does not accept a {suffix or 'suffixless'} file",
                 category="configuration",
                 code="invalid_reference_type",
+                submitted=False,
+                detail=f"{provider} {role} does not accept a {suffix or 'suffixless'} file",
             )
         try:
             content = path.read_bytes()
@@ -1097,16 +1257,29 @@ def _inline_reference_urls(
                 f"{provider} could not read a project reference",
                 category="configuration",
                 code="unreadable_reference",
+                submitted=False,
+                detail=f"{provider} could not read a project reference",
             ) from exc
         if not content:
             raise AdapterFailure(
                 f"{provider} project reference is empty",
                 category="configuration",
                 code="empty_reference",
+                submitted=False,
+                detail=f"{provider} project reference is empty",
             )
         # The bytes have to be the media type the extension claims, or the
         # provider rejects a request this adapter said was well formed.
-        _validate_media_content(path.name, content)
+        try:
+            _validate_media_content(path.name, content)
+        except AdapterFailure as exc:
+            raise AdapterFailure(
+                str(exc),
+                category="configuration",
+                code=exc.code,
+                submitted=False,
+                detail="reference file bytes do not match its file extension",
+            ) from exc
         limit = INLINE_REFERENCE_LIMITS[field]
         if len(content) > limit:
             raise AdapterFailure(
@@ -1114,6 +1287,8 @@ def _inline_reference_urls(
                 "limit; host it and bind an HTTPS URL instead",
                 category="configuration",
                 code="reference_too_large",
+                submitted=False,
+                detail=f"{provider} reference exceeds the {limit // (1024 * 1024)}MB inline limit",
             )
         encoded = base64.b64encode(content).decode("ascii")
         total += len(encoded)
@@ -1123,6 +1298,8 @@ def _inline_reference_urls(
                 "host the largest ones and bind HTTPS URLs instead",
                 category="configuration",
                 code="reference_body_too_large",
+                submitted=False,
+                detail=f"{provider} inline references exceed the 64MB request body limit",
             )
         urls.append(f"data:{mime};base64,{encoded}")
     return urls
@@ -1173,12 +1350,13 @@ def _output_root(job: Mapping[str, Any]) -> Path:
 
 
 def _temporary_output(
-    job: Mapping[str, Any], target: str, content: bytes
+    job: Mapping[str, Any], target: str, content: bytes, *, index: int | None = None
 ) -> Path:
     if not content or len(content) > MAX_OUTPUT_BYTES:
         raise AdapterFailure("provider output is too large")
     _validate_media_content(target, content)
-    path = _output_root(job) / ("result" + Path(target).suffix.casefold())
+    stem = "result" if index is None else f"result-{index}"
+    path = _output_root(job) / (stem + Path(target).suffix.casefold())
     with path.open("xb") as handle:
         handle.write(content)
     return path
@@ -1361,7 +1539,7 @@ def _poll_seedance(
     )
 
 
-def _run_openai(job: Mapping[str, Any]) -> tuple[Path, str | None]:
+def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
     token = _credential("OPENAI_API_KEY")
     body = compile_gpt_image_2_payload(job)
     base = _base_url("OPENAI_BASE_URL", OPENAI_BASE_URL)
@@ -1413,23 +1591,41 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path, str | None]:
             token=token,
         )
         request_id = headers.get("x-request-id")
+    targets = job["outputs"]
+    expected_count = len(targets)
     data = result.get("data") if isinstance(result, Mapping) else None
-    image = data[0].get("b64_json") if isinstance(data, list) and len(data) == 1 and isinstance(data[0], Mapping) else None
-    if not isinstance(image, str):
+    if (
+        not isinstance(data, list)
+        or len(data) != expected_count
+        or any(
+            not isinstance(item, Mapping) or not isinstance(item.get("b64_json"), str)
+            for item in data
+        )
+    ):
         raise AdapterFailure(
-            "OpenAI did not return exactly one image",
+            "OpenAI did not return the requested images",
             code="missing_image",
             request_id=request_id,
         )
-    try:
-        content = base64.b64decode(image, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise AdapterFailure(
-            "OpenAI returned invalid image data",
-            code="invalid_image_data",
-            request_id=request_id,
-        ) from exc
-    return _temporary_output(job, job["outputs"][0], content), request_id
+    decoded_images: list[bytes] = []
+    for item in data:
+        try:
+            decoded_images.append(base64.b64decode(item["b64_json"], validate=True))
+        except (ValueError, binascii.Error) as exc:
+            raise AdapterFailure(
+                "OpenAI returned invalid image data",
+                code="invalid_image_data",
+                request_id=request_id,
+            ) from exc
+    if expected_count == 1:
+        return _temporary_output(job, targets[0], decoded_images[0]), request_id
+    return (
+        [
+            _temporary_output(job, target, content, index=idx)
+            for idx, (target, content) in enumerate(zip(targets, decoded_images), 1)
+        ],
+        request_id,
+    )
 
 
 def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
@@ -1719,9 +1915,13 @@ def main() -> int:
             "minimax-h3": _run_minimax_video,
             "minimax-speech": _run_minimax_speech,
         }
-        path, provider_job_id = runners[args.provider](job)
+        result_paths, provider_job_id = runners[args.provider](job)
+        paths = result_paths if isinstance(result_paths, list) else [result_paths]
         response: dict[str, Any] = {
-            "outputs": [{"target": job["outputs"][0], "source": str(path)}]
+            "outputs": [
+                {"target": target, "source": str(path)}
+                for target, path in zip(job["outputs"], paths)
+            ]
         }
         if provider_job_id:
             response["provider_job_id"] = provider_job_id
@@ -1732,7 +1932,21 @@ def main() -> int:
         json.dump({"error": exc.public(args.provider)}, sys.stdout, ensure_ascii=True)
         print("provider adapter failed safely", file=sys.stderr)
         return 1
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+    except ValueError as exc:
+        error_payload: dict[str, Any] = {
+            "provider": args.provider,
+            "category": "invalid_request",
+            "code": "invalid_job",
+            "retryable": False,
+            "submitted": False,
+        }
+        detail = _safe_detail(str(exc))
+        if detail is not None:
+            error_payload["detail"] = detail
+        json.dump({"error": error_payload}, sys.stdout, ensure_ascii=True)
+        print("provider adapter failed safely", file=sys.stderr)
+        return 1
+    except (KeyError, TypeError, json.JSONDecodeError):
         json.dump(
             {
                 "error": {
@@ -1740,6 +1954,7 @@ def main() -> int:
                     "category": "invalid_request",
                     "code": "invalid_job",
                     "retryable": False,
+                    "submitted": False,
                 }
             },
             sys.stdout,

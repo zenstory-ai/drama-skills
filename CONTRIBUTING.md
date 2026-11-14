@@ -10,15 +10,15 @@
    不要把编辑/创作判断写成规则代码。
 2. **规则分级**：所有规范都要归入 `structural_invariant` / `reviewed_invariant` /
    `craft_default` / `taste_option` 四级；不得把统一的字数、比例、数量配方设为
-   质量门槛。可迁移知识在 `skills/short-drama/references/knowhow-index.md` 注册
-   稳定 ID。
+   质量门槛。各阶段规则在对应技能的 `references/stage-contract.md` 注册稳定 ID，
+   跨阶段问题路由记入 `skills/short-drama/references/knowhow-index.md`。
 3. **所有权与审查分离**：每个产物只有一个负责技能；修订动作不能冒充审查 verdict。
    优先使用未参与当前版本创作的 reviewer；条件不允许时可以诚实标注自检，不等待或伪造隔离证明。
 4. **来源边界**：仓库不得包含非公开项目内容、内部标识、私有网址、供应商任务
    或媒体文件；示例一律合成改写。边界测试会检查这些要求。
 5. **测试证明行为，不钉死文案**：不得新增只断言某份文档或源码“包含/不包含某个纯字符串”
    的单元测试。这类测试既不证明规则生效，也会把临时措辞固化成接口。规则能结构化时解析并验证
-   契约，工具能执行时用输入/输出夹具验证行为，内容质量则用隔离实跑与盲评证明；泄漏扫描器本身
+   契约，工具能执行时用输入/输出夹具验证行为，内容质量与阻断门禁则按等级用实跑或盲评验证；泄漏扫描器本身
    可以匹配文本，但其测试必须验证扫描行为与边界，不能拿当前文案中的某句话当成功条件。
 
 ## 受保护发布检查
@@ -33,9 +33,12 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -v
 ```
 
 文件缺失或只有注释时，测试必须失败；词表内容、扫描命中和私有来源指纹不得提交或写入
-公共日志。精确词扫描只负责明显泄漏，不能证明去复刻。任何由非公开材料晋升的候选还必须
-按 maintainer-only `$short-drama-knowhow` 流程，由未看过来源和作者答案的 fresh agent 做
-语义 de-copy 盲审；无法取得 fresh 独立上下文时不得发布该候选。
+公共日志。精确词扫描只负责明显泄漏，不能证明去复刻。由非公开材料提炼经验时，须按
+maintainer-only `$short-drama-knowhow` 流程完成脱敏与去复刻改写，并按规则等级验证：
+仅新增或收紧阻断级门禁（`structural_invariant` / `reviewed_invariant`）时要求跑
+干净子会话匿名样本与独立盲评；新增或修订 `craft_default` / `taste_option` 完成脱敏与
+反例边界核查并通过仓库回归测试即可；降级、收窄或废止过严、失效旧规则凭明确反例或模型
+演进事实即可直接落地并通过现有测试，免跑双盲评测。
 
 该维护技能故意不放在公共 `skills/*` 目录中。维护者需从受控 checkout
 显式链接后调用，普通创作者无需安装：
@@ -47,12 +50,10 @@ ln -s "$PWD/maintainers/skills/short-drama-knowhow" \
 ```
 
 已存在同名路径时先核对并移除旧链接；不要把此目录移动到公共 `skills/`。
-盲测 arms、verdict、promotion 证据和回滚记录保存在仓库外的受控工作区或被忽略的
-`.omx/evals/`；`maintainers/evals/` 也被忽略，公共测试不得依赖其中的本地评测内容。
-受保护 CI 需要检查这些证据时，通过显式的外部路径注入，不能把它们复制回公开 tree。
-任何公共规则的 promotion / hold / retire 还要按维护技能的
-`references/promotion-ledger.md` 留下去标识事件：绑定合成输入、匿名输出、公共 diff、
-独立 reviewer 结论和回滚目标；hash 只能保证字节可重放，不能代替语义审查。
+内部研究记录与盲测过程材料保存在仓库外的受控工作区或被忽略的 `.omx/evals/`、
+`maintainers/evals/`，公共测试不得依赖其中的本地评测内容；受保护 CI 需要检查外部
+材料时通过显式路径注入，不能把它们复制回公开 tree。重大门禁增删与跨文件契约变更统一
+记入仓库 `.agents/notes/` 决策笔记，版本演进与回退直接依托 Git 提交历史。
 
 ## 修改后必跑
 

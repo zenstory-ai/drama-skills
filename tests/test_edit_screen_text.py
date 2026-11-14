@@ -168,6 +168,69 @@ class ScreenTextParsingTests(unittest.TestCase):
             ])
             self.assertEqual(len(project.findings()), 1)
 
+    def test_caption_style_traces_to_screen_text_or_scene_heading_and_places_as_caption(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 画面文字 1：0.00-1.20 字卡 办公室 · 日",
+                "- 画面文字 2：1.30-2.80 字卡 日 · 办公室",
+            ]])
+            cuts = project.parse()
+            self.assertEqual([t.style for t in cuts[0].screen_texts], ["字卡", "字卡"])
+            self.assertEqual(project.findings(), [])
+            layers = edit._screen_text_layers(cuts, [3.0])
+            self.assertEqual([layer["style"] for layer in layers], ["caption", "caption"])
+
+            # Invented location/time still fails traceability.
+            project.write([["- 画面文字：0.00-1.20 字卡 三年后 · 纽约"]])
+            self.assertEqual(len(project.findings()), 1)
+
+    def test_comma_and_slash_normalization_matches_progress_and_thousands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[]])
+            (project.episode / "剧本.md").write_text(
+                SCREENPLAY + "\n[画面文字] 当前粉丝：2　目标进度：2／1000000\n",
+                encoding="utf-8",
+            )
+            project.write([[
+                "- 画面文字 1：0.00-1.20 字卡 5 天内粉丝破 1000000",
+                "- 画面文字 2：1.30-2.80 任务面板 军宣新星｜2 / 1,000,000",
+            ]])
+            self.assertEqual(project.findings(), [])
+
+    def test_caption_rejects_rarity_and_countdown_and_shares_upper_slot_with_system_panel(self):
+        refused = {
+            "caption with rarity": ["- 画面文字：0.00-1.50 字卡 办公室 · 日（传说）"],
+            "caption with countdown": ["- 画面文字：0.00-1.50 字卡 办公室 · 日（倒计时：60）"],
+            "caption colliding with upper-slot system panel": [
+                "- 画面文字 1：0.00-2.00 字卡 办公室 · 日",
+                "- 画面文字 2：1.50-2.80 系统面板 军宣新星",
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[]])
+            for name, lines in refused.items():
+                with self.subTest(name):
+                    project.write([lines])
+                    with self.assertRaises(edit.EditError):
+                        project.parse()
+
+    def test_fullwidth_slash_progress_normalizes_in_python_and_parses_in_remotion_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 画面文字：0.00-2.00 任务面板 军宣新星｜2／1,000,000",
+            ]])
+            cuts = project.parse()
+            self.assertEqual(cuts[0].screen_texts[0].items, ("军宣新星", "2/1,000,000"))
+            self.assertEqual(project.findings(), [])
+            layers = edit._screen_text_layers(cuts, [3.0])
+            self.assertEqual(
+                layers[0]["items"],
+                [
+                    {"text": "军宣新星", "rarity": None},
+                    {"text": "2/1,000,000", "rarity": None},
+                ],
+            )
+
 
 class ScreenTextPlacementTests(unittest.TestCase):
     def blocks(self):
@@ -584,6 +647,7 @@ console.log(JSON.stringify({
   // A resumed clock starts mid-second; its digit still changes on the whole second.
   resumed: [0, 0.5, 0.6].map((t) => Math.round(rules.sinceTick(431996.5, t) * 100) / 100),
   ems: rules.lineEms("五天　一百万？ok"),
+  cjkPunctuationEms: rules.lineEms("——……“”‘’"),
 }));
 """)
         self.assertEqual(values["typed"], [0, 0, 0, 0, 1, 24])
@@ -594,6 +658,45 @@ console.log(JSON.stringify({
         self.assertEqual(values["pulse"], [0.0, 0.1, 0.5, 0.0])
         self.assertEqual(values["resumed"], [0.5, 0.0, 0.1])
         self.assertAlmostEqual(values["ems"], 7 + 2 * 0.58)
+        self.assertEqual(values["cjkPunctuationEms"], 8)
+
+    def test_emoji_and_supplementary_plane_characters_fall_back_without_stopping_font_check(self):
+        verdict = self.run_rules(r"""
+const cues = [{ text: "冲上热搜🔥🎬⏰⭐⭕1️⃣\n" }];
+const screenTexts = [{ items: [{ text: "粉丝暴涨🚀✨👨‍💻⏳" }, { text: "2 ／ 1,000,000" }] }];
+const plan = rules.fontLoadPlan(cues, screenTexts);
+const fwProgress = rules.parseProgress("2 ／ 1,000,000");
+const strictBmpFontCheck = (_font, text) => {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (
+      cp > 0xffff
+      || cp < 0x20
+      || (cp >= 0x2300 && cp <= 0x23ff)
+      || (cp >= 0x2600 && cp <= 0x27bf)
+      || cp === 0x2b50
+      || cp === 0x2b55
+      || cp === 0x200d
+      || cp === 0x20e3
+      || (cp >= 0xfe00 && cp <= 0xfe0f)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+const problem = rules.fontLoadProblem(plan, plan.map(() => [{}]), strictBmpFontCheck);
+console.log(JSON.stringify({ plan, problem, fwProgress }));
+""")
+        self.assertIsNone(verdict["problem"])
+        self.assertEqual(
+            verdict["fwProgress"], {"done": 2, "total": 1000000, "ratio": 2e-06}
+        )
+        all_checked = "".join(entry["text"] for entry in verdict["plan"])
+        for bmp_char in "冲上热搜粉丝暴涨":
+            self.assertIn(bmp_char, all_checked)
+        for excluded in ("🔥", "🎬", "🚀", "✨", "⏰", "⏳", "⭐", "⭕", "\u20e3", "／", "\n", "\u200d", "\ufe0f"):
+            self.assertNotIn(excluded, all_checked)
 
 
 if __name__ == "__main__":

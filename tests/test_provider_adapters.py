@@ -90,10 +90,21 @@ class ProviderCompilerTests(unittest.TestCase):
                 model="configured",
                 allowed_ratios={"9:16"},
             )
-        with self.assertRaisesRegex(ValueError, "explicit model profile"):
+        with self.assertRaisesRegex(ValueError, "1 to 30"):
             provider_adapters.compile_seedance_payload(
-                self.video_job(duration=5), model="configured"
+                self.video_job(duration=31), model="configured"
             )
+        with self.assertRaisesRegex(ValueError, "configured model profile"):
+            provider_adapters.compile_seedance_payload(
+                self.video_job(duration=12),
+                model="configured",
+                duration_range=(4, 10),
+            )
+        fallback_seedance = provider_adapters.compile_seedance_payload(
+            self.video_job(duration=5, ratio="9:16"), model="configured"
+        )
+        self.assertEqual(fallback_seedance["duration"], 5)
+        self.assertEqual(fallback_seedance["ratio"], "9:16")
 
         referenced = self.video_job()
         referenced["references"] = ["输入/reference.png"]
@@ -349,7 +360,7 @@ class ProviderCompilerTests(unittest.TestCase):
         self.assertEqual(reference["duration"], 20)
         self.assertTrue(reference["generate_audio"])
         self.assertEqual(reference["omni_reference_task_type"], "reference")
-        self.assertIn("参考 @图片1", reference["content"][0]["text"])
+        self.assertIn("参考 @图片1（女主定妆照），用途：外貌", reference["content"][0]["text"])
 
         edit = self.video_job(
             duration=-1,
@@ -520,29 +531,20 @@ class ProviderCompilerTests(unittest.TestCase):
             },
         )
 
-    def test_minimax_h3_requires_an_explicit_runtime_profile(self) -> None:
+    def test_minimax_h3_supports_default_and_narrowed_runtime_profiles(self) -> None:
         job = self.video_job(duration=6, ratio="9:16", resolution="768P")
         with self.assertRaisesRegex(ValueError, "explicitly configured"):
             provider_adapters.compile_minimax_h3_payload(
                 job, model="", **self.minimax_video_profile()
             )
-        with self.assertRaisesRegex(ValueError, "duration needs an explicit model profile"):
+        default_payload = provider_adapters.compile_minimax_h3_payload(job, model="m")
+        self.assertEqual(default_payload["duration"], 6)
+        self.assertEqual(default_payload["ratio"], "9:16")
+        self.assertEqual(default_payload["resolution"], "768P")
+        with self.assertRaisesRegex(ValueError, "outside the configured model profile"):
             provider_adapters.compile_minimax_h3_payload(
-                job,
+                self.video_job(duration=31, ratio="9:16", resolution="768P"),
                 model="m",
-                allowed_ratios={"9:16"},
-                allowed_resolutions={"768P"},
-            )
-        with self.assertRaisesRegex(ValueError, "resolution needs an explicit model profile"):
-            provider_adapters.compile_minimax_h3_payload(
-                job, model="m", allowed_ratios={"9:16"}, duration_range=(4, 15)
-            )
-        with self.assertRaisesRegex(ValueError, "ratio needs an explicit model profile"):
-            provider_adapters.compile_minimax_h3_payload(
-                job,
-                model="m",
-                allowed_resolutions={"768P"},
-                duration_range=(4, 15),
             )
         with self.assertRaisesRegex(ValueError, "outside the configured model profile"):
             provider_adapters.compile_minimax_h3_payload(
@@ -550,12 +552,142 @@ class ProviderCompilerTests(unittest.TestCase):
                 model="m",
                 **self.minimax_video_profile(),
             )
+        with self.assertRaisesRegex(ValueError, "outside the configured model profile"):
+            provider_adapters.compile_minimax_h3_payload(
+                job,
+                model="m",
+                allowed_ratios={"16:9"},
+            )
+        with self.assertRaisesRegex(ValueError, "outside the configured model profile"):
+            provider_adapters.compile_minimax_h3_payload(
+                job,
+                model="m",
+                allowed_resolutions={"480P"},
+            )
         with self.assertRaisesRegex(ValueError, "outside the supported profile"):
             provider_adapters.compile_minimax_h3_payload(
                 self.video_job(duration=6, ratio="9:16", resolution="8K"),
                 model="m",
                 **self.minimax_video_profile(),
             )
+
+    def test_gpt_image_2_supports_batch_outputs_up_to_sixteen(self) -> None:
+        batch_job = {
+            **self.image_job(size="1024x1536"),
+            "outputs": [
+                f"剧集/EP001/制作成果/images/candidate-{index}.png"
+                for index in range(1, 4)
+            ],
+        }
+        payload = provider_adapters.compile_gpt_image_2_payload(batch_job)
+        self.assertEqual(payload["n"], 3)
+        self.assertEqual(payload["output_format"], "png")
+
+        mixed = {
+            **batch_job,
+            "outputs": [
+                "剧集/EP001/制作成果/images/a.png",
+                "剧集/EP001/制作成果/images/b.webp",
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "share an output format"):
+            provider_adapters.compile_gpt_image_2_payload(mixed)
+
+        too_many = {
+            **batch_job,
+            "outputs": [
+                f"剧集/EP001/制作成果/images/c-{index}.png" for index in range(17)
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "at most 16 outputs"):
+            provider_adapters.compile_gpt_image_2_payload(too_many)
+
+        multi_video = {
+            **self.video_job(duration=5, ratio="9:16"),
+            "outputs": ["制作成果/a.mp4", "制作成果/b.mp4"],
+        }
+        with self.assertRaisesRegex(ValueError, "exactly one output"):
+            provider_adapters.compile_seedance_payload(multi_video, model="m")
+
+    def test_native_multimodal_prompts_do_not_append_duplicate_reference_tail(
+        self,
+    ) -> None:
+        h3_prompt = (
+            "retention_analysis:\n"
+            "  anchors: [<Picture 1> protagonist look, <Audio 1> protagonist voice]\n"
+            "shot_timeline:\n"
+            "  0-5s: <Picture 1> speaks with <Audio 1>."
+        )
+        h3_job = {
+            **self.video_job(
+                duration=5,
+                ratio="9:16",
+                resolution="768P",
+                prompt_language="zh-CN",
+            ),
+            "prompt": h3_prompt,
+            "references": ["输入/look.png", "输入/voice.wav"],
+            "reference_bindings": [
+                {
+                    **self.reference_binding(),
+                    "path": "输入/look.png",
+                    "role": "reference_image",
+                },
+                {
+                    "slot_id": "REF-VOICE",
+                    "order": 2,
+                    "path": "输入/voice.wav",
+                    "label": "音色参考",
+                    "role": "reference_audio",
+                    "character": "女主",
+                    "may_control": ["音色"],
+                    "must_not_control": ["台词"],
+                },
+            ],
+        }
+        h3_payload = provider_adapters.compile_minimax_h3_payload(
+            h3_job,
+            model="m",
+            reference_urls=[
+                "https://cdn.example/look.png",
+                "https://cdn.example/voice.wav",
+            ],
+            reference_roles=["reference_image", "reference_audio"],
+        )
+        self.assertEqual(h3_payload["content"][0]["text"], h3_prompt)
+
+        seedance_prompt = "@图片1 中的女主转身推门，用 @音频1 的声线低声开口。"
+        seedance_job = {
+            **h3_job,
+            "prompt": seedance_prompt,
+            "parameters": {"duration": 5, "ratio": "9:16", "prompt_language": "zh-CN"},
+        }
+        seedance_payload = provider_adapters.compile_seedance_payload(
+            seedance_job,
+            model="m",
+            reference_urls=[
+                "https://cdn.example/look.png",
+                "https://cdn.example/voice.wav",
+            ],
+            reference_roles=["reference_image", "reference_audio"],
+        )
+        self.assertEqual(seedance_payload["content"][0]["text"], seedance_prompt)
+
+        partial_seedance = {
+            **seedance_job,
+            "prompt": "@图片1 中的女主转身推门。",
+        }
+        partial_payload = provider_adapters.compile_seedance_payload(
+            partial_seedance,
+            model="m",
+            reference_urls=[
+                "https://cdn.example/look.png",
+                "https://cdn.example/voice.wav",
+            ],
+            reference_roles=["reference_image", "reference_audio"],
+        )
+        self.assertIn("参考约束：", partial_payload["content"][0]["text"])
+        self.assertIn("@音频1", partial_payload["content"][0]["text"])
 
     def test_minimax_h3_text_to_video_needs_a_concrete_ratio(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires an explicit ratio"):
@@ -1222,12 +1354,258 @@ class ProviderRuntimeTests(unittest.TestCase):
                     "category": "invalid_request",
                     "code": "invalid_job",
                     "retryable": False,
+                    "submitted": False,
+                    "detail": "adapter requires a image job",
                 }
             },
         )
         self.assertEqual(failed.stderr.strip(), "provider adapter failed safely")
         self.assertNotIn(secret, failed.stdout)
         self.assertNotIn(secret, failed.stderr)
+
+    def test_openai_runtime_writes_multiple_requested_images_and_minimax_env_defaults(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            png_a = b"\x89PNG\r\n\x1a\nfirst"
+            png_b = b"\x89PNG\r\n\x1a\nsecond"
+            with mock.patch.dict(
+                os.environ, {"OPENAI_API_KEY": "openai-secret"}, clear=False
+            ), mock.patch.object(
+                provider_adapters,
+                "_request_json",
+                return_value=(
+                    {
+                        "data": [
+                            {"b64_json": base64.b64encode(png_a).decode()},
+                            {"b64_json": base64.b64encode(png_b).decode()},
+                        ]
+                    },
+                    {"x-request-id": "req-multi"},
+                ),
+            ):
+                paths, request_id = provider_adapters._run_openai(
+                    {
+                        "modality": "image",
+                        "prompt": "two variations",
+                        "references": [],
+                        "outputs": ["制作成果/a.png", "制作成果/b.png"],
+                        "parameters": {},
+                        "project_root": str(root),
+                        "output_root": str(root),
+                    }
+                )
+            assert isinstance(paths, list)
+            self.assertEqual(len(paths), 2)
+            self.assertEqual([p.read_bytes() for p in paths], [png_a, png_b])
+            self.assertEqual(request_id, "req-multi")
+
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("MINIMAX_VIDEO_")
+            }
+            clean_env.update(
+                {
+                    "MINIMAX_API_KEY": "minimax-secret",
+                    "MINIMAX_VIDEO_MODEL": "h3-default-profile-model",
+                    "MINIMAX_VIDEO_ALLOWED_RATIOS": "9:16,16:9",
+                    "MINIMAX_VIDEO_ALLOWED_RESOLUTIONS": "768P,2K",
+                }
+            )
+            with mock.patch.dict(os.environ, clean_env, clear=True):
+                ratios, resolutions, duration_range = (
+                    provider_adapters._minimax_video_runtime_profile()
+                )
+            self.assertEqual(ratios, frozenset({"9:16", "16:9"}))
+            self.assertEqual(resolutions, frozenset({"768P", "2K"}))
+            self.assertIsNone(duration_range)
+
+    def test_prompt_reference_binding_lookahead_does_not_treat_index_10_as_index_1(
+        self,
+    ) -> None:
+        binding = {
+            "slot_id": "REF-HERO",
+            "order": 1,
+            "path": "输入/hero.png",
+            "label": "女主定妆照",
+            "role": "reference_image",
+            "may_control": ["身份"],
+            "must_not_control": ["构图"],
+        }
+        job = {
+            "modality": "video",
+            "prompt": "保持镜头稳定",
+            "references": ["输入/hero.png"],
+            "reference_bindings": [binding],
+            "outputs": ["制作成果/shot.mp4"],
+            "parameters": {"prompt_language": "zh-CN"},
+        }
+        for false_hit, tokens in (
+            ("请避免出现@图片10里的杂物。", ["@图片1"]),
+            ("Keep <Picture 10> out of frame.", ["<Picture 1>"]),
+            ("请避免出现@图片10里的杂物。", ()),
+            ("Keep <Picture 10> out of frame.", ()),
+            ("不要混入图10的背景。", ()),
+        ):
+            with self.subTest(false_hit=false_hit, tokens=tokens):
+                self.assertFalse(
+                    provider_adapters._prompt_already_binds_references(
+                        false_hit, [binding], tokens
+                    )
+                )
+                augmented = provider_adapters._prompt_with_reference_contract(
+                    false_hit,
+                    job,
+                    prompt_language="zh-CN",
+                    reference_tokens=tokens,
+                )
+                self.assertNotEqual(augmented, false_hit)
+
+        for genuine, tokens in (
+            ("主角沿用@图片1的五官与发型。", ["@图片1"]),
+            ("Match <Picture 1> identity.", ["<Picture 1>"]),
+            ("主角沿用图1的五官。", ()),
+        ):
+            with self.subTest(genuine=genuine, tokens=tokens):
+                self.assertTrue(
+                    provider_adapters._prompt_already_binds_references(
+                        genuine, [binding], tokens
+                    )
+                )
+
+    def test_minimax_h3_reference_count_caps_fail_preflight_without_burning_confirmation(
+        self,
+    ) -> None:
+        for role, count, cap_label in (
+            ("reference_image", 10, "9 image_url"),
+            ("reference_video", 4, "3 video_url"),
+            ("reference_audio", 4, "3 audio_url"),
+        ):
+            ext = ".png" if role == "reference_image" else (".mp4" if role == "reference_video" else ".wav")
+            refs = [f"输入/ref-{idx}{ext}" for idx in range(1, count + 1)]
+            urls = [f"https://cdn.example/ref-{idx}{ext}" for idx in range(1, count + 1)]
+            roles = [role] * count
+            bindings = [
+                {
+                    "slot_id": f"REF-{idx:02d}",
+                    "order": idx,
+                    "path": refs[idx - 1],
+                    "label": f"参考{idx}",
+                    "role": role,
+                    "may_control": ["身份"],
+                    "must_not_control": ["动作"],
+                }
+                for idx in range(1, count + 1)
+            ]
+            job = {
+                "modality": "video",
+                "prompt": "camera holds steady",
+                "references": refs,
+                "reference_bindings": bindings,
+                "outputs": ["制作成果/shot.mp4"],
+                "parameters": {"duration": 6, "ratio": "9:16", "resolution": "768P"},
+            }
+            with self.subTest(role=role, count=count):
+                with self.assertRaises(provider_adapters.AdapterError) as raised:
+                    provider_adapters.compile_minimax_h3_payload(
+                        job,
+                        model="MiniMax-Hailuo-03",
+                        reference_urls=urls,
+                        reference_roles=roles,
+                    )
+                err = raised.exception.public("minimax-h3")
+                self.assertEqual(err["code"], "too_many_references")
+                self.assertFalse(err["retryable"])
+                self.assertFalse(err["submitted"])
+                self.assertIn(cap_label, err["detail"])
+
+        # End-to-end check with production_tool: 10 reference images fail preflight and preserve confirmation.
+        prod_spec = importlib.util.spec_from_file_location(
+            "production_tool_for_h3_cap",
+            SUITE / "skills/short-drama-produce/scripts/production_tool.py",
+        )
+        assert prod_spec and prod_spec.loader
+        prod_mod = importlib.util.module_from_spec(prod_spec)
+        prod_spec.loader.exec_module(prod_mod)
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "proj"
+            (root / "输入").mkdir(parents=True)
+            (root / "剧集/EP001/制作成果/video").mkdir(parents=True)
+            (root / "short-drama.json").write_text("{}", encoding="utf-8")
+            refs = []
+            bindings = []
+            for idx in range(1, 11):
+                rel = f"输入/img-{idx:02d}.png"
+                (root / rel).write_bytes(png)
+                refs.append(rel)
+                bindings.append(
+                    {
+                        "slot_id": f"REF-{idx:02d}",
+                        "order": idx,
+                        "path": rel,
+                        "label": f"图{idx}",
+                        "role": "reference_image",
+                        "may_control": ["外貌"],
+                        "must_not_control": ["台词"],
+                    }
+                )
+            job_path = root / "over-cap-h3.json"
+            job_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-H3-OVERCAP",
+                        "modality": "video",
+                        "adapter": "minimax-h3",
+                        "prompt": "Ten reference images.",
+                        "references": refs,
+                        "reference_bindings": bindings,
+                        "outputs": ["剧集/EP001/制作成果/video/out.mp4"],
+                        "parameters": {"duration": 6, "ratio": "9:16", "resolution": "768P"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            prepared = prod_mod.prepare_job(root, job_path)
+            prod_mod.confirm_job(
+                root,
+                job_id="EP001-H3-OVERCAP",
+                confirmation=prepared["confirmation"],
+            )
+            cfg = Path(directory) / "h3-adapter.json"
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "minimax-h3": {
+                                "command": [sys.executable, str(SCRIPT), "minimax-h3"],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "MINIMAX_API_KEY": "secret-key",
+                    "MINIMAX_VIDEO_MODEL": "MiniMax-Hailuo-03",
+                },
+                clear=False,
+            ):
+                with self.assertRaisesRegex(prod_mod.AdapterError, "9 image_url"):
+                    prod_mod.run_job(
+                        root, job_id="EP001-H3-OVERCAP", adapter_config=cfg
+                    )
+            self.assertEqual(
+                prod_mod.job_status(root, job_id="EP001-H3-OVERCAP")["state"],
+                "confirmed",
+            )
 
 
 if __name__ == "__main__":

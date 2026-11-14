@@ -35,3 +35,4 @@ Status: implemented
 - 收益：提示词不再混进别的镜、别的集的人和陈设；特写保住景别；还原出片保住原片的快切重音；电话声和内心独白的质感在时间线一次定下；额度不够时仍能交出完整的集。
 - 代价：每镜的共用段落要按在场人物和视角裁剪；镜内切拆开后镜头数和生成次数变多；带通滤波和混响要在剪辑外部工具里做并记入剪辑单。
 - 局限：结论只来自一部剧的三集、一个图像模型和两个视频模型的这一轮实测。
+- 后续调整：`location-and-view.md` 归并入 `asset-design-guide.md`、`sound-and-subtitles.md` 归并入 `editing-guide.md` 等同技能内参考文件合并，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

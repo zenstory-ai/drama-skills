@@ -14,22 +14,41 @@ export const FACES = {
 export const CHROME_TEXT = "【系统提示】【新任务】进度传说史诗稀有·";
 const DIGITS = "0123456789天:/, ";
 
+const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
+  const cp = ch.codePointAt(0);
+  if (cp === undefined || cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return false;
+  if (cp > 0xffff) return false;
+  if (cp >= 0xd800 && cp <= 0xdfff) return false;
+  if (cp === 0x200d || cp === 0x20e3 || (cp >= 0xfe00 && cp <= 0xfe0f)) return false;
+  if ((cp >= 0x2300 && cp <= 0x23ff) || (cp >= 0x2600 && cp <= 0x27bf)) return false;
+  if (cp === 0x2b50 || cp === 0x2b55) return false;
+  return true;
+};
+
 /**
  * Which characters each face must have loaded before the first frame.
  *
  * The faces are split by unicode range, and a browser fetches a range only
  * when text in it is laid out -- after the frame has been captured. Asking for
- * every character the film will draw, up front, is what makes frame 0 look
- * like frame 1000.
+ * every BMP character the film will draw, up front, is what makes frame 0 look
+ * like frame 1000, while supplementary-plane Emoji and control characters fall
+ * back cleanly to system faces without aborting the render.
  *
  * @param {{ text: string }[]} cues
  * @param {{ items: { text: string }[] }[]} screenTexts
  */
 export const fontLoadPlan = (cues, screenTexts) => {
-  const unique = (/** @type {string} */ text) => [...new Set(Array.from(text))].join("");
-  const drawn = unique(
-    [...cues.map((cue) => cue.text), ...screenTexts.flatMap((piece) => piece.items.map((item) => item.text)),
-      CHROME_TEXT, DIGITS].join(""),
+  const uniqueBmp = (/** @type {string} */ text) =>
+    [...new Set(Array.from(text).filter(isCheckableBmpGlyph))].join("");
+  const drawn = uniqueBmp(
+    [
+      ...cues.map((cue) => cue.text),
+      ...screenTexts.flatMap((piece) =>
+        piece.items.map((item) => (parseProgress(item.text) ? item.text.replace(/／/g, "/") : item.text)),
+      ),
+      CHROME_TEXT,
+      DIGITS,
+    ].join(""),
   );
   return [
     { font: FACES.heavy, text: drawn },
@@ -131,9 +150,14 @@ export const familyIsMissing = (measure, stack, sample) => {
 
 // ---------------------------------------------------------------- text
 
-/** Width of a line in ems: CJK and full-width forms are one, the rest a little over half. */
+const isFullEm = (/** @type {string} */ ch) => {
+  const cp = ch.codePointAt(0) ?? 0;
+  return cp > 0x2e7f || cp === 0x2014 || cp === 0x2026 || (cp >= 0x2018 && cp <= 0x201d);
+};
+
+/** Width of a line in ems: CJK, full-width forms, and Chinese dashes/ellipses/curly quotes are one, the rest a little over half. */
 export const lineEms = (/** @type {string} */ text) =>
-  Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.58), 0);
+  Array.from(text).reduce((sum, ch) => sum + (isFullEm(ch) ? 1 : 0.58), 0);
 
 /** Characters of `text` a typewriter shows `elapsed` seconds in, at 35 ms each after `delay`. */
 export const typedLength = (/** @type {number} */ elapsed, delay = 0) =>
@@ -146,7 +170,7 @@ export const typedLength = (/** @type {number} */ elapsed, delay = 0) =>
  * @param {string} text
  */
 export const parseProgress = (text) => {
-  const found = text.match(/^\s*([0-9][0-9,]*)\s*\/\s*([0-9][0-9,]*)\s*$/);
+  const found = text.match(/^\s*([0-9][0-9,]*)\s*[/／]\s*([0-9][0-9,]*)\s*$/);
   if (!found) return null;
   const done = Number(found[1].replace(/,/g, ""));
   const total = Number(found[2].replace(/,/g, ""));

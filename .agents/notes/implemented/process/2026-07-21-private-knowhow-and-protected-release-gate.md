@@ -25,3 +25,4 @@ Status: implemented
 
 - **收益**：公共树自己能证明公开边界；维护者技能与公共技能的目录分界由测试守住。
 - **代价与已知上限**：普通 CI 全绿不等于无泄漏，受保护发布依赖维护者本机的词表；hash 只保证字节可重放，不能代替语义审查；扫描根目录是硬编码前缀，改目录名要同步，否则门禁退化为空操作（945143e 加了「每个根至少匹配一个文件」的守卫）。
+- 后续调整：`short-drama-knowhow` 移除 `promotion-ledger.md` 与 `prompt-production-learning.md`、降级或删除过严旧规则免跑双盲评测的松绑，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

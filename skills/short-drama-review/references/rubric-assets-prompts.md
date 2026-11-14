@@ -1,60 +1,39 @@
-# Assets And Asset-Image Prompt Rubric
+# 视觉设定与生图提示词核查清单
 
-## Occurrence and decision
+## 1. 出场盘点与设定归类
 
-- Trace every production-relevant appearance to a scene ID and action/dialogue quote in `剧本.md` (exclude incidental screenplay nouns).
-- Require an explicit decision (`复用` / `新增身份` / `新增变体` / `待定`) and handle pronouns, aliases, groups, memories, portraits, and screen content without guessing.
+- `视觉设定.md` 列出的角色、场景、道具及其状态均能对应到《剧本.md》的具体场次与可见动作/对白出处（仅在台词里随口提及、不入画也不参与调度的名词不冗余建档）。
+- 每次出场明确归类为沿用既有设定、新增条目、新增造型/状态变体或待创作者确认；代词、化名、群演、回忆闪回、照片画像或屏幕内画面逐一甄别，不靠臆测强并或漏拆。
 
-## Identity versus variant
+## 2. 固定本体与阶段变体
 
-### Character / Look
+### 角色与声线设定
 
-- **Identity**: stable face/body/hair anchors, distinguishing marks, and persistent voice identity.
-- **Look**: wardrobe, makeup, hair arrangement, injury, dirt/wetness, disguise, age/weathering state, validity range.
-- Fail when a costume change creates a new person, incompatible Looks mix in one prompt without story reason, or protagonist/antagonist labels silently invent beauty, ugliness, body type, skin tone, or facial morality.
+- **角色固定本体 vs 造型变体**：五官脸型、体态比例、基础发色与辨识印记（疤痕、泪痣等）归入固定本体；穿搭换装、盘发散发、伤污湿衣、年龄变化及生效场次归入造型变体；关键服饰配饰需防跨镜走样时声明 `连戏锁` 与固定 `锁定词`。
+- **一票否决项**：换套衣服就拆成新角色；无剧情依据把两套互斥妆造揉进同一状态；仅凭“主角/反派”标签脑补美丑胖瘦或刻板脸谱。
+- **角色声线（按需核查，`AST-07`–`AST-12`）**：仅在填写了声线设定时核查——未备妥参考音频时如实标待选型，不拿空泛形容词冒充实音；挂有参考音频时写明控制与不得控制范围（原录音的情绪、混响与杂音不入固定本嗓，`AST-08`）；同一专有名词全篇保持唯一拼写读法（`AST-10`）；声线相近角色点名区分特征（`AST-11`）。
 
-### Voice direction (optional, `AST-07`–`AST-12`)
+### 场景与道具设定
 
-Only reviewed when `视觉设定.md` records a voice direction. Timbre is carried by a named reference recording plus pronunciation choices; accompanying text selects or judges a voice, never stands in for one.
+- **场景固定结构 vs 机位视角**：建筑格局、出入口、功能分区、固定陈设与动线归入本体；镜头朝向、时段天气光线与入画陈设归入视角。同一地点相同时段天气下的多视角图，主光方向、冷暖主次与实用灯具开关须前后自洽（`IMG-10`）。
+- **道具固定形制 vs 状态变体**：尺寸比例、器型结构、材质肌理与字迹规则归入本体；归属持握、开合损毁、内容物与生效场次归入变体。严禁道具跨场无故瞬移、比例忽大忽小或丢失必读字迹。
 
-Fail when:
-- no reference exists and prose adjectives stand in for identity instead of `待选型`;
-- a binding omits what it controls/excludes, or leaks take emotion, room reverb/mic distance, or background noise into identity (`AST-08`);
-- an audible claim lacks creator description or authorized listening observation (`AST-09`);
-- one proper noun has two accepted spellings in `视觉设定.md` (`AST-10`, structural blocker);
-- confusable references lack a distinguishing trait naming the nearest neighbour (`AST-11`);
-- reference audio bytes, provider parameters, model names, task fields, or URLs appear in `视觉设定.md` or delivery files.
+## 3. 时代背景考据（仅拦跨时代穿帮硬伤）
 
-Weak or unbounded selection criteria are reported as a craft note (`AST-12`).
+`时代背景` 应与原著或剧本写明的年份、通讯方式、场所制度保持一致：
 
-### Location / View
+- **仅拦截与时代背景明显穿帮的器物冲突（`AST-14`）**：例如古装戏混入现代玻璃幕墙或塑料制品、九十年代背景掏出全面屏智能手机、现代写实办公室无故摆出跨年代违和设备且无剧情依据。
+- **正常放行日常物理旧化与材质肌理词**：衣物、器物与墙地面的普通物理材质和生活使用痕迹（如旧夹克、桌面磨损、墙皮斑驳、褪色布料、`worn`、`dusty` 等）属于正常美术质感描写，**绝不因原著未逐字点名“旧/斑驳”就判违规打回**。漏写 `时代背景` 或款式不够细致仅作 `note` / `craft_default` 提醒（`AST-15`）。
 
-- **Identity**: architecture, layout, entrances, zones, anchors, materials, navigation.
-- **View**: camera-facing orientation/zone, time/weather/light state, visible anchors.
-- Fail when each camera angle becomes an unrelated location, geography changes silently between scene and plate, or Views sharing a time/weather state have unrecorded differences in key-light source, warm/cool priority, contrast direction, or practical on/off state when compared side by side (`IMG-10`).
+## 4. 生图提示词结构、分栏对照板与硬伤边界
 
-### Prop / State
-
-- **Identity**: scale, shape, material, function, moving parts, marks, text policy.
-- **State**: owner/hand/location, open/closed, clean/damaged/wet/bloodied, contents, validity.
-- Fail when a prop teleports, changes scale/material, or loses required readable evidence.
-
-## Era
-
-Era comes from source facts (devices, platforms, slang, stated years). Fail when `视觉设定.md`, `图片提示词.md`, or `视频提示词.md` contradicts source era facts, or uses retro/aged descriptors (`旧/老式/复古/褪色/斑驳`, `old`, `worn`, `dusty`, `period`, `CRT`) without source basis or explicit creator choice (`AST-14`, `STY-07`). Missing era anchors or unstated era-specific forms are craft notes (`AST-15`).
-
-## Prompt recipe and failure checks
-
-Every prompt requires purpose, exact binding, identifying facts, current variant, composition, background, lighting, text policy, constraints, and exclusions:
-
-- **Reference admission**: each media reference must declare one purpose, facts to copy, facts to exclude, and pixel/text admission. Fail on "use the whole reference" or when a composition/scale/effect reference leaks identity, wardrobe, text, count, or story state.
-- **Type-specific checks**:
-  - **Character sheet**: one identity and coherent Look, neutral background/light, no story action chain or accidental pose mixed into immutable anchors.
-  - **Location plate**: navigable geography, orientation, fixed anchors, material, palette, light direction; empty of cast unless specified.
-  - **Prop plate**: scale cue, shape, materials, wear, moving parts, current state, viewing angle, isolation, text policy.
-  - **Edit delta**: exact target/region, changes, preserve set, and continuity impact (fail on vague "make better" requests or unrelated regeneration).
-- **Blocking prompt failures**:
-  - quality/style boilerplate precedes or replaces identity/geography/scale, or the prompt dumps the entire visual spec instead of the needed variant;
-  - one character or prop occupies mutually exclusive positions, hands, or eyelines in the same frozen instant;
-  - negative constraints contradict required visible facts, or `图片提示词.md` contradicts `视觉设定.md`;
-  - private URLs, source IDs, provider task fields, or operator complaints leak into the prompt.
+- **参考图准入与用途边界（`IMG-08`、`IMG-09`）**：每张参考图从十项标准 `用途`（`外貌`、`主体`、`造型状态`、`空间布局`、`构图`、`尺度`、`效果`、`起始帧`、`结束帧`、`风格`）中选定唯一一项，写清控制与不得控制范围，不笼统写“照搬原图”，不让 `构图` / `风格` 参考图把无关人物外貌、穿搭或旧水印带进新图。
+- **设定图类型与分栏对照板（允许明确分栏排布）**：
+  - **角色与道具设定图**：单幅立绘展现同一角色的单一相容造型、背景干净看清特征；**明确支持分栏清晰的设定对照板**（如角色正/侧/背三视图对照板、全身立绘配面部特写分栏板、道具闭合与展开双态分栏对照板），只要提示词写明了分栏排布方式且同板内属于同一角色造型或明确标注的对照状态，即属规范工业设定图，不得误判为“多动作混杂”或“位置互斥”。
+  - **场景空镜设定图**：空间布局、观看朝向、固定陈设与主光方向齐备，无特别说明默认清场不画演员（`IMG-04`）。
+  - **局部改图说明（`IMG-06`）**：指明目标原图、修改区域、改动结果、保持不动的区域与特征，以及对下游连戏的影响。
+- **画风词位置按 `IMG-02`（`craft_default`）审视，不作阻断硬伤**：在提示词开头点明画风媒介（如二维手绘国漫、风格化三维）是稳住非实拍画风的常见有效做法；仅当空泛画质套话严重挤占核心人物外貌、空间布局或尺寸结构描写时，才作 `craft_default` / `note` 提醒，**不把画风或画质词位置列为阻断交付硬伤**。
+- **真正阻断交付的生图硬伤**：
+  - 非分栏单幅定格画面里，让同一人物或道具同时处于互斥的姿态、持物手或朝向；
+  - 要求直出清晰可读真字，却在同一条提示词里挂了全局禁字排除项（`IMG-07`），或与《视觉设定.md》核心外观事实正面冲突；
+  - 可复制提示词内混入了私有路径、网址、内部编号或人工返工吐槽。

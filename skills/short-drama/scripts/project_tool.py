@@ -138,7 +138,25 @@ RHYTHM_PROFILE_TOKENS = [AUTHORITY_ROOT_TOKEN, "rhythm_profile"]
 # The project rhythm profile: what develop proposes and the creator accepts, so
 # that later stages can do arithmetic on accepted numbers. Only types and ranges
 # are checked here; which values suit a project is the creator's call.
-RHYTHM_PROFILE_FORMS = ("ai_live_action", "motion_comic")
+RHYTHM_PROFILE_FORMS = (
+    "ai_live_action",
+    "live_action",
+    "motion_comic",
+    "2d_dynamic_comic",
+    "stylized_3d",
+    "ink_wash",
+    "chibi",
+    "guoman",
+    "anime",
+    "2d_anime",
+    "实拍",
+    "二维动态漫",
+    "风格化三维",
+    "水墨笔触",
+    "Q版表达",
+    "Q 版表达",
+    "国漫二次元",
+)
 RHYTHM_PROFILE_FIELDS = {
     "form": "form",
     "first_hook_seconds": "seconds",
@@ -326,8 +344,8 @@ def project_format(project: Mapping[str, Any]) -> dict[str, Any]:
 def rhythm_profile_problems(profile: Any) -> list[str]:
     """Type and range problems in a rhythm profile block; empty when usable.
 
-    A profile is complete or it is not a profile: a downstream stage doing
-    arithmetic on it cannot tell a field left out from a field meant as zero.
+    Fields may be supplied incrementally: only declared non-null fields are
+    checked, while at least one known field must be present.
     """
     if not isinstance(profile, Mapping):
         return ["rhythm_profile must be an object"]
@@ -337,15 +355,20 @@ def rhythm_profile_problems(profile: Any) -> list[str]:
             f"rhythm_profile has no field {name}; fields are "
             f"{', '.join(RHYTHM_PROFILE_FIELDS)}"
         )
-    for name, kind in RHYTHM_PROFILE_FIELDS.items():
-        if name not in profile:
-            problems.append(f"rhythm_profile.{name} is missing")
-            continue
+    declared = [
+        name
+        for name in RHYTHM_PROFILE_FIELDS
+        if name in profile and profile[name] is not None
+    ]
+    if not declared and not problems:
+        problems.append("rhythm_profile must declare at least one field")
+    for name in declared:
+        kind = RHYTHM_PROFILE_FIELDS[name]
         value = profile[name]
         number = isinstance(value, (int, float)) and not isinstance(value, bool)
         whole = isinstance(value, int) and not isinstance(value, bool)
         if kind == "form":
-            ok = value in RHYTHM_PROFILE_FORMS
+            ok = isinstance(value, str) and value in RHYTHM_PROFILE_FORMS
             expected = " or ".join(RHYTHM_PROFILE_FORMS)
         elif kind == "boolean":
             ok = isinstance(value, bool)
@@ -382,7 +405,11 @@ def project_rhythm_profile(project: Mapping[str, Any]) -> tuple[dict[str, Any], 
     problems = rhythm_profile_problems(profile)
     if problems:
         return {}, problems
-    return {name: profile[name] for name in RHYTHM_PROFILE_FIELDS}, []
+    return {
+        name: profile[name]
+        for name in RHYTHM_PROFILE_FIELDS
+        if name in profile and profile[name] is not None
+    }, []
 
 
 def profile_notes(project: Mapping[str, Any]) -> list[str]:
@@ -441,6 +468,11 @@ def initialize_project(
 ) -> dict[str, Any]:
     language = normalize_language_tag(language, field="language")
     prompt_language = normalize_language_tag(prompt_language, field="prompt_language")
+    if not isinstance(aspect_ratio, str) or not re.fullmatch(
+        r"[1-9][0-9]*:[1-9][0-9]*", aspect_ratio.strip()
+    ):
+        raise ValueError("aspect_ratio must be written as width:height, e.g. 16:9")
+    aspect_ratio = aspect_ratio.strip()
     if episode_count is not None and (
         isinstance(episode_count, bool)
         or not isinstance(episode_count, int)
@@ -501,6 +533,27 @@ def find_project(start: Path) -> Path:
     for directory in (candidate, *candidate.parents):
         if (directory / PROJECT_FILE).is_file():
             return directory
+    raise FileNotFoundError(f"no {PROJECT_FILE} found from {start}")
+
+
+def _find_delivery_project(start: Path) -> Path:
+    try:
+        return find_project(start)
+    except FileNotFoundError:
+        pass
+    candidate = start.expanduser().resolve()
+    if candidate.is_file():
+        candidate = candidate.parent
+    for directory in (candidate, *candidate.parents):
+        for role in ("episodes", "delivery"):
+            for roots in (CANONICAL_ROOTS, LEGACY_ROOTS):
+                marker = directory / roots[role]
+                try:
+                    details = os.lstat(marker)
+                except OSError:
+                    continue
+                if not _is_link_or_reparse(details) and stat.S_ISDIR(details.st_mode):
+                    return directory
     raise FileNotFoundError(f"no {PROJECT_FILE} found from {start}")
 
 
@@ -627,6 +680,43 @@ def _read_state(root: Path) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise ValueError("project state must be an object")
     return _normalize_state(document)
+
+
+def _read_state_if_present(root: Path) -> dict[str, Any]:
+    operations = root / ".short-drama"
+    try:
+        op_details = os.lstat(operations)
+    except FileNotFoundError:
+        op_details = None
+    if op_details is not None and (
+        _is_link_or_reparse(op_details) or not stat.S_ISDIR(op_details.st_mode)
+    ):
+        raise ValueError("project state is missing or unsafe")
+    state_path = root / STATE_FILE
+    try:
+        details = os.lstat(state_path)
+    except FileNotFoundError:
+        project_id: Any = None
+        project_path = root / PROJECT_FILE
+        if project_path.is_file() and not project_path.is_symlink():
+            try:
+                manifest = json.loads(project_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                manifest = {}
+            if isinstance(manifest, Mapping):
+                project_id = manifest.get("project_id")
+        return _normalize_state(
+            {
+                "schema_version": STATE_SCHEMA,
+                "project_id": project_id or "UNTRACKED",
+                "project_layout_mode": "auto",
+                "last_action": "untracked",
+                "artifacts": {},
+            }
+        )
+    if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
+        raise ValueError("project state is missing or unsafe")
+    return _read_state(root)
 
 
 def _legacy_artifact(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -935,7 +1025,16 @@ def _lock_handle(handle: Any) -> Iterator[None]:
 
 @contextlib.contextmanager
 def _project_lock(root: Path) -> Iterator[None]:
-    lock_path = root / ".short-drama/project.lock"
+    operations = root / ".short-drama"
+    try:
+        details = os.lstat(operations)
+    except FileNotFoundError:
+        details = None
+    if details is not None and (
+        _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode)
+    ):
+        raise ProjectConflictError("project operations directory is unsafe")
+    lock_path = operations / "project.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle, _lock_handle(handle):
         yield
@@ -1797,7 +1896,369 @@ def set_creator_authority(
     return {"field": field, "decision_id": decision_id, "value": written}
 
 
-def _artifact_for_path(state: Mapping[str, Any], relative: str) -> tuple[str, Mapping[str, Any]]:
+CONFIGURE_KEYS = frozenset(
+    {
+        "title",
+        "language",
+        "prompt_language",
+        "aspect_ratio",
+        "episode_count",
+        "target_seconds_per_episode",
+        "pacing",
+        "visual_direction",
+        "production_profile",
+        "rhythm_profile",
+    }
+)
+PACING_KEYS = frozenset({*SPEECH_RATES, "seconds_per_action_paragraph"})
+PRODUCTION_PROFILE_CHOICE_KEYS = frozenset(
+    {
+        "target_video_model",
+        "video_prompt_dialect",
+        "video_prompt_language",
+        "native_duration_seconds",
+        "supported_generation_modes",
+        "audio_generation",
+        "multi_shot_containers",
+        "continuation_route",
+        "form",
+        "camera",
+        "imagery",
+        "live_action",
+        "realism",
+        "notes",
+    }
+)
+
+
+def _validate_production_profile_updates(raw_prod: Any) -> dict[str, Any]:
+    if not isinstance(raw_prod, Mapping) or isinstance(raw_prod, bool) or not raw_prod:
+        raise ValueError("production_profile must be a non-empty object")
+    if "choices" in raw_prod and set(raw_prod) <= {"choices", "status"}:
+        choices_obj = raw_prod.get("choices")
+        if (
+            not isinstance(choices_obj, Mapping)
+            or isinstance(choices_obj, bool)
+            or not choices_obj
+        ):
+            raise ValueError("production_profile must be a non-empty object")
+        payload = dict(choices_obj)
+        wrapped = True
+    else:
+        payload = dict(raw_prod)
+        wrapped = False
+    if "status" in payload:
+        raise ValueError("production_profile choices must not carry status")
+    unknown = sorted(str(key) for key in payload if key not in PRODUCTION_PROFILE_CHOICE_KEYS)
+    if unknown:
+        raise ValueError(
+            f"production_profile has unknown field(s): {', '.join(unknown)}"
+        )
+    if "video_prompt_language" in payload:
+        raw_vpl = payload["video_prompt_language"]
+        if not isinstance(raw_vpl, str):
+            raise ValueError(
+                "video_prompt_language must be a non-empty BCP 47 language tag"
+            )
+        payload["video_prompt_language"] = normalize_language_tag(
+            raw_vpl, field="video_prompt_language"
+        )
+    if "native_duration_seconds" in payload:
+        nds = payload["native_duration_seconds"]
+        if (
+            not isinstance(nds, Mapping)
+            or isinstance(nds, bool)
+            or set(nds) != {"min", "max"}
+        ):
+            raise ValueError(
+                "native_duration_seconds must be an object with min and max"
+            )
+        raw_min, raw_max = nds.get("min"), nds.get("max")
+        if (
+            isinstance(raw_min, bool)
+            or not isinstance(raw_min, (int, float))
+            or not math.isfinite(float(raw_min))
+            or float(raw_min) <= 0
+        ):
+            raise ValueError("native_duration_seconds.min must be a positive number")
+        if (
+            isinstance(raw_max, bool)
+            or not isinstance(raw_max, (int, float))
+            or not math.isfinite(float(raw_max))
+            or float(raw_max) < float(raw_min)
+        ):
+            raise ValueError(
+                "native_duration_seconds.max must be >= native_duration_seconds.min"
+            )
+        payload["native_duration_seconds"] = {"min": raw_min, "max": raw_max}
+    return {"choices": payload} if wrapped else payload
+
+
+def _merge_choices_block(
+    authority: dict[str, Any], name: str, updates: Mapping[str, Any]
+) -> dict[str, Any]:
+    payload: Mapping[str, Any] = updates
+    if (
+        set(updates) <= {"choices", "status"}
+        and isinstance(updates.get("choices"), Mapping)
+    ):
+        payload = updates["choices"]
+    if not isinstance(payload, Mapping) or not payload:
+        raise ValueError(f"{name} must be a non-empty object")
+    if "status" in payload:
+        raise ValueError(f"{name} choices must not carry status")
+    current = authority.get(name)
+    block = dict(current) if isinstance(current, Mapping) else {}
+    existing = block.get("choices")
+    choices = dict(existing) if isinstance(existing, Mapping) else {}
+    choices.update(payload)
+    block["choices"] = choices
+    block["status"] = "accepted"
+    authority[name] = block
+    return block
+
+
+def configure_project(
+    path: Path,
+    *,
+    title: str | None = None,
+    language: str | None = None,
+    prompt_language: str | None = None,
+    aspect_ratio: str | None = None,
+    episode_count: int | None = None,
+    target_seconds_per_episode: float | None = None,
+    pacing: Mapping[str, Any] | None = None,
+    visual_direction: Mapping[str, Any] | None = None,
+    production_profile: Mapping[str, Any] | None = None,
+    rhythm_profile: Mapping[str, Any] | None = None,
+    updates: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Incrementally update short-drama.json and mark authority blocks accepted."""
+    merged: dict[str, Any] = {}
+    if updates is not None:
+        if not isinstance(updates, Mapping):
+            raise ValueError("configure JSON payload must be an object")
+        unknown = sorted(set(updates) - CONFIGURE_KEYS)
+        if unknown:
+            raise ValueError(f"unsupported configure field(s): {', '.join(unknown)}")
+        merged.update(updates)
+    explicit = {
+        "title": title,
+        "language": language,
+        "prompt_language": prompt_language,
+        "aspect_ratio": aspect_ratio,
+        "episode_count": episode_count,
+        "target_seconds_per_episode": target_seconds_per_episode,
+        "pacing": pacing,
+        "visual_direction": visual_direction,
+        "production_profile": production_profile,
+        "rhythm_profile": rhythm_profile,
+    }
+    for key, value in explicit.items():
+        if value is not None:
+            merged[key] = value
+    if not merged:
+        raise ValueError("configure requires at least one setting")
+
+    root = find_project(path)
+    with _project_lock(root):
+        state = _read_state_if_present(root)
+        project_path = _project_path(root, PROJECT_FILE)
+        project = json.loads(project_path.read_text(encoding="utf-8"))
+        if not isinstance(project, dict):
+            raise ValueError("project manifest must be an object")
+        format_block = project.get("format")
+        if not isinstance(format_block, dict):
+            format_block = {}
+            project["format"] = format_block
+        authority = project.get(AUTHORITY_ROOT_TOKEN)
+        if not isinstance(authority, dict):
+            authority = {}
+            project[AUTHORITY_ROOT_TOKEN] = authority
+
+        bound_pointers: dict[str, Any] = {}
+        updated_fields: list[str] = []
+
+        if "title" in merged:
+            raw_title = merged["title"]
+            if not isinstance(raw_title, str) or not raw_title.strip():
+                raise ValueError("title must be a non-empty string")
+            project["title"] = raw_title.strip()
+            updated_fields.append("title")
+
+        if "language" in merged:
+            raw_lang = merged["language"]
+            if not isinstance(raw_lang, str):
+                raise ValueError("language must be a string")
+            project["language"] = normalize_language_tag(raw_lang, field="language")
+            updated_fields.append("language")
+
+        if "prompt_language" in merged:
+            raw_prompt_lang = merged["prompt_language"]
+            if not isinstance(raw_prompt_lang, str):
+                raise ValueError("prompt_language must be a string")
+            format_block["prompt_language"] = normalize_language_tag(
+                raw_prompt_lang, field="prompt_language"
+            )
+            updated_fields.append("prompt_language")
+
+        if "aspect_ratio" in merged:
+            raw_ratio = merged["aspect_ratio"]
+            if not isinstance(raw_ratio, str) or not re.fullmatch(
+                r"[1-9][0-9]*:[1-9][0-9]*", raw_ratio.strip()
+            ):
+                raise ValueError("aspect_ratio must be written as width:height, e.g. 16:9")
+            format_block["aspect_ratio"] = raw_ratio.strip()
+            bound_pointers[ASPECT_RATIO_POINTER] = format_block["aspect_ratio"]
+            updated_fields.append("aspect_ratio")
+
+        if "episode_count" in merged:
+            raw_count = merged["episode_count"]
+            if (
+                isinstance(raw_count, bool)
+                or not isinstance(raw_count, int)
+                or raw_count <= 0
+            ):
+                raise ValueError("episode_count must be a positive integer")
+            format_block["episode_count"] = raw_count
+            bound_pointers[EPISODE_COUNT_POINTER] = raw_count
+            updated_fields.append("episode_count")
+
+        if "target_seconds_per_episode" in merged:
+            raw_seconds = merged["target_seconds_per_episode"]
+            if (
+                isinstance(raw_seconds, bool)
+                or not isinstance(raw_seconds, (int, float))
+                or not math.isfinite(raw_seconds)
+                or raw_seconds <= 0
+            ):
+                raise ValueError(
+                    "target_seconds_per_episode must be a positive number of seconds"
+                )
+            format_block["target_seconds_per_episode"] = raw_seconds
+            bound_pointers[EPISODE_LENGTH_POINTER] = raw_seconds
+            updated_fields.append("target_seconds_per_episode")
+
+        if "pacing" in merged:
+            raw_pacing = merged["pacing"]
+            if (
+                not isinstance(raw_pacing, Mapping)
+                or isinstance(raw_pacing, bool)
+                or not raw_pacing
+            ):
+                raise ValueError("pacing must be an object of named rates")
+            unknown_pacing = sorted(
+                str(key) for key in raw_pacing if key not in PACING_KEYS
+            )
+            if unknown_pacing:
+                raise ValueError(
+                    f"pacing has unknown field(s): {', '.join(unknown_pacing)}"
+                )
+            existing_pacing = format_block.get("pacing")
+            merged_pacing = (
+                {
+                    **{k: v for k, v in existing_pacing.items() if k in PACING_KEYS},
+                    **raw_pacing,
+                }
+                if isinstance(existing_pacing, Mapping)
+                else dict(raw_pacing)
+            )
+            has_non_null = False
+            for name, rate in merged_pacing.items():
+                if rate is None:
+                    continue
+                has_non_null = True
+                if name == "seconds_per_action_paragraph":
+                    if (
+                        isinstance(rate, bool)
+                        or not isinstance(rate, (int, float))
+                        or not math.isfinite(rate)
+                        or rate < 0
+                    ):
+                        raise ValueError(
+                            "pacing rate seconds_per_action_paragraph must be a number >= 0"
+                        )
+                elif (
+                    isinstance(rate, bool)
+                    or not isinstance(rate, (int, float))
+                    or not math.isfinite(rate)
+                    or rate <= 0
+                ):
+                    raise ValueError(f"pacing rate {name} must be a positive number")
+            if not has_non_null:
+                raise ValueError("pacing must set at least one non-null rate")
+            format_block["pacing"] = merged_pacing
+            bound_pointers[PACING_POINTER] = merged_pacing
+            updated_fields.append("pacing")
+
+        if "visual_direction" in merged:
+            raw_visual = merged["visual_direction"]
+            if not isinstance(raw_visual, Mapping):
+                raise ValueError("visual_direction must be a non-empty object")
+            written_visual = _merge_choices_block(authority, "visual_direction", raw_visual)
+            bound_pointers[f"/{AUTHORITY_ROOT_TOKEN}/visual_direction"] = written_visual
+            updated_fields.append("visual_direction")
+
+        if "production_profile" in merged:
+            validated_prod = _validate_production_profile_updates(
+                merged["production_profile"]
+            )
+            written_prod = _merge_choices_block(
+                authority, "production_profile", validated_prod
+            )
+            bound_pointers[f"/{AUTHORITY_ROOT_TOKEN}/production_profile"] = written_prod
+            updated_fields.append("production_profile")
+
+        if "rhythm_profile" in merged:
+            raw_rhythm = merged["rhythm_profile"]
+            if not isinstance(raw_rhythm, Mapping) or not raw_rhythm:
+                raise ValueError("rhythm_profile must be a non-empty object")
+            rhythm_updates = {k: v for k, v in raw_rhythm.items() if k != "status"}
+            if not rhythm_updates:
+                raise ValueError("rhythm_profile must declare at least one field")
+            current_rhythm = authority.get("rhythm_profile")
+            merged_rhythm = (
+                {**current_rhythm, **rhythm_updates}
+                if isinstance(current_rhythm, Mapping)
+                else dict(rhythm_updates)
+            )
+            merged_rhythm["status"] = "accepted"
+            problems = rhythm_profile_problems(merged_rhythm)
+            if problems:
+                raise ValueError("; ".join(problems))
+            authority["rhythm_profile"] = merged_rhythm
+            bound_pointers[f"/{AUTHORITY_ROOT_TOKEN}/rhythm_profile"] = merged_rhythm
+            updated_fields.append("rhythm_profile")
+
+        atomic_json(project_path, project)
+        bindings = state.get("authority")
+        if not isinstance(bindings, dict):
+            bindings = {}
+            state["authority"] = bindings
+        now = utc_now()
+        for pointer, written_val in bound_pointers.items():
+            child_prefix = f"{pointer}/"
+            for existing_key in list(bindings):
+                if existing_key.startswith(child_prefix):
+                    del bindings[existing_key]
+            bindings[pointer] = {
+                "decision": "direct:configure",
+                "value_sha256": hashlib.sha256(
+                    json.dumps(written_val, ensure_ascii=False, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                "set_at": now,
+            }
+        _save_state(root, state, action="configured")
+    return {
+        "project_root": str(root),
+        "updated": updated_fields,
+        "status": project_status(root),
+    }
+
+
+def _artifacts_for_path(
+    state: Mapping[str, Any], relative: str
+) -> list[tuple[str, Mapping[str, Any]]]:
     found: list[tuple[str, Mapping[str, Any]]] = []
     artifacts = state.get("artifacts", {})
     if isinstance(artifacts, Mapping):
@@ -1808,6 +2269,11 @@ def _artifact_for_path(state: Mapping[str, Any], relative: str) -> tuple[str, Ma
                 and relative in record.get("outputs", [])
             ):
                 found.append((artifact_id, record))
+    return found
+
+
+def _artifact_for_path(state: Mapping[str, Any], relative: str) -> tuple[str, Mapping[str, Any]]:
+    found = _artifacts_for_path(state, relative)
     if len(found) != 1:
         raise PackageBlockedError(f"delivery source has no unique artifact owner: {relative}")
     return found[0]
@@ -1843,61 +2309,156 @@ def _require_episode_delivery_path(relative: str, episode: str) -> None:
         raise ValueError(f"delivery paths must belong to {episode}: {relative}")
 
 
+def _discover_episode_delivery_paths(
+    root: Path,
+    state: Mapping[str, Any],
+    episode: str,
+    omitted: set[str],
+) -> list[str]:
+    layout = _project_layout_from_root(root, state)
+    if layout["mode"] == "mixed":
+        raise PackageBlockedError("mixed project layouts cannot be packaged")
+    episodes_name = str(layout["roots"]["episodes"])
+    episodes_dir = root / episodes_name
+    try:
+        episodes_details = os.lstat(episodes_dir)
+    except FileNotFoundError:
+        return []
+    if _is_link_or_reparse(episodes_details) or not stat.S_ISDIR(episodes_details.st_mode):
+        raise ProjectConflictError(f"project parent cannot be a symlink: {episodes_name}")
+    episode_dir = episodes_dir / episode
+    try:
+        episode_details = os.lstat(episode_dir)
+    except FileNotFoundError:
+        return []
+    if _is_link_or_reparse(episode_details) or not stat.S_ISDIR(episode_details.st_mode):
+        raise ProjectConflictError(f"project parent cannot be a symlink: {episode}")
+    discovered: list[str] = []
+    for entry in sorted(episode_dir.iterdir(), key=lambda item: item.name):
+        if entry.name.startswith("."):
+            continue
+        details = os.lstat(entry)
+        if _is_link_or_reparse(details):
+            raise ProjectConflictError(
+                f"project target is not a regular file: {episodes_name}/{episode}/{entry.name}"
+            )
+        if not stat.S_ISREG(details.st_mode):
+            continue
+        if PurePosixPath(entry.name).suffix.casefold() not in DELIVERY_SUFFIXES:
+            continue
+        relative = f"{episodes_name}/{episode}/{entry.name}"
+        if relative not in omitted:
+            discovered.append(relative)
+    return _validate_path_set(root, discovered, label="delivery")
+
+
 def build_delivery_package(
     root: Path,
     *,
     episode: str,
-    includes: Iterable[str],
+    includes: Iterable[str] | None = None,
     omissions: Iterable[str] | Mapping[str, str] | None = None,
+    strict_ledger: bool = False,
 ) -> dict[str, Any]:
     if EPISODE_ID_RE.fullmatch(episode) is None:
         raise ValueError("episode must use an EP001-style identifier")
-    root = find_project(root)
-    include_paths = _validate_path_set(root, includes, label="delivery")
-    if not include_paths:
-        raise ValueError("delivery needs at least one included file")
+    root = find_project(root) if strict_ledger else _find_delivery_project(root)
     omission_values = omissions.keys() if isinstance(omissions, Mapping) else omissions or []
     omitted = _validate_path_set(root, omission_values, label="omission")
-    if set(include_paths).intersection(omitted):
-        raise ValueError("a delivery path cannot be both included and omitted")
-    for relative in (*include_paths, *omitted):
+    for relative in omitted:
         _require_episode_delivery_path(relative, episode)
+    explicit_includes: list[str] | None = None
+    if includes is not None:
+        explicit_includes = _validate_path_set(root, includes, label="delivery")
+        if not explicit_includes:
+            raise ValueError("delivery needs at least one included file")
+        if set(explicit_includes).intersection(omitted):
+            raise ValueError("a delivery path cannot be both included and omitted")
+        for relative in explicit_includes:
+            _require_episode_delivery_path(relative, episode)
 
     with _project_lock(root):
-        state = _read_state(root)
+        state = _read_state(root) if strict_ledger else _read_state_if_present(root)
+        include_paths = (
+            explicit_includes
+            if explicit_includes is not None
+            else _discover_episode_delivery_paths(root, state, episode, set(omitted))
+        )
+        if not include_paths:
+            raise ValueError("delivery needs at least one included file")
         entries: list[dict[str, str]] = []
         snapshots: dict[str, bytes] = {}
         for relative in include_paths:
             if PurePosixPath(relative).suffix.casefold() not in DELIVERY_SUFFIXES:
                 raise PackageBlockedError(f"delivery source is not text/JSON: {relative}")
-            artifact_id, record = _artifact_for_path(state, relative)
-            if _artifact_state(root, record) != "approved":
-                raise PackageBlockedError(f"delivery source is not approved and current: {relative}")
+            matches = _artifacts_for_path(state, relative)
+            if len(matches) > 1:
+                raise PackageBlockedError(
+                    f"delivery source has no unique artifact owner: {relative}"
+                )
+            record: Mapping[str, Any] | None = None
+            if strict_ledger:
+                if len(matches) != 1:
+                    raise PackageBlockedError(
+                        f"delivery source has no unique artifact owner: {relative}"
+                    )
+                artifact_id, record = matches[0]
+                if _artifact_state(root, record) != "approved":
+                    raise PackageBlockedError(
+                        f"delivery source is not approved and current: {relative}"
+                    )
+            elif len(matches) == 1:
+                artifact_id, record = matches[0]
+            else:
+                artifact_id = f"direct:{relative}"
+
             source = _project_path(root, relative)
+            if not source.exists():
+                raise FileNotFoundError(f"delivery source does not exist: {relative}")
             data = source.read_bytes()
             try:
                 data.decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise PackageBlockedError(f"delivery source must be UTF-8: {relative}") from exc
             digest = sha256_bytes(data)
-            acceptance = record.get("acceptance")
-            review = record.get("review")
-            accepted_outputs = (
-                acceptance.get("outputs") if isinstance(acceptance, Mapping) else None
-            )
-            reviewed_outputs = (
-                review.get("outputs") if isinstance(review, Mapping) else None
-            )
-            if (
-                not isinstance(accepted_outputs, Mapping)
-                or not isinstance(reviewed_outputs, Mapping)
-                or accepted_outputs.get(relative) != digest
-                or reviewed_outputs.get(relative) != digest
-                or not _inputs_current(root, record)
-            ):
-                raise PackageBlockedError(
-                    f"delivery source changed after approval: {relative}"
+            if not strict_ledger and record is not None:
+                acceptance = record.get("acceptance")
+                review = record.get("review")
+                if isinstance(acceptance, Mapping) and acceptance.get("decision") == "rejected":
+                    accepted_outputs = acceptance.get("outputs")
+                    if (
+                        isinstance(accepted_outputs, Mapping)
+                        and accepted_outputs.get(relative) == digest
+                    ):
+                        raise PackageBlockedError(f"delivery source was rejected: {relative}")
+                if isinstance(review, Mapping) and review.get("verdict") == "revise":
+                    reviewed_outputs = review.get("outputs")
+                    if (
+                        isinstance(reviewed_outputs, Mapping)
+                        and reviewed_outputs.get(relative) == digest
+                    ):
+                        raise PackageBlockedError(
+                            f"delivery source requires revision before packaging: {relative}"
+                        )
+            if strict_ledger and record is not None:
+                acceptance = record.get("acceptance")
+                review = record.get("review")
+                accepted_outputs = (
+                    acceptance.get("outputs") if isinstance(acceptance, Mapping) else None
                 )
+                reviewed_outputs = (
+                    review.get("outputs") if isinstance(review, Mapping) else None
+                )
+                if (
+                    not isinstance(accepted_outputs, Mapping)
+                    or not isinstance(reviewed_outputs, Mapping)
+                    or accepted_outputs.get(relative) != digest
+                    or reviewed_outputs.get(relative) != digest
+                    or not _inputs_current(root, record)
+                ):
+                    raise PackageBlockedError(
+                        f"delivery source changed after approval: {relative}"
+                    )
             snapshots[relative] = data
             entries.append(
                 {
@@ -2051,7 +2612,16 @@ def _manifest_problems(
             problems.append(f"manifest file {number} has an invalid hash")
             continue
         member = delivery / relative
-        if member.is_file() and not member.is_symlink() and sha256_file(member) != digest:
+        try:
+            member_details = os.lstat(member)
+        except OSError:
+            member_details = None
+        if (
+            member_details is not None
+            and not _is_link_or_reparse(member_details)
+            and stat.S_ISREG(member_details.st_mode)
+            and sha256_file(member) != digest
+        ):
             problems.append(f"manifest hash mismatch: {relative}")
     expected_manifest_paths = checksum_paths - {"manifest.json"}
     if manifest_paths != expected_manifest_paths:
@@ -2337,20 +2907,54 @@ def build_creator_export(
 def verify_delivery_package(root: Path, *, episode: str) -> dict[str, Any]:
     if EPISODE_ID_RE.fullmatch(episode) is None:
         raise ValueError("episode must use an EP001-style identifier")
-    root = find_project(root)
+    root = _find_delivery_project(root)
     delivery = _delivery_directory(root, episode)
     problems: list[str] = []
     actual: set[str] = set()
-    for path in delivery.rglob("*"):
-        relative = path.relative_to(delivery).as_posix()
-        if path.is_symlink():
-            problems.append(f"symlink is not allowed: {relative}")
-        elif path.is_file():
-            actual.add(relative)
-        elif not path.is_dir():
-            problems.append(f"unsupported delivery member: {relative}")
+    for dirpath, dirnames, filenames in os.walk(delivery, topdown=True, followlinks=False):
+        parent = Path(dirpath)
+        dirnames.sort()
+        filenames.sort()
+        kept_dirs: list[str] = []
+        for dname in dirnames:
+            dpath = parent / dname
+            relative = dpath.relative_to(delivery).as_posix()
+            try:
+                details = os.lstat(dpath)
+            except OSError:
+                problems.append(f"unsupported delivery member: {relative}")
+                continue
+            if _is_link_or_reparse(details):
+                problems.append(f"symlink is not allowed: {relative}")
+            elif stat.S_ISDIR(details.st_mode):
+                kept_dirs.append(dname)
+            else:
+                problems.append(f"unsupported delivery member: {relative}")
+        dirnames[:] = kept_dirs
+        for fname in filenames:
+            fpath = parent / fname
+            relative = fpath.relative_to(delivery).as_posix()
+            try:
+                details = os.lstat(fpath)
+            except OSError:
+                problems.append(f"unsupported delivery member: {relative}")
+                continue
+            if _is_link_or_reparse(details):
+                problems.append(f"symlink is not allowed: {relative}")
+            elif stat.S_ISREG(details.st_mode):
+                actual.add(relative)
+            else:
+                problems.append(f"unsupported delivery member: {relative}")
     checksums_path = delivery / "checksums.sha256"
-    if checksums_path.is_symlink() or not checksums_path.is_file():
+    try:
+        checksums_details = os.lstat(checksums_path)
+    except OSError:
+        checksums_details = None
+    if (
+        checksums_details is None
+        or _is_link_or_reparse(checksums_details)
+        or not stat.S_ISREG(checksums_details.st_mode)
+    ):
         problems.append("checksums.sha256 is missing or unsafe")
         return {"episode": episode, "status": "tampered", "problems": problems}
     expected: dict[str, str] = {}
@@ -2375,12 +2979,20 @@ def verify_delivery_package(root: Path, *, episode: str) -> dict[str, Any]:
         problems.append(f"missing delivery file: {missing}")
     for relative, digest in expected.items():
         path = delivery / relative
-        if not path.is_file() or path.is_symlink():
+        try:
+            path_details = os.lstat(path)
+        except OSError:
+            continue
+        if _is_link_or_reparse(path_details) or not stat.S_ISREG(path_details.st_mode):
             continue
         if sha256_file(path) != digest:
             problems.append(f"checksum mismatch: {relative}")
+    manifest_path = delivery / "manifest.json"
     try:
-        manifest = json.loads((delivery / "manifest.json").read_text(encoding="utf-8"))
+        manifest_details = os.lstat(manifest_path)
+        if _is_link_or_reparse(manifest_details) or not stat.S_ISREG(manifest_details.st_mode):
+            raise OSError("unsafe manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         problems.extend(
             _manifest_problems(
                 delivery,
@@ -2481,6 +3093,18 @@ def _parse_omissions(values: Iterable[str]) -> dict[str, str]:
     return result
 
 
+def _parse_json_object_arg(raw: str | None, *, flag: str) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{flag} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{flag} must decode to a JSON object")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manage a short-drama filesystem project.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -2493,6 +3117,27 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--aspect-ratio", default="9:16")
     init.add_argument("--episode-count", type=int)
     init.add_argument("--target-seconds", type=float, dest="target_seconds_per_episode")
+
+    configure = commands.add_parser(
+        "configure",
+        help="Incrementally update short-drama.json and mark authority blocks accepted.",
+    )
+    configure.add_argument("path", nargs="?", default=".")
+    configure.add_argument("--title")
+    configure.add_argument("--language")
+    configure.add_argument("--prompt-language")
+    configure.add_argument("--aspect-ratio")
+    configure.add_argument("--episode-count", type=int)
+    configure.add_argument("--target-seconds", type=float, dest="target_seconds_per_episode")
+    configure.add_argument("--pacing-json")
+    configure.add_argument("--visual-direction-json")
+    configure.add_argument("--production-profile-json")
+    configure.add_argument("--rhythm-profile-json")
+    configure.add_argument(
+        "--json",
+        dest="json_payload",
+        help="JSON object containing any subset of configure fields.",
+    )
 
     status = commands.add_parser("status", help="Print a creator-safe project summary.")
     status.add_argument("path", nargs="?", default=".")
@@ -2547,13 +3192,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bind 创作者决策/<file>.jsonl#<decision-id>.",
     )
 
-    package = commands.add_parser("package", help="Package approved text/JSON artifacts.")
+    package = commands.add_parser("package", help="Package episode text/JSON deliverables.")
     package.add_argument("path")
     package.add_argument("--episode", required=True)
-    package.add_argument("--include", action="append", required=True, dest="includes")
+    package.add_argument(
+        "--include",
+        action="append",
+        default=None,
+        dest="includes",
+        help="Include PATH; omit to package all episode text/JSON files.",
+    )
     package.add_argument(
         "--omit", action="append", default=[], dest="omissions",
         help="Record PATH or PATH=REASON as deliberately omitted.",
+    )
+    package.add_argument(
+        "--strict-ledger",
+        action="store_true",
+        help="Require published, accepted, and approved ledger state before packaging.",
     )
 
     verify = commands.add_parser("verify", help="Re-check a delivered package checksums.")
@@ -2602,6 +3258,27 @@ def main(argv: list[str] | None = None) -> int:
                 episode_count=args.episode_count,
                 target_seconds_per_episode=args.target_seconds_per_episode,
             )
+        elif args.command == "configure":
+            result = configure_project(
+                Path(args.path),
+                title=args.title,
+                language=args.language,
+                prompt_language=args.prompt_language,
+                aspect_ratio=args.aspect_ratio,
+                episode_count=args.episode_count,
+                target_seconds_per_episode=args.target_seconds_per_episode,
+                pacing=_parse_json_object_arg(args.pacing_json, flag="--pacing-json"),
+                visual_direction=_parse_json_object_arg(
+                    args.visual_direction_json, flag="--visual-direction-json"
+                ),
+                production_profile=_parse_json_object_arg(
+                    args.production_profile_json, flag="--production-profile-json"
+                ),
+                rhythm_profile=_parse_json_object_arg(
+                    args.rhythm_profile_json, flag="--rhythm-profile-json"
+                ),
+                updates=_parse_json_object_arg(args.json_payload, flag="--json"),
+            )
         elif args.command == "status":
             result = project_status(Path(args.path))
         elif args.command == "publish":
@@ -2643,6 +3320,7 @@ def main(argv: list[str] | None = None) -> int:
                 episode=args.episode,
                 includes=args.includes,
                 omissions=_parse_omissions(args.omissions),
+                strict_ledger=args.strict_ledger,
             )
         elif args.command == "export":
             result = build_creator_export(

@@ -1755,7 +1755,7 @@ process.stdout.write(JSON.stringify({json.dumps(paths)}.map(logic.fileLabel)));
 """
         self.assertEqual(
             json.loads(run_node(script).stdout),
-            ["SHOT-EP001-001.png", "EP001-审查", "Scene_Notes", "分镜", "故事引擎"],
+            ["SHOT-EP001-001.png", "EP001-审查", "Scene_Notes", "分镜", "核心设定"],
         )
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
@@ -1776,7 +1776,7 @@ process.stdout.write(JSON.stringify({json.dumps(paths)}.map(logic.fileLabel)));
                 f"> {h3[0]}",
                 "",
                 *[f"> {line}" for line in h3[1:]],
-                "### 冻结关键帧提示词",
+                "### 首帧提示词",
                 "```text",
                 "Frozen frame, `raw` **as typed**",
                 "```",
@@ -2312,7 +2312,7 @@ def make_creator_project(root: Path, *, rhythm: bool = True) -> None:
             "（用途：起始帧；控制：构图；不得控制：动作）。"
         )
         head, _, rest = board.partition(f"## SHOT-EP001-{number}")
-        rest = rest.replace("- 输入参考图：无（创作者已明确选择文生视频）。", f"- 输入参考图：{slot}", 1)
+        rest = rest.replace("- 输入参考图：无（文生视频）。", f"- 输入参考图：{slot}", 1)
         board = f"{head}## SHOT-EP001-{number}{rest}"
     (episode / "分镜.md").write_text(board, encoding="utf-8")
     (episode / "剪辑单.md").write_text(CUT_LIST, encoding="utf-8")
@@ -2364,7 +2364,7 @@ class CreatorViewsTests(unittest.TestCase):
         )
         rows = dict(blocking[0]["rows"])
         self.assertIn("周薄森坐在办公桌后", rows["人物"])
-        self.assertIn("working side", rows["轴线"])
+        self.assertIn("机位侧", rows["轴线"])
         # A heading that merely sits in the head is not a blocking block.
         board = example("分镜.md").replace("## 场景站位 · EP001-SC002", "## 备注 · EP001-SC002")
         self.assertEqual(
@@ -2703,6 +2703,75 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertIn(("台词", "script", "EP001-SC001"), {(hit["g"], hit["view"], hit["arg"]) for hit in line})
         self.assertEqual(views.search(rows, "   "), [])
 
+    def test_cut_list_zika_overlap_zero_img_closing_keyframe_and_multi_locks(self) -> None:
+        cut_doc = (
+            "# EP001 剪辑单\n\n"
+            "## CUT-EP001-001 · 字卡与叠音\n"
+            "- 来源：SHOT-EP001-001 · 制作成果/images/001.png\n"
+            "- 入点：0.00\n"
+            "- 出点：2.50\n"
+            "- 时长：2.50\n"
+            "- 声音：配音\n"
+            "- 画面文字：0.00-1.50 字卡 第一章｜暗涌\n"
+            "- 配音 1：0.10 制作成果/audio/L01.mp3（叠音）\n"
+            "- 配音 2：0.80 制作成果/audio/L02.mp3（叠音；起点：0.20；增益：-2dB）\n"
+            "- 配音 3：1.40 制作成果/audio/L03.mp3（增益：-2dB；叠音）\n"
+        )
+        cut = views.parse_cut_list(cut_doc)["cuts"][0]
+        self.assertEqual(cut["texts"][0]["style"], "字卡")
+        self.assertEqual(cut["texts"][0]["items"], ["第一章", "暗涌"])
+        self.assertEqual(
+            [(v["path"], v.get("overlap"), v["from"], v["gain"]) for v in cut["voices"]],
+            [
+                ("制作成果/audio/L01.mp3", True, 0.0, 0.0),
+                ("制作成果/audio/L02.mp3", True, 0.2, -2.0),
+                ("制作成果/audio/L03.mp3", True, 0.0, -2.0),
+            ],
+        )
+
+        # 0-IMG 图片提示词.md returns [] without error; malformed ## IMG still raises ValueError.
+        zero_img_doc = "# EP001 图片提示词\n\n本集直接复用既有实拍图片，无新增条目。\n"
+        self.assertEqual(views.parse_image_prompts(zero_img_doc), [])
+        with self.assertRaises(ValueError):
+            views.parse_image_prompts("# EP001 图片提示词\n\n## IMG 缺少编号\n")
+
+        # 尾帧提示词 is extracted and indexed; multiple 连戏锁 lines per entry are collected and indexed.
+        board = example("分镜.md").replace(
+            "## SHOT-EP001-002",
+            "### 尾帧提示词\n> 9:16 closing frame with amber dusk light on the glass tumbler.\n\n## SHOT-EP001-002",
+            1,
+        )
+        second_lock = (
+            "* 连戏锁: LOCK-JIANGCHEN-BADGE《江晨胸牌》（镜头：入画）· 锁定词：silver-rimmed name badge"
+        )
+        settings_doc = example("视觉设定.md").replace(
+            "- 连戏锁：LOCK-JIANGCHEN-DRESS",
+            second_lock + "\n- 连戏锁：LOCK-JIANGCHEN-DRESS",
+            1,
+        )
+        ep = self.episode(
+            **{"图片提示词.md": zero_img_doc, "分镜.md": board, "视觉设定.md": settings_doc}
+        )
+        self.assertEqual(ep["problems"], [])
+        self.assertEqual(ep["imagePrompts"], [])
+        shot_001 = ep["board"]["shots"][0]
+        self.assertIn("amber dusk light", shot_001["closing_keyframe"])
+        jc = next(item for item in ep["settings"]["items"] if item["name"] == "江晨")
+        self.assertEqual(len(jc["locks"]), 2)
+        self.assertEqual(jc["lock"], jc["locks"][0])
+        self.assertEqual([lk["id"] for lk in jc["locks"]], ["LOCK-JIANGCHEN-BADGE", "LOCK-JIANGCHEN-DRESS"])
+        self.assertIn("SHOT-EP001-002", jc["locks"][0]["shots"])
+
+        rows = views.search_entries(ep)
+        self.assertEqual(
+            [(h["g"], h["arg"]) for h in views.search(rows, "amber dusk light")],
+            [("镜头", "SHOT-EP001-001")],
+        )
+        self.assertEqual(
+            [(h["g"], h["arg"]) for h in views.search(rows, "silver-rimmed name badge")],
+            [("设定", "江晨")],
+        )
+
 
 class StatusFormatTests(unittest.TestCase):
     def test_status_reports_only_a_well_formed_episode_shape(self) -> None:
@@ -2926,6 +2995,62 @@ class FrontendLogicTests(unittest.TestCase):
             "process.stdout.write(JSON.stringify([logic.lineShot(map, '空白才好。'), logic.lineShot(map, '系统绑定成功'), logic.lineShot(map, '空白')]));"
         )
         self.assertEqual(result, ["SHOT-EP001-010", "SHOT-EP001-010", None])
+
+    def test_partial_rhythm_profile_closing_keyframe_and_multiple_locks_render_cleanly(self) -> None:
+        metrics = {"shots": 22, "seconds": 62, "avg": 2.82, "close": 0.5, "vo": 0.35}
+        partial_profile = {"status": "accepted", "form": "Q 版表达", "first_hook_seconds": 3}
+        shots = [
+            {
+                "id": "SHOT-EP001-001",
+                "n": "001",
+                "title": "攥紧的茶杯",
+                "scale": "近景",
+                "sec": 3,
+                "keyframe": "first frame prompt",
+                "closing_keyframe": "closing frame prompt",
+            },
+            {
+                "id": "SHOT-EP001-002",
+                "n": "002",
+                "title": "双人对视",
+                "scale": "中景",
+                "sec": 4,
+                "keyframe": "only first frame",
+                "closing_keyframe": "",
+            },
+        ]
+        result = self.run_app(
+            f"const m = {json.dumps(metrics)};\n"
+            f"const p = {json.dumps(partial_profile, ensure_ascii=False)};\n"
+            f"const shots = {json.dumps(shots, ensure_ascii=False)};\n"
+            "const multi = { locks: [{ id: 'L1' }, { id: 'L2' }], lock: { id: 'L1' } };\n"
+            "const single = { lock: { id: 'L0' } };\n"
+            "process.stdout.write(JSON.stringify({\n"
+            "  checks: logic.rhythmChecks(m, p, null),\n"
+            "  rows: logic.rhythmProfileRows(p),\n"
+            "  units: logic.keyframeCopyUnits(shots).map((u) => [u.key, u.meta[1], u.text]),\n"
+            "  multiLocks: logic.entryLocks(multi).map((l) => l.id),\n"
+            "  singleLocks: logic.entryLocks(single).map((l) => l.id),\n"
+            "}));"
+        )
+        self.assertEqual(result["checks"], [])
+        self.assertEqual(
+            result["rows"],
+            [["制作形态", "Q 版表达"], ["第一个钩子最迟", "3 秒"]],
+        )
+        serialized = json.dumps(result, ensure_ascii=False)
+        for bad_token in ("undefined", "NaN", "0 秒"):
+            self.assertNotIn(bad_token, serialized)
+        self.assertEqual(
+            result["units"],
+            [
+                ["kf-SHOT-EP001-001", "首帧", "first frame prompt"],
+                ["ckf-SHOT-EP001-001", "尾帧", "closing frame prompt"],
+                ["kf-SHOT-EP001-002", "首帧", "only first frame"],
+            ],
+        )
+        self.assertEqual(result["multiLocks"], ["L1", "L2"])
+        self.assertEqual(result["singleLocks"], ["L0"])
 
 
 if __name__ == "__main__":

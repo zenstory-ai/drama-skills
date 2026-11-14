@@ -740,8 +740,8 @@ class ConfirmedProductionTests(unittest.TestCase):
             storyboard = root / "剧集/EP001/分镜.md"
             storyboard.write_text(
                 "# EP001 分镜\n\n## SHOT-EP001-001 · 门外停步\n"
-                "- 输入参考图：无（创作者已明确选择文生视频）。\n\n"
-                "### 冻结关键帧提示词\n> A hand resting on a glass desktop.\n",
+                "- 输入参考图：无（文生视频）。\n\n"
+                "### 首帧提示词\n> A hand resting on a glass desktop.\n",
                 encoding="utf-8",
             )
             job = root / "keyframe-job.json"
@@ -790,13 +790,13 @@ class ConfirmedProductionTests(unittest.TestCase):
             reference.write_bytes(b"structural reference")
             declaration = (
                 "REF-HERO（顺序：1）· 输入/女主定妆.png《女主定妆照》"
-                "（用途：身份；控制：脸型、体态；不得控制：构图、动作）"
+                "（用途：外貌；控制：脸型、体态；不得控制：构图、动作）"
             )
             for name in ("分镜.md", "视频提示词.md"):
                 path = episode / name
                 path.write_text(
                     path.read_text(encoding="utf-8").replace(
-                        "- 输入参考图：无（创作者已明确选择文生视频）。",
+                        "- 输入参考图：无（文生视频）。",
                         f"- 输入参考图：{declaration}",
                         1,
                     ),
@@ -1592,6 +1592,756 @@ class ConfirmedProductionTests(unittest.TestCase):
             )
             self.assertEqual(status.returncode, 0, status.stderr)
             self.assertEqual(json.loads(status.stdout)["state"], "succeeded")
+
+    def test_entry_level_digest_isolates_unrelated_sections_in_shared_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 开门\n\n"
+                "- 分镜：SHOT-EP001-001\n"
+                "- 输入参考图：无\n\n"
+                "### 可复制提示词\n"
+                "> First shot prompt.\n\n"
+                "## MOTION-EP001-002 · 回头\n\n"
+                "- 分镜：SHOT-EP001-002\n"
+                "- 输入参考图：无\n\n"
+                "### 可复制提示词\n"
+                "> Second shot prompt.\n\n"
+                "## MOTION-EP001-030 · 远景\n\n"
+                "- 分镜：SHOT-EP001-030\n"
+                "- 输入参考图：无\n\n"
+                "### 可复制提示词\n"
+                "> Thirtieth shot original prompt.\n",
+                encoding="utf-8",
+            )
+            config = self.adapter_config(directory)
+            jobs = []
+            for idx in (1, 2):
+                job_file = root / f"motion-{idx}.json"
+                job_file.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": "1.0",
+                            "job_id": f"EP001-MOTION00{idx}",
+                            "modality": "video",
+                            "adapter": "fixture",
+                            "source": "剧集/EP001/视频提示词.md",
+                            "source_entry": f"MOTION-EP001-00{idx}",
+                            "outputs": [
+                                f"剧集/EP001/制作成果/video/SHOT-EP001-00{idx}.mp4"
+                            ],
+                            "parameters": {},
+                            "overwrite": False,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                jobs.append(job_file)
+
+            self.prepare_and_confirm(root, jobs[0])
+            self.prepare_and_confirm(root, jobs[1])
+            first_run = production_tool.run_job(
+                root, job_id="EP001-MOTION001", adapter_config=config
+            )
+            self.assertEqual(first_run["state"], "succeeded")
+
+            # Editing shot 30 must neither invalidate confirmed shot 2 nor mark shot 1 stale in audit.
+            video_md.write_text(
+                video_md.read_text(encoding="utf-8").replace(
+                    "Thirtieth shot original prompt.",
+                    "Thirtieth shot revised prompt with extra camera notes.",
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-MOTION002")["state"],
+                "confirmed",
+            )
+            audit_before = production_tool.audit_project(root)
+            self.assertEqual(
+                [p for p in audit_before["problems"] if p["code"] == "job_inputs_changed"],
+                [],
+            )
+            second_run = production_tool.run_job(
+                root, job_id="EP001-MOTION002", adapter_config=config
+            )
+            self.assertEqual(second_run["state"], "succeeded")
+            audit_after = production_tool.audit_project(root)
+            self.assertEqual(audit_after["status"], "pass")
+
+            # Editing shot 2 itself must flag job_inputs_changed and require reconfirmation.
+            video_md.write_text(
+                video_md.read_text(encoding="utf-8").replace(
+                    "Second shot prompt.",
+                    "Second shot changed prompt.",
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-MOTION002")["state"],
+                "needs_reconfirmation",
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-MOTION001")["state"],
+                "succeeded",
+            )
+            audit_changed = production_tool.audit_project(root)
+            self.assertEqual(
+                [p["job_id"] for p in audit_changed["problems"] if p["code"] == "job_inputs_changed"],
+                ["EP001-MOTION002"],
+            )
+
+    def test_alphanumeric_labels_and_same_file_multi_role_bindings_are_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            usb_img = root / "输入/usb.png"
+            usb_img.write_bytes(b"usb-frame")
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 循环镜头\n\n"
+                "- 分镜：SHOT-EP001-001\n"
+                "- 输入参考图：REF-START（顺序：1）· 输入/usb.png《USB》"
+                "（用途：起始帧；控制：首帧构图；不得控制：中段运镜）；"
+                "REF-END（顺序：2）· 输入/usb.png《Lead Hero》"
+                "（用途：结束帧；控制：尾帧落幅；不得控制：中段运镜）\n\n"
+                "### 可复制提示词\n"
+                "> Seamless loop returning to the USB close-up.\n",
+                encoding="utf-8",
+            )
+            job = root / "loop-job.json"
+            job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-LOOP",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "MOTION-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"],
+                        "parameters": {},
+                        "overwrite": False,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            preview = self.prepare_and_confirm(root, job)
+            self.assertEqual(
+                [(b["label"], b["role"]) for b in preview["reference_bindings"]],
+                [("USB", "first_frame"), ("Lead Hero", "last_frame")],
+            )
+            result = production_tool.run_job(
+                root,
+                job_id="EP001-LOOP",
+                adapter_config=self.adapter_config(directory),
+            )
+            self.assertEqual(result["state"], "succeeded")
+
+            # Identical (path, role) pair is still rejected.
+            dup_job = root / "dup-role-job.json"
+            dup_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-DUP",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "prompt": "Loop.",
+                        "reference_bindings": [
+                            {
+                                "slot_id": "REF-A",
+                                "order": 1,
+                                "path": "输入/usb.png",
+                                "label": "USB",
+                                "role": "first_frame",
+                                "may_control": ["首帧"],
+                                "must_not_control": ["运镜"],
+                            },
+                            {
+                                "slot_id": "REF-B",
+                                "order": 2,
+                                "path": "输入/usb.png",
+                                "label": "USB 2",
+                                "role": "first_frame",
+                                "may_control": ["首帧"],
+                                "must_not_control": ["运镜"],
+                            },
+                        ],
+                        "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-002.mp4"],
+                        "parameters": {},
+                        "overwrite": False,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, r"\(path, role\)"):
+                production_tool.prepare_job(root, dup_job)
+
+    def test_source_markdown_auto_extracts_prompt_and_reference_bindings_including_voice(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            voice = root / "输入/hero_voice.wav"
+            voice.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+            storyboard = root / "剧集/EP001/分镜.md"
+            storyboard.write_text(
+                "# EP001 分镜\n\n"
+                "## SHOT-EP001-001 · 雨夜门口\n\n"
+                "- 场次：EP001-SC001\n"
+                "- 输入参考图：REF-HERO（顺序：1）· 输入/reference.png《女主定妆》"
+                "（用途：外貌；控制：五官、服装；不得控制：构图）；"
+                "PLAN-START（顺序：2）· SHOT-EP001-001《起始帧计划》"
+                "（用途：起始帧；控制：构图；不得控制：人物替换）\n\n"
+                "### 首帧提示词\n"
+                "> Rain-soaked doorway medium close-up.\n",
+                encoding="utf-8",
+            )
+            shot_job = root / "shot-auto.json"
+            shot_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-SHOT001-KEYFRAME",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/分镜.md",
+                        "source_entry": "SHOT-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/image/SHOT-EP001-001.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            shot_preview = self.prepare_and_confirm(root, shot_job)
+            self.assertEqual(shot_preview["prompt"], "Rain-soaked doorway medium close-up.")
+            self.assertEqual(len(shot_preview["reference_bindings"]), 1)
+            self.assertEqual(shot_preview["reference_bindings"][0]["slot_id"], "REF-HERO")
+            self.assertEqual(shot_preview["reference_bindings"][0]["role"], "reference_image")
+            # Ensure stored job round-trips through status/run without prefix mismatch on 分镜.md.
+            self.assertEqual(
+                production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001-KEYFRAME",
+                    adapter_config=self.adapter_config(directory),
+                )["state"],
+                "succeeded",
+            )
+
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 开口质问\n\n"
+                "- 分镜：SHOT-EP001-001\n"
+                "- 输入参考图：REF-START（顺序：1）· "
+                "剧集/EP001/制作成果/image/SHOT-EP001-001.png《雨夜首帧》"
+                "（用途：起始帧；控制：首帧构图；不得控制：口型）\n"
+                "- 参考音频：REF-VOICE（顺序：1）· 输入/hero_voice.wav《女主音色样音》"
+                "（用途：音色；角色：沈知意；控制：音色、咬字；不得控制：台词、语气、情绪）\n\n"
+                "### 可复制提示词\n"
+                "> She steps forward and speaks calmly.\n",
+                encoding="utf-8",
+            )
+            provider_stub = Path(directory) / "provider_adapters.py"
+            provider_stub.write_text(
+                "import json, pathlib, sys\n"
+                "payload = json.load(sys.stdin)\n"
+                "out = pathlib.Path(payload['output_root']) / 'out.mp4'\n"
+                "out.write_bytes(b'\\x00\\x00\\x00\\x18ftypisom')\n"
+                "json.dump({'outputs': [{'target': payload['outputs'][0], 'source': str(out)}]}, sys.stdout)\n",
+                encoding="utf-8",
+            )
+            builtin_like_cfg = Path(directory) / "builtin-seedance.json"
+            builtin_like_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "seedance": {
+                                "command": [sys.executable, str(provider_stub), "seedance"],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            motion_job = root / "motion-auto.json"
+            motion_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MOTION001-VOICE",
+                        "modality": "video",
+                        "adapter": "seedance",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "MOTION-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            motion_preview = self.prepare_and_confirm(root, motion_job)
+            self.assertEqual(
+                [(b["slot_id"], b["role"], b.get("character")) for b in motion_preview["reference_bindings"]],
+                [
+                    ("REF-START", "first_frame", None),
+                    ("REF-VOICE", "reference_audio", "沈知意"),
+                ],
+            )
+            # Built-in seedance profile permits reference_audio without manual reference_roles.
+            ran = production_tool.run_job(
+                root,
+                job_id="EP001-MOTION001-VOICE",
+                adapter_config=builtin_like_cfg,
+            )
+            self.assertEqual(ran["state"], "succeeded")
+
+    def test_unsubmitted_preflight_error_keeps_confirmation_reusable_and_surfaces_safe_detail(self) -> None:
+        provider_script = SUITE / "skills/short-drama-produce/scripts/provider_adapters.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = root / "seedance-job.json"
+            job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-PREFLIGHT",
+                        "modality": "video",
+                        "adapter": "seedance",
+                        "prompt": "A calm close-up shot.",
+                        "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"],
+                        "parameters": {"ratio": "9:16", "duration": 5},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            self.prepare_and_confirm(root, job)
+            bad_cfg = Path(directory) / "real-seedance.json"
+            bad_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "seedance": {
+                                "command": [sys.executable, str(provider_script), "seedance"],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if k not in {"ARK_API_KEY", "SEEDANCE_MODEL"}
+            }
+            with mock.patch.dict(os.environ, clean_env, clear=True):
+                with self.assertRaisesRegex(
+                    production_tool.AdapterError, "ARK_API_KEY"
+                ):
+                    production_tool.run_job(
+                        root, job_id="EP001-PREFLIGHT", adapter_config=bad_cfg
+                    )
+            # Confirmation token was NOT burned because no remote task was submitted!
+            status_after = production_tool.job_status(root, job_id="EP001-PREFLIGHT")
+            self.assertEqual(status_after["state"], "confirmed")
+
+            # Fixing adapter config lets the creator run immediately without re-confirming.
+            good_cfg = Path(directory) / "fixture-seedance.json"
+            good_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "seedance": {
+                                "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            succeeded = production_tool.run_job(
+                root, job_id="EP001-PREFLIGHT", adapter_config=good_cfg
+            )
+            self.assertEqual(succeeded["state"], "succeeded")
+
+    def test_batch_prepare_confirm_and_run_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            config = self.adapter_config(directory)
+            job_paths = []
+            for idx in (1, 2, 3):
+                path = root / f"batch-job-{idx}.json"
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": "1.0",
+                            "job_id": f"EP001-BATCH-00{idx}",
+                            "modality": "image",
+                            "adapter": "fixture",
+                            "prompt": f"Batch keyframe {idx}",
+                            "outputs": [
+                                f"剧集/EP001/制作成果/image/BATCH-00{idx}.png"
+                            ],
+                            "parameters": {"size": "1024x1536"},
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                job_paths.append(str(path))
+
+            prepared = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "prepare-batch",
+                    str(root),
+                    "--jobs",
+                    *job_paths,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            batch_preview = json.loads(prepared.stdout)
+            self.assertEqual(batch_preview["job_count"], 3)
+            self.assertTrue(
+                batch_preview["confirmation"].startswith("CONFIRM BATCH ")
+            )
+
+            # Running batch before confirmation must fail without writing any outputs.
+            premature = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "run-batch",
+                    str(root),
+                    "--batch-id",
+                    batch_preview["batch_id"],
+                    "--adapter-config",
+                    str(config),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(premature.returncode, 0)
+            for idx in (1, 2, 3):
+                self.assertFalse(
+                    (root / f"剧集/EP001/制作成果/image/BATCH-00{idx}.png").exists()
+                )
+
+            confirmed = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "confirm",
+                    str(root),
+                    "--confirmation",
+                    batch_preview["confirmation"],
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(confirmed.returncode, 0, confirmed.stderr)
+            self.assertEqual(json.loads(confirmed.stdout)["state"], "confirmed")
+
+            executed = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "run-batch",
+                    str(root),
+                    "--batch-id",
+                    batch_preview["batch_id"],
+                    "--adapter-config",
+                    str(config),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            payload = json.loads(executed.stdout)
+            self.assertEqual(payload["state"], "succeeded")
+            self.assertEqual(len(payload["succeeded"]), 3)
+            for idx in (1, 2, 3):
+                self.assertTrue(
+                    (root / f"剧集/EP001/制作成果/image/BATCH-00{idx}.png").is_file()
+                )
+
+    def test_shot_keyframe_strips_leading_middle_plan_slots_pending_notes_and_nested_empty_parens(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            (root / "输入/room.png").write_bytes(b"room-ref")
+            storyboard = root / "剧集/EP001/分镜.md"
+            storyboard.write_text(
+                "# EP001 分镜\n\n"
+                "## SHOT-EP001-001 · 雨夜门口\n\n"
+                "- 输入参考图："
+                "PLAN-PROP（顺序：1）· IMG-PROP-01《旧伞设定》（用途：道具参考；控制：伞骨；不得控制：人物）；"
+                "REF-HERO（顺序：2）· 输入/reference.png《女主定妆照》（用途：人物参考；控制：身份；不得控制：构图）；"
+                "PLAN-COAT（顺序：3）· IMG-CHAR-02《风衣设定》（用途：服装参考；控制：外衣；不得控制：表情）；"
+                "REF-ROOM（顺序：4）· 输入/room.png《玄关场景》（用途：场景参考；控制：门框空间；不得控制：人物）；"
+                "待补参考图：许棠配饰图（IMG-PROP-02）。\n\n"
+                "### 首帧提示词\n"
+                "> Doorway keyframe with rain on the threshold.\n\n"
+                "## SHOT-EP001-002 · 空镜\n\n"
+                "- 输入参考图：无（待补参考图：许棠人物图（IMG-CHAR-01））。\n\n"
+                "### 首帧提示词\n"
+                "> Empty corridor with wet floor reflections.\n",
+                encoding="utf-8",
+            )
+            shot1_job = root / "shot1.json"
+            shot1_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-SHOT001-RENUM",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/分镜.md",
+                        "source_entry": "SHOT-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/image/SHOT-EP001-001.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            preview1 = self.prepare_and_confirm(root, shot1_job)
+            self.assertEqual(
+                [(b["slot_id"], b["order"], b["role"]) for b in preview1["reference_bindings"]],
+                [
+                    ("REF-HERO", 1, "reference_image"),
+                    ("REF-ROOM", 2, "reference_image"),
+                ],
+            )
+            self.assertEqual(
+                production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001-RENUM",
+                    adapter_config=self.adapter_config(directory),
+                )["state"],
+                "succeeded",
+            )
+
+            shot2_job = root / "shot2.json"
+            shot2_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-SHOT002-EMPTY-NESTED",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/分镜.md",
+                        "source_entry": "SHOT-EP001-002",
+                        "outputs": ["剧集/EP001/制作成果/image/SHOT-EP001-002.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            preview2 = self.prepare_and_confirm(root, shot2_job)
+            self.assertEqual(preview2["reference_bindings"], [])
+
+    def test_run_batch_partial_failure_modes_and_preflight_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            failing_adapter = Path(directory) / "fail_adapter.py"
+            failing_adapter.write_text(
+                "import json, sys\n"
+                "json.dump({'error': {'provider': 'flaky', 'category': 'server', "
+                "'code': 'upstream_500', 'http_status': 500, 'retryable': True, 'submitted': True}}, sys.stdout)\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "mixed-adapters.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                "timeout_seconds": 30,
+                            },
+                            "flaky": {
+                                "command": [sys.executable, str(failing_adapter)],
+                                "timeout_seconds": 30,
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            def write_batch_jobs(overwrite: bool = False) -> list[Path]:
+                specs = [
+                    ("EP001-B1", "fixture", "Prompt 1", "剧集/EP001/制作成果/image/B1.png"),
+                    ("EP001-B2", "flaky", "Prompt 2", "剧集/EP001/制作成果/image/B2.png"),
+                    ("EP001-B3", "fixture", "Prompt 3", "剧集/EP001/制作成果/image/B3.png"),
+                ]
+                paths: list[Path] = []
+                for jid, adapter, prompt, output in specs:
+                    p = root / f"{jid}.json"
+                    p.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "job_id": jid,
+                                "modality": "image",
+                                "adapter": adapter,
+                                "prompt": prompt,
+                                "outputs": [output],
+                                "overwrite": overwrite,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    paths.append(p)
+                return paths
+
+            job_files = write_batch_jobs()
+            batch1 = production_tool.prepare_batch(root, job_files)
+            production_tool.confirm_batch(
+                root,
+                batch_id=batch1["batch_id"],
+                confirmation=batch1["confirmation"],
+            )
+            stopped = production_tool.run_batch(
+                root, adapter_config=config, batch_id=batch1["batch_id"], stop_on_error=True
+            )
+            self.assertEqual(stopped["state"], "failed")
+            self.assertEqual([item["job_id"] for item in stopped["succeeded"]], ["EP001-B1"])
+            self.assertEqual([item["job_id"] for item in stopped["failed"]], ["EP001-B2"])
+            self.assertEqual(stopped["remaining"], ["EP001-B3"])
+            self.assertFalse((root / "剧集/EP001/制作成果/image/B3.png").exists())
+
+            job_files = write_batch_jobs(overwrite=True)
+            batch2 = production_tool.prepare_batch(root, job_files)
+            production_tool.confirm_batch(
+                root,
+                batch_id=batch2["batch_id"],
+                confirmation=batch2["confirmation"],
+            )
+            continued_cli = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "run-batch",
+                    str(root),
+                    "--batch-id",
+                    batch2["batch_id"],
+                    "--adapter-config",
+                    str(config),
+                    "--continue-on-error",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(continued_cli.returncode, 0)
+            continued = json.loads(continued_cli.stdout)
+            self.assertEqual([item["job_id"] for item in continued["succeeded"]], ["EP001-B1", "EP001-B3"])
+            self.assertEqual([item["job_id"] for item in continued["failed"]], ["EP001-B2"])
+            self.assertEqual(continued["remaining"], [])
+            self.assertTrue((root / "剧集/EP001/制作成果/image/B3.png").is_file())
+
+            # Re-preparing one job after prepare_batch must fail closed with batch_inputs_changed.
+            job_files = write_batch_jobs(overwrite=True)
+            batch3 = production_tool.prepare_batch(root, job_files)
+            production_tool.confirm_batch(
+                root,
+                batch_id=batch3["batch_id"],
+                confirmation=batch3["confirmation"],
+            )
+            mutated = json.loads(job_files[0].read_text(encoding="utf-8"))
+            mutated["prompt"] = "Mutated after prepare-batch"
+            job_files[0].write_text(json.dumps(mutated, ensure_ascii=False), encoding="utf-8")
+            reprepared = production_tool.prepare_job(root, job_files[0])
+            production_tool.confirm_job(
+                root, job_id="EP001-B1", confirmation=reprepared["confirmation"]
+            )
+            with self.assertRaisesRegex(
+                production_tool.ConfirmationRequiredError, "batch_inputs_changed"
+            ):
+                production_tool.run_batch(
+                    root, adapter_config=config, batch_id=batch3["batch_id"]
+                )
+
+            # Explicit job_ids reject duplicate job_ids and colliding outputs before running job 1.
+            with self.assertRaisesRegex(ValueError, "duplicate job_id"):
+                production_tool.run_batch(
+                    root, adapter_config=config, job_ids=["EP001-B1", "EP001-B1"]
+                )
+            collide_a = root / "collide-a.json"
+            collide_b = root / "collide-b.json"
+            for jid, path in (("EP001-CA", collide_a), ("EP001-CB", collide_b)):
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": "1.0",
+                            "job_id": jid,
+                            "modality": "image",
+                            "adapter": "fixture",
+                            "prompt": f"Collide {jid}",
+                            "outputs": ["剧集/EP001/制作成果/image/SHARED.png"],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                self.prepare_and_confirm(root, path)
+            with self.assertRaisesRegex(ValueError, "duplicate output path"):
+                production_tool.run_batch(
+                    root, adapter_config=config, job_ids=["EP001-CA", "EP001-CB"]
+                )
+            self.assertFalse((root / "剧集/EP001/制作成果/image/SHARED.png").exists())
+
+    def test_safe_error_detail_redacts_secrets_urls_and_local_paths(self) -> None:
+        self.assertEqual(
+            production_tool._safe_error_detail("  SEEDANCE_MODEL   is required "),
+            "SEEDANCE_MODEL is required",
+        )
+        for unsafe in (
+            "Authorization: Bearer tok-secret-123",
+            "invalid key sk-abcdefghijkl123456",
+            "api_key=my-secret-value",
+            "upstream https://api.example.com/v1/tasks failed",
+            "failed reading /Users/alice/private/config.json",
+            r"failed reading C:\Users\alice\secret.json",
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.assertIsNone(production_tool._safe_error_detail(unsafe))
+                parsed = production_tool._parse_public_adapter_error(
+                    json.dumps(
+                        {
+                            "error": {
+                                "provider": "seedance",
+                                "category": "invalid_request",
+                                "code": "bad_config",
+                                "retryable": False,
+                                "submitted": False,
+                                "detail": unsafe,
+                            }
+                        }
+                    ).encode("utf-8"),
+                    profile="seedance",
+                    returncode=1,
+                )
+                self.assertNotIn("detail", parsed)
 
 
 if __name__ == "__main__":

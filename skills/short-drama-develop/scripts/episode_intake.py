@@ -163,11 +163,6 @@ def _structural_problems(episodes: list[dict[str, Any]], data: bytes) -> list[st
     if numbers:
         if numbers != sorted(numbers):
             problems.append("episode numbers are out of source order")
-        missing = sorted(set(range(min(numbers), max(numbers) + 1)) - set(numbers))
-        if min(numbers) != 1:
-            missing = sorted(set(range(1, min(numbers))) | set(missing))
-        if missing:
-            problems.append("missing episode numbers: " + ", ".join(map(str, missing)))
     else:
         problems.append("no episode headings found")
     return problems
@@ -585,10 +580,12 @@ def merge_batch(
     existing_records = _read_jsonl(current_map, absent_ok=True)
     existing = _validated_records(existing_records, valid_ids, "episode-map")
     added: list[str] = []
+    updated: list[str] = []
     for episode_id, record in batch.items():
         if episode_id in existing:
             if _json_bytes(existing[episode_id]) != _json_bytes(record):
-                raise ValueError(f"conflicting episode-map record: {episode_id}")
+                existing[episode_id] = record
+                updated.append(episode_id)
         else:
             existing[episode_id] = record
             added.append(episode_id)
@@ -604,6 +601,7 @@ def merge_batch(
     return {
         "output": str(output),
         "added": [episode_id for episode_id in ordered_ids if episode_id in set(added)],
+        "updated": [episode_id for episode_id in ordered_ids if episode_id in set(updated)],
         "progress": derived,
     }
 

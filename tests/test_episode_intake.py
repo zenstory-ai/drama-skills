@@ -119,9 +119,9 @@ class EpisodeIntakeTests(unittest.TestCase):
             episode_intake.slice_episode(self.index_path, self.source, "EP002", destination)
         self.assertEqual(destination.read_bytes(), b"keep")
 
-    def test_holes_duplicates_and_empty_episodes_are_detected(self) -> None:
+    def test_out_of_order_duplicates_and_empty_episodes_are_detected(self) -> None:
         for data, fragment in (
-            ("第一集\n甲\n第三集\n丙\n".encode(), "missing"),
+            ("第三集\n丙\n第二集\n乙\n".encode(), "out of source order"),
             ("第一集\n甲\n第一集\n乙\n".encode(), "duplicate"),
             ("第一集\n第二集\n乙\n".encode(), "empty"),
         ):
@@ -129,6 +129,20 @@ class EpisodeIntakeTests(unittest.TestCase):
                 self.source.write_bytes(data)
                 result = episode_intake.build_index(self.source)
                 self.assertTrue(any(fragment in p for p in result["problems"]), result["problems"])
+
+    def test_non_one_start_and_gapped_episodes_index_and_verify_cleanly(self) -> None:
+        raw = "第5集 中段切入\n戊\n第6集 承接\n己\n第10集 高潮试写\n癸\n".encode()
+        document = self.build(raw)
+        self.assertEqual(document["problems"], [])
+        self.assertEqual(
+            [row["episode_id"] for row in document["episodes"]],
+            ["EP005", "EP006", "EP010"],
+        )
+        self.assertTrue(episode_intake.verify_index(self.index_path, self.source)["verified"])
+        self.assertEqual(
+            episode_intake.slice_episode(self.index_path, self.source, "EP010"),
+            "第10集 高潮试写\n癸\n".encode(),
+        )
 
     def test_agent_authored_index_with_nonstandard_boundaries_verifies_and_slices(self) -> None:
         raw = "开篇\n【上集】\n甲\n【下集】\n乙\n".encode()
@@ -245,7 +259,43 @@ class ProgressAndMergeTests(unittest.TestCase):
             ["EP001", "EP002", "EP004"],
         )
 
-    def test_merge_conflict_or_oversized_batch_does_not_overwrite(self) -> None:
+    def test_merge_updates_existing_episode_records_in_place(self) -> None:
+        initial = self.batch(
+            "one.jsonl",
+            [{"episode_id": "EP003", "beat": "丙"}, {"episode_id": "EP001", "beat": "old"}],
+        )
+        episode_intake.merge_batch(
+            self.index,
+            self.source,
+            initial,
+            self.map,
+            self.next_map,
+            self.checkpoint,
+            batch_size=2,
+        )
+        revision = self.batch("revision.jsonl", [{"episode_id": "EP001", "beat": "new"}])
+        result = episode_intake.merge_batch(
+            self.index,
+            self.source,
+            revision,
+            self.next_map,
+            self.map,
+            self.checkpoint,
+            batch_size=2,
+        )
+        self.assertEqual(result["added"], [])
+        self.assertEqual(result["updated"], ["EP001"])
+        self.assertEqual(result["progress"]["completed"], ["EP001", "EP003"])
+        merged = [
+            json.loads(line)
+            for line in self.map.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            merged,
+            [{"episode_id": "EP001", "beat": "new"}, {"episode_id": "EP003", "beat": "丙"}],
+        )
+
+    def test_merge_oversized_or_unknown_episode_batch_does_not_overwrite(self) -> None:
         initial = self.batch("one.jsonl", [{"episode_id": "EP001", "beat": "old"}])
         episode_intake.merge_batch(
             self.index,
@@ -258,12 +308,12 @@ class ProgressAndMergeTests(unittest.TestCase):
         )
         before_map = self.next_map.read_bytes()
         before_checkpoint = self.checkpoint.read_bytes()
-        conflict = self.batch("conflict.jsonl", [{"episode_id": "EP001", "beat": "new"}])
-        with self.assertRaises(ValueError):
+        unknown = self.batch("unknown.jsonl", [{"episode_id": "EP999", "beat": "outside"}])
+        with self.assertRaisesRegex(ValueError, "outside the index"):
             episode_intake.merge_batch(
                 self.index,
                 self.source,
-                conflict,
+                unknown,
                 self.next_map,
                 self.map,
                 self.checkpoint,
@@ -300,12 +350,17 @@ class CliTests(unittest.TestCase):
             result = run_cli("slice", index, source, "EP002", "--out", output)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("本集正文 2".encode(), output.read_bytes())
+            gapped = root / "gapped.txt"
+            gapped_index = root / "gapped-index.json"
+            gapped.write_text("第五集\n戊\n第八集\n辛\n", encoding="utf-8")
+            result = run_cli("index", gapped, "--out", gapped_index)
+            self.assertEqual(result.returncode, 0, result.stderr)
             bad = root / "bad.txt"
-            bad.write_text("第一集\n甲\n第三集\n丙\n", encoding="utf-8")
+            bad.write_text("第三集\n丙\n第一集\n甲\n", encoding="utf-8")
             result = run_cli("index", bad, "--out", index)
             self.assertNotEqual(result.returncode, 0)
             candidate = json.loads(index.read_text(encoding="utf-8"))
-            self.assertTrue(any("missing" in problem for problem in candidate["problems"]))
+            self.assertTrue(any("out of source order" in problem for problem in candidate["problems"]))
 
     def test_manual_index_cli_accepts_agent_line_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -377,7 +432,7 @@ class WorkflowContractTests(unittest.TestCase):
             / "skills/short-drama-develop/references/multi-episode-intake.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("已有多集完整剧本/散稿", router)
+        self.assertIn("$short-drama-develop", router)
         self.assertIn("multi-episode-intake.md", develop)
         for command in (" index ", " manual-index ", " slice ", " progress ", " merge "):
             with self.subTest(command=command):

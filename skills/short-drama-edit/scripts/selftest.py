@@ -26,6 +26,7 @@ from edit_tool import (  # noqa: E402
     _shot_match_filter,
     _subtitle_cues,
     check_cuts,
+    collect_notices,
     parse_cut_list,
 )
 
@@ -317,9 +318,11 @@ def check_stale_window() -> None:
         newer = listing.stat().st_mtime + 60
         os.utime(media, (newer, newer))
         findings = check_cuts(episode, cuts, root, probe=False)
+        notices = collect_notices(episode, cuts, root, probe=False)
+        require(not findings, f"重出后的陈旧时间应当进入提醒而非阻断渲染: {findings}")
         require(
-            any("素材比剪辑单新" in item for item in findings),
-            f"重出后的陈旧字幕时间没抓到: {findings}",
+            any("素材比剪辑单新" in item for item in notices),
+            f"重出后的陈旧字幕时间没在提醒里抓到: {notices}",
         )
 
         # 改过剪辑单之后就不再报——那正是「重测并改」的动作。
@@ -329,7 +332,7 @@ def check_stale_window() -> None:
         os.utime(listing, (later, later))
         _, cuts, _ = parse_cut_list(listing)
         require(
-            not any("素材比剪辑单新" in item for item in check_cuts(episode, cuts, root, probe=False)),
+            not any("素材比剪辑单新" in item for item in collect_notices(episode, cuts, root, probe=False)),
             "改过剪辑单之后不该继续报陈旧",
         )
 

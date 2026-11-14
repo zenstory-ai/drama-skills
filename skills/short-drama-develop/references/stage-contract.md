@@ -1,53 +1,53 @@
-# 开发阶段契约
+# 开发阶段职责与规则
 
-## 所有权边界
+## 职责边界
 
-- **本阶段拥有**：系列承诺、冲突引擎、弧线、已规划的单集契约；已规划的知识/目标/关系/交接状态；改编取舍与题材选择。
-- **本阶段继承**：创作者已接受的方向、约束、题材与受众承诺。
-- **本阶段不越权**：不写逐镜事实，不指定供应商字段，不代替剧本决定场景怎么演。剧本环节只落实本契约，不复制它；契约变化时由本阶段发出修订，让下游刷新引用。
+- **本阶段负责**：全剧核心看点、核心矛盾与推进机制、人物弧光与主线走向、按需编制的分集大纲；各集的人物知情范围、目标、关系与交接状态；原著改编取舍与题材打法选择。
+- **本阶段沿用**：创作者已拍板的故事方向、创作底线、题材定位与观众预期。
+- **本阶段不越界**：不写逐镜画面，不指定模型参数字段，不替剧本环节决定单场戏具体怎么演。下游写单集剧本时若实测发现分集切分或节奏排布存在结构卡点，附上理由路由回 `$short-drama-develop` 更新 `episode-map.jsonl` / `adaptation-map.jsonl` 与关联开发设定，不由下游直接改写。
 
 ## 制作形态需要什么
 
-创作者已接受的视觉方向与制作形态由项目层传入（属 `craft_default`，不改写身份、地理、持物归属与可读文字政策）。本阶段不加载形态卡，而是就形态向创作简报写清四件事（造型、材质、光线和镜头字段由后续环节负责）：
+创作者敲定的视觉方向与制作形态由项目层传入（属 `craft_default`，不改写人物身份、空间布局、持物归属与画面文字处理方式）。本阶段不加载制作形态卡，只围绕选定形态在立项简报里写清四件事（具体服化道、材质、布光和镜头字段由后续环节负责）：
 
-- **叙事职责**：这种形态要帮观众更快看懂什么、感到什么（不写“高级”“电影感”等空泛词）。
-- **运动预算**：哪些段落必须全动作，哪些可靠保持姿态、局部循环、视差或剪辑完成，据此约束分集地图场面规模。
-- **未决试验**：哪些形态能力尚未验证、需先做小样。
-- **节奏起点**：项目节奏档案从哪组默认值起步（`STY-26`）。
+- **画面作用**：这种画风或拍摄形态能帮观众更快看懂什么、感受到什么（不写“高级”“电影感”等空泛套话）。
+- **动作量分配**：哪些重头戏需要完整连贯大动作，哪些靠定格姿态、局部微动、镜头推拉视差或剪辑就能出效果，据此控制场面规模。
+- **待测难点**：哪些画面表现还没摸准底、需要先跑小样验证。
+- **节奏起点**：本项目的节奏目标从哪组默认值起步（`STY-26`）。
 
 ## 本阶段规则
 
 ### `STY`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| STY-01 | craft_default | State the promise as protagonist, pursuit, costly opposition, and recurring payoff. |
-| STY-02 | craft_default | Build a repeatable conflict engine whose pressure can change power, knowledge, relationship, exposure, cost, or time. |
-| STY-03 | reviewed_invariant | A beat/episode escalation must change a story state rather than repeat the same pressure louder. |
-| STY-04 | craft_default | Enter with pressure active and deliver part of the promised payoff before the outgoing hook. |
-| STY-05 | structural_invariant | Incoming/setup/payoff references resolve to known records or are explicitly unresolved. |
-| STY-06 | taste_option | Hook form, arc shape, episode count, and climax position follow the creator's format; how many seconds before the first hook and between emotional beats comes from the accepted rhythm profile, not from this rule. |
-| STY-07 | reviewed_invariant | Every adaptation treatment—merge, carrier change, compression, reordering, or addition—preserves each core source character's stance toward the protagonist and way of acting, the core relationships, and the main line, and contradicts no source fact, unless the creator has accepted that change; a proposed change of stance or relationship keeps its actual disposition, names the change in `lost_or_changed`, and stays at `creator_acceptance.status` `pending` until then. Character/scene merges also preserve dramatic function, knowledge permissions, relationship position, and causal bridges. |
-| STY-08 | craft_default | Translate exposition through consequential behavior, evidence, spatial pressure, or dialogue strategy before adding neutral explanation. |
-| STY-09 | reviewed_invariant | A reveal/reversal grows from established facts and changes a plan, explanation, relationship, or costly choice. |
-| STY-10 | craft_default | Establish the recurring-payoff promise once the opening pressure makes it legible; an opening may imply, delay, or state it according to genre and creator intent. Plan each outgoing hook from the episode's local result rather than repeating a type by quota. |
-| STY-11 | craft_default | Build only the prior-world reservoir needed to predict present choices, then enter where pressure is already active; the moment an established strategy begins to create visible cost is one candidate, weighed for the first episode against the payoff and cold-open entries of STY-25. |
-| STY-12 | reviewed_invariant | Claimed character progression cites a pressure test, choice or retreat, local result, cost, and changed visible strategy. It is recorded once per character in the story engine, not restated in every episode record; the episode carries only the local result and the outgoing pressure it produced. |
-| STY-13 | reviewed_invariant | Each episode produces a local dramatic result before its outgoing hook; serialization cannot rely only on pausing an unfinished action. |
-| STY-14 | craft_default | Maintain compact serial memory for character strategy/state, relationships, information permissions, setup debt, rhythm, and exact handoff. |
-| STY-15 | reviewed_invariant | Calibrate each information release to what its visible carrier directly supports, while keeping unproved identity, cause, motive, or mechanism explicit as unresolved inference. |
-| STY-16 | craft_default | Before scene work, estimate each planned episode's shot and duration magnitude from the project's own accepted ratios, and resolve order-of-magnitude outliers in the map; the estimate informs the creator and never blocks delivery. |
-| STY-17 | reviewed_invariant | A premise device separates its creator-accepted contract (scope, failure conditions, cost, whether its own declarations are reliable) from in-fiction disclosure; the contract is accepted before the device first takes effect, while disclosure may lag, stay partial, or be misstated by a character or the device itself. Every later device ability or exemption traces to a contract clause—an untraceable one is retroactive widening—and the audience not yet knowing every boundary is never itself a defect. |
-| STY-18 | structural_invariant | A multi-episode source is read through an exact-byte episode index that `verify` checks against the current source — total length, span validity, ordering, and line/byte agreement — so an edit that changes any length is reported. A same-length rewrite in place is not, and source drift still invalidates every old span, so whoever edits the source re-indexes it. Resume derives missing IDs from the current episode map rather than a last-completed guess. |
-| STY-19 | craft_default | For a multi-episode source, the Agent chooses each batch from this file's measured episode spans, semantic complexity, and available context, then reads only the current slices and compact accepted handoff; no fixed episode quota substitutes for that judgment. |
-| STY-20 | craft_default | Name each unit's repeating mechanism, the payoff the audience can expect from every run of it, and the condition under which the loop ends; the first run demonstrates the mechanism in full so later runs pay off on recognition, and each further run changes the opponent's knowledge, the execution difficulty, the mechanism's scope, who is now aware, or which retreat is closed. |
-| STY-21 | craft_default | Retire a loop deliberately—close it, remake one of its premises, or hand it to another character—before opening the next one, and carry the stake, deadline, and exit cost forward instead of rebuilding urgency from zero; a new loop opened alongside an unsettled one weakens both. |
-| STY-22 | craft_default | When returning to a long source for detail while writing downstream, retrieve with an event anchor—character plus place/object plus the current action or conflict—rather than a recurring concept term; read back the matched span instead of writing from the search summary; and before use, check the excerpt's knowledge state against the episode's entry state, treating anything ahead of it as reference only. Recall fills in detail for an accepted contract; pulling a later source beat forward is legitimate adaptation, done as a `move_earlier` or `cold_open` revision of the episode map rather than while writing an episode. |
-| STY-23 | reviewed_invariant | A source fact the brief registers as unchangeable is either realized on screen inside the episodes this round covers—named in the episode record and present in that episode's screenplay—or explicitly deferred to a named episode. A visible carrier an episode record declares must actually appear in that episode's screenplay; a carrier that only works as a comparison needs both of its halves staged. Registering a fact is not paying it off. World-setting facts in particular may be deferred to the episode where they first change a choice; the first episode owes only the rules its own conflict uses. The suite runs no mechanical check for this; the reviewer cites the brief and the episode record against the screenplay. |
-| STY-24 | reviewed_invariant | Each episode's directional turn and its payoff inside that episode name one concrete visible action -- who did what -- rather than only the function or state change it achieves; an opposing force's leverage is likewise written as something it has done or will do. The suite runs no mechanical check; the reviewer cites the function against the visible action that carries it, and a function with no such action is the defect. It does not require a full scene. |
-| STY-25 | craft_default | Choose the first episode's entry from at least three candidates, one of which moves a later climax forward as a cold open. Score every candidate on the same two counts: the single image the viewer sees in the opening frame and the question it raises on its own, without reading on-screen text or knowing who anyone is; and the episode's payoff. Prefer an entry whose opening image is itself a hook, with a strong payoff, that lets the episode establish the protagonist's identity, crisis and goal before it ends, and state the big goal early and concretely enough to check. |
-| STY-26 | craft_default | Propose a project rhythm profile (`creator_authority.rhythm_profile`) from the production form, starting from the per-form defaults in episode-design, for the creator to accept or edit. The defaults are starting points, never a suite-level threshold; later stages check only arithmetic against an accepted profile, and a missing or unaccepted profile means nothing is checked. |
-| STY-27 | craft_default | When the creator declares paywall episodes, place each before an undelivered payoff and stop one beat before the reveal, with a line hook or an image hook pointing at what the audience already awaits; the episode still delivers its own local result first. Episode numbers are the creator's and the suite supplies no default position; common ranges are offered as examples only when the creator has declared paywalls and asks for placement. |
-| STY-28 | craft_default | Compress an adaptation by keeping the source's hottest plot points first, then cutting subplots and merging duplicate-function characters; episode count follows the payoff distribution rather than one chapter per episode. |
-| STY-29 | reviewed_invariant | An adaptation mapping marked `move_earlier` or `cold_open` states the setup it depends on and where and through which carrier that setup appears first, or how the viewer is oriented in time, and what happens at the beat's original position. The reviewer checks the mapping against the episode record and screenplay; a moved beat that lands before the audience has the facts it needs is the defect. |
-| STY-30 | craft_default | Material the source does not contain—a new character, an invented scene, a new or replaced opponent—is registered as its own `add` mapping stating the function it serves, why existing source characters and events cannot carry that function, and which source facts were checked against it, and it is listed in the brief for the creator to confirm. Opposition an episode needs is drawn first from source characters and what they actually do; where the source has none, the rhythm-profile deviation is reported instead of hardening an ally or inventing an opponent. |
+| STY-01 | craft_default | 用核心主角、当前诉求、代价高昂的硬阻力与阶段看点兑现来写清全剧核心看点。 |
+| STY-02 | craft_default | 搭建能持续推进的核心矛盾机制，让每次施压都能切实改变实权、知情范围、人物关系、暴露风险、代价或剩余时间。 |
+| STY-03 | reviewed_invariant | 每拍或每集的冲突升级须让处境发生实质变化，不能只把同一股压迫换个大嗓门重演一遍。 |
+| STY-04 | craft_default | 常规强冲突短剧宜尽早带入紧迫危机，并在抛出集尾钩子之前先兑现一部分本集看点；温情生活流、悬疑铺陈或纯爱题材可按自身节奏起势。 |
+| STY-05 | reviewed_invariant | 上下集承接、伏笔埋设与回收引用均须指向已知记录，未定项须明确标出。 |
+| STY-06 | taste_option | 钩子形态、主线走向、总集数与高潮位置服从创作者选定的体裁规格；首钩出现秒数与情绪触点间隔按已确认的节奏参考标准执行，不由本条硬性规定。 |
+| STY-07 | reviewed_invariant | 改编中的合并、换表现方式、压缩、重排或新增，均须保住原著核心人物对主角的立场与处事路数、核心关系及主线脉络，且不与原著事实冲突（创作者已确认的改动除外）；若提议改动人物立场或核心关系，须说明改动点并交创作者确认。合并人物或场景时还须保住原有的戏剧作用、信息差、关系位置与前因后果衔接。 |
+| STY-08 | craft_default | 背景交代优先落进有实质后果的行动、物证争夺、空间压迫或带潜台词的交锋，少写干巴巴的说明台词。 |
+| STY-09 | reviewed_invariant | 揭秘与反转须从前文埋好的事实里顺理成章推出来，并真正推翻原有盘算、改写旧认知、扭转关系或逼出高代价抉择。 |
+| STY-10 | craft_default | 开场危机立住后适时亮明核心看点（按题材与创作者意图可明示、暗示或延后）；集尾钩子顺着本集阶段结果自然引出，不机械限制相邻两集的钩子类型。 |
+| STY-11 | craft_default | 人物前史只梳理足以推演当下抉择的部分，优先从冲突或情绪拐点已显现的一刻切入故事；排第 1 集时可结合 `STY-25` 权衡顺叙、高光直入或冷开切入。 |
+| STY-12 | craft_default | 人物发生弧光转变时，宜写明遭遇的危机考验、当场抉择、阶段结果、所付代价及此后处事路数的外在变化。全剧层面的转变统一记在 `story-engine.md`，不在单集大纲里反复抄写。 |
+| STY-13 | craft_default | 常规连载集在甩出集尾钩子前宜先演完一个本集阶段结果，少靠半截动作硬断集；单元舒缓收尾或刻意悬置结构可按题材需要调整。 |
+| STY-14 | craft_default | 多集连载项目可维护精简的跨集连戏备忘录，记清人物处境、关系亲疏、信息差、待回收伏笔及交接细节。 |
+| STY-15 | craft_default | 信息揭晓宜对齐画面动作或物证当场能坐实的那一步结论；尚未坐实的身份、成因或幕后手法标明为待查疑点，避免角色无铺垫跳步猜中真相。 |
+| STY-16 | craft_default | 动笔写分场前，可按本项目已定稿集数的实测比值粗估各集篇幅量级，供创作者参考，不作为交付门槛。 |
+| STY-17 | craft_default | 核心高概念与开篇奇招（如重生预知、系统外挂、规则异能）宜将作者规则底表（能力边界、失灵条件、使用代价、播报可靠性）与剧中揭晓进度分开管理：规则底表尽量在首次生效前理清，剧中揭晓可滞后、分批亮底或由不可靠载体误导，避免绝境中毫无铺垫临时加挂。 |
+| STY-18 | structural_invariant | 导入多集剧本时须通过精确字节索引按集读取，并由 `verify` 校验当前原稿的总长度、区间合法性、集号递增序与行号/字节对应关系（支持从非第 1 集起步或跳集选拆）；原稿一旦变动必须重建索引。`merge` 允许用新批次同 `episode_id` 记录覆盖更新既有分集记录，同时严禁写入不在索引声明集合内的未知集号。 |
+| STY-19 | craft_default | 处理多集剧本时，由 Agent 根据实测单集字节长度、情节复杂度与可用上下文容量自主决定每批处理几集，每次只读当前批次切片与精简前情交接，不用固定集数配额代替判断。 |
+| STY-20 | craft_default | 系统、规则或强博弈类单元故事宜写清阶段破局打法、预期看点与单元收尾条件，让每一回合都改变对手防备程度、破局难度、知情名单或剩余退路；温情生活流与纯爱题材不强套此类机制齿轮。 |
+| STY-21 | craft_default | 单元故事开启新阶段前，宜先把当前阶段的矛盾做个收束、改写前提或移交攻守位置，顺势接住既有赌注与紧迫感。 |
+| STY-22 | craft_default | 下游回长篇原著补细节时，用具体事件线索（人物 + 地点/物件 + 当下动作或冲突）检索并回读原文段落，核对当前知情范围。若写剧本时发现原分集切分或高光节奏排布存在结构卡点，附上理由路由回 `$short-drama-develop` 更新 `episode-map.jsonl` / `adaptation-map.jsonl`，不由下游技能直接改写。 |
+| STY-23 | reviewed_invariant | 立项简报列为原著必保的关键事实，在本轮覆盖集数内要么落地成具体画面，要么明确标出延后到哪一集。靠前后反差才成立的细节须把前后两头都交代清楚；世界观设定可延后到首次影响人物抉择的那一集交代。 |
+| STY-24 | craft_default | 单集大纲的局势转折、本集阶段结果与对手施压筹码宜写成看得见的具体动作（谁做了什么），少用空泛的处境总结词。 |
+| STY-25 | craft_default | 第 1 集切入点拿不准时，可对比顺叙开场、高光直入与冷开切入方案，综合开场画面的抓人程度与首集看点兑现择优选用；原著开篇已足够抓人或创作者已定开场时直接推进。 |
+| STY-26 | craft_default | 按项目制作形态从 `episode-design.md` 的分形态参考起点提出节奏目标（`creator_authority.rhythm_profile`），交创作者确认或手改。默认数值仅作起步参考，未设定或未确认时不做算术核对。 |
+| STY-27 | craft_default | 付费卡点位置按总集数体量、平台商业模式与大爽点节点动态排布，不套固定集号死公式；设卡点时先兑现本集阶段结果，再卡在重大揭晓或爆发前一拍。 |
+| STY-28 | craft_default | 改编压缩时先保住原著最抓人的高光情节点（爽点、糖点、虐点），再删减游离支线、合并作用重复的配角；集数跟着看点密度走，不按章节机械一章一集切分。 |
+| STY-29 | reviewed_invariant | 标为 `move_earlier` 或 `cold_open` 的改编重排，须交代所依赖的前置铺垫在哪一集如何补足（或观众靠什么看懂时间线）以及原位置如何调整，避免高潮前移后因果断桥。 |
+| STY-30 | craft_default | 原著没有的重要新增内容（新角色、新编关键场次、替换对手）宜说明戏剧作用与新增理由，并列入立项简报交创作者确认；单集阻力优先从原著既有角色和处境中挖掘，不强行把友方黑化成恶人。 |

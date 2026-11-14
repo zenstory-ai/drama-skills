@@ -1,35 +1,32 @@
-# Storyboard, Keyframe, And Motion Rubric
+# 分镜、首尾帧与视频动态核查清单
 
-## Coverage, shot purpose, and geography (`SHT-01`–`SHT-31`)
+## 1. 剧本落镜完整度、机位运镜与跨镜连戏（`SHT-01`–`SHT-31`）
 
-- **Coverage & meaning**: every production-relevant action, line, sound, and `[画面文字]` in `剧本.md` traces to a shot or an explicit omission reason without inventing or deleting story facts.
-- **Audition & scene plan**: when a coverage audition was used, approaches must differ in knowledge timing, alignment, performance space, or landing, and `分镜.md` must implement the selected option. When a scene visual plan was used, its start/end audience positions, spatial pressure, camera rhythm, reaction landing, and sound movement carry one dramatic turn without taking over individual shot boundaries.
-- **Shot purpose, `运镜` & geography (`SHT-04`)**:
-  - Each shot changes audience/character state and protects information permissions (crop, occlusion, back view, and offscreen space neither leak withheld facts early nor hide required evidence/reaction).
-  - Every shot's `运镜` line states a behavior and a reason tied to the shot's purpose (`SHT-04`; fail on missing `运镜`, bare `运镜：固定` with no reason, or an episode locked on nearly every shot including its peak).
-  - Axis is recorded as two named anchors, a working side, and per-character screen positions; shot-reverse-shot directions are complementary; bare left/right means screen left/right (subject-relative sides must name the subject).
-- **Cross-shot continuity**: trace Look, injury, dirt/wetness, emotion/knowledge, position/facing/gaze, hands, held prop, prop owner/state, location/time/weather/light, axis, and screen direction across cuts (distinguishing contradiction from declared montage/ellipsis/dream).
+- **剧本全要素落镜（`SHT-01`）**：《剧本.md》中关乎成片的动作、对白、关键音效与 `[画面文字]` 均由具体 `SHOT-...` 承接，或在开头 `- 未拍场次：` 说明略过依据，无漏拍与擅改剧情事实。
+- **重头戏方案比选与导演构思（按需核查）**：做过拍法比选的场次，核对正式镜头是否落实了创作者拍板的方案；写过场次构思的段落，核对其是否服务于悬念藏露与情绪推进而未取代逐镜起止状态。
+- **镜头目的、稳机位原则与空间轴线（`SHT-04`、`SHT-07`）**：
+  - 每镜有清晰的叙事或情绪作用，守住悬念揭晓边界（既不提前漏底，也不把当镜必看物证或反应挡死）。
+  - **尊重固定机位与克制运镜选择**：固定机位是对白交锋、特写反应、冷峻审视及降低 AI 视频背景畸变的成熟常用拍法（对齐上游 `SHT-04 · craft_default` 与 `SHT-07 · taste_option`）。简写 `运镜：固定` 或整场、整集采用克制稳机位风格均属合规创作选择，**绝不因未写固定机位理由或固定镜头占比高而判不过**；仅当某处关键揭示因机位固定确实遮挡或漏掉戏眼时，才作 `note` / `craft_default` 建议。
+  - 轴线核查确认两处 `固定陈设`、`机位侧` 与人物画面左右关系前后自洽，正反打视线互补不越轴；不带主语直写“左/右”指画面左右，角色自身手脚须点名主语。
+- **跨镜连戏核查（`CON-01`、`CON-02`）**：顺切镜顺序核查人物妆造、伤污湿痕、知情状态、站位朝向、双手占空与持物交接、道具开合损毁及光线天气衔接（区分真实穿帮与剧本标明的蒙太奇、闪回或主观幻觉 `CON-05`）。
 
-## Rhythm profile: shots
+## 2. 镜头节奏指标核对
 
-Under the `REV-12` conditions in the [story rubric](rubric-story-script.md#rhythm-profile-rev-12), measure two storyboard fields: average shot length per scene (scene duration ÷ shot count) against `target_avg_shot_seconds`, and the episode share of close-range shots (近景、特写、大特写、细节镜头 ÷ total shots) against `close_shot_share_min`. Also flag shot durations derived from screenplay word counts instead of the scene's sound timeline (`SHT-28`).
+在满足 [故事大纲与剧本核查清单](rubric-story-script.md#4-节奏设定核对rev-12) 中 `REV-12` 启用条件时，核对分镜两项确认指标：逐场平均镜长是否落在 `target_avg_shot_seconds` 区间，全集近距离镜头占比是否达到 `close_shot_share_min`（超标仅记提醒，不阻断交付）；同时排查按剧本字数机械折算镜长而未核算对白真实发声耗时的毛病（`SHT-28`）。
 
-## Frozen keyframe (`SHT-17`, `SHT-22`, `SHT-24`, `SHT-25`)
+## 3. 首帧与尾帧提示词核查（`SHT-05`、`SHT-06`、`SHT-10`、`SHT-17`）
 
-- **Single still instant**: projects the shot's start state (or end state for an optional closing keyframe per `SHT-17`) with legible focal hierarchy, composition, camera/lens, geography, pose/gaze/hands/prop, expression, and light; fail if it contains ordered actions (“first/then/finally”), performance arcs, camera moves, or transforming environments.
-- **Visual basis & reference scope**:
-  - Every visible character, place, and prop in the finished keyframe text whose identity, Look, or geography must stay recognizable is listed in `视觉依据` (`SHT-22`), and any cross-shot recurring prop/garment missing from `视觉设定.md` altogether is flagged.
-  - Each `控制` scope stays within what this frame carries and is not copied over from the previous shot out of habit (`SHT-24`).
-  - Every real reference image (`REF-...`) declares a valid `用途` (`SHT-25`, `VID-24`).
+- **单一定格瞬间**：`### 首帧提示词` 只画开场瞬间的静止画面（选配 `### 尾帧提示词` 只画终点瞬间的静止画面），若塞入“先……再……最后……”的连续动作链、情绪演变过程或推拉摇移运镜，按静帧违规打回。同时提供首尾两帧时，不得把拆信、翻账等复杂核心动作全丢给模型自动插值（`SHT-17`）。
+- **`出场设定`、参考图与连戏锁边界**：
+  - 首尾帧提示词正文点名需要认准外观或布局的人物、地点与关键道具，对应列入本镜 `出场设定`（`SHT-22`），`控制` 范围与当前景别实际可见部位一致（`SHT-24`）。
+  - 真实参考图 `REF-...` 选用十项合法 `用途`（`外貌`、`主体`、`造型状态`、`空间布局`、`构图`、`尺度`、`效果`、`起始帧`、`结束帧`、`风格`）之一（`SHT-25`）；未垫参考图走文生路线时写 `无（文生视频）` 或简写 `无`。
+  - **连戏锁按参考方式区分核查（`CON-07`）**：仅核查生效范围内的图片提示词、首帧提示词与**未挂起始帧/主体图的文生视频提示词**是否原字保留了 `锁定词`；已挂起始帧或角色主体参考图的图生视频专注动态变化，**不因省略静态外观锁词报错**。
 
-## Motion and production-risk checks (`VID-01`–`VID-28`, `REV-08`)
+## 4. 视频动态与生成风险核查（`VID-01`–`VID-28`、`REV-08`）
 
-- **Action, performance & end boundary**: starts from the accepted frame/boundary; ordered actions fit within the accepted duration (explicit segment timings not summing to shot duration fail structurally; untimed overload fails when a beat/reaction is crowded out); multi-character shots give distinct triggers/choices/leaks/landings only to actors who change and record real `attention_handoffs[]`; end state matches the storyboard's written end state without inventing grabs, injuries, transfers, or lines.
-- **Sound, music & container rules (`VID-13`, `VID-14`, `VID-22`, `VID-23`)**:
-  - Copyable body actions and sound match the source and account for intended ambience or silence (`VID-22`, `VID-23`; H3 `non_diegetic_music: N/A` is valid).
-  - Music intent is written as relative entry/exit/duck against adjacent shots rather than an independent per-shot music bed (`VID-14`; never infer whether a rendered clip has baked-in music without an authorized observation record).
-  - Delivery container duration equals the sum of its accepted member shot durations (`VID-13`), members are contiguous in source order within one scene and binding chain, and any space/subject jump inside a member's timed segment is reported as a hidden cut separate from arithmetic mismatch.
-- **Text-risk and authorized-observation checklist (`REV-08`)**: flag as text risks (or as observed defects when backed by an authorized observation record; see [项目校准](project-calibration.md)):
-  - On-screen text/subtitle residue under `no-text`, or a text-bearing reference admitted without an allowed surface or crop/clean/mask/replace decision;
-  - Redundant prose re-describing clothes/appearance already fixed by a bound reference (inviting wardrobe drift);
-  - Contradictory camera flags in the same interval (e.g. locked camera + pan/push), 180° axis breaks, lip-sync/VO-mouthing mismatches, or emotion-intensity mismatch between stated level and described performance.
+- **起手、动作容量与终点对齐**：`MOTION-...` 时长与 `SHOT-...` 完全相等（`VID-01`）；标秒分段之和等于本镜时长（`VID-04`），未标秒动作量在镜长内可从容演完（`VID-05`）；文生视频完整交代开场人物、造型、场景、构图与光线（不苛求逐字原样粘贴 `开场画面` 子串，`VID-03`）；图生视频允许在分镜参考项基础上按目标模型合理增减静态设定板或承接帧（`VID-24`）；终点姿态与持物严丝合缝对齐分镜终点。
+- **声音时间线、文字边界与多镜合生**：
+  - 人物开口台词严守《剧本.md》与《分镜.md》原文，不私编发声台词（`VID-25`）；音画同出路线交代清楚声源、说话人与环境底声（`VID-23`），单镜默认不混入画外背景音乐（`VID-14`）。
+  - 防字幕负面词按模型特性与屏幕/纸页/招牌等文字风险按需审视，不因无文字风险镜头未写禁字幕套话扣分（`VID-22`）。
+  - `GROUP-...` 多镜合生分组总时长等于成员分镜时长之和（`VID-13`），组内同场紧邻、不重不漏覆盖全集镜头（`VID-15`），单个计时段内不暗藏硬切跳镜。
+- **纸面风险提醒与实看归因（`REV-08`）**：审纸面提示词时，对同一时段固定与移动运镜指令自相矛盾（`VID-06`）判阻断打回；对已挂参考图却做大段静态外貌复述、带杂字底图未清理或对口型与 `[VO]` 闭嘴打架等情况提示走样风险；已有看片反馈印证时按 [成片看片与返工分流指南](generated-media.md) 定级分流。
