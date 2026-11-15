@@ -27,3 +27,4 @@ Status: implemented
 
 - **收益**：谁能判、能不能阻断一目了然；创作者一句理由即可覆盖默认。
 - **代价与已知上限**：语义规则靠 reviewer 引用证据，覆盖率低于脚本；分级一致性靠测试（同 ID 不同分级会红）；收紧分级即可能阻断既有产物的变更，必须附迁移说明。
+- 后续调整：各阶段 `stage-contract.md` 无脚本支撑规则的重定级、`knowhow-index.md` 归口为纯跨阶段路由表及越界脚本拦截松绑，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

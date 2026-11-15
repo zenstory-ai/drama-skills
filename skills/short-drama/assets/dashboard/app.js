@@ -105,7 +105,7 @@ const SCALE_RUNG = { "远景": 1, "全景": 1, "中景": 2, "中近景": 3, "近
 
 const SEVERITY_LABEL = { must: "必须改", should: "建议改", could: "可以更好" };
 
-const COPYABLE_PROMPT_HEADINGS = new Set(["可复制提示词", "冻结关键帧提示词"]);
+const COPYABLE_PROMPT_HEADINGS = new Set(["可复制提示词", "首帧提示词", "尾帧提示词"]);
 const IMAGE_SUFFIXES = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const VIDEO_SUFFIXES = new Set(["mp4", "webm", "mov"]);
 const AUDIO_SUFFIXES = new Set(["wav", "mp3", "m4a", "aac", "flac", "opus"]);
@@ -130,7 +130,7 @@ const INTERNAL_VALUE_TOKENS = new Set([
   "absent", "in_progress", "materialized", "not_run", "pass_with_warnings",
   "not_requested", "provisional", "approve_with_notes", "not_evaluated",
   "delivered", "blocked", "candidate", "artifact", "snapshot", "transaction",
-  "accepted", "rejected", "approve", "ready", "pending", "revise", "stale",
+  "accepted", "rejected", "reject", "approve", "ready", "pending", "revise", "stale",
   "failed", "fail", "pass",
 ]);
 const INTERNAL_EXACT_KEYS = new Set([
@@ -139,7 +139,7 @@ const INTERNAL_EXACT_KEYS = new Set([
 ]);
 
 const FILE_LABELS = {
-  "readme.md": "项目说明", "creative-brief.md": "创作简报", "story-engine.md": "故事引擎",
+  "readme.md": "项目说明", "creative-brief.md": "创作简报", "story-engine.md": "核心设定",
   "director-brief.md": "导演阐述", "adaptation-map.jsonl": "改编要点", "series-arc.json": "全剧走向",
   "episode-map.jsonl": "分集安排", "characters.jsonl": "人物设定", "looks.jsonl": "造型设定",
   "locations.jsonl": "场景设定", "location-views.jsonl": "场景视角", "props.jsonl": "关键道具",
@@ -281,13 +281,13 @@ function creatorStatus(lifecycle, recovery = null) {
     valueIs(lifecycle.build_state, "failed") || valueIs(lifecycle.build_state, "fail") ||
     valueIs(lifecycle.validation_state, "failed") || valueIs(lifecycle.validation_state, "fail") ||
     valueIs(lifecycle.creator_acceptance, "rejected") || valueIs(lifecycle.independent_review, "rejected") ||
-    valueIs(lifecycle.independent_review, "revise")
+    valueIs(lifecycle.independent_review, "reject") || valueIs(lifecycle.independent_review, "revise")
   ) return ["需要修改", "danger"];
   if (recovery?.needed) return ["需要更新", "warning"];
   if (valueIs(lifecycle.build_state, "stale")) return ["需要更新", "warning"];
   if (valueIs(lifecycle.creator_acceptance, "pending")) return ["待你确认", "warning"];
   const accepted = axisOnly(lifecycle.creator_acceptance, ["accepted"]);
-  const reviewed = axisOnly(lifecycle.independent_review, ["approve", "approve_with_notes"]);
+  const reviewed = axisOnly(lifecycle.independent_review, ["approve", "approve_with_notes", "pass"]);
   const ready = axisOnly(lifecycle.delivery_gate, ["ready", "delivered"]);
   const built = lifecycle.build_state === undefined || axisOnly(lifecycle.build_state, ["materialized"]);
   const valid = lifecycle.validation_state === undefined || axisOnly(lifecycle.validation_state, ["pass", "pass_with_warnings"]);
@@ -373,6 +373,19 @@ function viewForPath(path) {
   return view ? `#/${episode}/${view}` : `#/${episode}`;
 }
 
+function reviewPassed(row, review = null) {
+  if (!row?.has?.review) return false;
+  if (Number(row?.review?.must) > 0) return false;
+  if (review && Array.isArray(review.findings) && review.findings.some((item) => item.sev === "must")) return false;
+  const tone = review?.verdictTone ?? row?.reviewTone;
+  if (tone !== undefined && tone !== null) return tone === "ok";
+  return true;
+}
+
+function reviewNeedsAttention(row, review = null) {
+  return Boolean(row?.has?.review) && !reviewPassed(row, review);
+}
+
 /** The next thing an episode needs, as a sentence to hand to the assistant. */
 function nextFor(row) {
   const id = row.id;
@@ -385,8 +398,19 @@ function nextFor(row) {
       ask: `请按 ${id} 的审查意见，先改必须改的 ${must.length} 条（${ids}）。`, href: `#/${id}/review`,
     };
   }
-  const started = DOCUMENT_STAGES.some((stage) => row.has[stage.key]);
-  const missing = DOCUMENT_STAGES.find((stage) => !row.has[stage.key]);
+  if (row.has.review && row.reviewTone === "bad") {
+    const redo = /重做/.test(row.reviewLabel || "");
+    return {
+      kind: "fix", rank: 0,
+      text: redo ? "按审查结论重做这一集" : "按审查意见修改这一集",
+      detail: row.reviewLabel || (redo ? "需要重做" : "需要修改"),
+      ask: redo ? `请按 ${id} 的审查结论重做这一集。` : `请按 ${id} 的审查意见修改这一集。`,
+      href: `#/${id}/review`,
+    };
+  }
+  const skipImgp = Boolean(row.has.vidp || row.has.cut || row.has.film);
+  const started = DOCUMENT_STAGES.some((stage) => row.has[stage.key]) || skipImgp;
+  const missing = DOCUMENT_STAGES.find((stage) => !row.has[stage.key] && !(stage.key === "imgp" && skipImgp));
   if (missing) {
     return {
       kind: started ? "write" : "start", rank: started ? 1 : 5, text: `写${missing.name}`,
@@ -396,6 +420,16 @@ function nextFor(row) {
   if (!row.has.cut) return { kind: "cut", rank: 2, text: "出片后写剪辑单", ask: `请为 ${id} 写剪辑单.md。`, href: `#/${id}/film` };
   if (!row.has.film) return { kind: "render", rank: 3, text: "按剪辑单渲染成片", ask: `请按 ${id} 的剪辑单.md 渲染成片。`, href: `#/${id}/film` };
   if (!row.has.review) return { kind: "review", rank: 4, text: "审查这一集", ask: `请审查 ${id}。`, href: `#/${id}` };
+  if (!reviewPassed(row)) {
+    const provisional = /待补/.test(row.reviewLabel || "");
+    return {
+      kind: "review", rank: 4,
+      text: provisional ? "补齐材料后复核审查" : "确认审查结论",
+      detail: row.reviewLabel || "审查结论待确认",
+      ask: provisional ? `请补齐 ${id} 待核对的材料后重新审查。` : `请核对 ${id} 的审查结论。`,
+      href: `#/${id}/review`,
+    };
+  }
   return { kind: "done", rank: 8, text: "可以导出", ask: `请导出 ${id} 的完整制作资料。`, href: `#/${id}` };
 }
 
@@ -411,19 +445,35 @@ function seriesTodos(rows, limit = 3) {
 /** A gauge: is the measured value inside what the accepted profile allows? */
 function rhythmChecks(metrics, profile, target) {
   const checks = [];
-  if (target && metrics.shots) {
+  if (target != null && metrics?.shots) {
     checks.push({ key: "seconds", label: "全集时长", value: metrics.seconds, unit: " 秒", rule: "目标", goal: target, ok: null });
   }
-  if (profile && metrics.avg != null) {
+  if (profile?.target_avg_shot_seconds != null && metrics?.avg != null) {
     checks.push({ key: "avg", label: "平均镜长", value: metrics.avg, unit: " 秒", rule: "目标", goal: profile.target_avg_shot_seconds, ok: null });
   }
-  if (profile && metrics.close != null) {
+  if (profile?.close_shot_share_min != null && metrics?.close != null) {
     checks.push({ key: "close", label: "近景类占比", value: metrics.close, share: true, rule: "不少于", goal: profile.close_shot_share_min, ok: metrics.close >= profile.close_shot_share_min });
   }
-  if (profile && metrics.vo != null) {
+  if (profile?.vo_share_max != null && metrics?.vo != null) {
     checks.push({ key: "vo", label: "旁白占台词", value: metrics.vo, share: true, rule: "不超过", goal: profile.vo_share_max, ok: metrics.vo <= profile.vo_share_max });
   }
   return checks;
+}
+
+function rhythmProfileRows(profile) {
+  if (!profile) return [];
+  const rows = [];
+  if (profile.form != null && profile.form !== "") rows.push(["制作形态", String(profile.form)]);
+  if (profile.first_hook_seconds != null) rows.push(["第一个钩子最迟", `${num(profile.first_hook_seconds)} 秒`]);
+  if (profile.target_avg_shot_seconds != null) rows.push(["目标平均镜长", `${num(profile.target_avg_shot_seconds)} 秒`]);
+  if (profile.close_shot_share_min != null) rows.push(["近景类镜头不少于", pct(profile.close_shot_share_min)]);
+  if (profile.vo_share_max != null) rows.push(["旁白占台词不超过", pct(profile.vo_share_max)]);
+  if (profile.beat_interval_seconds_max != null) rows.push(["情绪触点最长间隔", `${num(profile.beat_interval_seconds_max)} 秒`]);
+  if (profile.opposed_reversals_per_episode_min != null) rows.push(["每集至少反转", `${profile.opposed_reversals_per_episode_min} 次`]);
+  if (profile.end_on_peak != null) rows.push(["集尾停在峰值", profile.end_on_peak ? "是" : "否"]);
+  if (profile.reprise_previous_last_beat != null) rows.push(["承接上集尾钩", profile.reprise_previous_last_beat ? "是" : "否"]);
+  if (profile.first_major_payoff_by_episode != null) rows.push(["第一个大爽点不晚于", `第 ${profile.first_major_payoff_by_episode} 集`]);
+  return rows;
 }
 
 /** Subtitles the cut list quotes verbatim: the only line-to-shot link trusted. */
@@ -512,6 +562,7 @@ async function copyPrompt(control, block) {
 }
 
 function renderMarkdown(content) {
+  const normalized = String(content || "").replace(/^\ufeff/, "").replace(/\r\n?/g, "\n");
   const fragment = document.createDocumentFragment();
   let list = null;
   let listKind = null;
@@ -530,6 +581,24 @@ function renderMarkdown(content) {
     appendInlineText(node, text);
     fragment.append(node);
   };
+  const appendQuoteLine = (text) => {
+    if (quoteNode) quoteNode.append(element("br"));
+    else {
+      quoteNode = element("blockquote");
+      if (copyable) {
+        const { wrapper, control } = copyablePrompt(quoteNode);
+        quoteCopy = { control, lines: [] };
+        fragment.append(wrapper);
+      } else {
+        fragment.append(quoteNode);
+      }
+    }
+    appendInlineText(quoteNode, text);
+    if (quoteCopy) {
+      quoteCopy.lines.push(text);
+      quoteCopy.control.dataset.copyText = quoteCopy.lines.join("\n");
+    }
+  };
   const codeBlock = (lines) => {
     const pre = element("pre", "code-block");
     pre.append(element("code", "", lines.join("\n")));
@@ -538,9 +607,9 @@ function renderMarkdown(content) {
     control.dataset.copyText = lines.join("\n");
     fragment.append(wrapper);
   };
-  for (let line of content.split("\n")) {
+  for (let line of normalized.split("\n")) {
     if (fence !== null) {
-      if (/^\s*```/.test(line)) { codeBlock(fence); fence = null; } else fence.push(line);
+      if (fence.closeRe.test(line)) { codeBlock(fence.lines); fence = null; } else fence.lines.push(line);
       continue;
     }
     if (comment !== null) {
@@ -550,7 +619,22 @@ function renderMarkdown(content) {
       line = line.slice(closeAt + 3);
       if (!line.trim()) { closeQuote(); continue; }
     }
-    if (/^\s*```/.test(line)) { closeList(); closeQuote(); fence = []; continue; }
+    const fenceOpen = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fenceOpen) {
+      closeList();
+      closeQuote();
+      const ch = fenceOpen[1][0];
+      fence = { closeRe: new RegExp(`^\\s*${ch}{${fenceOpen[1].length},}\\s*$`), lines: [] };
+      continue;
+    }
+    if (copyable) {
+      const copyQuote = /^>\s?(.*)$/.exec(line);
+      if (copyQuote) {
+        closeList();
+        appendQuoteLine(copyQuote[1]);
+        continue;
+      }
+    }
     let stripped = line;
     for (let previous = null; previous !== stripped;) {
       previous = stripped;
@@ -569,7 +653,7 @@ function renderMarkdown(content) {
       if (!stripped.trim()) { if (!quoteCopy) closeQuote(); continue; }
       line = stripped;
     }
-    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
     if (heading) {
       closeList();
       closeQuote();
@@ -594,36 +678,21 @@ function renderMarkdown(content) {
     if (!line.trim()) { if (!quoteCopy) closeQuote(); continue; }
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
-      if (quoteNode) quoteNode.append(element("br"));
-      else {
-        quoteNode = element("blockquote");
-        if (copyable) {
-          const { wrapper, control } = copyablePrompt(quoteNode);
-          quoteCopy = { control, lines: [] };
-          fragment.append(wrapper);
-        } else {
-          fragment.append(quoteNode);
-        }
-      }
-      appendInlineText(quoteNode, quote[1]);
-      if (quoteCopy) {
-        quoteCopy.lines.push(quote[1]);
-        quoteCopy.control.dataset.copyText = quoteCopy.lines.join("\n");
-      }
+      appendQuoteLine(quote[1]);
       continue;
     }
     closeQuote();
     paragraph(line);
   }
   if (comment !== null) for (const line of comment) paragraph(line);
-  if (fence !== null && fence.length) codeBlock(fence);
+  if (fence !== null && fence.lines.length) codeBlock(fence.lines);
   return fragment;
 }
 
 // A half-written file must still preview: one truncated record from an
 // interrupted agent run should not hide every valid record around it.
 function readJsonLines(content) {
-  return content.split("\n").map((line, index) => ({ line: index + 1, text: line.trim() })).filter((row) => row.text).map((row) => {
+  return String(content || "").replace(/^\ufeff/, "").replace(/\r\n?/g, "\n").split("\n").map((line, index) => ({ line: index + 1, text: line.trim() })).filter((row) => row.text).map((row) => {
     try { return { line: row.line, record: JSON.parse(row.text) }; }
     catch (error) { return { line: row.line, error: error.message, text: row.text }; }
   });
@@ -879,7 +948,7 @@ function renderTop(route) {
 }
 
 function stageState(row, key) {
-  if (key === "review") return row.review.must ? "warn" : row.has.review ? "on" : "";
+  if (key === "review") return !row.has.review ? "" : reviewPassed(row) ? "on" : "warn";
   if (key === "prompts") return row.has.imgp && row.has.vidp ? "on" : "";
   if (key === "film") return row.has.film ? "on" : "";
   return row.has[key] ? "on" : "";
@@ -914,7 +983,7 @@ function episodeMenu(anchor) {
 const closeMenus = () => $$(".menu").forEach((menu) => menu.remove());
 
 function pips(row) {
-  return `<span class="pips" aria-hidden="true">${STAGES.map((stage) => `<i class="${stage.key === "review" && row.review.must ? "warn" : row.has[stage.key] ? "on" : ""}"></i>`).join("")}</span>`;
+  return `<span class="pips" aria-hidden="true">${STAGES.map((stage) => `<i class="${stage.key === "review" ? (!row.has.review ? "" : reviewPassed(row) ? "on" : "warn") : row.has[stage.key] ? "on" : ""}"></i>`).join("")}</span>`;
 }
 
 /* ================================================================ shared bits */
@@ -941,7 +1010,7 @@ function problemNotices(E) {
 }
 function editButton(path, at = "", label = "编辑原文", cls = "btn") {
   if (!path) return "";
-  const back = location.hash || "#/";
+  const back = (typeof location !== "undefined" && location.hash) || "#/";
   return `<a class="${cls}" href="#/edit?${esc(query({ path, ...(at ? { at } : {}), back }))}">${icon("edit")}${label}</a>`;
 }
 function missingView(row, what) {
@@ -978,7 +1047,11 @@ function context(E) {
   const shots = E.board?.shots || [];
   const cuts = E.cutlist?.cuts || [];
   const clipByShot = {};
-  for (const cut of cuts) if (E.media.clips[cut.id] && cut.shot && !clipByShot[cut.shot]) clipByShot[cut.shot] = { path: E.media.clips[cut.id], cut };
+  for (const cut of cuts) {
+    if (!E.media.clips[cut.id]) continue;
+    const targets = Array.isArray(cut.group_shots) && cut.group_shots.length ? cut.group_shots : cut.shot ? [cut.shot] : [];
+    for (const shotId of targets) if (!clipByShot[shotId]) clipByShot[shotId] = { path: E.media.clips[cut.id], cut };
+  }
   const promptByShot = Object.fromEntries((E.videoPrompts || []).map((prompt) => [prompt.shot, prompt]));
   return {
     E,
@@ -1008,6 +1081,19 @@ function thumb(C, shot, withSeconds = true) {
 
 /* ================================================================ overview */
 
+function aspectLabel(ratio) {
+  const r = String(ratio || "").trim();
+  if (!r) return "";
+  const match = /^(\d+(?:\.\d+)?)\s*[:：/]\s*(\d+(?:\.\d+)?)$/.exec(r);
+  if (!match) return `画幅 ${r}`;
+  const w = Number(match[1]);
+  const h = Number(match[2]);
+  if (!(w > 0 && h > 0)) return `画幅 ${r}`;
+  if (w < h) return `竖屏 ${r}`;
+  if (w > h) return `横屏 ${r}`;
+  return `方画幅 ${r}`;
+}
+
 function viewOverview() {
   const series = S.series;
   const rows = series.episodes;
@@ -1018,7 +1104,7 @@ function viewOverview() {
   const cut = rows.filter((row) => row.has.film || row.has.cut).reduce((sum, row) => sum + (row.cutSeconds || 0), 0);
   const whole = perEpisode ? count * perEpisode : 0;
   const todos = seriesTodos(rows);
-  const meta = [series.format.aspect_ratio ? `竖屏 ${series.format.aspect_ratio}` : "", `${count} 集`, perEpisode ? `每集目标 ${perEpisode} 秒` : ""].filter(Boolean);
+  const meta = [aspectLabel(series.format.aspect_ratio), `${count} 集`, perEpisode ? `每集目标 ${perEpisode} 秒` : ""].filter(Boolean);
   const kpi = (label, value, of, unit) => `<div class="card kpi"><div class="k">${label}</div><div class="v">${value}<small>/ ${of} ${unit}</small></div><div class="bar"><i data-css="width:${of ? Math.min(100, (value / of) * 100) : 0}%"></i></div></div>`;
   const profile = series.rhythm;
   const projectFiles = (S.files || []).filter((file) => !episodeName(file.path) && creatorSection(file.path, S.status?.ownership));
@@ -1053,26 +1139,22 @@ function viewOverview() {
       const next = nextFor(row);
       const dim = !DOCUMENT_STAGES.some((stage) => row.has[stage.key]) && !row.legacy;
       return `<tr data-go="#/${esc(row.id)}" data-episode="${esc(row.id)}" class="${dim ? "dim" : ""}"><td class="ep"><a href="#/${esc(row.id)}">${esc(row.id)}</a></td><td class="ttl">${esc(row.title || (row.legacy ? "旧版格式" : "未开始"))}</td>
-      ${STAGES.map((stage) => { const warn = stage.key === "review" && row.review.must; const on = row.has[stage.key];
-        return `<td><div class="cell"><span class="pip ${warn ? "warn" : on ? "on" : ""}" title="${stage.label}${on ? "：已有" : "：还没有"}" data-stage="${stage.key}" data-on="${on ? 1 : 0}">${warn ? icon("alert") : on ? icon("check") : ""}<span class="sr-only">${stage.label}${warn ? "：有必须改的意见" : on ? "：已有" : "：还没有"}</span></span></div></td>`; }).join("")}
+      ${STAGES.map((stage) => { const warn = stage.key === "review" && reviewNeedsAttention(row); const on = row.has[stage.key]; const warnNote = row.review.must ? "：有必须改的意见" : `：${row.reviewLabel || "审查未通过"}`;
+        return `<td><div class="cell"><span class="pip ${warn ? "warn" : on ? "on" : ""}" title="${stage.label}${warn ? esc(warnNote) : on ? "：已有" : "：还没有"}" data-stage="${stage.key}" data-on="${on ? 1 : 0}">${warn ? icon("alert") : on ? icon("check") : ""}<span class="sr-only">${stage.label}${warn ? esc(warnNote) : on ? "：已有" : "：还没有"}</span></span></div></td>`; }).join("")}
       <td>${row.seconds ? `<div class="dur"><span class="mono">${fmt(row.cutSeconds || row.seconds)}</span>${perEpisode ? `<span class="bar"><i data-css="width:${Math.min(100, ((row.cutSeconds || row.seconds) / (perEpisode * 1.25)) * 100)}%"></i><span class="tgt" data-css="left:80%"></span></span>` : ""}</div>` : '<span class="muted">—</span>'}</td>
       <td class="nextcell">${dim ? '<span class="muted">未开始</span>' : next.kind === "fix" ? `<b>${esc(next.text)}</b>` : esc(next.text)}</td></tr>`; }).join("")}</tbody>
   </table></div>
   <div class="ep-cards">${rows.map((row) => { const next = nextFor(row);
-    return `<a class="card ep-card" href="#/${esc(row.id)}" data-episode="${esc(row.id)}"><div class="r1"><span class="ep">${esc(row.id)}</span><span class="ttl">${esc(row.title || "未开始")}</span>${row.review.must ? `<span class="revdot">${icon("alert")}${row.review.must} 必须改</span>` : ""}</div>
-    <div class="segs" aria-hidden="true">${STAGES.map((stage) => `<i class="${stage.key === "review" && row.review.must ? "warn" : row.has[stage.key] ? "on" : ""}"></i>`).join("")}</div>
+    return `<a class="card ep-card" href="#/${esc(row.id)}" data-episode="${esc(row.id)}"><div class="r1"><span class="ep">${esc(row.id)}</span><span class="ttl">${esc(row.title || "未开始")}</span>${row.review.must ? `<span class="revdot">${icon("alert")}${row.review.must} 必须改</span>` : reviewNeedsAttention(row) ? `<span class="revdot">${icon("alert")}${esc(row.reviewLabel || "待复核")}</span>` : ""}</div>
+    <div class="segs" aria-hidden="true">${STAGES.map((stage) => `<i class="${stage.key === "review" ? (!row.has.review ? "" : reviewPassed(row) ? "on" : "warn") : row.has[stage.key] ? "on" : ""}"></i>`).join("")}</div>
     <div class="r3"><span>${STAGES.filter((stage) => row.has[stage.key]).length}/8 · ${row.seconds ? fmt(row.cutSeconds || row.seconds) : "—"}</span><span>${esc(next.kind === "done" ? "可以导出" : next.text)}</span></div></a>`; }).join("")}</div>` : `<div class="empty"><h3>还没有分集</h3><p>分集建立在「剧集/EP001」这样的文件夹里。</p></div>`}
 
   <div class="twocol">
-    <div><div class="section-t"><h3>节奏档案</h3><span class="n">${profile ? "已接受 · 分镜与审查按它核对" : "尚未接受"}</span></div>
-      ${profile ? `<div class="card profile">${[
-        ["第一个钩子最迟", `${num(profile.first_hook_seconds)} 秒`], ["目标平均镜长", `${num(profile.target_avg_shot_seconds)} 秒`], ["近景类镜头不少于", pct(profile.close_shot_share_min)],
-        ["旁白占台词不超过", pct(profile.vo_share_max)], ["情绪触点最长间隔", `${num(profile.beat_interval_seconds_max)} 秒`], ["每集至少反转", `${profile.opposed_reversals_per_episode_min} 次`],
-        ["集尾停在峰值", profile.end_on_peak ? "是" : "否"], ["第一个大爽点不晚于", `第 ${profile.first_major_payoff_by_episode} 集`],
-      ].map(([key, value]) => `<div class="row"><span class="k">${key}</span><span class="v">${esc(value)}</span></div>`).join("")}</div>`
-      : `<div class="empty"><p>还没有接受节奏档案，所以不对照平均镜长、近景类与旁白占比。</p>${askButton("请为这部剧提出节奏档案，我确认后写入项目。", false, "复制给助手")}</div>`}</div>
+    <div><div class="section-t"><h3>节奏目标</h3><span class="n">${profile ? "已确认 · 分镜与审查按它核对" : "尚未设定"}</span></div>
+      ${(() => { const pRows = rhythmProfileRows(profile); return pRows.length ? `<div class="card profile">${pRows.map(([key, value]) => `<div class="row"><span class="k">${key}</span><span class="v">${esc(value)}</span></div>`).join("")}</div>`
+      : `<div class="empty"><p>还没有设定节奏目标，暂不对照平均镜长、近景类与旁白占比。</p>${askButton("请为这部剧提出节奏目标，我确认后写入项目。", false, "复制给助手")}</div>`; })()}</div>
     <div><div class="section-t"><h3>人物</h3><span class="n">来自各集视觉设定</span></div>
-      ${series.cast.length ? `<div class="card cast">${series.cast.map((person) => `<a class="person" href="#/${esc(person.ep)}/settings/${encodeURIComponent(person.name)}"><span class="tile">${esc(person.name[0] || "?")}</span><div><div class="pn">${esc(person.name)}</div><div class="pd">${esc(person.desc)}</div><div class="pd">${esc(person.ep)} · ${person.shots} 镜</div></div></a>`).join("")}</div>` : '<div class="empty"><p>视觉设定写好后，人物会列在这里。</p></div>'}</div>
+      ${series.cast.length ? `<div class="card cast">${series.cast.map((person) => `<a class="person" href="#/${esc(person.ep)}/settings/${encodeURIComponent(settingKey("人物", person.name))}"><span class="tile">${esc(person.name[0] || "?")}</span><div><div class="pn">${esc(person.name)}</div><div class="pd">${esc(person.desc)}</div><div class="pd">${esc(person.ep)} · ${person.shots} 镜</div></div></a>`).join("")}</div>` : '<div class="empty"><p>视觉设定写好后，人物会列在这里。</p></div>'}</div>
   </div>
 
   <div class="section-t"><h3>项目文件</h3><span class="n">${projectFiles.length} 份</span><a class="more" href="#/files">全部文件 →</a></div>
@@ -1081,7 +1163,7 @@ function viewOverview() {
 }
 
 function todoDetail(row, next) {
-  if (next.kind === "fix" || next.kind === "legacy") return next.detail || "";
+  if (next.kind === "fix" || next.kind === "legacy" || (next.kind === "review" && next.detail)) return next.detail || "";
   const done = DOCUMENT_STAGES.filter((stage) => row.has[stage.key]).map((stage) => stage.label);
   return done.length ? `已有：${done.join("、")}` : "还没有任何文档";
 }
@@ -1103,7 +1185,7 @@ function viewEpisode(row, E) {
   const facts = {
     script: E.script ? `${C.scenes.length} 场 · ${spoken} 句台词${E.metrics.vo != null ? ` · 旁白 ${pct(E.metrics.vo)}` : ""}` : "按原文阅读",
     settings: E.settings ? `${E.settings.items.length} 项${E.settings.era.period ? ` · 时代：${E.settings.era.period}` : ""}` : "按原文阅读",
-    board: E.board ? `${C.shots.length} 镜 · ${num(C.total)} 秒 · 平均 ${num(E.metrics.avg)} 秒` : "按原文阅读",
+    board: E.board ? `${C.shots.length} 镜 · ${num(C.total)} 秒${E.metrics.avg != null ? ` · 平均 ${num(E.metrics.avg)} 秒` : ""}` : "按原文阅读",
     prompts: `图片 ${E.imagePrompts?.length ?? "—"} 条 · 视频 ${E.videoPrompts?.length ?? "—"} 条`,
     film: E.cutlist ? `${C.cuts.length} 段 · ${fmt(C.cutTotal)}${E.media.film ? " · 已渲染成片" : " · 未渲染"}` : E.media.film ? "已有成片" : "按原文阅读",
     review: E.review ? `${E.review.verdict || "已写"} · 必须改 ${counts.must} · 建议改 ${counts.should}` : "按原文阅读",
@@ -1127,15 +1209,18 @@ function viewEpisode(row, E) {
   return `<div class="wrap" data-view="episode"><div class="ephome">
     <div>${poster}</div>
     <div>
-      <div class="head"><div><div class="eyebrow">${esc(row.id)}</div><h2 class="serif">${esc(row.title || "未命名")}</h2><div class="sub">${[C.scenes.length ? `${C.scenes.length} 场` : "", C.shots.length ? `${C.shots.length} 镜` : "", C.shots.length ? `${num(C.total)} 秒${C.target ? `（目标 ${C.target} 秒）` : ""}` : ""].filter(Boolean).join(" · ") || "还没有正文"}</div></div></div>
+      <div class="head"><div><div class="eyebrow">${esc(row.id)}</div><h2 class="serif">${esc(row.title || "未命名")}</h2><div class="sub">${[C.scenes.length ? `${C.scenes.length} 场` : "", C.shots.length ? `${C.shots.length} 镜` : "", C.shots.length ? `${num(C.total)} 秒${C.target != null ? `（目标 ${C.target} 秒）` : ""}` : ""].filter(Boolean).join(" · ") || "还没有正文"}</div></div></div>
       ${problemNotices(E)}
       ${next.kind !== "done" ? `<div class="card next"><div class="todo"><span class="num">!</span><div><div class="t">${esc(next.text)}</div><div class="d">${esc(todoDetail(row, next))}</div></div>
         <div class="acts">${askButton(next.ask)}${next.href !== `#/${row.id}` ? `<a class="btn sm" href="${esc(next.href)}">去看</a>` : ""}</div></div></div>` : ""}
-      ${checks.length ? `<div class="section-t"><h3>对照节奏档案</h3><span class="n">只做算术，不替你判断好坏</span></div><div class="gauges">${checks.map((check) => gauge(check, C)).join("")}</div>` : ""}
+      ${checks.length ? `<div class="section-t"><h3>对照节奏目标</h3><span class="n">仅核对数值，供创作参考</span></div><div class="gauges">${checks.map((check) => gauge(check, C)).join("")}</div>` : ""}
       <div class="section-t"><h3>本集文档</h3></div>
-      <div class="card pipeline">${docRows.map(([key, name, present, doc]) => present
-        ? `<a class="pl-row" href="#/${esc(row.id)}/${key}"><span class="pip ${key === "review" && counts.must ? "warn" : "on"}">${key === "review" && counts.must ? icon("alert") : icon("check")}</span><span><div class="nm">${name}</div><div class="muted small">${esc(doc)}</div></span><span class="fx">${esc(facts[key])}</span><span class="go">${icon("right")}</span></a>`
-        : `<a class="pl-row" href="#/${esc(row.id)}/${key}"><span class="pip"></span><span><div class="nm">${name}</div><div class="muted small">${esc(doc)}</div></span><span class="fx muted">还没有</span><span class="go">${icon("right")}</span></a>`).join("")}</div>
+      <div class="card pipeline">${docRows.map(([key, name, present, doc]) => {
+        const revWarn = key === "review" && (counts.must > 0 || !reviewPassed(row, E.review));
+        return present
+          ? `<a class="pl-row" href="#/${esc(row.id)}/${key}"><span class="pip ${revWarn ? "warn" : "on"}">${revWarn ? icon("alert") : icon("check")}</span><span><div class="nm">${name}</div><div class="muted small">${esc(doc)}</div></span><span class="fx">${esc(facts[key])}</span><span class="go">${icon("right")}</span></a>`
+          : `<a class="pl-row" href="#/${esc(row.id)}/${key}"><span class="pip"></span><span><div class="nm">${name}</div><div class="muted small">${esc(doc)}</div></span><span class="fx muted">还没有</span><span class="go">${icon("right")}</span></a>`;
+      }).join("")}</div>
       ${others.length ? `<div class="section-t"><h3>本集其他文件</h3><span class="n">${others.length} 份</span></div><div class="card files-list">${others.map(fileRow).join("")}</div>` : ""}
     </div></div></div>`;
 }
@@ -1159,16 +1244,16 @@ function gauge(check, C) {
   if (check.key === "seconds") {
     max = check.goal * 1.3; fill = check.value / max; zone = [check.goal * 0.9 / max, check.goal * 1.1 / max]; tick = check.goal / max;
     const diff = check.value - check.goal;
-    foot = `${diff >= 0 ? "比目标多" : "比目标少"} ${num(Math.abs(diff))} 秒；±10% 以内算符合`;
+    foot = `${diff >= 0 ? "比目标多" : "比目标少"} ${num(Math.abs(diff))} 秒（绿区为 ±10% 参考带）`;
   } else if (check.key === "avg") {
     max = Math.max(check.goal * 2, check.value * 1.2); fill = check.value / max; zone = [(check.goal - 0.5) / max, (check.goal + 0.5) / max]; tick = check.goal / max;
-    foot = "±0.5 秒以内算符合";
+    foot = `当前平均每镜 ${num(check.value)} 秒（绿区为 ±0.5 秒参考带）`;
   } else if (check.key === "close") {
     fill = check.value; zone = [check.goal, 1]; tick = check.goal;
     foot = `${C.E.metrics.closeCount || 0} / ${C.shots.length} 镜；${C.E.metrics.unsized} 镜没写景别`;
   } else {
     fill = check.value; zone = [0, check.goal]; tick = check.goal;
-    foot = "按可发声字数；[OS] 画外对白不算";
+    foot = "按实际念出声的字数算；[OS] 画外对白不计入旁白";
   }
   const clamp = (x) => Math.max(0, Math.min(100, x * 100));
   return `<div class="card gauge" data-gauge="${check.key}" ${check.ok == null ? "" : ` data-ok="${check.ok ? 1 : 0}"`}><div class="k"><span>${check.label}</span>${check.ok == null ? gap(check.value, check.goal) : statusMark(check.ok)}</div>
@@ -1210,7 +1295,7 @@ function viewScript(row, E, arg) {
     </article>
     <aside class="rail right">
       <div><h4>台词</h4><div class="card speakers">${Object.entries(speakers).sort((a, b) => b[1] - a[1]).map(([who, n]) => `<div class="spk"><span>${esc(who)}</span><span class="bar"><i data-css="width:${(n / most) * 100}%"></i></span><span class="c">${n}</span></div>`).join("") || '<span class="muted small">没有台词</span>'}</div></div>
-      ${C.profile && E.metrics.vo != null ? `<div><h4>旁白占比</h4>${gauge(rhythmChecks(E.metrics, C.profile, null).find((check) => check.key === "vo"), C)}</div>` : ""}
+      ${C.profile?.vo_share_max != null && E.metrics.vo != null ? `<div><h4>旁白占比</h4>${gauge(rhythmChecks(E.metrics, C.profile, null).find((check) => check.key === "vo"), C)}</div>` : ""}
       ${sceneFindings.length ? `<div><h4>本剧本的审查意见</h4>${sceneFindings.map((finding) => `<a class="card rail-card" href="#/${esc(row.id)}/review/${esc(finding.id)}"><span class="tag ${finding.sev}">${SEVERITY_LABEL[finding.sev]}</span><div class="t">${esc(finding.title)}</div></a>`).join("")}</div>` : ""}
     </aside></div></div>`;
 }
@@ -1243,7 +1328,7 @@ function stripHTML(C, row, selected, keep) {
 }
 
 function soundFlags(C, shot) {
-  const cut = C.cuts.find((item) => item.shot === shot.id);
+  const cut = C.cuts.find((item) => item.shot === shot.id || (Array.isArray(item.group_shots) && item.group_shots.includes(shot.id)));
   const flags = [];
   if (cut?.subs.length || /台词|对白|一句|VO|OS/.test(shot.sound)) flags.push(`<span class="flag" title="有台词">${icon("voice")}台词</span>`);
   if ((shot.screenText && !/^无/.test(shot.screenText)) || cut?.texts.length) flags.push(`<span class="flag" title="有画面文字">${icon("text")}画面文字</span>`);
@@ -1267,9 +1352,10 @@ function viewBoard(row, E, arg, q) {
   const C = context(E);
   const sceneFilter = q.get("scene") || null;
   const entityFilter = q.get("entity") || null;
-  const keep = (shot) => (!sceneFilter || shot.scene === sceneFilter) && (!entityFilter || shot.basis.some((entry) => entry.name === entityFilter));
+  const parsedEntity = parseSettingKey(entityFilter);
+  const keep = (shot) => (!sceneFilter || shot.scene === sceneFilter) && (!entityFilter || shot.basis.some((entry) => entry.name === parsedEntity.name && (!parsedEntity.cat || entry.cat === parsedEntity.cat)));
   const list = C.shots.filter(keep);
-  const note = sceneFilter ? `场次 ${sceneShort(sceneFilter)}` : entityFilter ? `出现「${entityFilter}」` : "";
+  const note = sceneFilter ? `场次 ${sceneShort(sceneFilter)}` : entityFilter ? `出现「${parsedEntity.cat ? `${parsedEntity.cat} · ${parsedEntity.name}` : parsedEntity.name}」` : "";
   const M = E.metrics;
   const P = C.profile;
   const metric = (label, value, rule, ok) => `<div class="card gauge"><div class="k"><span>${label}</span>${ok === null ? "" : statusMark(ok, ["符合", "留意"])}</div><div class="v">${value}</div><div class="rule">${esc(rule)}</div></div>`;
@@ -1292,9 +1378,9 @@ function viewBoard(row, E, arg, q) {
   ${E.board.note ? `<p class="muted small" id="boardNote">${esc(E.board.note)}</p>` : ""}
   ${blockingHTML((E.board.blocking || []).filter((block) => !sceneFilter || block.scene === sceneFilter))}
   <div class="metrics" id="boardMetrics">
-    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
-    ${metric("平均镜长", `${num(M.avg)}<small> 秒</small>`, P ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有接受节奏档案", null)}
-    ${metric("近景类", pct(M.close), P ? `不少于 ${pct(P.close_shot_share_min)}` : "没有接受节奏档案", P ? M.close >= P.close_shot_share_min : null)}
+    ${metric("总时长", `${num(C.total)}<small> 秒</small>`, C.target != null ? `目标 ${C.target} 秒 · ${gapText(C.total, C.target)}` : "没有设每集目标", null)}
+    ${metric("平均镜长", M.avg != null ? `${num(M.avg)}<small> 秒</small>` : "—", P?.target_avg_shot_seconds != null && M.avg != null ? `目标 ${num(P.target_avg_shot_seconds)} 秒 · ${gapText(M.avg, P.target_avg_shot_seconds)}` : "没有设定节奏目标", null)}
+    ${metric("近景类", M.close != null ? pct(M.close) : "—", P?.close_shot_share_min != null ? `不少于 ${pct(P.close_shot_share_min)}` : "没有设定节奏目标", P?.close_shot_share_min != null && M.close != null ? M.close >= P.close_shot_share_min : null)}
     ${metric("没写景别", `${M.unsized}<small> 镜</small>`, "算不进近景类占比", M.unsized === 0)}
   </div>
   <section class="card strip-card"><div class="strip-head"><h3>节奏条</h3><span class="muted small">宽度 = 时长，颜色 = 景别；点一格看这一镜</span></div>${stripHTML(C, row, arg, sceneFilter || entityFilter ? keep : null)}</section>
@@ -1322,7 +1408,7 @@ function renderInspector(row, E, id) {
   const clip = C.clipByShot[shot.id];
   const frame = C.frame(shot);
   const startAt = C.shots.slice(0, index).reduce((sum, item) => sum + item.sec, 0);
-  const cut = C.cuts.find((item) => item.shot === shot.id);
+  const cut = C.cuts.find((item) => item.shot === shot.id || (Array.isArray(item.group_shots) && item.group_shots.includes(shot.id)));
   const qs = location.hash.includes("?") ? `?${location.hash.split("?")[1]}` : "";
   const startSlot = shot.refs.find((slot) => slot.kind === "REF" && slot.use === "起始帧");
   let refClass = shot.refState;
@@ -1348,13 +1434,14 @@ function renderInspector(row, E, id) {
     </div>
     ${shot.purpose ? `<div class="ins-sec"><h4>目的</h4><p class="purpose">${esc(shot.purpose)}</p></div>` : ""}
     ${(() => { const block = (E.board?.blocking || []).find((item) => item.scene === shot.scene); return block ? `<div class="ins-sec" id="insBlocking"><h4>场景站位</h4>${blockingRows(block)}</div>` : ""; })()}
-    <div class="ins-sec"><h4>动作</h4><div class="timeline3"><div><b>起点</b>${esc(shot.start || "—")}</div><div class="mid"><b>唯一动作</b>${esc(shot.action || "—")}</div><div><b>终点</b>${esc(shot.end || "—")}</div></div></div>
+    <div class="ins-sec"><h4>动作</h4><div class="timeline3"><div><b>起点</b>${esc(shot.start || "—")}</div><div class="mid"><b>本镜动作</b>${esc(shot.action || "—")}</div><div><b>终点</b>${esc(shot.end || "—")}</div></div></div>
     <div class="ins-sec"><h4>声音</h4><p>${esc(shot.sound || "—")}</p>${cut?.subs.length ? `<div>${cut.subs.map((sub) => `<span class="subline">「${esc(sub.text)}」</span>`).join("")}</div>` : ""}</div>
     ${shot.screenText || cut?.texts.length ? `<div class="ins-sec"><h4>画面文字</h4>${shot.screenText ? `<p>${esc(shot.screenText)}</p>` : ""}${(cut?.texts || []).map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</div>` : ""}
-    <div class="ins-sec"><h4>画面里有</h4><div class="pills">${shot.basis.map((entry) => `<a class="pill" href="#/${esc(row.id)}/settings/${encodeURIComponent(entry.name)}" title="${esc(`控制：${entry.ctl}`)}">${icon(entry.cat === "人物" || entry.cat === "造型" ? "person" : entry.cat === "地点" ? "place" : "prop")}${esc(entry.name)}</a>`).join("") || '<span class="muted">无</span>'}</div></div>
+    <div class="ins-sec"><h4>画面里有</h4><div class="pills">${shot.basis.map((entry) => `<a class="pill" href="#/${esc(row.id)}/settings/${encodeURIComponent(settingKey(entry.cat, entry.name))}" title="${esc(`控制：${entry.ctl}`)}">${icon(entry.cat === "人物" || entry.cat === "造型" ? "person" : entry.cat === "地点" ? "place" : "prop")}${esc(entry.name)}</a>`).join("") || '<span class="muted">无</span>'}</div></div>
     <div class="ins-sec"><h4>参考图</h4><div class="refstate ${refClass}">${icon(refClass === "bound" ? "check" : refClass === "pending" || refClass === "missing" ? "alert" : "text")}<div><b>${esc(refLabel)}</b>${shot.refs.map((slot) => `<div class="slot">${slot.order}. ${esc(slot.name)}${slot.use ? ` · ${esc(slot.use)}` : ""} · <span class="mono">${esc(slot.path || slot.target)}</span></div>`).join("")}</div></div>
       ${shot.imgs.length ? `<div class="pills">${shot.imgs.map((img) => `<a class="pill id" href="#/${esc(row.id)}/prompts/image?id=${esc(img.id)}" title="${esc(`${img.name} · 控制：${img.ctl}`)}">${esc(img.id)}</a>`).join("")}</div>` : ""}</div>
-    ${shot.keyframe ? `<div class="ins-sec"><h4>冻结关键帧提示词<span class="act">${copyButton(shot.keyframe, `kf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.keyframe)}</div></div>` : ""}
+    ${shot.keyframe ? `<div class="ins-sec"><h4>首帧提示词<span class="act">${copyButton(shot.keyframe, `kf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.keyframe)}</div></div>` : ""}
+    ${shot.closing_keyframe ? `<div class="ins-sec"><h4>尾帧提示词<span class="act">${copyButton(shot.closing_keyframe, `ckf-${shot.id}`)}</span></h4><div class="prompt clamp" data-act="expand">${esc(shot.closing_keyframe)}</div></div>` : ""}
     ${prompt?.prompt ? `<div class="ins-sec"><h4>视频提示词${prompt.mode ? ` · ${esc(prompt.mode)}` : ""}<span class="act">${copyButton(prompt.prompt, prompt.id)}</span></h4><div class="prompt clamp" data-act="expand">${esc(prompt.prompt)}</div></div>` : ""}
     <div>${editButton(E.docs["分镜.md"], shot.id, "在分镜.md 里编辑这一镜")}</div>
   </div>`;
@@ -1363,8 +1450,31 @@ function renderInspector(row, E, id) {
 
 /* ================================================================ settings */
 
+const SETTING_CATEGORIES = new Set(["人物", "造型", "地点", "道具"]);
+
+function settingKey(cat, name) {
+  return cat ? `${cat}·${name}` : String(name ?? "");
+}
+
+function parseSettingKey(raw) {
+  if (!raw) return { cat: null, name: "" };
+  const sep = raw.indexOf("·");
+  if (sep > 0) {
+    const cat = raw.slice(0, sep);
+    if (SETTING_CATEGORIES.has(cat)) return { cat, name: raw.slice(sep + 1) };
+  }
+  return { cat: null, name: raw };
+}
+
 function presence(C, item) {
-  return C.shots.filter((shot) => shot.basis.some((entry) => entry.name === item.name)).map((shot) => shot.id);
+  return C.shots
+    .filter((shot) => shot.basis.some((entry) => entry.cat === item.cat && entry.name === item.name))
+    .map((shot) => shot.id);
+}
+
+function entryLocks(item) {
+  if (Array.isArray(item?.locks)) return item.locks.filter(Boolean);
+  return item?.lock ? [item.lock] : [];
 }
 
 function viewSettings(row, E) {
@@ -1374,34 +1484,36 @@ function viewSettings(row, E) {
   const settings = E.settings;
   const card = (item) => {
     const seen = new Set(presence(C, item));
-    const locked = new Set(item.lock?.shots || []);
-    const anchor = item.fields["识别锚点"];
-    const rest = Object.entries(item.fields).filter(([key]) => key !== "识别锚点");
-    return `<article class="card asset" id="a-${esc(item.name)}" data-entry="${esc(item.name)}">
-      <div class="asset-h"><span class="tile">${item.cat === "人物" ? esc(item.name[0]) : icon(item.cat === "地点" ? "place" : item.cat === "造型" ? "person" : "prop")}</span><div><div class="nm">${esc(item.name)}</div><div class="cat">${esc(item.cat)}${item.designators.length ? ` · 画面代称 <span class="mono">${esc(item.designators.join("、"))}</span>` : ""}</div></div></div>
+    const itemLocks = entryLocks(item);
+    const locked = new Set(itemLocks.flatMap((lock) => lock.shots || []));
+    const anchor = item.fields["外观特征"];
+    const rest = Object.entries(item.fields).filter(([key]) => key !== "外观特征");
+    const key = settingKey(item.cat, item.name);
+    return `<article class="card asset" id="a-${esc(key)}" data-entry="${esc(item.name)}" data-cat="${esc(item.cat)}">
+      <div class="asset-h"><span class="tile">${item.cat === "人物" ? esc(item.name[0]) : icon(item.cat === "地点" ? "place" : item.cat === "造型" ? "person" : "prop")}</span><div><div class="nm">${esc(item.name)}</div><div class="cat">${esc(item.cat)}${item.designators.length ? ` · 提示词名称 <span class="mono">${esc(item.designators.join("、"))}</span>` : ""}</div></div></div>
       ${item.overlay ? '<span class="overlay-note">只在后期叠加，不进生成画面</span>' : ""}
       ${item.desc.map((line) => `<p class="desc">${esc(line)}</p>`).join("")}
-      ${anchor ? `<div class="anchor"><b>识别锚点</b>${esc(anchor)}</div>` : ""}
-      ${rest.map(([key, value]) => `<div class="field"><span class="muted">${esc(key)}：</span>${esc(value)}</div>`).join("")}
-      ${item.lock ? `<div class="lock"><div class="ln">${icon("lock")}连续性锁《${esc(item.lock.name)}》</div><span class="surface">${esc(item.lock.surface)}</span><div class="muted small">${lockReach(C, item.lock)} · 每条相关提示词都要逐字带上这段</div></div>` : ""}
-      ${C.shots.length ? `<div class="presence"><div class="pk"><span>出现在 ${seen.size} 镜</span>${seen.size ? `<a href="#/${esc(row.id)}/board?entity=${encodeURIComponent(item.name)}">在分镜里筛出 ${icon("right")}</a>` : ""}</div>
+      ${anchor ? `<div class="anchor"><b>外观特征</b>${esc(anchor)}</div>` : ""}
+      ${rest.map(([k, value]) => `<div class="field"><span class="muted">${esc(k)}：</span>${esc(value)}</div>`).join("")}
+      ${itemLocks.map((lock) => `<div class="lock"><div class="ln">${icon("lock")}连戏锁《${esc(lock.name)}》</div><span class="surface">${esc(lock.surface)}</span><div class="muted small">${lockReach(C, lock)} · 设定图、首帧及未靠参考图锁住外观的视频提示词需带上这段</div></div>`).join("")}
+      ${C.shots.length ? `<div class="presence"><div class="pk"><span>出现在 ${seen.size} 镜</span>${seen.size ? `<a href="#/${esc(row.id)}/board?entity=${encodeURIComponent(key)}">在分镜里筛出 ${icon("right")}</a>` : ""}</div>
         <div class="pstrip" aria-hidden="true">${C.shots.map((shot) => `<i data-css="flex-grow:${Math.max(0.2, shot.sec)}" class="${seen.has(shot.id) ? (locked.has(shot.id) || locked.has("全集") ? "lk" : "on") : ""}" title="${esc(shot.n)}"></i>`).join("")}</div></div>` : ""}
     </article>`;
   };
   return `<div class="wrap" data-view="settings">
     <div class="head"><div><h2>视觉设定</h2><div class="sub">${esc(settings.form)}</div></div><div class="actions">${editButton(E.docs["视觉设定.md"])}</div></div>
     ${problemNotices(E)}
-    ${settings.era.period || settings.era.facets.length ? `<section class="card era"><div class="era-l"><div class="eyebrow">时代锚点</div><div class="p">${esc(settings.era.period)}</div><div class="f">画面里的一切都要属于这个年代</div></div>
+    ${settings.era.period || settings.era.facets.length ? `<section class="card era"><div class="era-l"><div class="eyebrow">时代背景</div><div class="p">${esc(settings.era.period)}</div><div class="f">全集服饰、陈设与照明的年代基准</div></div>
       <div class="era-r">${settings.era.facets.map((facet) => `<div><div class="k">${esc(facet.k)}</div><div class="v">${esc(facet.v)}</div></div>`).join("")}</div></section>` : ""}
     ${["人物", "造型", "地点", "道具"].map((category) => { const items = settings.items.filter((item) => item.cat === category); if (!items.length) return "";
-      return `<div class="section-t"><h3>${category}</h3><span class="n">${items.length}</span>${category === "人物" && C.shots.length ? '<span class="more">出场条：每格一镜，宽度按时长；朱红 = 连续性锁生效</span>' : ""}</div><div class="assets">${items.map(card).join("")}</div>`; }).join("")}
+      return `<div class="section-t"><h3>${category}</h3><span class="n">${items.length}</span>${category === "人物" && C.shots.length ? '<span class="more">出场条：每格一镜，宽度按时长；朱红 = 连戏锁生效</span>' : ""}</div><div class="assets">${items.map(card).join("")}</div>`; }).join("")}
   </div>`;
 }
 
 /** How far a continuity lock reaches, in the words its scope was written in. */
 function lockReach(C, lock) {
   if (lock.shots.includes("全集")) return `锁定全集 ${C.shots.length} 镜`;
-  if (lock.scope === "入画") return C.shots.length ? `入画 · 锁定 ${lock.shots.length} 镜` : "入画 · 分镜写完后按视觉依据生效";
+  if (lock.scope === "入画") return C.shots.length ? `入画 · 锁定 ${lock.shots.length} 镜` : "入画 · 分镜写完后在出场镜头生效";
   return `锁定 ${lock.shots.length} 镜`;
 }
 
@@ -1427,12 +1539,25 @@ function videoCopyUnits(row, E) {
   return units;
 }
 
+function keyframeCopyUnits(shots) {
+  const units = [];
+  for (const shot of shots || []) {
+    if (shot.keyframe) {
+      units.push({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "首帧"], text: shot.keyframe });
+    }
+    if (shot.closing_keyframe) {
+      units.push({ key: `ckf-${shot.id}`, id: `${shot.id}-closing`, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "尾帧"], text: shot.closing_keyframe });
+    }
+  }
+  return units;
+}
+
 function viewPrompts(row, E, arg, q) {
   if (!row.has.imgp && !row.has.vidp && !row.has.board) return missingView(row, "prompts");
   const C = context(E);
   const sets = {
     video: videoCopyUnits(row, E),
-    keyframe: C.shots.filter((shot) => shot.keyframe).map((shot) => ({ key: `kf-${shot.id}`, id: shot.id, title: shot.title, meta: [`${esc(shot.scale || "未写景别")} · ${num(shot.sec)} 秒`, "冻结关键帧"], text: shot.keyframe })),
+    keyframe: keyframeCopyUnits(C.shots),
     image: (E.imagePrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [esc(prompt.use), `被 ${C.shots.filter((shot) => shot.imgs.some((img) => img.id === prompt.id)).length} 镜引用`], text: prompt.prompt })),
   };
   const tab = ["video", "keyframe", "image"].includes(arg) ? arg : sets.video.length ? "video" : sets.keyframe.length ? "keyframe" : "image";
@@ -1453,11 +1578,26 @@ function viewPrompts(row, E, arg, q) {
       <div><div class="pid">${esc(item.id)}</div><div class="pt">${esc(item.title)}</div><div class="pm">${item.meta.filter(Boolean).map((line) => `<span>${line}</span>`).join("")}</div></div>
       <div class="ptext ${open === item.id ? "" : "clamp"}" data-act="expand">${esc(item.text)}</div>
       <div class="pact">${copyButton(item.text, item.key)}<span class="cc">${item.text.length} 字符</span></div></article>`).join("")}</div>`
-      : `<div class="empty"><h3>这一类还没有提示词</h3><p>${tab === "keyframe" ? "分镜里写了「冻结关键帧提示词」的镜头会列在这里。" : "写好后这里会逐条列出。"}</p></div>`}
+      : `<div class="empty"><h3>这一类还没有提示词</h3><p>${tab === "keyframe" ? "分镜里写了「首帧提示词」或「尾帧提示词」的镜头会列在这里。" : "写好后这里会逐条列出。"}</p></div>`}
   </div>`;
 }
 
 /* ================================================================ film */
+
+function highlight(text, keys) {
+  const raw = String(text ?? "");
+  const clean = [...new Set((keys || []).map((key) => String(key ?? "")).filter(Boolean))]
+    .sort((a, b) => b.length - a.length);
+  if (!clean.length) return esc(raw);
+  const re = new RegExp(clean.map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+  let out = "";
+  let last = 0;
+  for (const match of raw.matchAll(re)) {
+    out += esc(raw.slice(last, match.index)) + `<mark>${esc(match[0])}</mark>`;
+    last = match.index + match[0].length;
+  }
+  return out + esc(raw.slice(last));
+}
 
 function viewFilm(row, E, arg, q) {
   if (!row.has.cut && !row.has.film) return missingView(row, "film");
@@ -1481,7 +1621,6 @@ function viewFilm(row, E, arg, q) {
     <div class="tl-row"><span class="tl-lab">音效</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.sfx.map((sfx) => { const name = sfx.path.split("/").at(-1); return `<span class="tl-sfx" data-css="left:${X(cut.at + sfx.s)}" data-tip="${esc(`${name} · ${num(sfx.gain)} dB`)}"></span><span class="sfx-l" data-css="left:calc(${X(cut.at + sfx.s)} + 10px)">${esc(name.replace(/\.\w+$/, ""))}</span>`; })).join("")}</div></div>
     ${C.cuts.some((cut) => cut.voices.length) ? `<div class="tl-row"><span class="tl-lab">配音</span><div class="tl-track">${C.cuts.flatMap((cut) => cut.voices.map((voice) => { const name = voice.path.split("/").at(-1); return `<span class="tl-sfx tl-voice" data-css="left:${X(cut.at + voice.s)}" data-tip="${esc(`${name}${voice.gain ? ` · ${num(voice.gain)} dB` : ""}`)}"></span><span class="sfx-l" data-css="left:calc(${X(cut.at + voice.s)} + 10px)">${esc(name.replace(/\.\w+$/, ""))}</span>`; })).join("")}</div></div>` : ""}
     <div class="tl-head" id="playhead" data-css="left:64px"></div><div class="tl-hit" id="tlhit" aria-label="点击跳转"></div></div>` : "";
-  const highlight = (text, keys) => { let html = esc(text); for (const key of keys || []) html = html.replace(esc(key), `<mark>${esc(key)}</mark>`); return html; };
   const rows = C.cuts.map((cut) => `<tr data-cut="${esc(cut.id)}" id="r-${esc(cut.id)}"><td class="mono">${esc(cut.n)}</td><td><b>${esc(cut.title)}</b><div class="muted small">${cut.still ? `<span class="pill">静帧 · ${esc(moveLabel(cut))}</span> ` : ""}${C.shot[cut.shot] ? `<a href="#/${esc(row.id)}/board/${esc(cut.shot)}">镜 ${esc(sceneShort(cut.shot))}</a> · ` : ""}<span class="mono">${fmt(cut.at)}</span></div></td>
     <td class="mono hide-m">${cut.in.toFixed(2)}–${cut.out.toFixed(2)}</td><td class="mono">${esc(num(cut.sec))}s</td>
     <td>${cut.subs.map((sub) => `<span class="subline">${highlight(sub.text, sub.keys)}</span>`).join("") || '<span class="muted">—</span>'}${cut.texts.map((text) => `<div><span class="stxt">${esc(text.style)}｜${esc(text.items.join("｜"))}</span></div>`).join("")}</td>
@@ -1493,7 +1632,7 @@ function viewFilm(row, E, arg, q) {
         ${CL ? `<div class="now"><span id="nowCut">${C.cuts[0] ? `CUT ${esc(C.cuts[0].n)} · ${esc(C.cuts[0].title)}` : ""}</span><span id="nowTime">0:00 / ${fmt(C.cutTotal)}</span></div>` : ""}
         <div class="muted small">浏览器只播放已有文件；重新渲染在对话里确认。</div>${film ? "" : askButton(ask, false, "复制渲染请求")}</div>
       <div>
-        ${CL ? `<div class="deliv">${[CL.target != null ? `目标 ${num(CL.target)} 秒` : "", CL.frame ? `${S.series.format.aspect_ratio ? `${S.series.format.aspect_ratio} · ` : ""}${CL.frame.join("×")}${CL.fps ? ` · ${num(CL.fps)}fps` : ""}` : "", CL.lufs != null ? `响度 ${num(CL.lufs)} LUFS` : "", CL.burn ? "硬字幕" : "不烧字幕"].filter(Boolean).map((item) => `<span class="pill">${esc(item)}</span>`).join("")}</div>
+        ${CL ? `<div class="deliv">${[CL.target != null ? `目标 ${num(CL.target)} 秒` : "", CL.frame ? `${S.series.format.aspect_ratio ? `${S.series.format.aspect_ratio} · ` : ""}${CL.frame.join("×")}${CL.fps ? ` · ${num(CL.fps)}fps` : ""}` : "", CL.lufs != null ? `响度 ${num(CL.lufs)} LUFS` : "", CL.burn ? "硬字幕" : "不烧字幕", CL.grain != null ? `颗粒 ${num(CL.grain)}` : "", CL.shot_match ? "接镜匹配" : ""].filter(Boolean).map((item) => `<span class="pill">${esc(item)}</span>`).join("")}</div>
         <section class="card tl">${timeline}</section>
         <div class="card table-card"><table class="cuts"><thead><tr><th>段</th><th>镜头</th><th class="hide-m">入–出</th><th>时长</th><th>字幕与画面文字</th><th class="hide-m">配音与音效</th></tr></thead><tbody>${rows}</tbody></table></div>
         ${CL.unused.length ? `<p class="muted small">未采用：${esc(CL.unused.join("；"))}</p>` : ""}` : '<div class="empty"><p>剪辑单写好后，这里会按段列出字幕、画面文字、配音与音效。</p></div>'}
@@ -1551,24 +1690,32 @@ function bindFilm(C) {
 function viewReview(row, E, arg) {
   if (!row.has.review) return missingView(row, "review");
   const review = E.review;
-  if (!review || !review.findings.length) {
+  const hooks = review?.deleted_hooks || [];
+  if (!review || (!review.findings.length && !hooks.length && !review.verdict)) {
     return `<div class="wrap" data-view="review"><div class="head"><div><h2>审查意见</h2><div class="sub">按原文显示；修改请交给助手</div></div><div class="actions">${editButton(E.docs.review)}</div></div>${problemNotices(E)}<div data-raw="${esc(E.docs.review)}"><div class="loading">正在读取原文…</div></div></div>`;
   }
   const C = context(E);
   const counts = { must: 0, should: 0, could: 0 };
   review.findings.forEach((finding) => counts[finding.sev]++);
+  if (arg && S.reviewFilter !== "all" && review.findings.some((finding) => finding.id === arg && finding.sev !== S.reviewFilter)) {
+    S.reviewFilter = "all";
+  }
   const list = review.findings.filter((finding) => S.reviewFilter === "all" || finding.sev === S.reviewFilter);
   const where = (id) => {
     if (id.startsWith("SHOT-")) return `<a class="pill id" href="#/${esc(row.id)}/board/${esc(id)}">${icon("film")}镜 ${esc(sceneShort(id))} ${esc(C.shot[id]?.title || "")}</a>`;
     if (id.startsWith("CUT-")) return `<a class="pill id" href="#/${esc(row.id)}/film?cut=${esc(id)}">${icon("sfx")}剪辑 ${esc(sceneShort(id))}</a>`;
     return `<a class="pill id" href="#/${esc(row.id)}/script/${esc(id)}">${icon("text")}剧本 ${esc(sceneShort(id))}</a>`;
   };
-  const good = /可以继续/.test(review.verdict);
+  const tone = review.verdictTone || (/可以继续/.test(review.verdict) ? "ok" : /待补/.test(review.verdict) ? "warn" : "bad");
+  const hooksHtml = hooks.length ? `<article class="card finding should" id="f-deleted-hooks"><span class="stripe"></span><div class="fb">
+    <div class="fh"><span class="tag should">亮点保护</span><span class="t">被删的强钩子</span></div>
+    <div>${hooks.map((hook) => `<p>${esc(hook)}</p>`).join("")}</div>
+  </div></article>` : "";
   return `<div class="wrap" data-view="review">
     <div class="head"><div><h2>审查意见</h2><div class="sub">只读；修改请交给助手</div></div><div class="actions">${editButton(E.docs.review)}</div></div>
     ${problemNotices(E)}
-    <section class="card verdict"><span class="vv ${good ? "ok" : "bad"}">${icon(good ? "check" : "alert")}${esc(review.verdict || "已审查")}</span><span class="vm">${review.independent ? "独立审查" : "自检"}${review.scope ? ` · 范围：${esc(review.scope)}` : ""}</span>
-      <div class="seg">${[["all", `全部 ${review.findings.length}`], ["must", `必须改 ${counts.must}`], ["should", `建议改 ${counts.should}`], ["could", `可以更好 ${counts.could}`]].map(([key, label]) => `<button type="button" data-rf="${key}" aria-pressed="${S.reviewFilter === key}">${label}</button>`).join("")}</div></section>
+    <section class="card verdict"><span class="vv ${esc(tone)}">${icon(tone === "ok" ? "check" : "alert")}${esc(review.verdict || "已审查")}</span><span class="vm">${review.independent ? "独立审查" : "自检"}${review.scope ? ` · 范围：${esc(review.scope)}` : ""}</span>
+      ${review.findings.length ? `<div class="seg">${[["all", `全部 ${review.findings.length}`], ["must", `必须改 ${counts.must}`], ["should", `建议改 ${counts.should}`], ["could", `可以更好 ${counts.could}`]].map(([key, label]) => `<button type="button" data-rf="${key}" aria-pressed="${S.reviewFilter === key}">${label}</button>`).join("")}</div>` : ""}</section>
     ${list.map((finding) => { const shots = finding.targets.filter((id) => C.shot[id]);
       return `<article class="card finding ${finding.sev}" id="f-${esc(finding.id)}"><span class="stripe"></span><div class="fb">
       <div class="fh"><span class="tag ${finding.sev}">${SEVERITY_LABEL[finding.sev]}</span><span class="t">${esc(finding.title)}</span><span class="rid">${esc(finding.id)}</span></div>
@@ -1579,6 +1726,7 @@ function viewReview(row, E, arg) {
       <div class="ff"><button class="btn sm primary" type="button" data-copy="${esc(`请按 ${row.id} 审查意见 ${finding.id}（${finding.title}）修改：${finding.fix}`)}" data-copy-label="已复制，去对话里发送">${icon("copy")}复制修改请求</button>
         ${shots.length ? `<span class="mini-thumbs">${shots.map((id) => `<a href="#/${esc(row.id)}/board/${esc(id)}" title="${esc(id)}">${thumb(C, C.shot[id], false)}</a>`).join("")}</span>` : ""}</div>
     </div></article>`; }).join("")}
+    ${hooksHtml}
   </div>`;
 }
 
@@ -1594,7 +1742,7 @@ function viewFiles() {
   }
   const order = [...groups.keys()].sort((a, b) => (a === "全剧" ? -1 : b === "全剧" ? 1 : a.localeCompare(b, "zh-CN", { numeric: true })));
   const rank = (file) => SECTION_ORDER.indexOf(creatorSection(file.path, S.status?.ownership));
-  return `<div class="wrap" data-view="files"><div class="head"><div><h2>全部文件</h2><div class="sub">${visible.length} 份 · 工程记录不在这里显示</div></div></div>
+  return `<div class="wrap" data-view="files"><div class="head"><div><h2>全部文件</h2><div class="sub">${visible.length} 份 · 系统内部文件不在这里显示</div></div></div>
     ${(S.tree?.warnings || []).length ? '<div class="notice">部分内容暂时无法读取，已列出其余文件。</div>' : ""}
     ${order.map((key) => `<div class="file-group"><h4>${esc(key)}</h4><div class="card files-list">${groups.get(key).sort((a, b) => rank(a) - rank(b) || fileLabel(a.path).localeCompare(fileLabel(b.path), "zh-Hans-CN")).map(fileRow).join("")}</div></div>`).join("") || '<div class="empty"><p>项目里还没有创作文件。</p></div>'}
   </div>`;
@@ -1644,6 +1792,53 @@ function viewEdit(q) {
     <label class="sr-only" for="editor">原文</label><textarea class="editor" id="editor" spellcheck="false" disabled></textarea></div>`;
 }
 
+function findHeadingOffset(content, at) {
+  const target = String(at || "").trim();
+  if (!target) return -1;
+  const text = String(content || "");
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const headingRe = new RegExp(`^##[ \\t\\u3000]+${escaped}(?=[ \\t\\u3000·\\r\\n]|$)`);
+  let fence = null;
+  let inComment = false;
+  let offset = 0;
+  for (const rawLine of text.split("\n")) {
+    const lineStart = offset;
+    offset += rawLine.length + 1;
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (fence !== null) {
+      if (fence.test(line)) fence = null;
+      continue;
+    }
+    let scan = line;
+    if (inComment) {
+      const closeAt = scan.indexOf("-->");
+      if (closeAt === -1) continue;
+      inComment = false;
+      scan = scan.slice(closeAt + 3);
+    }
+    const fenceOpen = /^\s*(`{3,}|~{3,})/.exec(scan);
+    if (fenceOpen) {
+      const ch = fenceOpen[1][0];
+      fence = new RegExp(`^\\s*${ch}{${fenceOpen[1].length},}\\s*$`);
+      continue;
+    }
+    let stripped = scan;
+    for (let prev = null; prev !== stripped;) {
+      prev = stripped;
+      stripped = stripped.replace(/<!--[\s\S]*?-->/g, "");
+    }
+    const openAt = stripped.indexOf("<!--");
+    if (openAt !== -1) {
+      inComment = true;
+      stripped = stripped.slice(0, openAt);
+    }
+    if (headingRe.test(stripped) && line.trimStart().startsWith("##")) {
+      return lineStart + line.indexOf("##");
+    }
+  }
+  return -1;
+}
+
 async function openEditor(q, sequence) {
   const path = q.get("path") || "";
   const at = q.get("at") || "";
@@ -1659,13 +1854,14 @@ async function openEditor(q, sequence) {
     setDirty(false);
     $("#editState").textContent = editable ? "已载入" : "只读";
     if (at) {
-      const index = data.content.indexOf(`## ${at}`);
+      const fullText = editor.value;
+      const index = findHeadingOffset(fullText, at);
       if (index >= 0) {
         // Measure the wrapped height of everything above the heading, so the
         // shot lands at the top however long its preceding lines wrap.
-        editor.value = data.content.slice(0, index);
+        editor.value = fullText.slice(0, index);
         const above = editor.scrollHeight;
-        editor.value = data.content;
+        editor.value = fullText;
         editor.focus({ preventScroll: true });
         editor.setSelectionRange(index, index);
         editor.scrollTop = Math.max(0, above - 40);
@@ -1710,7 +1906,7 @@ async function save() {
     $("#editNotice").innerHTML = "";
     $("#editState").textContent = `已保存 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     setDirty(!savedContentIsCurrent(content, editor.value));
-    toast("已保存。结构视图会按新内容重新读取。");
+    toast("已保存，页面内容已同步更新。");
     try { await refreshProject(); } catch (_error) { toast("内容已保存，但刷新失败，请稍后重试"); }
   } catch (error) {
     if (S.edit !== edit) return;
@@ -1804,7 +2000,7 @@ function hitHref(hit) {
   const base = `#/${hit.ep}`;
   if (hit.view === "board") return `${base}/board/${hit.arg}`;
   if (hit.view === "script") return `${base}/script/${hit.arg}`;
-  if (hit.view === "settings") return `${base}/settings/${encodeURIComponent(hit.arg)}`;
+  if (hit.view === "settings") return `${base}/settings/${encodeURIComponent(settingKey(hit.w, hit.arg))}`;
   if (hit.view === "prompts") return `${base}/prompts/${hit.arg}?id=${encodeURIComponent(hit.id)}`;
   if (hit.view === "review") return `${base}/review/${hit.arg}`;
   if (hit.view === "film") return `${base}/film?cut=${encodeURIComponent(hit.cut || "")}`;
@@ -1896,7 +2092,9 @@ function afterRender(route) {
   let node = null;
   if (route.view === "script" && route.arg) node = document.getElementById(route.arg);
   if (route.view === "board" && route.arg) node = document.getElementById(`c-${route.arg}`);
-  if (route.view === "settings" && route.arg) node = document.getElementById(`a-${route.arg}`);
+  if (route.view === "settings" && route.arg) {
+    node = document.getElementById(`a-${route.arg}`) || $(`.asset[data-entry="${CSS.escape(route.arg)}"]`);
+  }
   if (route.view === "review" && route.arg) node = document.getElementById(`f-${route.arg}`);
   if (route.view === "prompts" && route.q.get("id")) node = document.getElementById(`p-${route.q.get("id")}`);
   if (S.pendingLine) {
@@ -1943,7 +2141,10 @@ async function onClick(event) {
       const route = parseRoute(location.hash);
       const next = copy.dataset.next ? copy.dataset.key : null;
       await render();
-      if (next) document.getElementById(`p-${next.replace(/^kf-/, "")}`)?.scrollIntoView({ block: "center" });
+      if (next) {
+        const domId = next.startsWith("ckf-") ? `${next.slice(4)}-closing` : next.replace(/^kf-/, "");
+        document.getElementById(`p-${domId}`)?.scrollIntoView({ block: "center" });
+      }
       if (route.view !== "prompts") $(`#inspector [data-key="${CSS.escape(copy.dataset.key)}"]`)?.focus();
     }
     return;
@@ -1976,7 +2177,16 @@ async function onClick(event) {
   const layout = node.closest("[data-layout]");
   if (layout) { S.layout = layout.dataset.layout; local.set("layout", S.layout); render(); return; }
   const filter = node.closest("[data-rf]");
-  if (filter) { S.reviewFilter = filter.dataset.rf; render(); return; }
+  if (filter) {
+    S.reviewFilter = filter.dataset.rf;
+    const route = parseRoute(location.hash);
+    if (route.view === "review" && route.arg && typeof history !== "undefined" && typeof history.replaceState === "function") {
+      history.replaceState(null, "", `#/${route.ep}/review`);
+      S.lastHash = location.hash;
+    }
+    render();
+    return;
+  }
   const shot = node.closest("[data-shot]");
   if (shot && shot.dataset.shot && !node.closest("a") && !node.closest("video")) go(shotHref(shot.dataset.shot));
 }
@@ -2084,27 +2294,48 @@ function start() {
 if (hasDocument && typeof window !== "undefined" && !window.__DESK_NO_START__) start();
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
+    S,
+    aspectLabel,
+    context,
     creatorEditable,
     creatorProjection,
     creatorSection,
     creatorStatus,
     creatorTitle,
+    entryLocks,
     episodeName,
     fileLabel,
+    findHeadingOffset,
     formatBytes,
     friendlyFailure,
     friendlyKey,
+    highlight,
+    hitHref,
+    keyframeCopyUnits,
     lineShot,
     lineShots,
     mediaKind,
     nextFor,
     parseRoute,
+    parseSettingKey,
+    pips,
+    presence,
     readJsonLines,
     renderMarkdown,
+    reviewNeedsAttention,
+    reviewPassed,
     rhythmChecks,
+    rhythmProfileRows,
     savedContentIsCurrent,
     seriesTodos,
+    settingKey,
+    stageState,
+    viewEpisode,
+    viewFilm,
     viewForPath,
+    viewOverview,
+    viewReview,
+    viewSettings,
     OWNER_SECTIONS,
     SECTION_ORDER,
   };

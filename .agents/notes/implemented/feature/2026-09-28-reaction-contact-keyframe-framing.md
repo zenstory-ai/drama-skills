@@ -47,4 +47,4 @@ Status: implemented
   生成后仍按实际画面挑。
 - 拆两镜的动作多一张接触后关键帧和一次生成，成本上升。
 
-后续决定：[按模型收窄反应镜默认](../bug-fix/2026-09-28-model-scoped-reaction-default.md)，取代本篇反应镜通用化与接触动作外推部分；关键帧决定不变。
+后续决定：[按模型收窄反应镜默认](../bug-fix/2026-09-28-model-scoped-reaction-default.md)，取代本篇反应镜通用化与接触动作外推部分；关键帧决定不变。小样本默认松绑与 `performance-action-timing.md`、`production-shot-grammar.md` 参考文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

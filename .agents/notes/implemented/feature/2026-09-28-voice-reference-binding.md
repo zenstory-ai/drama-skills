@@ -61,3 +61,5 @@ adapter 配置的 profile 可声明 `reference_roles`；`run` 在读确认、快
 并要求不得控制范围包含台词、语气、情绪；用对抗输入覆盖上述边界。
 
 发布前从原著到视频提示词的独立实跑发现「台词、语气与情绪」容易被照抄为两个范围；SKILL 现在给出可直接填写的 `台词、语气、情绪` 并说明分隔符。
+
+后续调整：无对白角色免填声线、纯外文参考名放行、`参考音频` 控制/不得控制范围词表松绑及内置模型 `reference_audio` 识别，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

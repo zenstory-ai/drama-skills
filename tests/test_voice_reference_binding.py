@@ -41,13 +41,13 @@ VOICE_RECORD = (
 )
 PICTURE_SLOT = (
     f"REF-JIANGCHEN-LOOK（顺序：1）· {PICTURE_PATH}《江晨定妆照》"
-    "（用途：身份；控制：脸型、体态；不得控制：构图、动作）"
+    "（用途：外貌；控制：脸型、体态；不得控制：构图、动作）"
 )
 AUDIO_LINE = (
     f"- 参考音频：REF-VOICE-JIANGCHEN（顺序：1）· {VOICE_PATH}《江晨音色参考》"
     "（用途：音色；角色：江晨；控制：音色、音区；不得控制：台词、语气、情绪）"
 )
-TEXT_TO_VIDEO = "- 输入参考图：无（创作者已明确选择文生视频）。"
+TEXT_TO_VIDEO = "- 输入参考图：无（文生视频）。"
 # MOTION-EP001-012 delivers 江晨's 「下周榜首，是我们团。」; 周薄森 is silent in it.
 MOTION = "MOTION-EP001-012"
 SHOT = "SHOT-EP001-012"
@@ -78,8 +78,8 @@ def bound_episode(
     _edit_section(
         episode / "视觉设定.md",
         "人物 · 江晨",
-        "- 画面代称：Jiangchen\n",
-        f"- 画面代称：Jiangchen\n{VOICE_RECORD.replace(VOICE_PATH, voice_path)}\n",
+        "- 提示词名称：Jiangchen\n",
+        f"- 提示词名称：Jiangchen\n{VOICE_RECORD.replace(VOICE_PATH, voice_path)}\n",
     )
     _edit_section(episode / "分镜.md", SHOT, TEXT_TO_VIDEO, f"- 输入参考图：{PICTURE_SLOT}")
     video = episode / "视频提示词.md"
@@ -95,12 +95,27 @@ class CheckerTests(unittest.TestCase):
             self.assertEqual(checker.validate_episode(bound_episode(root), root), [])
 
     def test_voice_scope_and_unique_record_are_required(self) -> None:
-        for scope in ("构图", "台词、语气", "台词、情绪", "语气、情绪"):
-            with self.subTest(scope=scope), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                episode = bound_episode(root, audio_line=AUDIO_LINE.replace("台词、语气、情绪", scope))
-                errors = checker.validate_episode(episode, root)
-                self.assertTrue(any("不得控制至少包含" in error for error in errors), errors)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            flexible_audio = AUDIO_LINE.replace(
+                "控制：音色、音区；不得控制：台词、语气、情绪",
+                "控制：音色、语气；不得控制：台词、环境音",
+            )
+            self.assertEqual(
+                checker.validate_episode(
+                    bound_episode(root, audio_line=flexible_audio), root
+                ),
+                [],
+            )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            conflicting_audio = AUDIO_LINE.replace(
+                "控制：音色、音区；不得控制：台词、语气、情绪",
+                "控制：音色、语气；不得控制：语气、台词",
+            )
+            episode = bound_episode(root, audio_line=conflicting_audio)
+            errors = checker.validate_episode(episode, root)
+            self.assertTrue(any("控制与不得控制范围冲突" in error for error in errors), errors)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             episode = bound_episode(root)
@@ -131,7 +146,7 @@ class CheckerTests(unittest.TestCase):
                 "REF 文件不存在",
             ),
             "purpose is not 音色": (
-                AUDIO_LINE.replace("用途：音色", "用途：身份"),
+                AUDIO_LINE.replace("用途：音色", "用途：外貌"),
                 "参考音频用途只能是音色",
             ),
             "audio numbering continues the pictures": (

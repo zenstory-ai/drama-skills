@@ -599,6 +599,7 @@ a.shotref:hover { color: var(--zs-signal-ink); border-color: var(--zs-signal); }
 .verdict { display: flex; align-items: center; gap: var(--zs-space-4); padding: var(--zs-space-4h) var(--zs-space-5); margin-bottom: var(--zs-space-4); flex-wrap: wrap; }
 .verdict .vv { font-size: var(--zs-text-20); font-weight: var(--zs-weight-heavy); display: flex; align-items: center; gap: var(--zs-space-2); }
 .verdict .vv.bad { color: var(--zs-danger); }
+.verdict .vv.warn { color: var(--zs-warn); }
 .verdict .vv.ok { color: var(--zs-ok); }
 .verdict .vm { color: var(--zs-ink-500); font-size: var(--zs-text-13); }
 .verdict .seg { margin-left: auto; }

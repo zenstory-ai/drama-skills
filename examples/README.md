@@ -10,4 +10,4 @@
 
 新项目先读 [creator-first/](creator-first/)：它是全套五份创作者文档的完整公开样例。
 
-`excerpt-chain/` 与 `golden-project/` 只服务仓库维护、校验器回归和历史测试覆盖，不作为当前 Skill 的操作说明，也不定义 creator-first 的公开产物；日常创作不需要手写结构化 JSON/JSONL。
+`excerpt-chain/` 与 `golden-project/` 只服务仓库维护、校验器回归和历史测试覆盖，不作为当前 Skill 的操作说明，也不定义当前五文档工作流的公开产物；日常创作不需要手写结构化 JSON/JSONL。

@@ -27,3 +27,4 @@ Status: implemented
 
 - **收益**：站位有了整场一份的事实来源，跨镜比较不再只看上一镜；关键帧与视频提示词有了经过实测的深度写法。按改动前后的文档各让模型写 2 次同一场戏：改后 2/2 写出场景站位、改前 0/2；画面方位词 38、25 次对 73、55 次；视线点名对象 22、21 次对 10、14 次。
 - **代价与局限**：视频样本只有一种双人场景、每臂 3 次，且只测了 Seedance 2.0 文生视频；场景站位对跨镜一致性的作用尚未用成片验证。分镜多一段需要维护的文字，单镜场次可以不写。
+- **后续调整**：`固定锚点`、`working side`、`冻结关键帧提示词` 重命名为 `固定陈设`、`机位侧`、`首帧提示词` 见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)；`location-and-view.md` 与 `production-prompt-grammar.md` 等微文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)；各场首镜前书写 `## 场景站位` 的跨脚本解析对齐见 [统一 7 脚本创作文档解析边界并以契约测试锁死跨技能规则一致性](../architecture/2026-11-14-align-cross-script-markdown-parsers-and-contract-tests.md)。

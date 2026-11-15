@@ -3,15 +3,19 @@
 
 from __future__ import annotations
 
-import tempfile
 import sys
+import tempfile
 from pathlib import Path
-
-from episode_intake import build_index, slice_episode, verify_index, write_index
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.9 or newer")
+
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
+from episode_intake import build_index, slice_episode, verify_index, write_index  # noqa: E402
 
 
 def require(condition: bool, message: str) -> None:

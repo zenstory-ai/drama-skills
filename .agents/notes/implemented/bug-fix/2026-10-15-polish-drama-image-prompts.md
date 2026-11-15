@@ -25,6 +25,8 @@ Status: implemented
 
 直接任务能按当前骨架交付，旧结构化模板仍保留其字段与示例。审查者需要继续核对来源实物、接受依据和参考像素；文本校验通过不表示图片效果合格。本次不运行生成、供应商调用或模型评测。
 
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（支持 `- 输入参考图：无` 简写与基于已确认首帧图生图派生同机位微变镜，移除 `IMG-12/14`、`IMG-02` 前缀位置硬判死并归并参考文档为 `sheet-prompt-guide.md` 与 `variants-and-edits.md`）。
+
 ## Validation
 
 - 本技能离线自测 10 项通过。

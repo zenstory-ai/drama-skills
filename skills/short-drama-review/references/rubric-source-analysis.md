@@ -1,32 +1,30 @@
-# 原著分析审查表
+# 原著与对标拆解核查清单
 
-审查 `项目开发/source-analysis/` 下由 `$short-drama-novel-analyze` 发布的产物（`_index.json`、`triage.md`、`chapters/*.md`、`story-units.md`、`rhythm-and-emotion.md`、`characters.md`、`world.md`、`adaptation-value.md`、`episode-candidates.jsonl`），按 `NVA-xx` 规则编号定位问题。
+用于审查 `项目开发/source-analysis/` 下由 `$short-drama-novel-analyze` 产出的原著拆解文档（`_index.json`、`triage.md`、`chapters/*.md`、`story-units.md`、`rhythm-and-emotion.md`、`characters.md`、`world.md`、`adaptation-value.md`、`episode-candidates.jsonl`），以及由 `$short-drama-breakdown` 产出的 `项目开发/对标拆解.md`。
 
-## 1. 先跑结构校验（`NVA-01`、`NVA-03`）
+## 1. 章节索引与授权拆解范围核对（`NVA-01`、`NVA-03`）
 
-```bash
-python3 {novel-analyze 技能目录}/scripts/novel_index.py verify \
-  项目开发/source-analysis/_index.json 输入/{原文文件}
-python3 {novel-analyze 技能目录}/scripts/novel_index.py coverage \
-  项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters
-```
+通过 `$short-drama-novel-analyze` 的索引覆盖核查（或直接对照 `_index.json`、`chapters/` 与原文行号）核验章节切分与拆解覆盖边界：
 
-- `verify` 失败（`NVA-01`）或 `_index.json` 的 `problems` 非空却进入后续阶段：阻断并要求先修索引。
-- `coverage` 的 `missing` 非空而聚合产物已生成（`NVA-03`），或 `unmatched_files` 非空：阻断并点名缺失章节与未匹配文件名（不得将其他阶段文件改名充数）。
-- 对照原文抽查 `_index.json` 的 `chapter_unit` 与 `ignored_heading_units` 是否切准章节边界（如按 `第N章` 分章的书误选 `节`）。
+- **索引结构核验（`NVA-01 · structural_invariant`）**：`$short-drama-novel-analyze` 的索引覆盖核查报错（如未识别到章节、索引序号断号或行区间未能连续覆盖原文）时判结构阻断，退回 `$short-drama-novel-analyze` 重建索引；网文原文常见的作者跳章号、重章号或过短过渡章仅归入提醒，**不因原文跳号提醒直接判阻断**。抽查 `_index.json` 的章节切分尺寸，防止把章内小节误切成独立章。
+- **支持按创作者授权章节范围拆解（`NVA-03 · structural_invariant`）**：创作者指定只拆解授权章节区间（如前 50 章、第一卷或选定篇章）时，只要 `chapters/` 完整覆盖了**创作者本次划定的目标章节范围**，且汇总文档显眼注明了所覆盖的起止章号范围，即视为合规通过，**绝不拿“未拆完全书所有章节”一刀切判不过**。只有既未声明局部拆解范围、又无故漏拆目标区间内章节或混入无关凑数文件时，才报覆盖缺漏。
 
-## 2. 抽样声明与事实溯源（`NVA-02`、`NVA-05`、`NVA-07`）
+## 2. 抽样快评守界、概括提炼与原文对账（`NVA-02`、`NVA-04`、`NVA-05`、`NVA-07`）
 
-- **`triage.md` 抽样边界（`NVA-05`）**：首行须写明覆盖率与样本章号，三类判定比例分母须为抽样章数，不得断言未抽样章节的事实，也不得越权产出 `episode-candidates.jsonl`。
-- **两层溯源与防串用（`NVA-02`、`NVA-07`）**：抽查 `characters.md`、`world.md`、`adaptation-value.md` 中的等级、数值、距离、势力数、台词归属与出场章号，逐条回查引用的逐章白描与原文。回查不到却写成确定事实的判 `reviewed_invariant` 缺陷（须改为「原文未明确」或删除）；同时排查坐骑/骑手等级混安、A/B 台词串记、相邻章数字互换。
+- **`triage.md` 抽样范围守界（`NVA-05 · reviewed_invariant`）**：开头须写明抽读比例与实际抽读章号，评估统计仅基于已读抽样章节，不凭空推断未读章节，快评阶段也不提前越界产出 `episode-candidates.jsonl`。
+- **提炼概括与引文克制（`NVA-04 · reviewed_invariant`）**：核查拆解文档是否以提炼后的剧情作用概括为主，必要佐证仅摘取最短关键短语，不整段照搬抄录原著句子。
+- **回查原文防脑补与串行（`NVA-02 · reviewed_invariant`、`NVA-07 · reviewed_invariant`）**：抽查 `characters.md`、`world.md`、`adaptation-value.md` 中的等级体系、数额距离、关键台词归属与首次出场章号是否附有原文位置与起止行号（`NVA-02 · reviewed_invariant`）并能回查印证（`NVA-07 · reviewed_invariant`）。原著未写明却被脑补成确定事实的，退回 `$short-drama-novel-analyze` 改为「原文未明确」或删去；重点排查把甲的台词安到乙头上或抄串相邻章节数字。
 
-## 3. 功能提取与归并质量（`NVA-06`、`NVA-08`）
+## 3. 逐章提炼、人物归并与影视化切集（`NVA-06`、`NVA-08`–`NVA-13`）
 
-- **逐章提取（`chapters/ch-<N>-extract.md`，`NVA-06`）**：概要须回答“谁的处境、认知或筹码变了”；情节点白描须为可观察事实（禁把“通过对话得知”“展现了实力”“感到愤怒”等结论词当证据）；每条须写明改变了权力/信息/关系/暴露/资源/时间/代价中的哪一项，且填齐载体记录与通道栏。
-- **人物与单元归并（`NVA-08`）**：`characters.md` 不得仅凭描述性称谓（「红衣女子」）或泛指头衔（「护卫队长」）合并人物，绰号或姓氏+头衔合并须有明确同指证据，每条保留戏剧作用、知识范围、关系位置、`unresolved` 与来源引用。`story-units.md` 须写出归属置信、覆盖率与重叠率自检结果，重叠率超线无复核说明时点名具体单元对。
+- **逐章提炼与同人合并（`NVA-06 · reviewed_invariant`、`NVA-08 · craft_default`）**：逐章情节点须写出具体动作或交锋如何改变了人物抉择、信息差、强弱势地位或人物关系（`NVA-06 · reviewed_invariant`），不拿“展现了惊人实力”“心中愤怒”充数；`characters.md` 不得单凭泛称（“红衣女子”“护卫统领”）草率合并人物，合并绰号与本名须有原文证据（`NVA-08 · craft_default`）。
+- **影视化改法与切集依据（`NVA-09 · reviewed_invariant`、`NVA-10 · reviewed_invariant`、`NVA-12 · taste_option`、`NVA-13 · craft_default`）**：原著纯心理或背景说明若保留入戏，须写明改用什么可见动作、物证或场面表现，不能换汤不换药全推给大段旁白（`NVA-09 · reviewed_invariant`）；分集候选先按爽感与看点强度标注看点（`NVA-13 · craft_default`），再按单集阶段进展与集尾悬念切分而非按固定章数字数机械平分（`NVA-10 · reviewed_invariant`）。正式从哪章开篇、留哪条支线与总集数由创作者与 `$short-drama-develop` 拍板，拆书审查不拿创作取舍卡死流程（`NVA-12 · taste_option`）。
 
-## 4. 改编判定与候选集（`NVA-09`、`NVA-10`、`NVA-12`、`NVA-13`）
+## 4. 本地对标拆解审查边界（`项目开发/对标拆解.md`）
 
-- **三类判定与载体转换（`NVA-09`）**：逐单元落定三类判定；`needs_carrier` 必须写齐原载体、新载体、保住项及改变/失去项（将改变/失去写为「无」视为未写完）；禁止将 `prose_only` 改写为仍需旁白才成立的 `needs_carrier`。
-- **单集候选集（`NVA-10`、`NVA-13`）**：按戏剧结果与交接切分（非按章号或字数均切），每条回答四问（进入认知、兑现哪项承诺、出去压力、下集继承项），相邻候选进出状态闭合，`prose_only`/跳章/散落清单记入交接摘要，`adaptation-value.md` 开头含快评回填对照，爽点表与候选集按观众收益引用并考虑后文强冷开（`NVA-13`）。
-- **边界（`NVA-12`）**：从何处开篇、保留哪条支线、合并哪些人物及总集数归创作者与 `$short-drama-develop` 决定，不作为分析层阻断项。
+审查 `$short-drama-breakdown` 产出的本地对标学习报告、差距表与还原项目时，严守以下边界：
+
+- **对标登记、授权用途与外传边界（`BRK-01 · reviewed_invariant`）**：核查每部对标作品开测前是否登记了 `REF-ID`、素材位置、授权用途（`study`、`owned` 或附有依据的 `licensed`）及是否允许上传外部模型服务；未获准外传的作品只允许运行本机离线测量脚本。
+- **本地私有拆解允许写真实参考剧片名但禁抄逐字台词（`BRK-02 · reviewed_invariant`）**：`项目开发/对标拆解.md` 属于创作者本地私有的研究与学习记录，**允许直接写明真实参考剧片名、集数与平台出处**以便创作者直观核对，不因本地拆解报告写了真实剧名判违规（仅在对外公开发布或入库公开示例时才要求脱敏）；**但本地 `对标拆解.md` 自身仍不得照抄受版权保护的逐字台词**。
+- **主项目脱敏边界、统计口径、规律提炼与职责转交（`BRK-02`–`BRK-04`、`BRK-06`–`BRK-08`）**：核查移交主项目的 `creative-brief.md`、`story-engine.md`、《剧本.md》《视觉设定.md》及各类提示词是否只提炼了节奏结构与视听手法，**严禁将学习用途对标剧的真实剧名、专有角色名、独有世界观名词、原句台词或受保护的独创桥段带入主项目文档**（`BRK-02 · reviewed_invariant`）；核对拆解结论是否区分实测与画面事实、作用分析和待确认盲区，引用统计数字是否注明样本集范围、切镜阈值与字幕转写来源（`BRK-03 · reviewed_invariant`）；核对每条可借鉴手法是否写明了在几部独立故事中出现过、解决了什么观看问题及何时失灵，单部作品做法是否如实标为单部个例（`BRK-04 · reviewed_invariant`）；核对同尺差距表是否标清了纸面估算（`plan`）与成片实测（`measure`）两种计算方式（`BRK-06 · reviewed_invariant`），未把外部对标均值硬当成卡死本项目的强制门槛（`BRK-07 · reviewed_invariant`），且对标技能未直接动手改写其他技能负责的文档——需补强的差距附实测依据转交对应负责技能，疑似有意取舍的差异单列供创作者定夺（`BRK-08 · reviewed_invariant`）。
+- **`还原/` 独立隔离、版权准入与实测还原守真（`BRK-11 · reviewed_invariant`、`BRK-12 · reviewed_invariant`）**：核查 `输入/对标/<REF-ID>/还原/` 是否与主项目严格隔离——主项目各创作环节不得读取 `还原/` 充当素材，单集还原文件严禁直接混入外层主项目的剧集目录；仅当明确登记为自有（`owned`）或已获授权（`licensed`）并写明依据时，才能整套复制成独立项目或在其内部迭代开发（`BRK-11 · reviewed_invariant`）。同时核查还原稿中切镜时间是否以脚本实测为准、有烧录字幕的台词起止是否以字幕扫描为准，无烧录字幕台词时间、未点破姓名和看不清细节是否标为推断，模型报出但未与实测候选吻合的镜内切点是否单列交人工判断，缺乏名条、字幕或台词称呼实锤的角色是否改用身份称呼而未编造人名（`BRK-12 · reviewed_invariant`）。

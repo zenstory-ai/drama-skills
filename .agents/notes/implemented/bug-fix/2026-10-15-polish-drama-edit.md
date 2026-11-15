@@ -25,4 +25,6 @@ Status: implemented
 
 同一静帧可用于多个 CUT；EDT-06 与主文的区间重叠限制明确仅适用于视频源时间，和 `_overlap_findings` 跳过 still 的实现一致。
 
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（将 `<0.50s` 静帧改为提醒，移除 `EDT-15`，新增 `- 重放：<理由>` 视频显式复用与 `--partial` 局部试剪，并将 5 份微参考归并为 `editing-guide.md`）。
+
 CI 验证补充：Remotion 官方许可证链接同步登记到精确公开 URL 清单；扫描范围、精确匹配和泄漏阻断行为不变。

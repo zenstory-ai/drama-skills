@@ -34,3 +34,5 @@ legacy v0.5 结构化项目 never 原地迁移：升级时新建项目根，逐�
 2026-10-15 全局消费复核进一步明确：旧录音表和关键帧派生模板仍解释历史格式、服务追溯与回归；文档开头写清当前只读、继续旧格式须锁定 `v0.5.0`、升级在新根逐集确认。没有因缺少技能内导航就整份删除，也没有新增第二条当前可写产物路径。
 
 2026-10-15 用户取消兼容保留后的新决定见[退役旧创作模板](../simplification/2026-10-15-retire-legacy-authoring-templates.md)。本篇保留原决定历史，新决定不在本篇反向改写。
+
+后续调整：五份创作文档核心字段名与参考图用途词的破坏性中文化重命名见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)；跨文档校验门禁松绑与 `project_tool.py package` 直接打包五份创作 Markdown 及 JSON/JSONL 文本产物见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

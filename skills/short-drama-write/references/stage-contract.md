@@ -1,36 +1,34 @@
-# 剧本阶段契约
+# 剧本阶段职责与规则
 
-本阶段只拥有 `剧集/<EP>/剧本.md`（场景、动作、对白、画外音、声音事实、画面文字、连续性提示与转场），不决定人物视觉身份、镜头构图、提示词或媒体生产。项目内不另建节拍、块索引、审批或状态文件；按需检查使用系统临时索引。输入明确给出的事实、必须/禁止、题材观看契约与退出状态优先于本表，不得补造题面没有的精确数字、记录、资源、程序或机关。
+本环节只负责维护 `剧集/<EP>/剧本.md`（场景、动作、对白、画外音、关键音效、画面文字、连戏提示与转场），不介入角色视觉设定、分镜构图、生成提示词或素材生产。项目目录内不另建节拍表、段落索引、审批单或状态文件；按需核对字数与时长时直接运行 `duration_estimate.py --script`。现有材料定好的事实、`必须/禁止` 要求、题材路数与集尾落点优先于本表；严禁凭空编造原稿没有的精确数字、记录、资源、流程或机关设定。
 
 ## 本阶段规则
 
 ### `SCR`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| SCR-01 | reviewed_invariant | When a scene is organized around active pursuit or conflict, it has a current agenda, opposing force, directional turn, and exit state. A traceable fact, leverage change, cost, authority, or choice makes the prior strategy fail; an opponent's unexplained silence, inaction, or departure does not substitute for the turn. Atmospheric, ritual, montage, transition, and consequence-processing scenes justify themselves through a necessary change in knowledge, relationship, pressure, rhythm, or production state without manufacturing an artificial opponent. |
-| SCR-02 | craft_default | Prefer choices and consequences over coincidence for major turns. |
-| SCR-03 | reviewed_invariant | Private thought is expressed through behavior, evidence, or deliberate VO/OS. |
-| SCR-04 | craft_default | Dialogue carries agenda, relationship, subtext, and a change—not only information. |
-| SCR-05 | structural_invariant | Existing production tags use supported, closed syntax and resolvable references. A continuity tag records a state established by shown action; it cannot establish that an unseen event or contact never occurred. |
-| SCR-06 | taste_option | Silence, slang, interruption, narration, and sentence rhythm remain character/style choices. |
-| SCR-07 | reviewed_invariant | Story-critical text, VO/OS, SFX, transition, and continuity requirements are not left indistinguishable from ordinary prose. |
-| SCR-08 | craft_default | When abstract emotion obscures performance, translate it into character-specific behavior, object handling, distance, silence, or delivery. Dialogue turn length and tactic follow the scene agenda rather than a universal attack-defense cadence. |
-| SCR-09 | craft_default | Break a long speech with a visible action beat that changes the speaker's tactic, giving downstream a sourced cut point and the performance a breath; a speech with no internal turn is shortened rather than split. |
-| SCR-10 | reviewed_invariant | When the creator marks a beat's realization as replaceable under later pressure, separate its dramatic function, current depiction, and fallback depiction. The fallback delivers the same function: the same person is proven or changed, downstream payoffs and next-episode entry state remain satisfied, the cost remains, and no new setup is required. Deleting the beat is never a fallback. Inactive for unmarked beats. |
-| SCR-11 | craft_default | When sound carries story information, spatial pressure, off-screen presence, a deliberate silence, or a scene bridge, the screenplay identifies the necessary source/event and its dramatic target; it does not prescribe per-shot mixing, add decorative sound to every scene, or use music to replace performance. |
-| SCR-12 | craft_default | A crowded scene first makes clear who is contending with whom—by cutting non-essential presence, staggering entrances, splitting the scene so one opponent holds the focus at a time, or handing attention from one character to the next—rather than naming every present character in action paragraphs. Deliberately chaotic ritual, siege, or farce may override this once the disorder is a visible choice and one followable thread remains. |
-| SCR-13 | reviewed_invariant | When a beat is framed as a consequential choice, at least two executable values remain live until the character acts, and the screenplay makes the relevant stakes and newly caused cost perceptible. Inactive for ordinary decisions, habits, or single-path pursuits. |
-| SCR-14 | reviewed_invariant | When a belief change hinges on contested evidence, the conclusion stays within what the evidence and any shown test support. If that evidence is a primary episode engine, at least one audience-followable state change changes which explanations remain live or changes the next action; routine photographing, bagging, numbering, or logging does not count by itself. The scene may test the strongest live counter-explanation, preserve uncertainty, or intentionally delay verification; uncontested facts, comic misunderstanding, subjective narration, and intentional ambiguity need no forensic procedure. |
-| SCR-15 | craft_default | A local payoff leaves a legible result or aftereffect without replacing the episode's meaning with a slogan. A cost framed as central pressure has a material exit-state effect rather than automatically resetting once the action succeeds. The result may be plot change, relationship response, irony, stillness, tonal afterimage, or an intentionally open state; a new external event is not mandatory. |
-| SCR-16 | reviewed_invariant | When a literal precise deadline is foregrounded and audience-auditable, its action chain fits the stated time and established resources, or the screenplay makes compression, failure, or a changed objective legible. Qualitative urgency is not upgraded into invented minutes, timestamps, notifications, or records. Montage, ellipsis, subjective time, and declared stylization follow their own established convention. |
-| SCR-17 | reviewed_invariant | When the brief defines a limited number of attempts, turns, breaths, beats, or other units, each unit is counted by its visible end-state. A label, count, request, authorization, preparation step, or cleanup after the boundary does not substitute for the required completion; intentional partial completion or failure remains valid when it is the legible result of that unit. |
-| SCR-18 | craft_default | An action paragraph does not open with a noun phrase followed by a full-width colon. `第二格：一只手把杯子推过去。` has the same syntax as `角色名：台词`, so the indexer reports `ambiguous_dialogue_or_action` for the writer to resolve. A dash, comma, or verb removes the collision. Colons inside a sentence are unaffected; the ambiguity occurs after a phrase at the start of a line. |
-| SCR-19 | craft_default | When `creator_authority.rhythm_profile` has status `accepted`, the screenplay realizes its episode values: the first hook lands within `first_hook_seconds`; no gap between emotional touchpoints (a conflict line, a situation-changing action, or new information) exceeds `beat_interval_seconds_max`; at least `opposed_reversals_per_episode_min` reversals are driven or suffered by a human opponent with an agenda—in an adaptation, a source character first; where the source has none, the deviation is reported and any new opponent is a creator-confirmed addition from `$short-drama-develop`; with `end_on_peak` the episode stops on or just before its peak; with `reprise_previous_last_beat` it opens by replaying the previous episode's last beat. The values are bounds, not a beat template. Inactive when missing or proposed; this stage reads the profile and never sets it. |
-| SCR-20 | craft_default | Show rather than narrate: `[VO]` does not restate what the picture has already performed; inner monologue is externalized into an action plus one line, another character's words, or a visible object wherever possible; a pain point the episode trades on is staged as a concrete scene rather than reported. Under an accepted rhythm profile the `[VO]` share of spoken characters stays within `vo_share_max`. |
-| SCR-21 | craft_default | The writer reads back its own dialogue draft and cuts lines that only explain background for the audience, restate just-performed actions, or circle in place; kept lines carry an agenda, clash, relationship warmth, comic mismatch, or playable subtext according to the scene's tone. Creator-supplied text is not trimmed under this rule. |
-| SCR-22 | craft_default | The episode's first beat stands alone as a hook, since it is what the viewer sees in the opening frame: a visible conflict, an anomalous image, an open question, or the last beat of a peak. A still image qualifies when it raises the question by itself; information that works only after reading on-screen text, knowing who someone is, or hearing the next line is not staged alone as the first beat. |
-| SCR-23 | craft_default | When trimming, the scene's earned payoff carries weight and stays: at the scene's single peak, the outburst that earlier pressure has built toward, the relationship verdict line right after it, and the action that closes the moment (such as an exit). The verdict line does not count as a redundant same-direction decision even when the exit already shows that decision. When time runs short, cut elsewhere first (transitions, repeated verification, explanation, or a whole-scene merge if needed); inside the outburst, compress only repetition and keep the line the build-up points to. Empty shouting with no build-up, no new emotional stage, and the same meaning as an earlier line is still cut. |
-| SCR-24 | craft_default | In a motion-comic project, read the estimate's `speech_share` after writing an episode. When it sits well below comparable references, first give the pressure, pushback and information a character could say aloud to dialogue, then cut silent action beyond what generation can show clearly, and only then shorten the episode. No uniform ratio is set. |
-
-规则分级由高到低：`structural_invariant`（可机械证明的结构缺陷，可阻断）、`reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可说明理由覆盖）、`taste_option`（创作者选择，不作缺陷）。
+| SCR-01 | craft_default | 以追索目标或正面交锋为主线的对抗场，默认写清人物眼下诉求、当场阻力、局势变化与场尾落点；破局优先来自有迹可循的事实、筹码消长、代价、权限或人物抉择，少靠对手无故失声或离场。温情、喜剧、氛围、仪式、蒙太奇、过场与消化余波的场次顺应题材基调，推进知情范围、人物关系、危机压力、叙事节奏或连戏状态即可。 |
+| SCR-02 | craft_default | 关键局势转折优先靠人物抉择及其后果推动，少靠巧合解围。 |
+| SCR-03 | reviewed_invariant | 关键剧情转折处的人物心理变化须外化为可拍摄的动作、物证状态变化，或明确标注的 `[VO]`/`[OS]`，不拿大段无法拍摄的纯心理说明替代戏剧行动。 |
+| SCR-04 | craft_default | 对白既要传递必要信息，更要带出人物诉求、关系分寸、潜台词或当场局势变化。 |
+| SCR-05 | structural_invariant | 制作标记须使用规定的固定语法且指代清晰。`[连续性]` 只记录前文动作已演出的状态变化，不能单靠一行备注断言镜头外“从未发生某事或从未接触某物”。 |
+| SCR-06 | taste_option | 沉默留白、俚语方言、抢白打断、旁白腔调与句式长短均属人物口吻与风格选择。 |
+| SCR-07 | craft_default | 影响剧情理解的画面文字、`[VO]`/`[OS]`、`[SFX]`、转场要求与连戏变化建议明确加标，避免混同于普通动作叙述而漏拍。 |
+| SCR-08 | craft_default | 笼统的情绪形容词若让演员难以抓准演法，优先落成具体动作、手头物件操作、站位远近、停顿留白或说话口气。台词长短与出招节奏顺应本场戏诉求，不必套用统一的“攻防回合”模板。 |
+| SCR-09 | craft_default | 大段台词中段若有说话意图或打法转折，可在转折处插入看得见的动作断开，给后续分镜留出切点、给演员留出气口；一路顺说、内部毫无转折的冗长台词优先精简，不必硬拆。 |
+| SCR-10 | craft_default | 高成本大场面可借画外音效加人物反应、局部特写或事后余波做低成本视听替代；创作者标明关键戏份需预留备选拍法时，备选方案宜保持核心人物关系冲击、所付代价与下集交接局面一致。 |
+| SCR-11 | craft_default | 声音承担关键信息、空间压迫、画外有人、悬疑主观听觉（如耳鸣、心跳声）、刻意留白或跨场声桥时，写明声源或听感及其戏剧作用；不强制场场做声音夺权设计，也不在剧本里逐镜排混音。 |
+| SCR-12 | craft_default | 人多的场次优先让观众分清谁在跟谁交锋——精简无关在场人员、错开进场时机、分段轮换主攻对手，或借点名、转身、递物传递戏眼。刻意追求混乱感的仪式、围攻或群戏闹剧保留一条清晰主线即可。 |
+| SCR-13 | craft_default | 剧本把某一拍作为重大两难抉择主打时，落定前两条路宜各有现实得失，并把切身赌注与本次选择惹出的新代价演清楚。日常决定、习惯动作或单向追索不套用本条。 |
+| SCR-14 | craft_default | 人物围绕真假存疑的物证交锋时，推论宜匹配物证及当场查验所能支撑的范围；以查验物证为主看点的场次，优先用看得见的状态变化改写下一步行动，少靠重复拍照、登记充当转折。喜剧误会、主观叙事与刻意留白不套取证流程。 |
+| SCR-15 | craft_default | 阶段性爆发或结算宜留下看得见的结果或余波，少用空洞口号拔高总结；前文设定的核心硬代价到集尾仍保留合理影响。结尾可落在局势改写、关系变动、反讽、静默余韵或开放悬念，不必强塞外来突发事件。 |
+| SCR-16 | craft_default | 台面上亮出观众可核对的精确倒计时数字时，期间的动作量宜与所剩时间相符，钟点不倒流穿帮；原稿只有“快点”“快迟到了”等笼统催促时，不擅自编造分钟秒数、时间戳或系统后台记录。蒙太奇、跳切与主观慢放按各自常规处理。 |
+| SCR-17 | craft_default | 大纲或设定把“三次机会”“两轮演示”等限定次数作为核心规矩时，每次宜按演完的可见结果算数，避免光报数或做准备就糊弄过去。 |
+| SCR-18 | craft_default | 动作段落开头避免写“短词组＋全角冒号”。`第二格：一只手把杯子推过去。` 与 `角色名：台词` 字面接近，索引脚本会提示 `ambiguous_dialogue_or_action`；改用破折号、逗号或直接接动词即可避开冲突，句中冒号与带标点的多句动作叙述不受影响。 |
+| SCR-19 | craft_default | 当 `creator_authority.rhythm_profile` 状态为 `accepted` 时，剧本参考已确认指标落地：`first_hook_seconds`、`beat_interval_seconds_max`、`opposed_reversals_per_episode_min`、`end_on_peak` 与 `reprise_previous_last_beat`。这些数值仅作节奏参考，不是死板的节拍填空模板；未配置或未确认时不启用，本环节只读不改。 |
+| SCR-20 | craft_default | 画面已演明白的内容，`[VO]` 不再重复解说；实拍与漫剧均可使用精炼的 `[VO]` 承载言行反差、暗地算计或跨年岁浓缩，但主打痛点优先落成具体场面。已确认节奏设定时，`[VO]` 占全部台词字数比例参考 `vo_share_max`。 |
+| SCR-21 | craft_default | 执笔人写完初稿后通读自检，删掉专替观众补背景、复述刚做完的动作或原地车轱辘的废话；创作者提供的原稿台词不按本条删改。 |
+| SCR-22 | craft_default | 全集第一拍宜单拎出来就能抓人：正在发生的冲突、反常景象、高潮末拍，或规则怪谈告示、系统流异常弹窗、报警录音、紧急求救通话等自带强视听冲击的文字与声音钩子均成立；避免毫无悬念的平淡寒暄开局。 |
+| SCR-23 | craft_default | 精简打磨压时长时，优先保住前文蓄力换来的高潮爆发：作为爽剧对抗高潮推荐组合，爆发台词、紧随其后给关系定音的决绝话与收场决断动作配合使用时，决绝话不算顺着同一意思重复收尾；温情、悬疑或留白高潮按各自题材收束。压时长先砍过场戏、重复查验与嘴碎解释。 |
+| SCR-24 | craft_default | 漫剧项目写完一集后可查看估时脚本的 `speech_share`（有声台词占比）。若明显低于同类对标作品，优先把能说出口的施压、回击与关键信息用台词表现，精简超出生成画面表现力的繁琐无声哑剧；不设全品类固定比例。 |

@@ -1153,8 +1153,15 @@ class ProjectStore:
                 legacy = not creator_documents and any(
                     PurePosixPath(name).name in LEGACY_EPISODE_FILES for name in files
                 )
-                findings = (parsed.get("review") or {}).get("findings", [])
+                review_doc = parsed.get("review")
+                findings = (review_doc or {}).get("findings", [])
                 musts = [item for item in findings if item["sev"] == "must"]
+                review_tone: str | None = None
+                review_label = ""
+                if has["review"]:
+                    review_label = str((review_doc or {}).get("verdict") or "")
+                    raw_tone = str((review_doc or {}).get("verdictTone") or "warn")
+                    review_tone = "bad" if musts else raw_tone
                 rows.append(
                     {
                         "id": episode,
@@ -1164,7 +1171,9 @@ class ProjectStore:
                         "shots": parsed["metrics"]["shots"],
                         "seconds": parsed["metrics"]["seconds"],
                         "cutSeconds": (parsed.get("cutlist") or {}).get("seconds"),
-                        "review": views.review_counts(parsed.get("review")),
+                        "review": views.review_counts(review_doc),
+                        "reviewTone": review_tone,
+                        "reviewLabel": review_label,
                         "must": [
                             {"id": item["id"], "title": item["title"]} for item in musts
                         ],
@@ -1177,12 +1186,21 @@ class ProjectStore:
                     shots = [
                         shot["id"]
                         for shot in (parsed.get("board") or {}).get("shots", [])
-                        if any(entry["name"] == item["name"] for entry in shot["basis"])
+                        if any(
+                            entry["cat"] == "人物" and entry["name"] == item["name"]
+                            for entry in shot["basis"]
+                        )
                     ]
+                    item_fields = item.get("fields") or {}
+                    item_desc = (
+                        item["desc"][0]
+                        if item["desc"]
+                        else (item_fields.get("身份") or item_fields.get("外观特征") or "")
+                    )
                     cast[item["name"]] = {
                         "name": item["name"],
                         "ep": episode,
-                        "desc": item["desc"][0] if item["desc"] else "",
+                        "desc": item_desc,
                         "shots": len(shots),
                     }
         rhythm = status.get("rhythm_profile") or None

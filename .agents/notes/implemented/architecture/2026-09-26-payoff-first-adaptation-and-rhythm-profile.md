@@ -93,3 +93,4 @@ Status: implemented
 
 - **仍未解决**：修正后大量固定镜只写「运镜：固定」不写理由（14 镜中 10 镜、55 镜中 27 镜），由 Decision 10
   处理；时代漂旧由 Decision 9 处理。这两条落地后没有重跑。样本只有一本原著、每臂 2 次，评审与创作同属一个模型家族。
+- **后续调整**：`时代锚点` 重命名为 `时代背景` 见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)；`project_tool.py configure` 直接写入节奏目标、撤回审查对 `运镜：固定` 与日常旧化材质词（`worn/dusty/斑驳`）的越级自动判死及 `era-anchors.md` 等微文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

@@ -30,3 +30,5 @@ Status: implemented
 离线验证：本技能 selftest 8 项通过，provider adapter 编译自检通过；12 个既有 fenced 块逐字节保留，没有发出真实生成请求。
 
 最终复核：独立review与本地prepare复现补来源接口的实际边界：creator-first续接视频无法声明；跳过PLAN后剩余REF顺序仍须从1连续；同一路径双槽当前不可提交。保留创作职责，先交负责技能与创作者处理，不通过删selector、改job编号或静默漏槽绕过。
+
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（`production_tool.py` 改为按 `(path, role)` 去重以支持首尾同帧等同一路径双槽位、改为条目级 SHA-256 并新增 `prepare-batch` / `confirm-batch` / `run-batch`，`provider_adapters.py` 补齐 `reference_audio` 能力并将供应商子文档归并为 `builtin-providers.md`）。

@@ -1,184 +1,25 @@
-# 私有卡片与 Coverage Matrix
+# 内部轻量研究记录与选样参考
 
-## 卡片共通纪律
+内部研究笔记只存放在维护者指定的授权隔离区，用于记清每次研读与看片核实的具体发现，不为凑格式拆写多张卡片，也不套用繁琐的嵌套字段模板。严禁在笔记中摘抄可识别原项目的原句、原始文件名、人员或专有词。
 
-卡片只保存在维护者指定的隔离工作区，先通读项目完整文本链再制卡，用随机内部 ID、内容 hash 或抽象 locator 追溯证据，不摘抄可识别原文。
+## 五项轻量记录要素
 
-- **轴与证据分离**：`genre_axes` 记题材、受众承诺和情绪合同；`mechanism_axes` 记实现机制（不把桥段名当机制）；`evidence` 记可复核位置与改写后的观察；`counterevidence` 即使为空也须写明检索范围；`creator_overrides` 单列，不把创作者特例误读为通用规律。
-- **版本与角色还原**：先按项目实际存在的层还原 `version_refs`，缺层记入 `missing_layers`，再标明每条记录的 `source_role`。提示词存在、任务成功或提交次数只代表流程活动，不得填入 `observation_evidence` 冒充效果证明。
-- **媒体观察边界**：本 skill 只读文字，制卡 agent 的 `media_observed` 恒为 `false`。仅当存在创作者或获授权观察者的文字报告时，`observation_kind` 才可设为 `input_reference` 或 `generated_result`（对应 `evidence_mode` 为 `creator_reported` 或 `authorized_media_inspection`），并在 `observer_report.observer_media_observed` 归因；无合格报告时一律填 `none`。输入参考观察与生成结果观察不得混入同一张卡；一条提示词兼顾多职责时按 `prompt_role` 分卡记录。
+每条研究笔记围绕一个具体的创作或制作问题，简明记清以下五项：
 
-## Observation card schema
+1. **所属阶段与模型背景**：涉及哪一创作环节（如故事大纲、剧本、视觉设定、图片提示词、分镜、视频提示词、剪辑），对应的题材看点、制作形态（如二维漫剧、三维、实拍风）及当期使用的生成模型版本；缺失的上游或下游环节如实注明，不靠脑补补齐。
+2. **观察到的具体现象与成片核实情况**：记录文稿里的具体写法与下游表现；若已在授权隔离会话内查看参考图、配音或生成成片，直接记下相应画面区域或时间段内的真实视听表现，未查看媒体时如实标明“仅核对文稿”。
+3. **起作用的改动对比**：对照前后改稿版本、对照组样本或创作者调整记录，点明真正带来改善的关键改动（如人物状态交代、空间方位、动作因果顺序、机位取景或参考图挂法），区分可迁移做法与创作者单次个人口味。
+4. **不适用或反作用边界**：主动记录同一招数在哪些相近题材、人物关系、景别尺度或新版模型下失灵、多余甚至起反作用，同时留存尚未排除的其他成因解释。
+5. **脱敏后的条件化结论**：剥离原项目背景后，归纳成“在什么前提下建议怎么做；遇到什么情况改用什么做法”，并标明建议归属（合入 `craft_default` / `taste_option` 参考指南、降级或废止某条既有旧规则，或确有必要提议阻断级门禁）。
 
-```yaml
-card_type: observation_card
-card_id: obs-internal-id
-source_project_ref: opaque-project-ref
-chain_read:
-  available_layers: [brief, story, episode_map, screenplay, assets, continuity, image_prompt_text, storyboard_text, video_prompt_text, review]
-  missing_layers: []
-  version_refs:
-    - layer: screenplay
-      ref: opaque-version-ref
-    - layer: storyboard_text
-      ref: opaque-version-ref
-  creator_overrides: [bounded-override-or-none]
-genre_axes:
-  surface_genre: abstract-label
-  audience_promise: abstract-promise
-  emotional_contract: abstract-contract
-production_axes:
-  production_form: abstract-form-or-unknown
-  visual_style_axes: [observable-shape-material-light-or-motion-axis]
-  scene_function: abstract-scene-function
-  prompt_role: identity | geography | composition | style | state | action | performance | camera | sound | none
-mechanism_axes: [mechanism-label]
-observation:
-  setup_state: what-the-audience-can-understand
-  pressure_or_question: dramatic-problem
-  character_action: playable-action
-  information_change: audience-state-change
-  turn_or_payoff: observable-dramatic-result
-  downstream_translation: how-text-production-layers-preserve-or-alter-intent
-evidence:
-  direct_observations:
-    - locator: opaque-layer-and-record-ref
-      source_role: creative_source | derived_projection | revision_request | execution_task | input_reference_observation | generated_result_observation | other_result_evidence
-      note: paraphrased-observation-without-source-wording
-  agent_interpretation: bounded-causal-reading
-  unknowns: []
-counterevidence:
-  searched: what-was-checked
-  findings: []
-  alternate_explanations: []
-privacy:
-  contains_source_wording: false
-  contains_identifiers: false
-  public_eligible: false
-confidence: tentative | supported | conflicted
-```
+## 选样与补缺提示
 
-共通头部的 `evidence.direct_observations` 只记文本版本与层间投影链；媒体尾段的 `observation_evidence.direct_observations` 只记授权观察者在指定区域或时间段实际看到/听到的现象，两处不重复抄写。在共通头部后，按实际证据**三选一**拼接以下媒体观察尾段：
+挑选研究样本时，优先补齐尚未覆盖的题材看点、制作形态、场次作用（如人物亮相、谈判交锋、亮出物证、多人同场、动作戏、集尾留钩）以及出现改稿拉锯或成片翻车的反常样本。覆盖记录只用来指引下一轮找什么对比样本，不拿样本频次高低推导规则强弱。
 
-### 1. 纯文本尾段（`none`）
+## 虚构记录简例
 
-```yaml
-media_observed: false
-observation_kind: none
-evidence_mode: none
-limitations: [text-only-chain-does-not-prove-rendered-result]
-```
-
-### 2. 生成结果观察尾段（`generated_result`）
-
-```yaml
-media_observed: false
-observation_kind: generated_result
-evidence_mode: creator_reported | authorized_media_inspection
-observer_report:
-  observer_ref: opaque-creator-or-authorized-observer
-  observer_media_observed: true
-observation_evidence:
-  observed_media_ref: bounded-media-locator
-  prompt_or_spec_refs: [exact-versioned-record-ref]
-  reference_slot_conditions: [stable-slot-id-order-and-ref-set]
-  production_configuration: bounded-project-configuration-or-unknown
-  bounded_regions_or_intervals: [what-was-actually-observed]
-  direct_observations: [creator-attributed-or-inspector-observation]
-  limitations: [unseen-or-uncertain-content]
-  valid_only_for: exact-project-prompt-reference-and-configuration-versions
-```
-
-### 3. 输入参考观察尾段（`input_reference`）
-
-```yaml
-media_observed: false
-observation_kind: input_reference
-evidence_mode: creator_reported | authorized_media_inspection
-observer_report:
-  observer_ref: opaque-creator-or-authorized-observer
-  observer_media_observed: true
-observation_evidence:
-  observed_media_ref: bounded-media-locator
-  input_reference_refs: [exact-versioned-reference-record-ref]
-  bounded_regions_or_intervals: [what-was-actually-observed]
-  direct_observations: [creator-attributed-or-inspector-observation]
-  limitations: [occlusion-resolution-or-unseen-content]
-  valid_only_for: exact-reference-version
-```
-
-## Decision card schema
-
-```yaml
-card_type: decision_card
-decision_id: dec-internal-id
-observation_refs: [obs-internal-id]
-candidate_claim:
-  problem: transferable-dramatic-or-production-problem
-  heuristic: conditional-option-not-command
-  expected_observable_effect: text-level-effect
-  preserve_set: [upstream-fact-or-non-target-field]
-classification: bounded_pattern | craft_option | rejected_generalization | conflict_pending
-applies_when:
-  genre_axes: [abstract-axis]
-  audience_state: required-state
-  character_state: required-state
-  production_constraints: [text-production-constraint]
-fails_or_changes_when:
-  counterexample_refs: [obs-counterexample-id]
-  warning_signals: [signal]
-  alternatives: [alternative-mechanism]
-conflicts:
-  competing_claims: []
-  resolution_or_open_question: explanation
-sampling_role:
-  matrix_cells: [genre-axis-x-mechanism-axis]
-  next_contrast_to_read: abstract-sampling-intent
-decision:
-  status: hold | synthesize | narrow | reject | propose
-  rationale: semantic-judgment-not-frequency
-review:
-  reviewer_ref: null
-  reviewed_at: null
-  notes: []
-```
-
-## 完全合成例子
-
-```yaml
-card_id: obs-synthetic-001
-source_project_ref: synthetic-only
-genre_axes:
-  surface_genre: community-workplace-comedy
-  audience_promise: overlooked-newcomer-earns-agency
-  emotional_contract: embarrassment-turns-into-earned-recognition
-mechanism_axes: [public-misreading, delayed-capability-proof]
-observation:
-  setup_state: the-audience-knows-the-newcomer-notices-a-routing-error
-  pressure_or_question: speaking-up-risks-looking-incompetent
-  character_action: the-newcomer-quietly-reroutes-one-delivery
-  information_change: coworkers-see-the-result-before-the-reason
-  turn_or_payoff: ridicule-reverses-only-after-a-specific-consequence
-  downstream_translation: shots-preserve-who-knows-what-and-prompts-stage-the-action-before-the-reaction
-counterevidence:
-  searched: synthetic-alternate-scene
-  findings: [early-explanation-removes-the-misreading-but-improves-closeness]
-  alternate_explanations: [specific-consequence-may-matter-more-than-information-order]
-```
-
-对应 `decision_card` 应将结论限定为可选机制：当观众已知晓人物能力、场内人物仍误读且后果可表演时，可先呈现行动后果再解释原因；若题材承诺亲密协作或误读会损伤人物好感，则改用共同发现，不写成“逆袭题材必须延迟解释”。
-
-## 题材 × 机制 coverage matrix
-
-```yaml
-cell_id: genre-axis-x-mechanism-axis
-genre_and_promise: abstract-genre-plus-audience-promise
-mechanism: dramatic-or-production-mechanism
-supporting_observation_refs: []
-opposing_observation_refs: []
-boundary_notes: []
-conflicts_or_alternatives: []
-chain_gaps: []
-confidence: empty | tentative | supported | conflicted
-next_sample_intent: contrast-or-gap-to-seek
-```
+- **阶段与背景**：分镜与视频提示词；轻喜剧职场漫剧；三人同框对话中景，图生视频模型。
+- **现象与成片核实**：首版提示词同时给三人安排大幅肢体动作，经授权查看成片核实，画面主次混乱、口型与手势互相抢戏。
+- **改动对比**：二版只保留主角推过单据这一个主动作，其余两人改为视线追随与手按桌面停顿，成片焦点清楚且反应连贯。
+- **不适用边界**：追逐、混战等本就靠忙乱感营造压迫的场次不宜套用单主动作限制；双人快节奏互怼可直接用正反打切镜，不必硬塞进同一同框镜头。
+- **条件化结论**：合入分镜与视频提示词参考指南（`craft_default`）——多人同框叙事镜需要稳住观众视线时，优先围绕一个主动作安排其余角色的接收或克制反应，不写成“群像戏一律只准一人动”的死禁令。

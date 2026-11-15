@@ -154,10 +154,11 @@ class ChapterNumberingTests(unittest.TestCase):
         chapters = [
             {"sequence": 1, "heading": "第一章", "char_count": 5, "source_number": 1},
         ]
-        problems = novel_index.validate_chapters(chapters, [chapters])
+        problems, warnings = novel_index.validate_chapters(chapters, [chapters])
+        self.assertEqual(problems, [])
         self.assertTrue(
-            any("almost no body" in problem for problem in problems),
-            problems,
+            any("almost no body" in warning for warning in warnings),
+            warnings,
         )
 
 

@@ -1,6 +1,8 @@
 # Agent Note: 创作台对标主流 AI 短剧 / 漫剧工具后的改进提案
 
-Status: rejected（第 1–3 项已落地，见 [实现笔记](../../implemented/feature/2026-09-26-dashboard-progress-first-screen-copy.md)；第 4–7 项「单页、结构化视图只做正文顶部摘要」的形态未采用，内容改以按阶段分视图落地，见 [创作台 v2](../../implemented/feature/2026-09-27-dashboard-v2-stage-views.md)）
+Status: rejected
+
+说明：第 1–3 项已落地，见 [实现笔记](../../implemented/feature/2026-09-26-dashboard-progress-first-screen-copy.md)；第 4–7 项「单页、结构化视图只做正文顶部摘要」的形态未采用，内容改以按阶段分视图落地，见 [创作台 v2](../../implemented/feature/2026-09-27-dashboard-v2-stage-views.md)。
 
 ## Problem
 

@@ -32,4 +32,4 @@ Status: implemented
 
 独立复核补充：2个P2已修：review-and-fixtures保留SHT08已声明峰值重复例外；完整核对KEY03不可见正面与后文解释后，仅正例IMG控制的编号面改背面材质。
 
-旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；`冻结关键帧提示词` → `首帧提示词` 与 `视觉依据` → `出场设定` 见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)，分镜微参考文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

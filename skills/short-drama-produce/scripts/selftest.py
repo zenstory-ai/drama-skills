@@ -127,7 +127,7 @@ def main() -> int:
         "MiniMax Music profile compiled the wrong model",
     )
 
-    print("8 self-tests passed")
+    print("6 self-tests passed")
     return 0
 
 

@@ -11,6 +11,7 @@ is only a reproducible derived cache.
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_left
 import json
 import os
 import re
@@ -31,6 +32,7 @@ if sys.version_info < MINIMUM_PYTHON:
 SCHEMA_VERSION = "1.0.0"
 CHINESE_DIGITS = {
     "零": 0,
+    "〇": 0,
     "一": 1,
     "二": 2,
     "两": 2,
@@ -43,42 +45,102 @@ CHINESE_DIGITS = {
     "九": 9,
 }
 CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
-CHINESE_NUMBER = "零一二三四五六七八九十百千两"
+CHINESE_NUMBER = "零〇一二三四五六七八九十百千两"
+_HEADING_SEP = r"(?:——|[·：:–—-])"
+_HEADING_TAIL = rf"(?:[ \t　]*{_HEADING_SEP}(?:[ \t　]*\S.*)?|[ \t　]+\S.*)?"
 CHINESE_HEADING_RE = re.compile(
-    r"^[ \t　]*第\s*([0-9]+|["
+    r"^[ \t　]*(?:#{1,6}[ \t　]+)?第\s*([0-9]+|["
     + CHINESE_NUMBER
-    + r"]+)\s*集(?:[ \t　]+\S.*|[：:][ \t　]*\S.*)?[ \t　]*$"
+    + r"]+)\s*集"
+    + _HEADING_TAIL
+    + r"[ \t　]*$"
 )
 EP_HEADING_RE = re.compile(
-    r"^[ \t]*#[ \t]+EP[ \t]*([0-9]+)(?:[ \t　]+\S.*)?[ \t　]*$",
+    r"^[ \t　]*(?:#{1,6}[ \t　]+)?EP[ \t　]*([0-9]+)"
+    r"(?![0-9])"
+    rf"(?![ \t　]*{_HEADING_SEP}?[ \t　]*SC[0-9])"
+    r"(?![ \t　]*[-–—][ \t　]*EP[ \t　]*[0-9]+)"
+    + _HEADING_TAIL
+    + r"[ \t　]*$",
     re.IGNORECASE,
 )
 EPISODE_ID_RE = re.compile(r"^EP([0-9]{3}|[1-9][0-9]{3,})$")
 MAX_HEADING_LENGTH = 80
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+_FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$")
+
+
+def _is_strict_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _strict_int(value: Any) -> int | None:
+    return value if _is_strict_int(value) and isinstance(value, int) else None
 
 
 def chinese_to_int(text: str) -> int | None:
     if not text:
         return None
-    if text.isdigit():
+    if text.isascii() and text.isdigit():
         return int(text)
+    if all(character in CHINESE_DIGITS for character in text):
+        value = 0
+        for character in text:
+            value = value * 10 + CHINESE_DIGITS[character]
+        return value
+    if not all(
+        character in CHINESE_DIGITS or character in CHINESE_UNITS
+        for character in text
+    ):
+        return None
+
     total = 0
-    pending = 0
-    seen = False
-    for character in text:
+    previous_weight: int | None = None
+    pending_digit: int | None = None
+    saw_zero = False
+
+    for index, character in enumerate(text):
         if character in CHINESE_DIGITS:
-            pending = CHINESE_DIGITS[character]
-            seen = True
-        elif character in CHINESE_UNITS:
-            total += (pending or 1) * CHINESE_UNITS[character]
-            pending = 0
-            seen = True
+            digit = CHINESE_DIGITS[character]
+            if digit == 0:
+                if previous_weight is None or pending_digit is not None or saw_zero:
+                    return None
+                saw_zero = True
+            else:
+                if pending_digit is not None:
+                    return None
+                pending_digit = digit
+            continue
+
+        weight = CHINESE_UNITS[character]
+        if pending_digit is None:
+            if character == "十" and index == 0:
+                digit = 1
+            else:
+                return None
         else:
-            return None
-    return total + pending if seen else None
+            digit = pending_digit
+            pending_digit = None
+
+        if previous_weight is not None:
+            if weight >= previous_weight:
+                return None
+            if (previous_weight > weight * 10) != saw_zero:
+                return None
+        saw_zero = False
+        previous_weight = weight
+        total += digit * weight
+
+    if pending_digit is None:
+        return None if saw_zero else total
+    assert previous_weight is not None
+    if (previous_weight > 10) != saw_zero:
+        return None
+    return total + pending_digit
 
 
 def _line_table(data: bytes) -> tuple[list[bytes], list[int]]:
+    data.decode("utf-8")
     lines = data.splitlines(keepends=True)
     if data and (not lines or sum(map(len, lines)) != len(data)):
         raise ValueError("could not construct exact source line table")
@@ -88,17 +150,47 @@ def _line_table(data: bytes) -> tuple[list[bytes], list[int]]:
     return lines, offsets
 
 
-def _heading_number(line: bytes) -> int | None:
-    text = line.decode("utf-8").removeprefix("\ufeff").rstrip("\r\n")
-    if len(text.strip()) > MAX_HEADING_LENGTH:
+def _fence_open(line_text: str) -> tuple[str, int] | None:
+    match = _FENCE_OPEN_RE.match(line_text)
+    if match is None:
         return None
-    match = CHINESE_HEADING_RE.fullmatch(text)
+    marker, info = match.group(1), match.group(2)
+    fence_char = marker[0]
+    if fence_char == "`" and "`" in info:
+        return None
+    return fence_char, len(marker)
+
+
+def _fence_close(line_text: str, fence_char: str, fence_len: int) -> bool:
+    stripped = line_text.rstrip(" \t")
+    indent = len(stripped) - len(stripped.lstrip(" "))
+    if indent > 3:
+        return False
+    marker = stripped[indent:]
+    return len(marker) >= fence_len and all(ch == fence_char for ch in marker)
+
+
+def _heading_number_from_text(raw_text: str) -> int | None:
+    clean = _HTML_COMMENT_RE.sub("", raw_text)
+    if "<!--" in clean:
+        return None
+    if len(clean.strip()) > MAX_HEADING_LENGTH:
+        return None
+    match = CHINESE_HEADING_RE.fullmatch(clean)
     if match:
         number = chinese_to_int(match.group(1))
         return number if number and number > 0 else None
-    match = EP_HEADING_RE.fullmatch(text)
+    match = EP_HEADING_RE.fullmatch(clean)
     number = int(match.group(1)) if match else None
     return number if number and number > 0 else None
+
+
+def _heading_number(line: bytes) -> int | None:
+    try:
+        text = line.decode("utf-8").removeprefix("\ufeff").rstrip("\r\n")
+    except UnicodeDecodeError:
+        return None
+    return _heading_number_from_text(text)
 
 
 def _episode_id(number: int) -> str:
@@ -107,13 +199,14 @@ def _episode_id(number: int) -> str:
     return f"EP{number:03d}"
 
 
-def _portable_source_ref(source: Path, source_ref: str | None) -> str:
-    value = source_ref or source.name
+def _validate_portable_source_ref(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("source_ref must be a portable project-relative path")
+    segments = value.split("/")
     candidate = Path(value)
     if (
-        not value
-        or candidate.is_absolute()
-        or ".." in candidate.parts
+        candidate.is_absolute()
+        or any(segment in {"", ".", ".."} for segment in segments)
         or "://" in value
         or "\\" in value
         or re.match(r"^[A-Za-z]:", value)
@@ -122,7 +215,14 @@ def _portable_source_ref(source: Path, source_ref: str | None) -> str:
     return candidate.as_posix()
 
 
-def _structural_problems(episodes: list[dict[str, Any]], data: bytes) -> list[str]:
+def _portable_source_ref(source: Path, source_ref: str | None) -> str:
+    value = source.name if source_ref is None else source_ref
+    return _validate_portable_source_ref(value)
+
+
+def _structural_problems(
+    episodes: list[dict[str, Any]], data: bytes, *, manual: bool = False
+) -> list[str]:
     problems: list[str] = []
     numbers: list[int] = []
     previous_end = 0
@@ -130,7 +230,8 @@ def _structural_problems(episodes: list[dict[str, Any]], data: bytes) -> list[st
         if not isinstance(row, dict):
             problems.append(f"episode row {position} is not an object")
             continue
-        match = EPISODE_ID_RE.fullmatch(str(row.get("episode_id", "")))
+        episode_id = row.get("episode_id")
+        match = EPISODE_ID_RE.fullmatch(episode_id) if isinstance(episode_id, str) else None
         if not match:
             problems.append(f"episode row {position} has an invalid episode_id")
             continue
@@ -139,16 +240,33 @@ def _structural_problems(episodes: list[dict[str, Any]], data: bytes) -> list[st
             problems.append(f"episode row {position} has a non-positive episode_id")
             continue
         numbers.append(number)
-        if row.get("source_number") != number:
+        source_number = row.get("source_number")
+        if not _is_strict_int(source_number) or source_number != number:
             problems.append(f"{row['episode_id']} source_number does not match episode_id")
-        start = row.get("byte_start")
-        end = row.get("byte_end")
-        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(data):
+        if "line_start" in row or "line_end" in row:
+            line_start = _strict_int(row.get("line_start"))
+            line_end = _strict_int(row.get("line_end"))
+            if (
+                line_start is None
+                or line_end is None
+                or not (1 <= line_start <= line_end)
+            ):
+                problems.append(f"{row['episode_id']} line span does not match its byte span")
+        start = _strict_int(row.get("byte_start"))
+        end = _strict_int(row.get("byte_end"))
+        if start is not None and end is not None and 0 <= start < end <= len(data):
+            if "byte_length" in row:
+                byte_length = _strict_int(row.get("byte_length"))
+                if byte_length is None or byte_length != end - start:
+                    problems.append(f"{row['episode_id']} byte_length does not match its byte span")
             if start < previous_end:
                 problems.append(f"episode row {position} overlaps or is out of source order")
             previous_end = max(previous_end, end)
             lines = data[start:end].splitlines(keepends=True)
-            if not b"".join(lines[1:]).strip():
+            if manual or not lines or _heading_number(lines[0]) is None:
+                if not data[start:end].strip():
+                    problems.append(f"empty episode: {row['episode_id']}")
+            elif not b"".join(lines[1:]).strip():
                 problems.append(f"empty episode: {row['episode_id']}")
         else:
             problems.append(f"episode row {position} has an invalid byte span")
@@ -163,11 +281,6 @@ def _structural_problems(episodes: list[dict[str, Any]], data: bytes) -> list[st
     if numbers:
         if numbers != sorted(numbers):
             problems.append("episode numbers are out of source order")
-        missing = sorted(set(range(min(numbers), max(numbers) + 1)) - set(numbers))
-        if min(numbers) != 1:
-            missing = sorted(set(range(1, min(numbers))) | set(missing))
-        if missing:
-            problems.append("missing episode numbers: " + ", ".join(map(str, missing)))
     else:
         problems.append("no episode headings found")
     return problems
@@ -180,8 +293,37 @@ def build_index(
     data = source.read_bytes()
     lines, offsets = _line_table(data)
     headings: list[tuple[int, int]] = []
+    in_comment = False
+    fence_state: tuple[str, int] | None = None
     for line_index, line in enumerate(lines):
-        number = _heading_number(line)
+        raw_text = line.decode("utf-8")
+        if line_index == 0:
+            raw_text = raw_text.removeprefix("\ufeff")
+        raw_text = raw_text.rstrip("\r\n")
+
+        if fence_state is not None:
+            if _fence_close(raw_text, fence_state[0], fence_state[1]):
+                fence_state = None
+            continue
+
+        if in_comment:
+            close_idx = raw_text.find("-->")
+            if close_idx == -1:
+                continue
+            raw_text = raw_text[close_idx + 3 :]
+            in_comment = False
+
+        after_closed = _HTML_COMMENT_RE.sub("", raw_text)
+        opened_fence = _fence_open(raw_text) or _fence_open(after_closed)
+        if opened_fence is not None:
+            fence_state = opened_fence
+            continue
+
+        if "<!--" in after_closed:
+            in_comment = True
+            continue
+
+        number = _heading_number_from_text(after_closed)
         if number is not None:
             headings.append((line_index, number))
     episodes: list[dict[str, Any]] = []
@@ -214,9 +356,11 @@ def build_index(
 
 
 def _line_number(offsets: list[int], byte_offset: int, *, end: bool = False) -> int:
-    if byte_offset not in offsets:
+    if not _is_strict_int(byte_offset):
         raise ValueError(f"byte offset {byte_offset} is not a line boundary")
-    index = offsets.index(byte_offset)
+    index = bisect_left(offsets, byte_offset)
+    if index >= len(offsets) or offsets[index] != byte_offset:
+        raise ValueError(f"byte offset {byte_offset} is not a line boundary")
     return index if end else index + 1
 
 
@@ -232,8 +376,10 @@ def _unmapped_spans(
         for row in episodes
         if isinstance(row, dict)
     ]
-    for start, end in ranges:
-        if not isinstance(start, int) or not isinstance(end, int):
+    for raw_start, raw_end in ranges:
+        start = _strict_int(raw_start)
+        end = _strict_int(raw_end)
+        if start is None or end is None:
             continue
         if start > cursor and data[cursor:start].strip():
             spans.append(
@@ -276,10 +422,10 @@ def make_manual_index(
     _, offsets = _line_table(data)
     episodes: list[dict[str, Any]] = []
     for episode_id, start, end in spans:
-        match = EPISODE_ID_RE.fullmatch(episode_id)
+        match = EPISODE_ID_RE.fullmatch(episode_id) if isinstance(episode_id, str) else None
         if not match or int(match.group(1)) <= 0:
             raise ValueError(f"invalid episode_id: {episode_id}")
-        if not (0 <= start < end <= len(data)):
+        if not (_is_strict_int(start) and _is_strict_int(end) and 0 <= start < end <= len(data)):
             raise ValueError(f"invalid byte span for {episode_id}")
         episodes.append(
             {
@@ -295,6 +441,7 @@ def make_manual_index(
     document = {
         "schema_version": SCHEMA_VERSION,
         "record_type": "episode_intake_index",
+        "boundary_mode": "manual",
         "source_name": source.name,
         "source_ref": _portable_source_ref(source, source_ref),
         "source_byte_length": len(data),
@@ -303,7 +450,7 @@ def make_manual_index(
         "unmapped_spans": _unmapped_spans(episodes, data, offsets),
         "problems": [],
     }
-    document["problems"] = _structural_problems(episodes, data)
+    document["problems"] = _structural_problems(episodes, data, manual=True)
     return document
 
 
@@ -325,8 +472,8 @@ def build_manual_index(
     seen: set[str] = set()
     for position, boundary in enumerate(boundaries, 1):
         episode_id = boundary.get("episode_id")
-        line_start = boundary.get("line_start")
-        line_end = boundary.get("line_end")
+        line_start = _strict_int(boundary.get("line_start"))
+        raw_line_end = boundary.get("line_end")
         if not isinstance(episode_id, str):
             raise ValueError(f"boundary {position} has an invalid episode_id")
         match = EPISODE_ID_RE.fullmatch(episode_id)
@@ -335,12 +482,13 @@ def build_manual_index(
         if episode_id in seen:
             raise ValueError(f"boundaries contain duplicate episode_id {episode_id}")
         seen.add(episode_id)
-        if not isinstance(line_start, int) or isinstance(line_start, bool):
+        if line_start is None:
             raise ValueError(f"{episode_id} line_start must be an integer")
-        if line_end is not None and (
-            not isinstance(line_end, int) or isinstance(line_end, bool)
-        ):
-            raise ValueError(f"{episode_id} line_end must be an integer")
+        line_end: int | None = None
+        if raw_line_end is not None:
+            line_end = _strict_int(raw_line_end)
+            if line_end is None:
+                raise ValueError(f"{episode_id} line_end must be an integer")
         prepared.append((episode_id, line_start, line_end))
     spans: list[tuple[str, int, int]] = []
     for position, (episode_id, line_start, explicit_end) in enumerate(prepared):
@@ -361,7 +509,16 @@ def build_manual_index(
 
 
 def _json_bytes(document: Any) -> bytes:
-    return (json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return (
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
 
 
 def _atomic_write(path: Path, content: bytes) -> None:
@@ -389,35 +546,56 @@ def _load_index(index_path: str | Path) -> dict[str, Any]:
     return document
 
 
+def _valid_unmapped_spans(value: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    int_keys = ("line_start", "line_end", "byte_start", "byte_end", "byte_length")
+    return all(
+        isinstance(item, dict) and all(_is_strict_int(item.get(key)) for key in int_keys)
+        for item in value
+    )
+
+
 def verify_index(index_path: str | Path, source_path: str | Path) -> dict[str, Any]:
     problems: list[str] = []
     try:
         document = _load_index(index_path)
         data = Path(source_path).read_bytes()
+        _, offsets = _line_table(data)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         return {"verified": False, "problems": [str(error)]}
     if document.get("schema_version") != SCHEMA_VERSION:
         problems.append("unsupported schema_version")
     if document.get("record_type") != "episode_intake_index":
         problems.append("record_type is not episode_intake_index")
-    if document.get("source_byte_length") != len(data):
+    boundary_mode = document.get("boundary_mode")
+    if boundary_mode is not None and boundary_mode not in {"heading", "manual"}:
+        problems.append("unsupported boundary_mode")
+    manual_mode = boundary_mode == "manual"
+    source_byte_length = document.get("source_byte_length")
+    if not _is_strict_int(source_byte_length) or source_byte_length != len(data):
         problems.append("source_byte_length does not match")
     try:
-        _portable_source_ref(Path(source_path), document.get("source_ref"))
-    except (TypeError, ValueError) as error:
+        _validate_portable_source_ref(document.get("source_ref"))
+    except ValueError as error:
         problems.append(str(error))
     episodes = document["episodes"]
-    if document.get("episode_count") != len(episodes):
+    episode_count = document.get("episode_count")
+    if not _is_strict_int(episode_count) or episode_count != len(episodes):
         problems.append("episode_count does not match episodes")
-    _, offsets = _line_table(data)
     previous_end = -1
     for position, row in enumerate(episodes, 1):
         if not isinstance(row, dict):
             problems.append(f"episode row {position} is not an object")
             continue
         label = str(row.get("episode_id", f"row {position}"))
-        start, end = row.get("byte_start"), row.get("byte_end")
-        if not isinstance(start, int) or not isinstance(end, int) or not (0 <= start < end <= len(data)):
+        start = _strict_int(row.get("byte_start"))
+        end = _strict_int(row.get("byte_end"))
+        if (
+            start is None
+            or end is None
+            or not (0 <= start < end <= len(data))
+        ):
             problems.append(f"{label} has an invalid byte span")
             continue
         if start < previous_end:
@@ -429,18 +607,27 @@ def verify_index(index_path: str | Path, source_path: str | Path) -> dict[str, A
         except ValueError as error:
             problems.append(f"{label}: {error}")
         else:
-            if row.get("line_start") != expected_line_start or row.get("line_end") != expected_line_end:
+            line_start = _strict_int(row.get("line_start"))
+            line_end = _strict_int(row.get("line_end"))
+            if (
+                line_start is None
+                or line_end is None
+                or line_start != expected_line_start
+                or line_end != expected_line_end
+            ):
                 problems.append(f"{label} line span does not match its byte span")
-        if row.get("byte_length") != end - start:
+        byte_length = _strict_int(row.get("byte_length"))
+        if byte_length is None or byte_length != end - start:
             problems.append(f"{label} byte_length does not match its byte span")
-    problems.extend(_structural_problems(episodes, data))
+    problems.extend(_structural_problems(episodes, data, manual=manual_mode))
     if not any("byte span" in problem or "overlaps" in problem for problem in problems):
         try:
             expected_unmapped = _unmapped_spans(episodes, data, offsets)
         except ValueError:
             problems.append("unmapped spans cannot be located in the current source")
         else:
-            if document.get("unmapped_spans") != expected_unmapped:
+            raw_unmapped = document.get("unmapped_spans")
+            if not _valid_unmapped_spans(raw_unmapped) or raw_unmapped != expected_unmapped:
                 problems.append("unmapped_spans do not match bytes outside episode spans")
     # Avoid multiplying an identical structural message if a hand-edited index
     # already carried it in its advisory problems field.
@@ -495,12 +682,27 @@ def _read_jsonl(path: Path, *, absent_ok: bool = False) -> list[dict[str, Any]]:
     return records
 
 
-def _validated_records(records: list[dict[str, Any]], valid_ids: set[str], label: str) -> dict[str, dict[str, Any]]:
+def _episode_number(episode_id: str) -> int:
+    match = EPISODE_ID_RE.fullmatch(episode_id)
+    if match is None:
+        raise ValueError(f"invalid episode_id: {episode_id}")
+    return int(match.group(1))
+
+
+def _validated_records(
+    records: list[dict[str, Any]], valid_ids: set[str] | None, label: str
+) -> dict[str, dict[str, Any]]:
     by_id: dict[str, dict[str, Any]] = {}
     for position, record in enumerate(records, 1):
         episode_id = record.get("episode_id")
-        if not isinstance(episode_id, str) or episode_id not in valid_ids:
-            raise ValueError(f"{label} record {position} has an episode_id outside the index")
+        if valid_ids is not None:
+            if not isinstance(episode_id, str) or episode_id not in valid_ids:
+                raise ValueError(f"{label} record {position} has an episode_id outside the index")
+        else:
+            match = EPISODE_ID_RE.fullmatch(episode_id) if isinstance(episode_id, str) else None
+            if match is None or int(match.group(1)) <= 0:
+                raise ValueError(f"{label} record {position} has an invalid episode_id")
+        assert isinstance(episode_id, str)
         if episode_id in by_id:
             raise ValueError(f"{label} contains duplicate episode_id {episode_id}")
         by_id[episode_id] = record
@@ -519,7 +721,7 @@ def progress(
     *,
     batch_size: int,
 ) -> dict[str, Any]:
-    if batch_size <= 0:
+    if not _is_strict_int(batch_size) or batch_size <= 0:
         raise ValueError("batch_size must be positive")
     if checkpoint_path is not None and Path(checkpoint_path).resolve() in {
         Path(index_path).resolve(),
@@ -530,7 +732,7 @@ def progress(
     document = _require_verified(index_path, source_path)
     ordered_ids = [row["episode_id"] for row in document["episodes"]]
     records = _read_jsonl(Path(map_path), absent_ok=True)
-    by_id = _validated_records(records, set(ordered_ids), "episode-map")
+    by_id = _validated_records(records, None, "episode-map")
     completed = [episode_id for episode_id in ordered_ids if episode_id in by_id]
     pending = [episode_id for episode_id in ordered_ids if episode_id not in by_id]
     checkpoint = {
@@ -556,7 +758,7 @@ def merge_batch(
     *,
     batch_size: int,
 ) -> dict[str, Any]:
-    if batch_size <= 0:
+    if not _is_strict_int(batch_size) or batch_size <= 0:
         raise ValueError("batch_size must be positive")
     protected = {
         Path(index_path).resolve(),
@@ -583,16 +785,21 @@ def merge_batch(
         raise ValueError(f"batch contains {len(batch_records)} records; maximum is {batch_size}")
     batch = _validated_records(batch_records, valid_ids, "batch")
     existing_records = _read_jsonl(current_map, absent_ok=True)
-    existing = _validated_records(existing_records, valid_ids, "episode-map")
+    existing = _validated_records(existing_records, None, "episode-map")
     added: list[str] = []
+    updated: list[str] = []
     for episode_id, record in batch.items():
         if episode_id in existing:
             if _json_bytes(existing[episode_id]) != _json_bytes(record):
-                raise ValueError(f"conflicting episode-map record: {episode_id}")
+                existing[episode_id] = record
+                updated.append(episode_id)
         else:
             existing[episode_id] = record
             added.append(episode_id)
-    merged_records = [existing[episode_id] for episode_id in ordered_ids if episode_id in existing]
+    merged_records = [
+        existing[episode_id]
+        for episode_id in sorted(existing, key=_episode_number)
+    ]
     _atomic_write(output, _jsonl_bytes(merged_records))
     derived = progress(
         index_path,
@@ -604,6 +811,7 @@ def merge_batch(
     return {
         "output": str(output),
         "added": [episode_id for episode_id in ordered_ids if episode_id in set(added)],
+        "updated": [episode_id for episode_id in ordered_ids if episode_id in set(updated)],
         "progress": derived,
     }
 

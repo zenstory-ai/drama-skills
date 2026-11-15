@@ -93,3 +93,5 @@ Status: implemented
 
 音效 `起点` 大于零时，检查器在媒体探测启用时核对它严格小于源文件时长，避免整条音效被跳过而静默成功；
 窗口长于剩余文件仍允许，含义是最多取该窗口、不补齐。回归覆盖等于时长、超过时长与略小于时长。
+
+后续调整：`<0.50s` 静帧与素材 `st_mtime` 变动改为提醒、同宽高比素材自动缩放对齐帧率及剪辑参考文件归并为 `editing-guide.md`，见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

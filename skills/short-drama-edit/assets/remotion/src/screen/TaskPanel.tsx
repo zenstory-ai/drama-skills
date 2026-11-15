@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { formatCountdown, parseProgress, secondsLeft, sinceTick } from "../rules.mjs";
+import { formatCountdown, secondsLeft, sinceTick, splitTaskItems } from "../rules.mjs";
 import { Frame, Header, RewardTag, Typed } from "./chrome";
 import { COLOURS, MONO, StyleProps, TOP_U, entrance, exit, glitch, unit } from "./tokens";
 
@@ -15,10 +15,7 @@ export const TaskPanel: React.FC<StyleProps> = ({ text }) => {
   const shown = entrance(frame, fps, 0, 13);
   const jitter = glitch(frame);
   const leaving = exit(frame, fps, text);
-  const [title, goal, ...rest] = text.items;
-  const progressItem = rest.find((item) => parseProgress(item.text));
-  const progress = progressItem ? parseProgress(progressItem.text) : null;
-  const rewards = rest.filter((item) => item !== progressItem);
+  const { title, goal, progressItem, progress, rewards } = splitTaskItems(text.items);
   const elapsed = frame / fps;
   const beat =
     text.countdown === null ? 1 : 1 + 0.05 * Math.max(0, 1 - sinceTick(text.countdown, elapsed) / 0.15);
@@ -62,7 +59,7 @@ export const TaskPanel: React.FC<StyleProps> = ({ text }) => {
                 }}
               >
                 <span>进度</span>
-                <span style={{ fontFamily: MONO, fontWeight: 800 }}>{progressItem.text}</span>
+                <span style={{ fontFamily: MONO, fontWeight: 800 }}>{progressItem.text.replace(/／/g, "/")}</span>
               </div>
               <div style={{ height: u * 0.6, background: "#ffffff1c", marginTop: u * 0.4 }}>
                 <div

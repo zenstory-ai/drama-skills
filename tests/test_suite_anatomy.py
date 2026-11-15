@@ -251,7 +251,16 @@ class SuiteAnatomyTests(unittest.TestCase):
                     )
 
     def test_shipping_json_is_valid(self) -> None:
+        excluded_roots = {("evaluations", "local-runs")}
+        excluded_parts = {".git", ".venv", "venv", "node_modules", "__pycache__"}
         for path in SUITE.rglob("*.json"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(SUITE)
+            if rel.parts[:2] in excluded_roots or any(
+                part in excluded_parts for part in rel.parts
+            ):
+                continue
             with self.subTest(path=path):
                 json.loads(path.read_text(encoding="utf-8"))
 
@@ -600,7 +609,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(authority["visual_direction"]["status"], "unset")
         self.assertEqual(authority["production_profile"]["status"], "unset")
         self.assertTrue(
-            (SUITE / "skills/short-drama/assets/creator-decision.example.jsonl").is_file()
+            (AUTHORING_RECORDS / "creator-decision.example.jsonl").is_file()
         )
 
     def test_template_field_refs_resolve_to_owned_example_fields(self) -> None:
@@ -628,9 +637,6 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(policy_ref["artifact"], "设定集/props.jsonl")
         self.assertEqual(policy_ref["field"], "/text_policy")
         self.assertIn("text_policy", prop)
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class DiagnosticCatalogueTests(unittest.TestCase):
@@ -693,7 +699,10 @@ class MarkdownBoldRunTests(unittest.TestCase):
 
     # Recorded creator prose, not shipped documentation. The reference run is a
     # record of what one run produced; its wording is not this suite's to edit.
-    EXCLUDED = ("evaluations/让你管账号/reference-run",)
+    EXCLUDED = (
+        "evaluations/让你管账号/reference-run",
+        "evaluations/local-runs",
+    )
 
     def shipped_markdown(self) -> list[Path]:
         files = [
@@ -709,7 +718,10 @@ class MarkdownBoldRunTests(unittest.TestCase):
             path
             for path in files
             if path.is_file()
-            and not any(part in str(path) for part in self.EXCLUDED)
+            and not any(
+                path.relative_to(SUITE).as_posix().startswith(part)
+                for part in self.EXCLUDED
+            )
         ]
 
     def unclosable_runs(self, text: str) -> list[str]:
@@ -744,3 +756,7 @@ class MarkdownBoldRunTests(unittest.TestCase):
                     f"inside the markers, so it renders literally on GitHub; move "
                     f"the punctuation outside",
                 )
+
+
+if __name__ == "__main__":
+    unittest.main()

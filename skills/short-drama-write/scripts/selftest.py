@@ -7,13 +7,18 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-
-from duration_estimate import StaleIndex, estimate, index_blocks
-from screenplay_index import build_index
+from typing import Any, Mapping
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.9 or newer")
+
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
+from duration_estimate import StaleIndex, estimate, index_blocks, parse_script_blocks  # noqa: E402
+from screenplay_index import build_index  # noqa: E402
 
 
 def require(condition: bool, message: str) -> None:
@@ -21,7 +26,9 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def measure_text(body: str, project: dict[str, object] | None = None) -> dict[str, object]:
+def measure_text(
+    body: str, project: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Index a screenplay the documented way, then estimate from that index.
 
     The estimate has no reader of its own. Going through ``build_index`` here is
@@ -30,7 +37,7 @@ def measure_text(body: str, project: dict[str, object] | None = None) -> dict[st
     """
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        screenplay = root / "screenplay.md"
+        screenplay = root / "剧本.md"
         index_path = root / "screenplay-index.jsonl"
         screenplay.write_text(
             "# EP001\n\n## EP001-SC001 内 · 房间 · 日\n\n" + body, encoding="utf-8"
@@ -38,7 +45,7 @@ def measure_text(body: str, project: dict[str, object] | None = None) -> dict[st
         build_index(
             screenplay,
             index_path,
-            source_ref="剧集/EP001/screenplay.md",
+            source_ref="剧集/EP001/剧本.md",
             speakers=["甲"],
         )
         records = [
@@ -69,9 +76,11 @@ def test_duration_uses_the_projects_own_rates() -> None:
             },
         }
     }
-    report = measure_text("甲：一二三四五六\n\n他把门关上。\n", project)
-    # Punctuation counts as spoken time because it stands for the pause it
-    # creates; here the line is six bare characters: 6 / 3.0 + 1 * 2.0 == 4.0.
+    report = measure_text("甲：一二三四五六。\n\n他把门关上。\n", project)
+    # Punctuation stays in dialogue_characters (for VO share) and is excluded
+    # from voiced_characters (pronounced speech): 6 / 3.0 + 1 * 2.0 == 4.0.
+    require(report["counts"]["dialogue_characters"] == 7, "dialogue_characters keeps punctuation")
+    require(report["counts"]["voiced_characters"] == 6, "voiced_characters drops punctuation")
     require(report["seconds"] == 4.0, f"expected 4.0s, got {report['seconds']}")
     require(report["delta_seconds"] == -6.0, "delta is reported against the target")
 
@@ -122,10 +131,26 @@ def test_an_index_from_other_bytes_is_refused() -> None:
     raise AssertionError("a stale index must be refused, not measured")
 
 
+def test_parse_script_blocks_estimates_in_memory() -> None:
+    """Direct --script parsing handles spaces after colons and plausible auto-speakers."""
+    raw = (
+        "# EP001\n\n## EP001-SC001 内 · 房间 · 日\n\n"
+        "林落： 我先看一眼。\n\n"
+        "Agent Smith： Stay back.\n\n"
+        "他把门关上。\n"
+    ).encode("utf-8")
+    blocks, review = parse_script_blocks(raw)
+    require(review["review_status"] == "clean", f"expected clean review, got {review}")
+    report = estimate(raw, blocks, None, review)
+    require("incomplete" not in report, "valid in-memory script must not be incomplete")
+    require(report["counts"]["dialogue_lines"] == 2, "two auto-discovered dialogue lines")
+    require(report["counts"]["action_paragraphs"] == 1, "one action paragraph")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        screenplay = root / "screenplay.md"
+        screenplay = root / "剧本.md"
         index_path = root / "screenplay-index.jsonl"
         screenplay.write_text(
             "# EP001\n\n## EP001-SC001 内 · 客厅 · 夜\n\n陈予安推开门。\n\n陈予安：我回来了。\n",
@@ -134,7 +159,7 @@ def main() -> int:
         summary = build_index(
             screenplay,
             index_path,
-            source_ref="剧集/EP001/screenplay.md",
+            source_ref="剧集/EP001/剧本.md",
             speakers=["陈予安"],
         )
         require(summary["review_status"] == "clean", "valid screenplay index")
@@ -146,8 +171,9 @@ def main() -> int:
     test_one_action_paragraph_is_one_paragraph_however_many_lines()
     test_comments_are_not_production_content()
     test_an_index_from_other_bytes_is_refused()
+    test_parse_script_blocks_estimates_in_memory()
 
-    print("8 self-tests passed")
+    print("9 self-tests passed")
     return 0
 
 

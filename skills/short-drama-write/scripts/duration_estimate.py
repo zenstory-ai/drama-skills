@@ -11,25 +11,29 @@ Without declared rates the script still counts dialogue characters and action
 paragraphs -- those counts are facts about the text -- and says the seconds
 cannot be derived yet. That is the honest output, not a guess from a default.
 
-What counts as a line and what counts as a paragraph is decided by
-``screenplay-index.jsonl``, never re-derived here. This script used to carry its
-own reader of the screenplay format, and a second reader of one format is a
-second set of answers: it timed ``[VO]`` at zero, billed a Markdown comment as
-speech, read ``他写下两个字：军宣。`` as dialogue because of the colon, and
-counted one multi-line action paragraph once per line. The index already
-classifies all four correctly. Reading it means this script cannot disagree with
-the artifact the rest of the pipeline cites.
+What counts as a line and what counts as a paragraph is decided by the
+``screenplay_index`` parser, never by a separate ad-hoc grammar here. In
+``--script`` mode this script parses ``剧本.md`` directly in memory through
+``screenplay_index`` (auto-discovering speakers or honoring ``人物：`` /
+``--extra-speaker`` / ``--speaker``), and in ``--index`` mode it reads a prebuilt
+``screenplay-index.jsonl`` (and also honors ``--speaker`` / ``--extra-speaker``
+speaker overrides after verifying the index matches the screenplay bytes).
+Sharing the single parser keeps ``[VO]``/``[OS]`` lines, Markdown comments,
+fenced code blocks, colon-bearing action prose, and multi-line action paragraphs
+classified identically across estimation and indexing.
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import re
-import unicodedata
 import sys
+import unicodedata
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Iterable, Mapping
 
 
@@ -50,9 +54,357 @@ if sys.version_info < MINIMUM_PYTHON:
 # as a deficit the writer pads to fill.
 VOICED_TAGS = {"VO", "OS"}
 VOICE_TAG_PREFIX = re.compile(r"^\[(?:VO|OS)\]\s*")
-# ``角色（提示）：台词`` -- the speaker label may carry a parenthesised direction.
-# Only the spoken half is timed; the direction is a note to the performer.
-DIALOGUE = re.compile(r"^(?P<who>[^：:（(\[\]]{1,24})(?:（[^）]*）|\([^)]*\))?[：:](?P<line>.+)$")
+MAX_SPEAKER_LENGTH = 40
+_WS = r"[ \t\u3000]"
+_SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
+_SPEAKER_LABEL = (
+    rf"(?=.{{1,{MAX_SPEAKER_LENGTH}}}(?:{_WS}*[（(]|：|:))"
+    rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
+)
+# ``角色（提示）：台词`` or ``Dr. Lin (quietly): ...`` -- the speaker label may
+# carry a parenthesised direction in full-width or ASCII parens. Only the
+# spoken half is timed; the direction is a note to the performer.
+_NOT_CLOCK_PREFIX = r"(?!\d{1,2}[:：]\d{2}(?:\D|$))"
+_NOT_URL_PREFIX = r"(?![A-Za-z][A-Za-z0-9+.-]*://)(?!(?:https?|ftp|mailto|file|ws|wss):(?://|\s|$))"
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+DIALOGUE = re.compile(
+    rf"^{_NOT_CLOCK_PREFIX}{_NOT_URL_PREFIX}(?P<who>{_SPEAKER_LABEL})"
+    rf"(?:{_WS}*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))?(?P<colon>[：:]){_WS}*(?P<line>\S[\s\S]*)$"
+)
+
+_SCREENPLAY_INDEX_MODULE: ModuleType | None = None
+
+
+def _load_screenplay_index() -> ModuleType:
+    global _SCREENPLAY_INDEX_MODULE
+    if _SCREENPLAY_INDEX_MODULE is not None:
+        return _SCREENPLAY_INDEX_MODULE
+    script_path = Path(__file__).resolve().with_name("screenplay_index.py")
+    spec = importlib.util.spec_from_file_location(
+        "_short_drama_write_screenplay_index", script_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load screenplay_index.py from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _SCREENPLAY_INDEX_MODULE = module
+    return module
+
+
+CAST_LINE_RE = re.compile(
+    rf"^{_WS}*(?:[-*+]{_WS}+)?(?:"
+    rf"人物{_WS}*[：:]"
+    rf"|\*\*\*人物(?:{_WS}*\*\*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*\*\*)"
+    rf"|___人物(?:{_WS}*___{_WS}*[：:]|{_WS}*[：:]{_WS}*___)"
+    rf"|\*\*人物(?:{_WS}*\*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*\*)"
+    rf"|__人物(?:{_WS}*__{_WS}*[：:]|{_WS}*[：:]{_WS}*__)"
+    rf"|\*人物(?:{_WS}*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*)"
+    rf"|_人物(?:{_WS}*_{_WS}*[：:]|{_WS}*[：:]{_WS}*_)"
+    rf"){_WS}*(?P<body>.*)$"
+)
+CLOCK_PREFIX_RE = re.compile(r"^\d{1,2}[:：]\d{2}(?=\D|$)")
+URL_SCHEME_NON_SPEAKER_RE = re.compile(
+    r"^(?:https?|ftp|mailto|file|ws|wss)$", re.IGNORECASE
+)
+PANEL_OR_UNIT_LABEL_RE = re.compile(
+    r"^第[一二三四五六七八九十百千万零〇两\d]+[格幕场镜回章集节拍]$"
+)
+ACTION_PROSE_MARKER_RE = re.compile(
+    r"^(?:[他她它](?:们)?|[我你]们|这(?:里|边|儿|个|行|张|份|句|段|块|台|扇|道|声|下|时|一刻)?|"
+    r"那(?:里|边|儿|个|头|行|张|份|句|段|块|台|扇|道|声|下|时|一刻)).+"
+    r"|(?:写下|写着|写道|写有|写明|印着|印有|刻着|刻有|贴着|标着|标明|"
+    r"显示|弹出|跳出|浮现|亮起|亮出|映出|注明|"
+    r"看到|看见|看清|看向|盯着|望着|瞥见|瞧见|"
+    r"听到|听见|传来|响起|"
+    r"走到|走向|走近|转身|转头|回头|抬头|低头|伸手|抬手|"
+    r"拿起|拿出|握住|按下|推开|拉开|打开|翻开|掀开|"
+    r"意思是|内容是|内容为|如下所示)"
+)
+NUMERIC_NON_SPEAKER_RE = re.compile(
+    r"^(?:[0０]+|[1-9１-９]\d*)$"
+    r"|\d+\s*(?:年|月|日|点|时|分|秒|分钟|小时|天|周|星期|礼拜|个|名|位|条|行|句|页|张|份|次|遍|轮|集|场|幕|镜|格|拍|步|章|节|元|块|万|亿|%|％)"
+)
+DISQUALIFYING_SPEAKER_PUNCT_RE = re.compile(
+    r"[，。！？；、,;!?”“’‘\"—…《》<>\[\]【】]"
+)
+SPEAKER_PARTICLE_RE = re.compile(r"[的了着过]")
+
+
+def _declared_script_speakers(
+    lines: list[dict[str, Any]],
+) -> tuple[bool, set[str]]:
+    idx = _load_screenplay_index()
+    declared: tuple[bool, set[str]] = idx._declared_script_speakers(lines)
+    return declared
+
+
+def _is_latin_speaker_phrase(name: str) -> bool:
+    tokens = name.split()
+    if not (1 <= len(tokens) <= 4 and len(name) <= MAX_SPEAKER_LENGTH):
+        return False
+    has_latin = False
+    for character in name:
+        if character.isspace() or character in ".-'’" or (
+            character.isascii() and character.isdigit()
+        ):
+            continue
+        if character.isalpha() and "LATIN" in unicodedata.name(character, ""):
+            has_latin = True
+            continue
+        return False
+    return has_latin
+
+
+def _is_plausible_auto_speaker(candidate: str, occurrences: int) -> bool:
+    name = " ".join(candidate.split())
+    if not name or len(name) > MAX_SPEAKER_LENGTH or name.startswith(("[", "【")):
+        return False
+    if URL_SCHEME_NON_SPEAKER_RE.fullmatch(name) is not None:
+        return False
+    if PANEL_OR_UNIT_LABEL_RE.fullmatch(name) is not None:
+        return False
+    if NUMERIC_NON_SPEAKER_RE.search(name) is not None:
+        return False
+    if DISQUALIFYING_SPEAKER_PUNCT_RE.search(name) is not None:
+        return False
+    if ACTION_PROSE_MARKER_RE.search(name) is not None:
+        return False
+    if occurrences >= 2:
+        return True
+    if _is_latin_speaker_phrase(name):
+        return True
+    clean_chars = re.sub(r"[\s.\-·・]", "", name)
+    return (
+        1 <= len(clean_chars) <= 6
+        and SPEAKER_PARTICLE_RE.search(name) is None
+    )
+
+
+def _discover_script_speakers(idx: ModuleType, screenplay: bytes) -> frozenset[str]:
+    screenplay.decode("utf-8")
+    lines = idx._line_table(screenplay)
+    has_cast_line, cast_speakers = _declared_script_speakers(lines)
+    if has_cast_line:
+        return frozenset(cast_speakers)
+    counts: dict[str, int] = {}
+    fw_or_voice_counts: dict[str, int] = {}
+    episode_id: str | None = None
+    scene_id: str | None = None
+    seen_scene_heading = False
+    at_scene_head = False
+    cursor = 0
+    while cursor < len(lines):
+        raw_text = lines[cursor]["text"]
+        stripped = raw_text.strip()
+        if not stripped:
+            cursor += 1
+            continue
+        if stripped.startswith("<!--"):
+            end_comment = idx._scan_comment_end(lines, cursor)
+            if end_comment is None:
+                break
+            chunk = "\n".join(lines[i]["text"] for i in range(cursor, end_comment + 1))
+            if _HTML_COMMENT_RE.sub("", chunk).strip():
+                at_scene_head = False
+            cursor = end_comment + 1
+            continue
+        fence = idx._fence_open(raw_text)
+        if fence is not None:
+            fence_char, fence_len = fence
+            end_fence = cursor + 1
+            while end_fence < len(lines) and not idx._fence_close(
+                lines[end_fence]["text"], fence_char, fence_len
+            ):
+                end_fence += 1
+            if end_fence >= len(lines):
+                break
+            cursor = end_fence + 1
+            continue
+        after_closed = _HTML_COMMENT_RE.sub("", raw_text)
+        clean_stripped = after_closed.strip()
+        if not clean_stripped:
+            cursor += 1
+            continue
+        if clean_stripped.startswith("##"):
+            seen_scene_heading = True
+            if "<!--" in after_closed:
+                end_comment = idx._scan_comment_end(lines, cursor)
+                if end_comment is None:
+                    break
+                scene_id = None
+                at_scene_head = False
+                cursor = end_comment + 1
+                continue
+            match = idx.SCENE_HEADING_RE.fullmatch(clean_stripped)
+            if not match:
+                scene_id = None
+                at_scene_head = False
+            else:
+                heading_episode = match.group("episode")
+                if episode_id and episode_id != heading_episode:
+                    scene_id = None
+                    at_scene_head = False
+                else:
+                    episode_id = heading_episode
+                    scene_id = match.group("scene")
+                    at_scene_head = True
+            cursor += 1
+            continue
+        if clean_stripped.startswith("#"):
+            if "<!--" in after_closed:
+                end_comment = idx._scan_comment_end(lines, cursor)
+                if end_comment is None:
+                    break
+                scene_id = None
+                seen_scene_heading = True
+                at_scene_head = False
+                cursor = end_comment + 1
+                continue
+            match = idx.EPISODE_HEADING_RE.fullmatch(clean_stripped)
+            episode_id = match.group("episode") if match else episode_id
+            scene_id = None
+            seen_scene_heading = not bool(match)
+            at_scene_head = False
+            cursor += 1
+            continue
+        if (
+            (not seen_scene_heading or at_scene_head)
+            and "<!--" not in after_closed
+            and CAST_LINE_RE.match(after_closed) is not None
+        ):
+            cursor += 1
+            continue
+        end_cursor = cursor
+        unclosed_comment = False
+        while True:
+            chunk = "\n".join(lines[i]["text"] for i in range(cursor, end_cursor + 1))
+            if "<!--" in _HTML_COMMENT_RE.sub("", chunk):
+                if end_cursor + 1 >= len(lines):
+                    unclosed_comment = True
+                    break
+                end_cursor += 1
+                continue
+            if end_cursor + 1 >= len(lines):
+                break
+            next_raw = lines[end_cursor + 1]["text"]
+            next_stripped = next_raw.strip()
+            if (
+                not next_stripped
+                or next_stripped.startswith("<!--")
+                or idx._fence_open(next_raw) is not None
+            ):
+                break
+            next_after_closed = _HTML_COMMENT_RE.sub("", next_raw)
+            next_clean = next_after_closed.strip()
+            if next_clean.startswith("#") or (
+                not seen_scene_heading
+                and "<!--" not in next_after_closed
+                and CAST_LINE_RE.match(next_after_closed) is not None
+            ):
+                break
+            end_cursor += 1
+        if unclosed_comment:
+            break
+        at_scene_head = False
+        if scene_id is not None:
+            span = idx._span(screenplay, lines, cursor, end_cursor)
+            paragraph = _HTML_COMMENT_RE.sub("", span["_text"]).strip()
+            paragraph_lines = [
+                line.strip() for line in paragraph.splitlines() if line.strip()
+            ]
+            has_unseparated_tail = len(paragraph_lines) > 1 and any(
+                idx.KNOWN_SPEAKER_DIALOGUE_RE.fullmatch(line)
+                or idx.ASCII_DIALOGUE_RE.match(line)
+                or idx.TAG_RE.fullmatch(line)
+                or idx.ANY_TAG_RE.match(line)
+                or idx.MALFORMED_TAG_RE.match(line)
+                for line in paragraph_lines[1:]
+            )
+            if not has_unseparated_tail:
+                tag_match = idx.TAG_RE.fullmatch(paragraph)
+                if tag_match and tag_match.group("tag") in VOICED_TAGS:
+                    voice_match = idx.VOICE_TAG_BODY_RE.fullmatch(
+                        tag_match.group("body")
+                    )
+                    if voice_match:
+                        candidate = " ".join(voice_match.group("speaker").split())
+                        counts[candidate] = counts.get(candidate, 0) + 1
+                        fw_or_voice_counts[candidate] = (
+                            fw_or_voice_counts.get(candidate, 0) + 1
+                        )
+                elif not (
+                    tag_match
+                    or idx.ANY_TAG_RE.match(paragraph)
+                    or idx.MALFORMED_TAG_RE.match(paragraph)
+                ):
+                    dialogue_match = idx.DIALOGUE_RE.fullmatch(paragraph)
+                    if dialogue_match:
+                        candidate = " ".join(dialogue_match.group("speaker").split())
+                        counts[candidate] = counts.get(candidate, 0) + 1
+                        fw_or_voice_counts[candidate] = (
+                            fw_or_voice_counts.get(candidate, 0) + 1
+                        )
+                    else:
+                        any_dialogue = idx.KNOWN_SPEAKER_DIALOGUE_RE.fullmatch(
+                            paragraph
+                        )
+                        if any_dialogue:
+                            candidate = " ".join(any_dialogue.group("speaker").split())
+                            counts[candidate] = counts.get(candidate, 0) + 1
+        cursor = end_cursor + 1
+    return frozenset(
+        name
+        for name, count in counts.items()
+        if (fw_or_voice_counts.get(name, 0) >= 1 or count >= 2)
+        and _is_plausible_auto_speaker(name, count)
+    )
+
+
+def parse_script_blocks(
+    screenplay: bytes,
+    speakers: Iterable[str] | None = None,
+    extra_speakers: Iterable[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Parse ``screenplay`` directly in memory without writing an index file."""
+    idx = _load_screenplay_index()
+    screenplay.decode("utf-8")
+    has_cast_line, cast_speakers = _declared_script_speakers(
+        idx._line_table(screenplay)
+    )
+    if speakers is not None or has_cast_line:
+        explicit_speakers = {
+            " ".join(name.split())
+            for name in (speakers or ())
+            if isinstance(name, str) and name.strip()
+        }
+        base_speakers = frozenset(cast_speakers | explicit_speakers)
+    else:
+        base_speakers = _discover_script_speakers(idx, screenplay)
+    appended_speakers = {
+        " ".join(name.split())
+        for name in (extra_speakers or ())
+        if isinstance(name, str) and name.strip()
+    }
+    speaker_names = frozenset(base_speakers | appended_speakers)
+    raw_blocks, raw_issues = idx._parse_screenplay(screenplay, speaker_names)
+    issues = list(raw_issues)
+    blocks = [
+        {
+            "record_type": "block",
+            "block_id": f"BLK-{number:04d}",
+            **{key: value for key in block if not key.startswith("_") for value in (block[key],)},
+        }
+        for number, block in enumerate(raw_blocks, 1)
+    ]
+    review = {
+        "review_status": "review_required" if issues else "clean",
+        "source_issue_count": len(issues),
+        "needs_human_review": bool(issues),
+        "issue_codes": sorted(
+            {str(issue["issue_code"]) for issue in issues if "issue_code" in issue}
+        ),
+    }
+    return blocks, review
 
 
 # Tags that occupy screen time without being spoken. Their seconds depend on how
@@ -61,15 +413,28 @@ DIALOGUE = re.compile(r"^(?P<who>[^：:（(\[\]]{1,24})(?:（[^）]*）|\([^)]*\
 ON_SCREEN_TEXT_TAG = "画面文字"
 UNTIMED_TAGS = (ON_SCREEN_TEXT_TAG, "SFX", "转场")
 TAG_PREFIX = re.compile(r"^\[[^\]]+\]\s*")
+MIN_RATE = 1e-3
+_CJK_PUNCT_RE = re.compile(r"[，。！？、；：「」『』《》【】￥…]")
+_ASCII_NUMERIC_TOKEN_CUE_RE = re.compile(r"[$€£¢%/!?.]")
 
 
 class StaleIndex(Exception):
     """The index does not describe the screenplay it was handed."""
 
 
+def _strip_comments_and_format_chars(text: str) -> str:
+    without_comments = _HTML_COMMENT_RE.sub("", text)
+    return "".join(
+        character
+        for character in without_comments
+        if unicodedata.category(character) != "Cf"
+    )
+
+
 def _spoken_characters(line: str) -> int:
-    """Count what is actually voiced: no whitespace, no bracketed directions."""
-    stripped = re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+    """Count what is actually voiced: no whitespace, comments, Cf, or directions."""
+    cleaned = _strip_comments_and_format_chars(line)
+    stripped = re.sub(r"（[^）]*）|\([^)]*\)", "", cleaned)
     return len(re.sub(r"\s", "", stripped))
 
 
@@ -88,7 +453,7 @@ def _is_word_letter(character: str) -> bool:
     return any(script in name for script in WORD_SCRIPTS)
 
 
-def _voiced_units(line: str) -> tuple[int, int]:
+def _voiced_units(line: str, *, prefer_words: bool = False) -> tuple[int, int]:
     """What a speaker actually pronounces, as (characters, words).
 
     Punctuation is not pronounced, so neither count includes it; the
@@ -96,13 +461,18 @@ def _voiced_units(line: str) -> tuple[int, int]:
     defined on it. A run of word-script letters (digits and inner apostrophes
     or hyphens included) is one word, and every other pronounced character is
     one character, so ``OK，走吧`` is one word and two characters. A run of
-    bare digits is read in the language around it: one word in a line that is
-    all words, one unit per digit wherever characters are spoken, as before.
+    digits is read in the language around it: one word per numeric token in a
+    word-script or ASCII-numeric line (such as ``$100!`` or ``24/7``), one unit
+    per digit wherever character-script text is spoken.
     """
-    # NFC first, so an accent typed as a separate combining mark counts the
-    # same as the precomposed letter.
+    # Strip closed HTML comments, directions, and invisible format characters,
+    # then NFC-normalize so decomposed accents count as one precomposed letter.
+    cleaned = _strip_comments_and_format_chars(line)
     text = unicodedata.normalize(
-        "NFC", re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+        "NFC", re.sub(r"（[^）]*）|\([^)]*\)", "", cleaned)
+    )
+    text = "".join(
+        character for character in text if unicodedata.category(character) != "Cf"
     )
     characters = words = 0
     digit_runs: list[int] = []
@@ -119,6 +489,14 @@ def _voiced_units(line: str) -> tuple[int, int]:
                     pass  # a mark NFC could not fold still belongs to its letter
                 elif current.isdigit():
                     digits += 1
+                elif (
+                    not has_letter
+                    and digits > 0
+                    and current in ".,"
+                    and end + 1 < length
+                    and text[end + 1].isdigit()
+                ):
+                    pass  # formatted numeric separator inside a number: 1,000.50
                 elif not (
                     current in WORD_JOINERS
                     and end + 1 < length
@@ -132,10 +510,18 @@ def _voiced_units(line: str) -> tuple[int, int]:
                 digit_runs.append(digits)
             position = end
             continue
-        if not character.isspace() and unicodedata.category(character)[0] not in "PM":
+        if not character.isspace() and unicodedata.category(character)[0] not in "PMSC":
             characters += 1
         position += 1
     if words and not characters:
+        words += len(digit_runs)
+    elif (
+        not words
+        and not characters
+        and digit_runs
+        and _CJK_PUNCT_RE.search(text) is None
+        and (prefer_words or _ASCII_NUMERIC_TOKEN_CUE_RE.search(text) is not None)
+    ):
         words += len(digit_runs)
     else:
         characters += sum(digit_runs)
@@ -151,10 +537,11 @@ def _readable_characters(body: str) -> int:
     performer's note; a line that does name its carrier is over-read by a few
     characters rather than having visible words silently dropped.
     """
+    cleaned = _strip_comments_and_format_chars(body)
     return sum(
         1
-        for character in re.sub(r"\s", "", body)
-        if not unicodedata.category(character).startswith("P")
+        for character in re.sub(r"\s", "", cleaned)
+        if unicodedata.category(character)[0] not in "PC"
     )
 
 
@@ -170,13 +557,15 @@ def _block_text(screenplay: bytes, block: Mapping[str, Any]) -> str | None:
     """Return the block's own bytes, or None when its span does not fit."""
     start, end = block.get("byte_start"), block.get("byte_end")
     if (
-        not isinstance(start, int)
+        isinstance(start, bool)
+        or isinstance(end, bool)
+        or not isinstance(start, int)
         or not isinstance(end, int)
         or not 0 <= start < end <= len(screenplay)
     ):
         return None
     try:
-        return screenplay[start:end].decode("utf-8").strip()
+        return screenplay[start:end].decode("utf-8").removeprefix("\ufeff").strip()
     except UnicodeDecodeError:
         # A span that begins or ends mid-character is a stale offset, not a
         # crash: report it the same way as any other span that does not fit.
@@ -208,8 +597,8 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
             continue
 
         if not _is_voiced(block):
-            # Scene headings, comments and instruction-only tags carry no
-            # performed duration. Comments are not production content at all.
+            # Scene headings, comments, fenced code blocks, and instruction-only
+            # tags carry no performed duration.
             if kind == "production_tag":
                 tag_lines += 1
                 tag = block.get("tag")
@@ -220,8 +609,9 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
                     if text is None:
                         unreadable_blocks.append(str(block.get("block_id")))
                     else:
+                        clean_tag_text = _strip_comments_and_format_chars(text).strip()
                         on_screen_text_characters += _readable_characters(
-                            TAG_PREFIX.sub("", text)
+                            TAG_PREFIX.sub("", clean_tag_text)
                         )
             continue
 
@@ -229,17 +619,25 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
         if text is None:
             unreadable_blocks.append(str(block.get("block_id")))
             continue
-        spoken = DIALOGUE.match(VOICE_TAG_PREFIX.sub("", text))
+        clean_text = _strip_comments_and_format_chars(text).strip()
+        spoken = DIALOGUE.match(VOICE_TAG_PREFIX.sub("", clean_text))
         if spoken is None:
             # The index recorded it as speech but it does not use the documented
             # line grammar. Guessing a duration here is how a wrong number gets
             # reported as a fact; the block is named instead.
             unreadable_blocks.append(str(block.get("block_id")))
             continue
+        spoken_line = spoken.group("line")
+        speaker_label = spoken.group("who")
+        prefer_words = spoken.group("colon") == ":" or any(
+            _is_word_letter(ch) for ch in speaker_label
+        )
         dialogue_lines += 1
-        characters = _spoken_characters(spoken.group("line"))
+        characters = _spoken_characters(spoken_line)
         dialogue_characters += characters
-        characters_voiced, words_voiced = _voiced_units(spoken.group("line"))
+        characters_voiced, words_voiced = _voiced_units(
+            spoken_line, prefer_words=prefer_words
+        )
         voiced_characters += characters_voiced
         voiced_words += words_voiced
         if block.get("tag") == "VO":
@@ -280,7 +678,7 @@ def index_blocks(
     if meta is None:
         raise StaleIndex("the index carries no screenplay_index_meta record")
     declared = meta.get("source_byte_length")
-    if not isinstance(declared, int):
+    if isinstance(declared, bool) or not isinstance(declared, int):
         raise StaleIndex("the index declares no source_byte_length")
     if declared != len(screenplay):
         raise StaleIndex(
@@ -289,16 +687,35 @@ def index_blocks(
                 declared, len(screenplay)
             )
         )
+    issue_codes = sorted(
+        {
+            str(row["issue_code"])
+            for row in index
+            if row.get("record_type") == "source_issue" and "issue_code" in row
+        }
+    )
+    source_issue_count = meta.get("source_issue_count")
+    has_positive_issue_count = (
+        not isinstance(source_issue_count, bool)
+        and isinstance(source_issue_count, int)
+        and source_issue_count > 0
+    )
     review = {
         "review_status": meta.get("review_status"),
-        "source_issue_count": meta.get("source_issue_count"),
+        "source_issue_count": source_issue_count,
+        "needs_human_review": (
+            meta.get("review_status") == "review_required" or has_positive_issue_count
+        ),
+        "issue_codes": issue_codes,
     }
     return [row for row in index if row.get("record_type") == "block"], review
 
 
-def declared_rates(project: dict[str, Any] | None) -> dict[str, Any]:
+def declared_rates(project: Mapping[str, Any] | None) -> dict[str, Any]:
     """Read the project's own pacing rates, or report that it declared none."""
-    pacing = ((project or {}).get("format") or {}).get("pacing") or {}
+    fmt = project.get("format") if isinstance(project, Mapping) else None
+    raw_pacing = fmt.get("pacing") if isinstance(fmt, Mapping) else None
+    pacing: Mapping[str, Any] = raw_pacing if isinstance(raw_pacing, Mapping) else {}
     per_character = _rate(pacing.get("spoken_characters_per_second"))
     # Words for scripts written with spaces; a project in one language declares
     # only the speech rate it uses, a bilingual one declares both.
@@ -318,16 +735,21 @@ def declared_rates(project: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _rate(value: Any, allow_zero: bool = False) -> float | None:
-    """A declared rate, or None when the value is not a usable number."""
+    """A declared rate, or None when the value is not a finite usable number."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if not math.isfinite(value) or value < 0 or (value == 0 and not allow_zero):
+    numeric = float(value)
+    if not math.isfinite(numeric):
         return None
-    return value
+    if allow_zero and numeric == 0.0:
+        return 0.0
+    if numeric < MIN_RATE:
+        return None
+    return numeric
 
 
 def accepted_vo_share(
-    counts: Mapping[str, Any], project: dict[str, Any] | None
+    counts: Mapping[str, Any], project: Mapping[str, Any] | None
 ) -> dict[str, Any] | None:
     """The [VO] share of spoken characters against an accepted ceiling.
 
@@ -338,14 +760,15 @@ def accepted_vo_share(
     proposed one declares nothing, so nothing is compared. The comparison is
     reported, never enforced: the creator may keep an episode over its own cap.
     """
-    authority = (project or {}).get("creator_authority")
-    profile = authority.get("rhythm_profile") if isinstance(authority, dict) else None
-    if not isinstance(profile, dict) or profile.get("status") != "accepted":
+    authority = project.get("creator_authority") if isinstance(project, Mapping) else None
+    profile = authority.get("rhythm_profile") if isinstance(authority, Mapping) else None
+    if not isinstance(profile, Mapping) or profile.get("status") != "accepted":
         return None
     ceiling = profile.get("vo_share_max")
     if isinstance(ceiling, bool) or not isinstance(ceiling, (int, float)):
         return None
-    if not (math.isfinite(ceiling) and 0 <= ceiling <= 1):
+    ceiling_val = float(ceiling)
+    if not (math.isfinite(ceiling_val) and 0.0 <= ceiling_val <= 1.0):
         # A hand-edited ceiling outside a share is no ceiling: comparing
         # against NaN or 5 reports a verdict nobody accepted.
         return None
@@ -353,17 +776,19 @@ def accepted_vo_share(
     if not spoken:
         return None
     share = counts["voiceover_characters"] / spoken
+    if not math.isfinite(share):
+        return None
     return {
         "share": round(share, 3),
-        "vo_share_max": ceiling,
-        "over_max": share > ceiling,
+        "vo_share_max": ceiling_val,
+        "over_max": share > ceiling_val,
     }
 
 
 def estimate(
     screenplay: bytes,
     blocks: Iterable[Mapping[str, Any]],
-    project: dict[str, Any] | None = None,
+    project: Mapping[str, Any] | None = None,
     review: Mapping[str, Any] | None = None,
     target_seconds: float | None = None,
 ) -> dict[str, Any]:
@@ -373,10 +798,12 @@ def estimate(
     # is compared against that, not against the project-wide default.
     target: Any = target_seconds
     if target is None:
-        target = ((project or {}).get("format") or {}).get("target_seconds_per_episode")
+        fmt = project.get("format") if isinstance(project, Mapping) else None
+        if isinstance(fmt, Mapping):
+            target = fmt.get("target_seconds_per_episode")
 
     result: dict[str, Any] = {"counts": counts, "rates": rates, "seconds": None}
-    result["target_seconds"] = target if isinstance(target, (int, float)) else None
+    result["target_seconds"] = _rate(target)
     vo_share = accepted_vo_share(counts, project)
     if vo_share is not None:
         result["vo_share"] = vo_share
@@ -385,11 +812,13 @@ def estimate(
     # time. Reporting the seconds without that fact is how an incomplete number
     # gets read as a complete one.
     issues = (review or {}).get("source_issue_count")
+    has_issues = not isinstance(issues, bool) and isinstance(issues, int) and issues > 0
     unreadable = counts.get("unreadable_blocks") or []
-    if isinstance(issues, int) and issues > 0 or unreadable:
-        result["incomplete"] = {
+    if has_issues or unreadable:
+        incomplete_entry: dict[str, Any] = {
             "index_review_status": (review or {}).get("review_status"),
             "source_issue_count": issues,
+            "needs_human_review": True,
             "unreadable_blocks": unreadable,
             "note": (
                 "the index left some of this screenplay unclassified, so the "
@@ -397,6 +826,10 @@ def estimate(
                 "issues before reading these seconds as the episode's length"
             ),
         }
+        issue_codes = (review or {}).get("issue_codes")
+        if issue_codes:
+            incomplete_entry["issue_codes"] = issue_codes
+        result["incomplete"] = incomplete_entry
 
     untimed = dict(counts.get("untimed_tag_lines") or {})
     if rates["on_screen_text_characters_per_second"] is not None:
@@ -452,24 +885,48 @@ def estimate(
             ),
         }
     reading = rates["on_screen_text_characters_per_second"]
+    reading_seconds: float | None = None
     if reading is not None and counts.get("on_screen_text_characters"):
         reading_seconds = counts["on_screen_text_characters"] / reading
-        result["on_screen_text_seconds"] = round(reading_seconds, 1)
         seconds += reading_seconds
-    result["seconds"] = round(seconds, 1)
-    if seconds and not unpriced:
-        # How much of the estimated runtime someone is speaking. Silent action,
-        # on-screen text and untimed tags make up the rest.
-        result["speech_seconds"] = round(speech, 1)
-        result["speech_share"] = round(speech / seconds, 2)
-    if result["target_seconds"]:
-        delta = seconds - result["target_seconds"]
-        result["delta_seconds"] = round(delta, 1)
-        result["delta_ratio"] = round(delta / result["target_seconds"], 3)
+
+    if (
+        not math.isfinite(seconds)
+        or not math.isfinite(speech)
+        or (reading_seconds is not None and not math.isfinite(reading_seconds))
+    ):
         result["note"] = (
-            "informational only: the suite sets no tolerance band, because the "
-            "right spread depends on the project's own scenes"
+            "declared format.pacing rates overflowed finite duration calculation; "
+            "check the project's pacing numbers"
         )
+        return result
+
+    if reading_seconds is not None:
+        result["on_screen_text_seconds"] = round(reading_seconds, 1)
+    result["seconds"] = round(seconds, 1)
+    if seconds > 0 and not unpriced:
+        share_ratio = speech / seconds
+        if math.isfinite(share_ratio):
+            # How much of the estimated runtime someone is speaking. Silent action,
+            # on-screen text and untimed tags make up the rest.
+            result["speech_seconds"] = round(speech, 1)
+            result["speech_share"] = round(share_ratio, 2)
+    target_val = result["target_seconds"]
+    if target_val:
+        delta = seconds - target_val
+        delta_ratio = delta / target_val
+        if math.isfinite(delta) and math.isfinite(delta_ratio):
+            result["delta_seconds"] = round(delta, 1)
+            result["delta_ratio"] = round(delta_ratio, 3)
+            result["note"] = (
+                "informational only: the suite sets no tolerance band, because the "
+                "right spread depends on the project's own scenes"
+            )
+        else:
+            result["note"] = (
+                "declared target_seconds overflowed finite delta calculation; "
+                "check the episode target length"
+            )
     else:
         result["note"] = (
             "no format.target_seconds_per_episode is declared, so there is "
@@ -480,8 +937,12 @@ def estimate(
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SystemExit("{}: {}".format(path, error))
     rows: list[dict[str, Any]] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for number, line in enumerate(raw_text.splitlines(), 1):
         if not line.strip():
             continue
         try:
@@ -497,12 +958,39 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Estimate screenplay duration from the project's declared rates."
     )
-    parser.add_argument("screenplay", type=Path)
+    parser.add_argument(
+        "screenplay",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="screenplay Markdown path (paired with --index)",
+    )
+    parser.add_argument(
+        "--script",
+        type=Path,
+        default=None,
+        help="screenplay Markdown path to parse and estimate directly in memory",
+    )
     parser.add_argument(
         "--index",
         type=Path,
-        required=True,
+        default=None,
         help="screenplay-index.jsonl built from this screenplay by screenplay_index.py",
+    )
+    parser.add_argument(
+        "--speaker",
+        action="append",
+        default=None,
+        help="explicit speaker whitelist override (repeatable; supported with --script and --index)",
+    )
+    parser.add_argument(
+        "--extra-speaker",
+        action="append",
+        default=None,
+        help=(
+            "additional speaker label unioned onto auto-discovered, declared, or "
+            "indexed speakers (repeatable; supported with --script and --index)"
+        ),
     )
     parser.add_argument(
         "--project",
@@ -523,30 +1011,91 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
-    if args.target_seconds is not None and not (
-        math.isfinite(args.target_seconds) and args.target_seconds > 0
-    ):
-        raise SystemExit("--target-seconds must be a positive number")
+    if args.target_seconds is not None and _rate(args.target_seconds) is None:
+        raise SystemExit("--target-seconds must be a finite number >= 0.001")
 
-    if not args.screenplay.is_file():
-        raise SystemExit("screenplay not found: {}".format(args.screenplay))
-    if not args.index.is_file():
+    if args.script is not None and args.screenplay is not None:
+        parser.error("pass either --script or positional screenplay, not both")
+    if args.script is not None and args.index is not None:
+        parser.error("--script parses in memory; omit --index")
+    if args.script is None and args.screenplay is None:
+        parser.error(
+            "pass --script <剧本.md> or positional screenplay --index <index.jsonl>"
+        )
+    if args.script is None and args.index is None:
+        parser.error(
+            "positional screenplay mode requires --index; use --script <剧本.md> for direct estimation"
+        )
+
+    source_path = args.script if args.script is not None else args.screenplay
+    assert source_path is not None
+    if not source_path.is_file():
+        raise SystemExit("screenplay not found: {}".format(source_path))
+    if args.index is not None and not args.index.is_file():
         raise SystemExit("screenplay index not found: {}".format(args.index))
 
-    project = None
+    project: dict[str, Any] | None = None
     if args.project is not None:
         if not args.project.is_file():
             raise SystemExit("project file not found: {}".format(args.project))
-        project = json.loads(args.project.read_text(encoding="utf-8"))
+        try:
+            loaded_project = json.loads(args.project.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError) as error:
+            raise SystemExit("{}: {}".format(args.project, error))
+        if not isinstance(loaded_project, dict):
+            raise SystemExit("{}: project file must be a JSON object".format(args.project))
+        project = loaded_project
 
-    screenplay = args.screenplay.read_bytes()
     try:
-        blocks, review = index_blocks(_load_jsonl(args.index), screenplay)
-    except StaleIndex as error:
-        raise SystemExit("{}: {}".format(args.index, error))
+        screenplay = source_path.read_bytes()
+    except OSError as error:
+        raise SystemExit("{}: {}".format(source_path, error))
+    if args.script is not None:
+        try:
+            blocks, review = parse_script_blocks(
+                screenplay,
+                speakers=args.speaker,
+                extra_speakers=args.extra_speaker,
+            )
+        except UnicodeDecodeError as error:
+            raise SystemExit("{}: {}".format(source_path, error))
+    else:
+        assert args.index is not None
+        try:
+            blocks, review = index_blocks(_load_jsonl(args.index), screenplay)
+        except StaleIndex as error:
+            raise SystemExit("{}: {}".format(args.index, error))
+        if args.speaker is not None or args.extra_speaker is not None:
+            indexed_speakers = {
+                str(row["speaker"])
+                for row in blocks
+                if _is_voiced(row)
+                and isinstance(row.get("speaker"), str)
+                and row["speaker"].strip()
+            }
+            try:
+                blocks, review = parse_script_blocks(
+                    screenplay,
+                    speakers=(
+                        args.speaker
+                        if args.speaker is not None
+                        else (indexed_speakers or None)
+                    ),
+                    extra_speakers=args.extra_speaker,
+                )
+            except UnicodeDecodeError as error:
+                raise SystemExit("{}: {}".format(source_path, error))
 
     report = estimate(screenplay, blocks, project, review, args.target_seconds)
-    print(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            report,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+    )
     # An estimate is never a verdict, so this exits successfully even when the
     # episode lands far from its target. Blocking here would turn a reported
     # number into the cross-project threshold this suite refuses to carry.

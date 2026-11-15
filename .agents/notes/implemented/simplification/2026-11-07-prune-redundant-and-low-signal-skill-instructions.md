@@ -44,3 +44,4 @@ Status: implemented
   - 消除同一规则在单文件内四处复述、同技能内多文件粘贴的维护负担，避免后续修改一处而遗漏另一处。
 - **代价**：
   - 涉及全部 13 个技能目录的 154 个 Markdown 文件逐一审阅与两轮修剪，同步更新了文档内 `#anchor` 标题锚点与 `.clawhub/publish.json` 发布清单摘要。
+- 后续调整：同技能内微参考文件归并、跨层复读去重与阶段规则重定级见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EPISODE = ROOT / "examples/creator-first/EP001"
-EXPLICIT_TEXT_TO_VIDEO = "无（创作者已明确选择文生视频）。"
+EXPLICIT_TEXT_TO_VIDEO = "无（文生视频）。"
 
 
 def load_module(name: str, path: Path):
@@ -41,10 +41,10 @@ production_tool = load_module(
 # The shot this plan belongs to opens on Zhou Bosen's hand gripping a glass tumbler, so its
 # start frame is the shot's own keyframe and its identity anchor is his character board.
 CREATOR_SUPPLIED_PLAN = (
-    "PLAN-SHOT-START（顺序：1）· SHOT-EP001-001《本镜冻结关键帧》"
+    "PLAN-SHOT-START（顺序：1）· SHOT-EP001-001《本镜首帧》"
     "（用途：起始帧；控制：起始构图、手部位置；不得控制：后续动作、终态）；"
     "PLAN-ZHOUBOSEN（顺序：2）· IMG-ZHOUBOSEN-SHEET《周薄森角色板》"
-    "（用途：身份；控制：手型、本集常服；不得控制：构图、动作）"
+    "（用途：外貌；控制：手型、本集常服；不得控制：构图、动作）"
 )
 
 
@@ -97,7 +97,7 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
             errors = creator_markdown_check.validate_episode(episode, project)
             self.assertTrue(any("生成方式应为图生视频" in error for error in errors), errors)
             self.assertFalse(
-                any("静默降级为文生视频" in error for error in errors),
+                any("擅自改成文生视频" in error for error in errors),
                 "a declared plan is a choice, not an unanswered gap",
             )
 
@@ -148,22 +148,22 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
             ),
             "label drifted from the board": (
                 CREATOR_SUPPLIED_PLAN.replace("《周薄森角色板》", "《另一个名字》"),
-                "PLAN 中文名称与 IMG 标题不一致",
+                "PLAN 名称与 IMG 标题不一致",
             ),
             "file path instead of an entry": (
                 "PLAN-X（顺序：1）· 输入/参考图/江晨.png《江晨定妆照》"
-                "（用途：身份；控制：脸型；不得控制：构图）",
+                "（用途：外貌；控制：脸型；不得控制：构图）",
                 "输入参考图必须使用完整 PLAN 语法",
             ),
             "purpose outside the closed set": (
-                CREATOR_SUPPLIED_PLAN.replace("（用途：身份；", "（用途：全参考；"),
+                CREATOR_SUPPLIED_PLAN.replace("（用途：外貌；", "（用途：全参考；"),
                 "PLAN 用途不在允许集合内",
             ),
             # Production binds each picture once, so naming the same entry in a
             # second slot is a declaration no job can match.
             "same entry in two slots": (
                 CREATOR_SUPPLIED_PLAN.replace(
-                    "IMG-ZHOUBOSEN-SHEET《周薄森角色板》", "SHOT-EP001-001《本镜冻结关键帧》"
+                    "IMG-ZHOUBOSEN-SHEET《周薄森角色板》", "SHOT-EP001-001《本镜首帧》"
                 ),
                 "PLAN 同一张图只能占一个槽位: SHOT-EP001-001",
             ),
@@ -188,15 +188,15 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
             reference.write_bytes(b"structural fixture")
             mixed = (
                 "REF-JIANGCHEN-LOOK（顺序：1）· 输入/参考图/江晨定妆.png《江晨定妆照》"
-                "（用途：身份；控制：脸型、体态；不得控制：构图、动作）；"
-                "PLAN-SHOT-START（顺序：2）· SHOT-EP001-001《本镜冻结关键帧》"
+                "（用途：外貌；控制：脸型、体态；不得控制：构图、动作）；"
+                "PLAN-SHOT-START（顺序：2）· SHOT-EP001-001《本镜首帧》"
                 "（用途：起始帧；控制：起始构图；不得控制：后续动作）"
             )
             self.bind(episode, mixed)
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
 
-    def test_a_start_frame_plan_names_this_shot_and_no_other(self) -> None:
+    def test_a_start_frame_plan_can_reuse_an_earlier_existing_shot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project, episode = self.episode(directory)
             self.bind(
@@ -204,10 +204,8 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
                 CREATOR_SUPPLIED_PLAN.replace("SHOT-EP001-001《", "SHOT-EP001-003《"),
             )
 
-            errors = creator_markdown_check.validate_episode(episode, project)
-            self.assertTrue(
-                any("起始帧 PLAN 必须指向本镜的冻结关键帧" in error for error in errors),
-                errors,
+            self.assertEqual(
+                creator_markdown_check.validate_episode(episode, project), []
             )
 
     def test_a_real_file_named_like_a_slot_is_still_a_real_file(self) -> None:
@@ -220,7 +218,7 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
             self.bind(
                 episode,
                 "REF-JIANGCHEN（顺序：1）· 输入/参考图/ref-plan-江晨.png《江晨定妆照》"
-                "（用途：身份；控制：脸型、体态；不得控制：构图、动作）",
+                "（用途：外貌；控制：脸型、体态；不得控制：构图、动作）",
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
@@ -228,7 +226,7 @@ class CreatorSuppliedReferenceTests(EpisodeFixture):
                 production_tool._markdown_reference_bindings(
                     "## SHOT-EP001-001 · 年轻的手\n"
                     "- 输入参考图：REF-JIANGCHEN（顺序：1）· 输入/参考图/ref-plan-江晨.png"
-                    "《江晨定妆照》（用途：身份；控制：脸型；不得控制：构图）\n",
+                    "《江晨定妆照》（用途：外貌；控制：脸型；不得控制：构图）\n",
                     field_name="输入参考图",
                 )[0]["path"],
                 "输入/参考图/ref-plan-江晨.png",
@@ -335,7 +333,7 @@ class StoryboardFollowsTheScreenplayTests(EpisodeFixture):
 
             errors = creator_markdown_check.validate_episode(episode, project)
             self.assertTrue(
-                any("没有镜头承载场景 EP001-SC090" in error for error in errors), errors
+                any("场景 EP001-SC090 没有对应镜头" in error for error in errors), errors
             )
 
     def test_a_deliberate_omission_is_recorded_and_accepted(self) -> None:
@@ -412,7 +410,7 @@ class StoryboardFollowsTheScreenplayTests(EpisodeFixture):
 
             errors = creator_markdown_check.validate_episode(episode, project)
             self.assertTrue(
-                any("既被镜头承载又记为未拍" in error for error in errors), errors
+                any("既有对应镜头又记为未拍" in error for error in errors), errors
             )
 
 

@@ -1,27 +1,27 @@
-# 原著分析阶段契约
+# 原著分析阶段规范
 
-## 所有权边界
+## 职责范围与边界
 
-- **本阶段拥有**：`项目开发/source-analysis/` 下的章节索引、改编价值快评、逐章提取、剧情单元、节奏情绪、人物与设定候选、改编价值评估与分集候选。
-- **本阶段继承**：创作者提供的原始材料与授权说明、项目语言、已接受的形式约束与制作形态。
-- **本阶段不越权**：不改写 `输入/`；不写改编契约、创作简报、故事引擎或 `adaptation-map.jsonl`（`$short-drama-develop` 拥有）；不建资产身份；不写场景、台词、分镜与提示词；不生成媒体；不批准自己的产物。
+- **本阶段负责产出**：`项目开发/source-analysis/` 下的章节索引、改编价值快评、逐章提取、剧情单元、节奏与爽点梳理、人物与世界观候选名单、改编取舍评估与分集候选。
+- **输入条件**：创作者提供的原始材料与合法使用权说明、目标拆解章节范围（全书或指定分批区间）、项目语言、画幅时长要求与目标制作形态。
+- **职责边界**：不改写 `输入/`；不写改编方案、立项简报、核心冲突设定或 `adaptation-map.jsonl`（归 `$short-drama-develop` 负责）；不建正式角色与场景设定；不写分场剧本、台词、分镜与提示词；不生成画面或音视频；所有拆解建议供创作者与下游取舍，不自行拍板定稿。
 
 ## 本阶段规则
 
 ### `NVA`
 
-| ID | Class | Knowledge |
+| 编号 | 等级 | 规则内容 |
 |---|---|---|
-| NVA-01 | structural_invariant | All stages slice the source through one chapter index built from that source; `verify` blocks on a chapter set whose numbering, ordering or line spans do not cover that source. An edited source still invalidates the index and everything derived from it, but only a changed line count or numbering is reported — a same-line-count rewrite in place is not, so whoever edits the source re-indexes it. |
-| NVA-02 | structural_invariant | Every extracted claim carries a source locator and span; a claim with no span cannot be cited downstream. |
-| NVA-03 | structural_invariant | Aggregation may not start while chapter coverage is incomplete; missing chapters are named in every aggregate that inherits the gap. |
-| NVA-04 | structural_invariant | Analysis records de-quoted function summaries, never copied source paragraphs. |
-| NVA-05 | structural_invariant | A sampled stage states its own coverage and confines every claim to the chapters it read. |
-| NVA-06 | reviewed_invariant | A function summary states what a passage does to character choice, information, power or relationship, not what happens in it. |
-| NVA-07 | reviewed_invariant | Hard facts — levels, counts, distances, who said what, which chapters a character appears in — trace back to a description line or the source; an unsupported one is written as unstated, never filled in by plausibility. |
-| NVA-08 | reviewed_invariant | Character merges preserve dramatic role, knowledge scope, relational position and causal bridge. Proper names, nicknames and name-plus-title forms may merge with evidence of shared identity; generic descriptors or titles alone never establish identity. |
-| NVA-09 | reviewed_invariant | Adaptation value distinguishes what the screen can show from what only prose can deliver, and names the new carrier for each function it keeps. |
-| NVA-10 | reviewed_invariant | Episode candidates are cut on local dramatic result and precise handoff, not on chapter count or word budget. |
-| NVA-11 | craft_default | Triage a deterministic spread of chapters across the whole book and stop for the creator before committing to a full pass. |
-| NVA-12 | taste_option | Where to open, which line to keep and which ending to promise remain creator choices; analysis may argue but never blocks. |
-| NVA-13 | craft_default | Before cutting episode candidates, rank the book's plot points by audience payoff — face-slap, spectacle, reversal, identity reveal, reward delivered, crisis — counting payoffs a bystander or crowd delivers; candidates follow the payoff distribution rather than one chapter per episode and cite the payoffs they carry. The opening replacement point is the strongest payoff that can also establish the protagonist's identity, crisis and goal, and a stronger later peak is reported as a cold-open option. |
+| NVA-01 | structural_invariant | 各阶段统一使用基于同一份原文建立的章节索引切分范围；仅当未识别到任何章节或索引自身序号断号、行区间未能连续覆盖原文时，`verify` 才返回非零阻断，源书作者跳章号、重章号或短章卷首语记入 `warnings` 提醒而不阻断。原文一旦改动须主动重建索引。 |
+| NVA-02 | reviewed_invariant | 每一条提取出的结论都必须附带原文位置与起止行号；没有行号出处的说法不得被后续阶段引用。 |
+| NVA-03 | structural_invariant | 支持全书拆解，也支持按创作者指定的章节范围（如前 100 章、第一卷或第一季）分批完整拆解；启动本批汇总前，`chapters/` 须完整覆盖本次划定的目标章节区间，且所有汇总与分集候选文件须显眼注明本轮覆盖的起止章号范围与跳过章节。 |
+| NVA-04 | reviewed_invariant | 拆解文件以提炼后的剧情作用概括为主，必要佐证仅摘最短词句，不整段照抄原文句子。 |
+| NVA-05 | reviewed_invariant | 抽样快评必须如实标明抽样覆盖比例，且所有判断严格限定在实际读过的抽样章节内。 |
+| NVA-06 | reviewed_invariant | 剧情作用概括必须写清这一段怎样改变了人物抉择、信息差、强弱势地位或人物关系，不能只复述表面发生了什么事。 |
+| NVA-07 | reviewed_invariant | 等级境界、数额距离、台词归属、人物出场章号等具体事实须能回查到白描记录或原文行号；原文没写清的直接注明「原文未明确」，不凭常理或题材套路脑补。 |
+| NVA-08 | craft_default | 合并同人异名时核对戏剧作用、所知信息范围、人际关系位置与前后因果链条；全名、绰号与「姓氏＋头衔」在原文有明确同人证据时方可合并，不单凭外貌描述或不带姓名的泛指职务硬并。 |
+| NVA-09 | reviewed_invariant | 改编取舍结合目标制作形态评估哪些戏可直接拍、哪些需改换视听表现方式、哪些仅限文字；保留入戏的纯心理或背景说明须按目标制作形态写明具体画面、反应或画外音做法。 |
+| NVA-10 | reviewed_invariant | 分集候选按单集阶段进展与集尾悬念切分，不按固定章数或字数硬切。 |
+| NVA-11 | craft_default | 未划定范围的超长篇可先等距抽样写出改编快评，请创作者确认拆解区间；短篇小说（如 30 章以内）或创作者已指定章节范围、要求直接拆完时，不在 S1 暂停等拍板。 |
+| NVA-12 | taste_option | 第 1 集从哪里开场、保留哪条故事线、承诺怎样的结局走向均由创作者拍板；拆解报告摆出利弊建议，不替创作者做决定或卡死流程。 |
+| NVA-13 | craft_default | 切分分集候选前，先按爽感与看点强度（打脸、奇观、反转、身份揭晓、奖励到手、危机爆发等，含围观人群或旁观者促成的爽点）给目标区间高光情节点排相对先后；候选集边界跟着爽点分布走，首集开场优先选能一并立住主角身份、眼前危机与行动目标的一场戏，中后段名场面可列为冷开场备选。 |

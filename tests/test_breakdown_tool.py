@@ -41,8 +41,45 @@ class TranscriptTests(unittest.TestCase):
 
     def test_a_cue_that_ends_before_it_starts_is_refused(self):
         for start, end in ((6, 2), (-1, 2), ("nan", 2)):
-            with self.subTest(start=start, end=end), self.assertRaises(breakdown.BreakdownError):
+            with self.subTest(start=start, end=end), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(
+                breakdown.BreakdownError
+            ):
                 breakdown.parse_transcript(json.dumps([{"start": start, "end": end, "text": "甲"}]), ".json")
+
+    def test_isolated_dirty_cues_are_skipped_with_stderr_notice(self):
+        srt = (
+            "1\n00:00:01,000 --> 00:00:02,000\n正常首句\n\n"
+            "2\n00:00:02,500 --> 00:00:02,500\n零时长脏行\n\n"
+            "3\n00:00:05,000 --> 00:00:04,000\n倒挂脏行\n\n"
+            "4\n00:00:06,000 --> 00:00:07,500\n正常尾句\n"
+        )
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            segments = breakdown.parse_transcript(srt, ".srt")
+        self.assertEqual(
+            segments,
+            [{"s": 1.0, "e": 2.0, "t": "正常首句"}, {"s": 6.0, "e": 7.5, "t": "正常尾句"}],
+        )
+        self.assertIn("2.5–2.5", err.getvalue())
+        self.assertIn("5.0–4.0", err.getvalue())
+
+        json_err = io.StringIO()
+        payload = json.dumps(
+            [
+                {"start": -0.3, "end": 1.0, "text": "负数脏行"},
+                {"start": 1.2, "end": 1.2, "text": "零长脏行"},
+                {"start": 2.0, "end": 3.5, "text": "有效台词"},
+            ],
+            ensure_ascii=False,
+        )
+        with contextlib.redirect_stderr(json_err):
+            json_segments = breakdown.parse_transcript(payload, ".json")
+        self.assertEqual(json_segments, [{"s": 2.0, "e": 3.5, "t": "有效台词"}])
+        self.assertTrue(json_err.getvalue().strip())
+
+        all_dirty_srt = "1\n00:00:03,000 --> 00:00:03,000\n全脏\n"
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(breakdown.BreakdownError):
+            breakdown.parse_transcript(all_dirty_srt, ".srt")
 
     def test_a_file_without_timings_is_refused(self):
         with self.assertRaises(breakdown.BreakdownError):
@@ -207,6 +244,41 @@ class PlanTests(unittest.TestCase):
         self.assertIsNone(record["shot_seconds"])
         self.assertIn("plan_problem", record)
 
+    def test_plan_extracts_emphasized_and_halfwidth_colon_durations_per_shot_ignoring_preamble(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ep = Path(directory) / "EP003"
+            ep.mkdir()
+            (ep / "分镜.md").write_text(
+                "# EP003 分镜\n"
+                "- 时长：60 秒\n\n"
+                "## 场景站位 · EP003-SC001 · 走廊\n"
+                "- 时长：15 秒\n\n"
+                "## SHOT-EP003-001 · 推门\n"
+                "- **时长**：2.5 秒\n\n"
+                "## SHOT-EP003-002 · 对视\n"
+                "- *时长*: 3.5s\n\n"
+                "## 备注\n"
+                "- 时长：10 秒\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+        self.assertEqual(record["shot_seconds"], [2.5, 3.5])
+        self.assertEqual(record["duration"], 6.0)
+        self.assertNotIn("plan_problem", record)
+
+    def test_duplicate_duration_in_one_shot_cannot_mask_missing_duration_in_another(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ep = Path(directory) / "EP004"
+            ep.mkdir()
+            (ep / "分镜.md").write_text(
+                "## SHOT-EP004-001 · 甲\n- 时长：2s\n- 时长：3s\n\n"
+                "## SHOT-EP004-002 · 乙\n- 景别/机位：近景\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+        self.assertIsNone(record["shot_seconds"])
+        self.assertIn("plan_problem", record)
+
 
 class PlanTimelineTests(unittest.TestCase):
     def write_project(self, root, episodes, pacing=True):
@@ -313,6 +385,38 @@ class PlanTimelineTests(unittest.TestCase):
             record = breakdown.plan_episode(root / "剧集" / "EP001")
         self.assertIsNone(record["segments"])
         self.assertIsNone(record["duration"])
+
+    def test_spaced_foreign_speaker_with_ascii_parenthetical_cue_is_timed_as_speech(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_words_per_second": 2.5,
+                                "seconds_per_action_paragraph": 3,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ep = root / "剧集" / "EP001"
+            ep.mkdir(parents=True)
+            (ep / "剧本.md").write_text(
+                "## EP001-SC001 内 · 档案室 · 夜\n\n"
+                "She steps back.\n\n"
+                "Dr. Lin (whispering)：Stay back from the door.\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+        numbers = breakdown.episode_numbers(record)
+        self.assertEqual(record["duration"], 5.0)
+        self.assertEqual(record["duration_source"], "script_estimate")
+        self.assertEqual(len(record["segments"]), 1)
+        self.assertEqual(record["segments"][0]["t"], "Stay back from the door.")
+        self.assertEqual(numbers["speech_share"], 0.4)
 
 
 class TranscriptOverrunTests(unittest.TestCase):
@@ -829,6 +933,222 @@ class SubtitleScanTests(unittest.TestCase):
         self.assertTrue(lit)
         self.assertTrue(all(0.78 <= band["top"] and band["bottom"] <= 0.92 for band in lit), lit)
         self.assertTrue(any(band["changed"] > 0 for band in lit), lit)
+
+
+class RoundThreePlanAndSpeakerTests(unittest.TestCase):
+    def test_optional_and_case_insensitive_duration_units_and_malformed_numbers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ep = Path(directory) / "EP005"
+            ep.mkdir()
+            (ep / "分镜.md").write_text(
+                "<!--\n## SHOT-EP005-000 · 已注释镜\n- 时长：9s\n-->\n"
+                "## SHOT-EP005-001 · 甲\n- 时长：4\n\n"
+                "## SHOT-EP005-002 · 乙\n- 时长：2.5S\n\n"
+                "## SHOT-EP005-003 · 丙\n- 时长：3.5秒\n",
+                encoding="utf-8",
+            )
+            valid = breakdown.plan_episode(ep)
+            self.assertEqual(valid["shot_seconds"], [4.0, 2.5, 3.5])
+            self.assertEqual(valid["duration"], 10.0)
+            self.assertNotIn("plan_problem", valid)
+
+            for bad_duration in ("...s", "1.2.3s"):
+                with self.subTest(bad_duration=bad_duration):
+                    (ep / "分镜.md").write_text(
+                        f"## SHOT-EP005-001 · 甲\n- 时长：{bad_duration}\n",
+                        encoding="utf-8",
+                    )
+                    broken = breakdown.plan_episode(ep)
+                    self.assertIsNone(broken["shot_seconds"])
+                    self.assertIn("plan_problem", broken)
+
+    def test_plan_resolves_dot_and_relative_episode_dirs_and_finds_project_pacing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_characters_per_second": 4.0,
+                                "seconds_per_action_paragraph": 2,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ep = root / "剧集" / "EP001"
+            ep.mkdir(parents=True)
+            (ep / "剧本.md").write_text(
+                "## EP001-SC001 内 · 走廊 · 夜\n\n许棠：站住别动。\n",
+                encoding="utf-8",
+            )
+            out_dot = root / "measure_dot"
+            completed = subprocess.run(
+                [sys.executable, "-B", str(SCRIPT), "plan", ".", "--out", str(out_dot)],
+                cwd=str(ep),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse((out_dot / ".measure.json").exists())
+            dot_record = json.loads((out_dot / "EP001.measure.json").read_text(encoding="utf-8"))
+            self.assertEqual(dot_record["source"], "EP001")
+            self.assertEqual(dot_record["episode"], 1)
+            self.assertEqual(dot_record["duration"], 1.0)
+            self.assertEqual(dot_record["duration_source"], "script_estimate")
+
+            out_rel = root / "measure_rel"
+            completed_rel = subprocess.run(
+                [sys.executable, "-B", str(SCRIPT), "plan", "EP001", "--out", str(out_rel)],
+                cwd=str(root / "剧集"),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(completed_rel.returncode, 0, completed_rel.stderr)
+            rel_record = json.loads((out_rel / "EP001.measure.json").read_text(encoding="utf-8"))
+            self.assertEqual(rel_record["episode"], 1)
+            self.assertEqual(rel_record["duration"], 1.0)
+
+    def test_preamble_cast_clock_and_six_char_or_two_word_latin_speakers(self):
+        script = (
+            "# EP001 雨夜重逢\n\n"
+            "人物：许棠、沈砚\n\n"
+            "一句话梗概：前情备注：不计入正片。\n\n"
+            "## EP001-SC001 内外 · 门厅 · 夜\n\n"
+            "人物：许棠\n\n"
+            "12:30 监控屏幕亮起。\n\n"
+            "爱新觉罗玄烨：平身吧。\n\n"
+            "Elena Vance: Stay back.\n"
+        )
+        speakers = breakdown.screenplay_speakers(script)
+        self.assertNotIn("人物", speakers)
+        self.assertNotIn("一句话梗概", speakers)
+        self.assertNotIn("12", speakers)
+        self.assertIn("爱新觉罗玄烨", speakers)
+        self.assertIn("Elena Vance", speakers)
+
+        pacing = {"characters": 3.0, "words": 2.0, "action": 3.0}
+        timeline = breakdown.script_timeline(script, pacing)
+        self.assertIsNotNone(timeline)
+        self.assertEqual(
+            [seg["t"] for seg in timeline["segments"]],
+            ["平身吧。", "Stay back."],
+        )
+        # 1 action block (3.0s) + 3 Chinese chars (1.0s) + 2 English words (1.0s) = 5.0s
+        self.assertEqual(timeline["duration"], 5.0)
+
+    def test_plan_problems_accumulate_surface_in_profile_and_reject_non_finite_pacing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_words_per_second": 2.0,
+                                "seconds_per_action_paragraph": 2,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ep = root / "剧集" / "EP001"
+            ep.mkdir(parents=True)
+            (ep / "分镜.md").write_text("## SHOT-EP001-001 · 甲\n", encoding="utf-8")
+            (ep / "剧本.md").write_text(
+                "## EP001-SC001 内 · 走廊 · 夜\n\n许棠：站住。\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+            self.assertIn("分镜.md", record["plan_problem"])
+            self.assertIn("剧本里有项目没声明语速单位", record["plan_problem"])
+            self.assertIn("；", record["plan_problem"])
+
+            prof = breakdown.profile([record], opening=3)
+            self.assertEqual(prof["plan_problems"], {"1": record["plan_problem"]})
+            rendered = breakdown.render_table({"PLAN": prof})
+            self.assertIn("计划缺口", rendered)
+            self.assertIn("第1集", rendered)
+
+            (root / "short-drama.json").write_text(
+                '{"format": {"pacing": {"spoken_characters_per_second": NaN, "seconds_per_action_paragraph": 2}}}',
+                encoding="utf-8",
+            )
+            self.assertIsNone(breakdown.project_pacing(ep))
+
+    def test_crlf_bom_cast_scoping_parenthetical_notes_and_section_scoped_duration(self):
+        script_crlf_bom = (
+            "\ufeff# EP001 · 夜奔\r\n\r\n"
+            "- **人物：**许棠（女主，24岁，冷面）、顾沉(男主;西装)、【待定】、待定、暂无、无、TBD、待补。\r\n\r\n"
+            "## EP001-SC001 内 · 走廊 · 夜\r\n"
+            "人物：林叔（门卫，老年）。\r\n"
+            "许棠：\u3000站住。\r\n\r\n"
+            "桌上压着一张旧便条，第二行写着\r\n"
+            "人物：假角色不应被计入说话人。\r\n\r\n"
+            "[OS] 顾沉：\u3000别回头。\r\n"
+        )
+        speakers = breakdown.screenplay_speakers(script_crlf_bom)
+        self.assertEqual(speakers, {"许棠", "顾沉", "林叔"})
+
+        lines = breakdown.spoken_lines(script_crlf_bom, speakers)
+        self.assertEqual(lines, [(None, "站住。"), ("OS", "别回头。")])
+
+        with tempfile.TemporaryDirectory() as directory:
+            ep = Path(directory) / "EP001"
+            ep.mkdir()
+            (ep / "剧本.md").write_bytes(script_crlf_bom.encode("utf-8"))
+            board_crlf_bom = (
+                "\ufeff# EP001 分镜\r\n"
+                "- 备注：保留行内 `<!-- 字面量` 代码片段。\r\n\r\n"
+                "## SHOT-EP001-001 · 起步\r\n"
+                "- **时长：**\u30003.5s（含尾韵）\r\n"
+                "### 首帧提示词\r\n"
+                "> - 时长：99s\r\n\r\n"
+                "##\u3000SHOT-EP001-002 · 停步\r\n"
+                "- ***时长***：2.5 秒(定格)\r\n"
+                "<!-- 未闭合尾部注释\r\n"
+            )
+            (ep / "分镜.md").write_bytes(board_crlf_bom.encode("utf-8"))
+            planned = breakdown.plan_episode(ep)
+            self.assertEqual(planned["shot_seconds"], [3.5, 2.5])
+            self.assertEqual(planned["duration"], 6.0)
+            self.assertNotIn("plan_problem", planned)
+
+            # Fenced code blocks in 剧本.md and 分镜.md must not leak fake speakers or shots.
+            fenced_script = (
+                "# EP001\n\n"
+                "```markdown\n"
+                "人物：示例角色\n\n"
+                "## EP001-SC099 内 · 示例场景 · 日\n\n"
+                "示例角色：这段代码块台词不应计入。\n"
+                "```\n\n"
+                "## EP001-SC001 内 · 走廊 · 夜\n\n"
+                "许棠：只算这一句。\n"
+            )
+            self.assertEqual(breakdown.screenplay_speakers(fenced_script), {"许棠"})
+            self.assertEqual(
+                breakdown.spoken_lines(fenced_script, {"许棠", "示例角色"}),
+                [(None, "只算这一句。")],
+            )
+            (ep / "剧本.md").write_text(fenced_script, encoding="utf-8")
+            (ep / "分镜.md").write_text(
+                "```markdown\n"
+                "## SHOT-EP001-999 · 代码块示例镜\n"
+                "- 时长：88s\n"
+                "```\n\n"
+                "## SHOT-EP001-001 · 真实镜头\n"
+                "- 时长：4s\n",
+                encoding="utf-8",
+            )
+            fenced_plan = breakdown.plan_episode(ep)
+            self.assertEqual(fenced_plan["shot_seconds"], [4.0])
+            self.assertEqual(fenced_plan["duration"], 4.0)
+            self.assertNotIn("plan_problem", fenced_plan)
 
 
 if __name__ == "__main__":

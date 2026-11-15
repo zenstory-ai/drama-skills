@@ -28,6 +28,9 @@ export const COLOURS = {
   cardRule: "#EEF0F4",
   cardValue: "#E5322D",
   cardDots: ["#FF4D4F", "#1FA2FF", "#111111", "#2BB673"],
+  captionSurface: "rgba(12, 16, 26, 0.72)",
+  captionInk: "#F7FAFC",
+  captionSub: "rgba(247, 250, 252, 0.80)",
 };
 
 /** Subtitle fill by who speaks; the same values are in edit_tool.py for the ASS route. */
@@ -42,7 +45,7 @@ export const RARITY: Record<Rarity, string> = { 传说: "#FFC940", 史诗: "#B26
 export const rarityOf = (rarity: Rarity | null): Rarity => rarity ?? "稀有";
 
 /** Where each style sits, in `u` from the top. */
-export const TOP_U = { card: 16, system: 10, task: 9, corner: 5.5 };
+export const TOP_U = { caption: 14, card: 16, system: 10, task: 9, corner: 5.5 };
 
 /** 0→1 entry, `delay` seconds after the piece's first frame. A pure function of the frame. */
 export const entrance = (frame: number, fps: number, delay = 0, damping = 14): number =>

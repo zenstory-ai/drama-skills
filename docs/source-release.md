@@ -6,8 +6,8 @@ CI results and public release assets.
 
 ## Contract
 
-- `.release/policy.json` is source-bound and names every version authority, the
-  dated changelog, exact installable files, exclusions, and exact main CI jobs.
+- `.release/policy.json` is source-bound and names the version file (`VERSION`),
+  the dated changelog, exact installable files, exclusions, and exact main CI jobs.
 - Pull requests run a read-only contract/archive validation.
 - `workflow_dispatch` is allowed only on `main` and never publishes. It also
   proves the exact main commit's configured CI runs.
@@ -22,7 +22,7 @@ CI results and public release assets.
 
 ## Release procedure
 
-1. Update all version authorities together and add a dated changelog heading.
+1. Update `VERSION` and add a dated changelog heading.
 2. Merge through the existing product and ClawHub inventory checks.
 3. Run **Source release** manually on `main` as a nonpublishing dry-run.
 4. Create the reviewed stable tag from that exact green main commit and push it.
@@ -41,5 +41,5 @@ authoritative.
 
 The caller currently pins shared source controls to `d098c09a27f8fe58ccf3a13a894ecc3804747b7c`.
 When upgrading controls, change all four references together and pass the
-source-bound pin contract before merging. The separate ClawHub writer pin is
+source-release pin-consistency check before merging. The separate ClawHub writer pin is
 unchanged and remains independently reviewed.
