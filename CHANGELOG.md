@@ -13,6 +13,10 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-15
+
+本版将五份创作文档、参考图 `用途` 枚举与本地创作台字段统一改为自然中文，回调过严的脚本校验与阶段门禁，并打通 `GROUP-*` 多镜合生分组从生产批次到剪辑成片的全链路。**既有项目升级后须按下方对照表迁移 `视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md` 与 `审查/*.md` 的字段名、标题和参考图 `用途` 值，旧字段名不再被识别。**
+
 ### Added
 
 - 视觉设定、分镜与审查：地点条目写明人会靠、撑、坐的固定物的高度，关键帧写明入画固定物落在人身上的高度，审片时按镜序核对这一高度和人物身高比例；整场共用的比例、连续性和视角说明拼进每镜前，删掉本镜不在场的人和看不到的陈设，特写和道具插入镜不带这些段落。
@@ -22,26 +26,26 @@
 
 ### Changed
 
-- 脚本门禁松绑与阶段规则重定级：
-  - `creator_markdown_check.py`：无 `short-drama.json` 时按提示词正文实际语种推断语言，允许纯外文标题（仅跨语种时要求人物填 `- 提示词名称：`）与零台词角色免填声线，`图片提示词项` 改为可选，支持 `- 输入参考图：无` 简写、正反打跨镜复用 `PLAN-...` 首帧、首尾同帧循环镜同图双挂及 `MOTION.输入参考图` 在分镜基础上按需增减，并放宽 `参考音频` 控制范围说明；不再扫描 `SHOT.来源` 引文逼标 `；画外：`，已由 `起始帧` 或对应条目 `主体` / `造型状态` 参考图锁住外观的视频提示词免于重复粘贴静态 `LOCK-...` 锁定词，移除 `开场画面` 原字子串粘贴要求并将台词核对收窄到显式发声引文。
-  - 生产、原著、分集与剪辑校验：`production_tool.py` 对有 `source_entry` 的任务改为计算归一化换行后的条目级段落哈希（单镜修改不再连坐作废整集），生图支持 `1..16` 张输出且前置本地参数与轮询环境变量预检；`novel_index.py` 支持 Markdown `#` 标题与 `集/话/幕` 并将跳章、重号、短章归入非阻断 `warnings`；`episode_intake.py` 支持 Markdown 多级标题、十进制按位中文集号、非 `EP001` 起步、跳集与跨分卷增量 `merge` 更新已有集；`edit_tool.py` 与 `rules.mjs` 将 `<0.50s` 静帧、短尾音抢话与素材 `st_mtime` 变动改为提醒，支持同宽高比素材自动缩放并统一 `setsar=1` 与恒定帧率拼接，过滤全部 BMP 与补充平面 Emoji 防止字幕渲染崩溃。
-  - 规则分级与参考文件归并：清理 10 份 `stage-contract.md` 中的重复与旧版台账规则（移除 `AST-04`、`CON-04/06`、`IMG-12/14`、`SHT-27`、`VID-09/18`、`REV-11`、`BRK-09`、`EDT-15`，其中 `AST-03` 吸收 `AST-04` 并定为 `reviewed_invariant`），将无确定性脚本支撑的语义规则与通用爽剧手法回调为 `reviewed_invariant` / `craft_default`；撤回 `$short-drama-review` 对固定镜头、日常旧化词与画风前缀位置的自动判死并补齐成片 `major` 档；在各技能目录内归并 40 余个碎片化参考文件与孤立模板，保持技能自包含。
 - 五份创作文档、参考图槽位与创作台字段统一改为地道中文表达（破坏性变更，不保留旧字段别名兼容）：
   - `视觉设定.md`：`时代锚点` → `时代背景`，`识别锚点` → `外观特征`，`画面代称` → `提示词名称`，`连续性锁：LOCK-... · 锁面：...` → `连戏锁：LOCK-... · 锁定词：...`。
   - `分镜.md`：场景站位 `固定锚点` → `固定陈设`（`working side` → `机位侧`），`唯一动作` → `动作`，`视觉依据` → `出场设定`，`输入参考图：无（创作者已明确选择文生视频）` → `输入参考图：无（文生视频）`，`### 冻结关键帧提示词` → `### 首帧提示词`，`### 收尾关键帧提示词` → `### 尾帧提示词`。
+  - `图片提示词.md`、`分镜.md`、`视频提示词.md` 参考图槽位 `用途` 枚举：`身份` → `外貌`，`地理` → `空间布局`，并新增 `用途：主体` 枚举值（共十项固定词表：`外貌`、`主体`、`造型状态`、`空间布局`、`构图`、`尺度`、`效果`、`起始帧`、`结束帧`、`风格`）。
   - `视频提示词.md`：`静态视觉锚点` → `开场画面`，`状态链` → `动作过程`，`GROUP-...` 诊断说明由 `交付分组 / 一次交付` 改为 `合生分组 / 一次合生`。
   - `审查/*.md`：问题单中的 `- 修订结果：` → `- 修改要求：`，并在创作台支持 `PROVISIONAL` 结论与 `## 被删的强钩子` 小节展示。
-  - 参考图槽位 `用途` 枚举：`身份` → `外貌`，`地理` → `空间布局`，并新增 `用途：主体` 枚举值（共十项固定词表）。
   - 本地创作台：`story-engine.md` 标签由「故事引擎」改为「核心设定」，可复制提示词标题统一为 `可复制提示词`、`首帧提示词`、`尾帧提示词`，界面字段同步更新。
 
-  *升级*：**既有项目的 `视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md` 与 `审查/*.md` 按上方对照表批量替换字段名、标题与参考图 `用途` 值后再运行 `creator_markdown_check.py` 或打开创作台**；旧字段名不再被校验器识别。
+  *升级*：**先在既有项目的 `视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md` 与 `审查/*.md` 中按上方对照表批量替换字段名、标题与参考图 `用途` 值，再运行 `creator_markdown_check.py` 或打开创作台**；旧字段名不再被校验器识别。
+- 脚本门禁松绑与阶段规则重定级：
+  - `creator_markdown_check.py`：无 `short-drama.json` 时按提示词正文实际语种推断语言，允许纯外文标题（仅跨语种时要求人物填 `- 提示词名称：`）与零台词角色免填声线，`图片提示词项` 改为可选，支持 `- 输入参考图：无` 简写、正反打跨镜复用 `PLAN-...` 首帧、首尾同帧循环镜同图双挂及 `MOTION.输入参考图` 在分镜基础上按需增减，并放宽 `参考音频` 控制范围说明；不再扫描 `SHOT.来源` 引文逼标 `；画外：`，单条 `MOTION-*` 由 `起始帧` 或对应 `主体` / `造型状态` 参考图锁住外观（`GROUP-*` 由对应 `主体` / `造型状态` 或承接首镜的 `起始帧` 锁住外观）时免于重复粘贴静态 `LOCK-...` 锁定词，移除 `开场画面` 原字子串粘贴要求并将台词核对收窄到显式发声引文。
+  - 生产、原著、分集与剪辑校验：`production_tool.py` 对有 `source_entry` 的任务改为计算归一化换行后的条目级段落哈希（单镜修改不再连坐作废整集），生图支持 `1..16` 张输出且前置本地参数与轮询环境变量预检；`novel_index.py` 支持 Markdown `#` 标题与 `集/话/幕` 并将跳章、重号、短章归入非阻断 `warnings`；`episode_intake.py` 支持 Markdown 多级标题、十进制按位中文集号、非 `EP001` 起步、跳集与跨分卷增量 `merge` 更新已有集；`edit_tool.py` 与 `rules.mjs` 将 `<0.50s` 静帧、短尾音抢话与素材 `st_mtime` 变动改为提醒，支持同宽高比素材自动缩放并统一 `setsar=1` 与恒定帧率拼接，过滤全部 BMP 与补充平面 Emoji 防止字幕渲染崩溃。
+  - 规则分级与参考文件归并：清理 10 份 `stage-contract.md` 中的重复与旧版台账规则（移除 `AST-04`、`CON-04/06`、`IMG-12/14`、`SHT-27`、`VID-09/18`、`REV-11`、`BRK-09`、`EDT-15`，其中 `AST-03` 吸收 `AST-04` 并定为 `reviewed_invariant`），将无确定性脚本支撑的语义规则与通用爽剧手法回调为 `reviewed_invariant` / `craft_default`；撤回 `$short-drama-review` 对固定镜头、日常旧化词与画风前缀位置的自动判死并补齐成片 `major` 档；在各技能目录内归并 40 余个碎片化参考文件与孤立模板，保持技能自包含。
 - 全套技能指令、公开文档与示例去黑话与全中文化：将 10 份 `stage-contract.md`、4 份审查细则与生产适配器契约全部译为自然中文（保留规则编号与四档分级词不变），清理 12 个公开技能、维护者技能、`README.md`、`docs/` 与两套示例中的生硬直译词（如「经济性遍」「参考角色」「声音方向」「联系表」「把打击卖出去」「可覆盖估时」等）、工程状态机黑话、机械排比公式句及泄露到读者指南中的 Agent 禁令。
 
 ### Fixed
 
-- 跨脚本 Markdown 解析统一与契约对账：对齐 `creator_markdown_check.py`、`creator_views.py`、`screenplay_index.py`、`duration_estimate.py`、`breakdown_tool.py`、`production_tool.py` 与 `edit_tool.py` 对 UTF-8 BOM 头、`CRLF` 换行、围栏代码块外行内与跨行 HTML 注释剥离、加粗字段键名、非条目 `## ` 二级标题截断、紧凑中点场次标题、首场前与各场头下方的 `人物：` 声明、多词外文旁白、数字时钟前缀、各场开头 `## 场景站位` 及 `.opus` 参考音频的解析边界，拦截 `IMG-*`/`GROUP-*`/`MOTION-*` 中的未决参考图备注，并新增跨脚本解析一致性与跨技能规则等级核对单测。
-- 生产接口与任务状态（`production_tool.py`、`provider_adapters.py`）：中文提示词拼接参考素材约束时按中文用途词（含新增 `主体`）渲染，不再输出内部英文枚举；补齐 `.opus`、`.m4a`、`.aac`、`.flac`、`.mov`、`.webm` 内联参考媒体及 `gpt-image-2` 图生图参考素材的本地文件头与大小预检；修复 Python 3.9 `socket.timeout` 及 `URLError` 超时分类、同步接口收到 `collect_provider_job_id` 误重提交、`run` 与 `collect` 并发竞态覆盖已成功记录、局部重跑 `prepare` 后 `status` 仍显示旧指纹 `succeeded` 以及旧超时句柄被误报为孤儿远端任务的问题。
-- 剧本估时、原著校验、创作台与剪辑细节：补齐 `project_tool.py` 对 `format.pacing.on_screen_text_characters_per_second` 的配置支持，修复 `duration_estimate.py` 将含常见动作单字的人名、编号角色名及含货币符号的分词语言数字误判的问题；修复 `novel_index.py` 数码章号（如“第一零八章”）覆盖算错、空索引 `coverage` 误判完成与 `verify` 漏检等行数原文修改的问题；修复 `episode_intake.py verify` 放行空 `source_ref` 与布尔伪整数的问题；修复创作台将横屏画幅显示为 `竖屏 16:9`、无设定图剧集卡在「写图片提示词」、字幕重点词高亮破坏 `<mark>` 标签、跨类同名设定冲突及连字搜索偏移错位的问题；修复 `edit_tool.py` 全静音成片触发第二遍 `loudnorm` 崩溃与输出 `-Infinity` 非法 JSON、路径含单引号导致拼接与字幕滤镜失败、两项式任务面板吞进度条、仅声明交付帧率漏报提醒及前序重放段掩盖后段同源重叠检查的问题；加固各辅助脚本的软链目录越界校验，将 `tools/compact_refs.py` 改为全集预检后原子替换（避免误折 `*_locator`、半截写入或抛出软链异常栈），更新 `.gitignore`、`DESIGN.md`、`ci.yml`（补齐 Python 3.9 标准库类型检查、全套技能 `selftest.py` 与 `rules.mjs` 语法检查）并同步 `.release/policy.json` 与 `.clawhub/publish.json` 的依赖版本锁。
+- 跨脚本 Markdown 解析统一与契约对账：对齐 `creator_markdown_check.py`、`creator_views.py`、`screenplay_index.py`、`duration_estimate.py`、`breakdown_tool.py`、`production_tool.py` 与 `edit_tool.py` 对 UTF-8 BOM 头、`CRLF` 换行、围栏代码块及块外行内与跨行 HTML 注释剥离、加粗字段键名、非条目 `## ` 二级标题截断、紧凑中点场次标题、首场前与各场头下方的 `人物：` 声明、多词外文旁白、数字时钟前缀、各场开头 `## 场景站位` 及 `.opus` 参考音频的解析边界，并拦截 `IMG-*`、`GROUP-*`、`MOTION-*` 中的未决参考图备注。
+- 生产接口、批次续跑与权威记录状态（`production_tool.py`、`provider_adapters.py`）：中文提示词拼接参考素材约束时按中文用途词（含新增 `主体`）渲染，不再输出内部英文枚举；补齐 `.opus`、`.m4a`、`.aac`、`.flac`、`.mov`、`.webm` 内联参考媒体及 `gpt-image-2` 图生图参考素材的本地文件头与大小预检；修复 Python 3.9 `socket.timeout` 及 `URLError` 超时分类、同步接口收到 `collect_provider_job_id` 误重提交、`run` 与 `collect` 并发竞态覆盖已成功记录、局部重跑 `prepare` 后 `status` 仍显示旧指纹 `succeeded`、批次部分中断时提前核销批次确认回执导致无法直接续跑、嵌套目录 `authority` 替换后父目录摘要失步以及旧超时句柄被误报为孤儿远端任务的问题。
+- 剧本估时、原著校验、创作台与剪辑细节：补齐 `project_tool.py` 对 `format.pacing.on_screen_text_characters_per_second` 的配置支持，修复 `duration_estimate.py` 将含常见动作单字的人名、编号角色名及含货币符号的分词语言数字误判的问题；修复 `novel_index.py` 数码章号（如“第一零八章”）覆盖算错、空索引 `coverage` 误判完成与 `verify` 漏检等行数原文修改的问题；修复 `episode_intake.py verify` 放行空 `source_ref` 与布尔伪整数的问题；修复创作台将横屏画幅显示为 `竖屏 16:9`、无设定图剧集卡在「写图片提示词」、字幕重点词高亮破坏 `<mark>` 标签、跨类同名设定冲突及连字搜索偏移错位的问题；修复 `edit_tool.py` 全静音成片触发第二遍 `loudnorm` 崩溃与输出 `-Infinity` 非法 JSON、路径含单引号导致拼接与字幕滤镜失败、两项式任务面板吞进度条、仅声明交付帧率漏报提醒及前序重放段掩盖后段同源重叠检查的问题；加固各辅助脚本的软链目录越界校验，并将 `tools/compact_refs.py` 改为全集预检后原子替换。
 - 提示词示例与审查文档：清理视频提示词、分镜与节选示例正文中漏给生成模型的内部概念词（「已接受起点」「只是空间锚点」「固定建筑锚点」「轴线左侧」），修正 `screenplay-to-keyframe-example.md` 直接照抄触发校验报错的标题与反引号格式；修正 `short-drama-review/references/stage-contract.md` 中指向 `generated-media.md` 的文件名引用，移除 `rubric-visual-motion.md` 中已废弃的 `attention_handoffs[]` 字段说明，并修正 6 处繁简与异体错字。
 
 ## [0.11.2] - 2026-11-07
@@ -2028,7 +2032,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.10.2...v0.11.0
