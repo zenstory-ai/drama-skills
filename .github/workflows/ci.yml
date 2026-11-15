@@ -17,7 +17,9 @@ jobs:
   # The tests use unittest directly, so CI does not install a second test runner.
   test:
     name: tests (py${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    # actions/python-versions does not ship Python 3.9 for Ubuntu 26.04+; pin the
+    # declared 3.9 floor to ubuntu-24.04 while newer runtimes track ubuntu-latest.
+    runs-on: ${{ matrix.python-version == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +37,8 @@ jobs:
 
   dashboard-browser:
     name: Dashboard browser regressions
-    runs-on: ubuntu-latest
+    # Pinned playwright==1.58.0 supports Chromium host deps through ubuntu-24.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       DASHBOARD_BROWSER_REQUIRED: "1"
