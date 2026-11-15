@@ -1119,6 +1119,37 @@ class RoundThreePlanAndSpeakerTests(unittest.TestCase):
             self.assertEqual(planned["duration"], 6.0)
             self.assertNotIn("plan_problem", planned)
 
+            # Fenced code blocks in 剧本.md and 分镜.md must not leak fake speakers or shots.
+            fenced_script = (
+                "# EP001\n\n"
+                "```markdown\n"
+                "人物：示例角色\n\n"
+                "## EP001-SC099 内 · 示例场景 · 日\n\n"
+                "示例角色：这段代码块台词不应计入。\n"
+                "```\n\n"
+                "## EP001-SC001 内 · 走廊 · 夜\n\n"
+                "许棠：只算这一句。\n"
+            )
+            self.assertEqual(breakdown.screenplay_speakers(fenced_script), {"许棠"})
+            self.assertEqual(
+                breakdown.spoken_lines(fenced_script, {"许棠", "示例角色"}),
+                [(None, "只算这一句。")],
+            )
+            (ep / "剧本.md").write_text(fenced_script, encoding="utf-8")
+            (ep / "分镜.md").write_text(
+                "```markdown\n"
+                "## SHOT-EP001-999 · 代码块示例镜\n"
+                "- 时长：88s\n"
+                "```\n\n"
+                "## SHOT-EP001-001 · 真实镜头\n"
+                "- 时长：4s\n",
+                encoding="utf-8",
+            )
+            fenced_plan = breakdown.plan_episode(ep)
+            self.assertEqual(fenced_plan["shot_seconds"], [4.0])
+            self.assertEqual(fenced_plan["duration"], 4.0)
+            self.assertNotIn("plan_problem", fenced_plan)
+
 
 if __name__ == "__main__":
     unittest.main()

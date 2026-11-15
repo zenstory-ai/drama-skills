@@ -1805,6 +1805,58 @@ def _write_authority_value(project: dict[str, Any], tokens: list[str], value: An
     return block
 
 
+def _authority_value_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _resolve_manifest_pointer(project: Mapping[str, Any], pointer: str) -> tuple[bool, Any]:
+    try:
+        tokens = _authority_tokens(pointer)
+    except ValueError:
+        return False, None
+    missing = object()
+    cursor: Any = project
+    for token in tokens:
+        cursor = cursor.get(token, missing) if isinstance(cursor, Mapping) else missing
+        if cursor is missing:
+            return False, None
+    return True, cursor
+
+
+def _record_authority_binding(
+    bindings: dict[str, Any],
+    project: Mapping[str, Any],
+    pointer: str,
+    written_val: Any,
+    *,
+    decision: str,
+    set_at: str,
+    pre_report: Mapping[str, str],
+) -> None:
+    child_prefix = f"{pointer}/"
+    for existing_key in list(bindings):
+        if existing_key.startswith(child_prefix):
+            del bindings[existing_key]
+    bindings[pointer] = {
+        "decision": decision,
+        "value_sha256": _authority_value_sha256(written_val),
+        "set_at": set_at,
+    }
+    for anc in list(bindings):
+        if (
+            isinstance(anc, str)
+            and pointer.startswith(f"{anc}/")
+            and pre_report.get(anc) == "bound"
+            and isinstance(bindings.get(anc), dict)
+        ):
+            found, anc_val = _resolve_manifest_pointer(project, anc)
+            if found:
+                bindings[anc]["value_sha256"] = _authority_value_sha256(anc_val)
+                bindings[anc]["set_at"] = set_at
+
+
 def set_creator_authority(
     root: Path,
     *,
@@ -1847,6 +1899,7 @@ def set_creator_authority(
         project = json.loads(project_path.read_text(encoding="utf-8"))
         if not isinstance(project, dict):
             raise ValueError("project manifest must be an object")
+        pre_report = _authority_report(project, state)
         rhythm = tokens[:2] == RHYTHM_PROFILE_TOKENS
         authority = project.get(AUTHORITY_ROOT_TOKEN)
         if rhythm and len(tokens) > 2:
@@ -1883,15 +1936,15 @@ def set_creator_authority(
         if not isinstance(bindings, dict):
             bindings = {}
             state["authority"] = bindings
-        bindings[field] = {
-            "decision": f"{_relative_path(decision_path)}#{decision_id}",
-            # The written value, so a later reader can tell the manifest still
-            # holds what the decision said rather than a hand edit made since.
-            "value_sha256": hashlib.sha256(
-                json.dumps(written, ensure_ascii=False, sort_keys=True).encode("utf-8")
-            ).hexdigest(),
-            "set_at": utc_now(),
-        }
+        _record_authority_binding(
+            bindings,
+            project,
+            field,
+            written,
+            decision=f"{_relative_path(decision_path)}#{decision_id}",
+            set_at=utc_now(),
+            pre_report=pre_report,
+        )
         _save_state(root, state, action="authority_set")
     return {"field": field, "decision_id": decision_id, "value": written}
 
@@ -2146,6 +2199,7 @@ def configure_project(
         project = json.loads(project_path.read_text(encoding="utf-8"))
         if not isinstance(project, dict):
             raise ValueError("project manifest must be an object")
+        pre_report = _authority_report(project, state)
         format_block = project.get("format")
         if not isinstance(format_block, dict):
             format_block = {}
@@ -2272,17 +2326,15 @@ def configure_project(
             state["authority"] = bindings
         now = utc_now()
         for pointer, written_val in bound_pointers.items():
-            child_prefix = f"{pointer}/"
-            for existing_key in list(bindings):
-                if existing_key.startswith(child_prefix):
-                    del bindings[existing_key]
-            bindings[pointer] = {
-                "decision": "direct:configure",
-                "value_sha256": hashlib.sha256(
-                    json.dumps(written_val, ensure_ascii=False, sort_keys=True).encode("utf-8")
-                ).hexdigest(),
-                "set_at": now,
-            }
+            _record_authority_binding(
+                bindings,
+                project,
+                pointer,
+                written_val,
+                decision="direct:configure",
+                set_at=now,
+                pre_report=pre_report,
+            )
         _save_state(root, state, action="configured")
     return {
         "project_root": str(root),

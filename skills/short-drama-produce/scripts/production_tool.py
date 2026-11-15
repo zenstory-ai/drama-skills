@@ -902,6 +902,40 @@ _COPYABLE_BLOCK_RE = re.compile(
 _COPYABLE_END_RE = re.compile(r"^#{1,6}[ \t\u3000]+", re.MULTILINE)
 
 
+def _line_opens_multiline_comment(line: str) -> bool:
+    idx = 0
+    while True:
+        open_at = line.find("<!--", idx)
+        if open_at == -1:
+            return False
+        close_at = line.find("-->", open_at + 4)
+        if close_at == -1:
+            return True
+        idx = close_at + 3
+
+
+def _copyable_protected_end(text: str, heading_end: int) -> int:
+    length = len(text)
+    cursor = heading_end
+    if cursor < length and text[cursor] == "\r":
+        cursor += 1
+    if cursor < length and text[cursor] == "\n":
+        cursor += 1
+    last_quote_end: int | None = None
+    while cursor < length:
+        nl = text.find("\n", cursor)
+        line_end = length if nl == -1 else nl + 1
+        raw_line = text[cursor:line_end].rstrip("\r\n")
+        if _COPYABLE_END_RE.match(raw_line):
+            break
+        if raw_line.lstrip(" \t\u3000").startswith(">"):
+            last_quote_end = line_end
+        elif _line_opens_multiline_comment(raw_line):
+            break
+        cursor = line_end
+    return last_quote_end if last_quote_end is not None else heading_end
+
+
 def _strip_html_comments(text: str, *, preserve_copyable: bool = False) -> str:
     """Strip HTML comments outside Markdown code spans/fences while keeping line numbers."""
     if "<!--" not in text:
@@ -946,9 +980,8 @@ def _strip_html_comments(text: str, *, preserve_copyable: bool = False) -> str:
                 and copy_block.start() < comment_open
                 and (protected_start is None or copy_block.start() < protected_start)
             ):
-                following = _COPYABLE_END_RE.search(text, copy_block.end())
                 protected_start = copy_block.start()
-                protected_end = length if following is None else following.start()
+                protected_end = _copyable_protected_end(text, copy_block.end())
 
         inline_code = _INLINE_CODE_RE.search(text, pos)
         if (
@@ -3381,6 +3414,29 @@ def run_batch(
     for index, job_id in enumerate(targets):
         if job_id in reusable_runs:
             prior = reusable_runs[job_id]
+            with _project_lock(root):
+                try:
+                    receipt = _metadata_read_json(
+                        root,
+                        ("confirmations",),
+                        f"{_job_key(job_id)}.json",
+                        maximum=MAX_RUN_RECORD_BYTES,
+                    )
+                except FileNotFoundError:
+                    receipt = None
+                if (
+                    isinstance(receipt, dict)
+                    and receipt.get("consumed_at") is None
+                    and receipt.get("fingerprint") == prior.get("fingerprint")
+                ):
+                    receipt["consumed_at"] = utc_now()
+                    receipt["run_id"] = str(prior["run_id"])
+                    _metadata_atomic_json(
+                        root,
+                        ("confirmations",),
+                        f"{_job_key(job_id)}.json",
+                        receipt,
+                    )
             skipped.append(job_id)
             succeeded.append(
                 {

@@ -606,7 +606,10 @@ class GoldenProjectTests(unittest.TestCase):
             (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
 
             root_link = base / "proj-link"
-            root_link.symlink_to(proj, target_is_directory=True)
+            try:
+                root_link.symlink_to(proj, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             self.assertEqual(list(compact_refs.iter_data_files(root_link)), [])
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
                 io.StringIO()
@@ -616,7 +619,10 @@ class GoldenProjectTests(unittest.TestCase):
                 self.assertEqual(compact_refs.main(["--check", str(root_link)]), 2)
 
             file_link = proj / "linked.json"
-            file_link.symlink_to(outside)
+            try:
+                file_link.symlink_to(outside)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             self.assertNotIn(file_link, list(compact_refs.iter_data_files(proj)))
             out_link, err_link = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out_link), contextlib.redirect_stderr(err_link):
@@ -627,7 +633,10 @@ class GoldenProjectTests(unittest.TestCase):
             file_link.unlink()
 
             md_link = proj / "note-link.md"
-            md_link.symlink_to(outside_md)
+            try:
+                md_link.symlink_to(outside_md)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             (proj / "escape.json").write_text(
                 json.dumps(
                     {

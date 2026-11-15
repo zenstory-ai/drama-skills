@@ -310,16 +310,15 @@ def build_index(
             close_idx = raw_text.find("-->")
             if close_idx == -1:
                 continue
-            remainder = _HTML_COMMENT_RE.sub("", raw_text[close_idx + 3 :])
-            in_comment = "<!--" in remainder
-            continue
+            raw_text = raw_text[close_idx + 3 :]
+            in_comment = False
 
-        opened_fence = _fence_open(raw_text)
+        after_closed = _HTML_COMMENT_RE.sub("", raw_text)
+        opened_fence = _fence_open(raw_text) or _fence_open(after_closed)
         if opened_fence is not None:
             fence_state = opened_fence
             continue
 
-        after_closed = _HTML_COMMENT_RE.sub("", raw_text)
         if "<!--" in after_closed:
             in_comment = True
             continue

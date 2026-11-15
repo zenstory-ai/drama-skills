@@ -21,7 +21,7 @@ Status: implemented
 2. **`edit_tool.py` 与 `creator_views.py` 支持 `GROUP-*` 剪辑来源与成员覆盖**：
    - 《剪辑单.md》视频段的 `- 来源：` 与片头 `- 未采用镜头：` 均支持 `GROUP-...`（同时继续兼容把同一条合生视频按切点拆成多段 `MOTION-...` 的剪法）；
    - `edit_tool.py` 从剥离 HTML 注释后的《视频提示词.md》解析各 `GROUP-*` 的 `- 成员：` 列表：当某个 `GROUP-*` 被剪辑段采用或登记为未采用时，其包含的全部成员 `MOTION-*` 及对应 `SHOT-*` 自动计入已交代下落（`EDT-11`）；当分组全部成员归属同一剧本场次时，自动继承该场次键参与同场自动接镜（跨场或未解析分组返回 `None`）；
-   - `creator_views.parse_cut_list`、`read_episode` 与创作台前端同步识别 `GROUP-*` 来源并关联成员镜头；更新 `skills/short-drama-produce/SKILL.md`、`skills/short-drama-produce/references/adapter-contract.md`、`skills/short-drama-edit/SKILL.md` 与 `skills/short-drama-edit/references/stage-contract.md`（`EDT-01`）。
+   - `creator_views.parse_cut_list`、`read_episode` 与创作台前端同步识别 `GROUP-*` 来源并关联成员镜头；更新 `skills/short-drama-produce/SKILL.md`、`skills/short-drama-produce/references/adapter-contract.md`、`skills/short-drama-video-prompts/SKILL.md`、`skills/short-drama-video-prompts/references/stage-contract.md`（`VID-13`/`VID-27`）、`skills/short-drama/references/creator-documents.md`、`skills/short-drama-edit/SKILL.md`、`skills/short-drama-edit/references/stage-contract.md`、`skills/short-drama-edit/references/editing-guide.md` 与 `skills/short-drama-review/references/{generated-media,rubric-visual-motion}.md`。
 
 ## Alternatives considered
 

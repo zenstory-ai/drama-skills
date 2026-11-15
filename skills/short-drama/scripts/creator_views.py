@@ -446,7 +446,7 @@ def parse_storyboard(text: str) -> dict[str, Any]:
 def parse_scene_blocking(text: str) -> list[dict[str, Any]]:
     """`## 场景站位 · <scene> · <place>` blocks: the staging every shot of a scene inherits."""
 
-    text = check._strip_html_comments(_normalize_text(text))
+    text = check._strip_html_comments(_normalize_text(text), preserve_copyable=True)
     blocks = []
     for section in re.split(r"(?m)^##[ \t\u3000]+", text)[1:]:
         heading, _, body = section.partition("\n")
@@ -886,6 +886,31 @@ def _picture(fields: dict[str, str]) -> Any:
     return parsed or None
 
 
+def _split_unused_items(value: str) -> list[str]:
+    items: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in value:
+        if ch in "（(":
+            depth += 1
+            buf.append(ch)
+        elif ch in "）)":
+            if depth > 0:
+                depth -= 1
+            buf.append(ch)
+        elif ch in "；;" and depth == 0:
+            piece = "".join(buf).strip()
+            if piece:
+                items.append(piece)
+            buf = []
+        else:
+            buf.append(ch)
+    tail = "".join(buf).strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
 def parse_cut_list(
     text: str,
     motion_shots: Optional[dict[str, str]] = None,
@@ -908,9 +933,7 @@ def parse_cut_list(
         if current is None:
             preamble_field = CUT_FIELD_RE.match(raw)
             if preamble_field and _strip_emphasis(preamble_field.group(1)) == "未采用镜头":
-                unused.extend(
-                    item.strip() for item in preamble_field.group(2).split("；") if item.strip()
-                )
+                unused.extend(_split_unused_items(preamble_field.group(2)))
             preamble.append(raw)
             continue
         field = CUT_FIELD_RE.match(raw)

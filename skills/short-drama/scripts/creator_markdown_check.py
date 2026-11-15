@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path, PurePosixPath
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import NamedTuple, Optional
 
 
@@ -143,6 +143,40 @@ _COPYABLE_END_RE = re.compile(r"^#{1,6}[ \t\u3000]+", re.MULTILINE)
 _INLINE_TICK_RE = re.compile(r"`+")
 
 
+def _line_opens_multiline_comment(line: str) -> bool:
+    idx = 0
+    while True:
+        open_at = line.find("<!--", idx)
+        if open_at == -1:
+            return False
+        close_at = line.find("-->", open_at + 4)
+        if close_at == -1:
+            return True
+        idx = close_at + 3
+
+
+def _copyable_protected_end(text: str, heading_end: int) -> int:
+    length = len(text)
+    cursor = heading_end
+    if cursor < length and text[cursor] == "\r":
+        cursor += 1
+    if cursor < length and text[cursor] == "\n":
+        cursor += 1
+    last_quote_end: Optional[int] = None
+    while cursor < length:
+        nl = text.find("\n", cursor)
+        line_end = length if nl == -1 else nl + 1
+        raw_line = text[cursor:line_end].rstrip("\r\n")
+        if _COPYABLE_END_RE.match(raw_line):
+            break
+        if raw_line.lstrip(" \t\u3000").startswith(">"):
+            last_quote_end = line_end
+        elif _line_opens_multiline_comment(raw_line):
+            break
+        cursor = line_end
+    return last_quote_end if last_quote_end is not None else heading_end
+
+
 def _scan_html_comments(
     text: str, *, preserve_copyable: bool = False
 ) -> tuple[str, bool]:
@@ -206,8 +240,7 @@ def _scan_html_comments(
                 continue
             if kind == "copy":
                 assert isinstance(token, re.Match)
-                following = _COPYABLE_END_RE.search(text, token.end())
-                protected_end = length if following is None else following.start()
+                protected_end = _copyable_protected_end(text, token.end())
                 out.append(text[pos:protected_end])
                 pos = protected_end
                 continue
@@ -402,7 +435,7 @@ OTHER_SETTING_HEADING_RE = re.compile(
 # Anchored at the start of the line so a sentence that merely mentions the
 # field is prose, not a malformed declaration.
 SCREEN_NAME_LINE_RE = re.compile(
-    r"^[ \t\u3000]*[-*+]?[ \t\u3000]*(?:\*\*|__|\*|_)*提示词名称(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*)[^\r\n]*$",
+    r"^[ \t\u3000]*(?:[-+][ \t\u3000]*|\*[ \t\u3000]+)?[*_]*提示词名称[*_]*[ \t\u3000]*[：:][^\r\n]*$",
     re.MULTILINE,
 )
 SCREEN_NAME_RE = re.compile(
@@ -410,7 +443,7 @@ SCREEN_NAME_RE = re.compile(
     re.MULTILINE,
 )
 ROLE_VOICE_LINE_RE = re.compile(
-    r"^[ \t\u3000]*[-*+]?[ \t\u3000]*(?:\*\*|__|\*|_)*角色声线(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*)[^\r\n]*$",
+    r"^[ \t\u3000]*(?:[-+][ \t\u3000]*|\*[ \t\u3000]+)?[*_]*角色声线[*_]*[ \t\u3000]*[：:][^\r\n]*$",
     re.MULTILINE,
 )
 ROLE_VOICE_RE = re.compile(
@@ -435,7 +468,7 @@ OFFSCREEN_ENTRY_RE = re.compile(
 # instead of silent non-enforcement.
 IN_FRAME_SCOPE = "入画"
 LOCK_LINE_RE = re.compile(
-    r"^[ \t\u3000]*[-*+][ \t\u3000]*(?:\*\*|__|\*|_)*连戏锁(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*).*$",
+    r"^[ \t\u3000]*(?:[-+][ \t\u3000]*|\*[ \t\u3000]+|\*(?![ \t\u3000]))[*_]*连戏锁[*_]*[ \t\u3000]*[：:][^\r\n]*$",
     re.MULTILINE,
 )
 LOCK_RE = re.compile(
@@ -667,6 +700,9 @@ def _input_exempts_lock(
     shot_id: str,
     shots: Optional[Mapping[str, str]],
     entry_images: Optional[Mapping[tuple[str, str], frozenset[str]]] = None,
+    *,
+    anchor_shot_id: Optional[str] = None,
+    locked_targets: Optional[Sequence[str]] = None,
 ) -> bool:
     """Whether an 输入参考图 line already carries ``lock`` visually for ``shot_id``."""
     if not value or _is_none(value):
@@ -678,7 +714,15 @@ def _input_exempts_lock(
         purpose = (groups[4] or "").strip()
         may_control = groups[5]
         if kind == "REF" and purpose == "起始帧":
-            return True
+            if anchor_shot_id is None or anchor_shot_id == shot_id:
+                return True
+            if shots is not None:
+                if anchor_shot_id in shots:
+                    keyframe = _copyable_prompt(shots[anchor_shot_id], heading=r"首帧提示词")
+                    if keyframe is not None and _carries_surface(keyframe, lock.surface):
+                        return True
+            elif anchor_shot_id and locked_targets is not None and anchor_shot_id in locked_targets:
+                return True
         if kind == "PLAN" and purpose == "起始帧":
             if locator == shot_id:
                 return True
@@ -1938,8 +1982,17 @@ def _check_continuity_locks(
             if isinstance(third, bool):
                 group_exempt = third
             elif third.strip():
+                anchor_shot = members[0] if members else ""
                 group_exempt = all(
-                    _input_exempts_lock(third, lock, shot_id, shots, entry_images)
+                    _input_exempts_lock(
+                        third,
+                        lock,
+                        shot_id,
+                        shots,
+                        entry_images,
+                        anchor_shot_id=anchor_shot,
+                        locked_targets=targets,
+                    )
                     for shot_id in locked_shots
                 )
             else:

@@ -3532,6 +3532,85 @@ class ConfirmedProductionTests(unittest.TestCase):
             if out_dir.exists():
                 self.assertEqual(list(out_dir.glob(".short-drama-tmp-*")), [])
 
+    def test_resumed_batch_consumes_reusable_job_receipt_and_marks_batch_succeeded(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            j1 = self.write_job(root, job_id="EP001-RESUME-1", overwrite=True)
+            j2_doc = json.loads(j1.read_text(encoding="utf-8"))
+            j2_doc["job_id"] = "EP001-RESUME-2"
+            j2_doc["outputs"] = ["剧集/EP001/制作成果/image/EP001-RESUME-2.png"]
+            j2 = root / "resume-2.json"
+            j2.write_text(json.dumps(j2_doc, ensure_ascii=False), encoding="utf-8")
+
+            flaky_marker = Path(directory) / "fail-once.flag"
+            flaky_marker.write_text("fail", encoding="utf-8")
+            flaky_adapter = Path(directory) / "flaky_adapter.py"
+            flaky_adapter.write_text(
+                "import json, pathlib, sys\n"
+                "job = json.load(sys.stdin)\n"
+                f"flag = pathlib.Path({str(flaky_marker)!r})\n"
+                "if job['job_id'] == 'EP001-RESUME-2' and flag.exists():\n"
+                "    flag.unlink()\n"
+                "    print(json.dumps({'error': {'provider': 'fixture', 'category': 'remote',\n"
+                "        'code': 'upstream_500', 'retryable': True, 'submitted': True}}))\n"
+                "    raise SystemExit(1)\n"
+                "out = pathlib.Path(job['output_root']) / 'ok.png'\n"
+                "out.write_bytes(b'\\x89PNG\\r\\n\\x1a\\nok')\n"
+                "print(json.dumps({'outputs': [{'target': job['outputs'][0], 'source': str(out)}]}))\n",
+                encoding="utf-8",
+            )
+            cfg = Path(directory) / "flaky-cfg.json"
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(flaky_adapter)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            prepared = production_tool.prepare_batch(
+                root, [j1, j2], batch_id="batch-resume"
+            )
+            production_tool.confirm_batch(
+                root, confirmation=prepared["confirmation"], batch_id="batch-resume"
+            )
+            first = production_tool.run_batch(
+                root, adapter_config=cfg, batch_id="batch-resume"
+            )
+            self.assertEqual(first["state"], "failed")
+            self.assertEqual([item["job_id"] for item in first["succeeded"]], ["EP001-RESUME-1"])
+            self.assertEqual([item["job_id"] for item in first["failed"]], ["EP001-RESUME-2"])
+
+            # Re-confirm batch to retry the failed job while reusing EP001-RESUME-1.
+            production_tool.confirm_batch(
+                root, confirmation=prepared["confirmation"], batch_id="batch-resume"
+            )
+            second = production_tool.run_batch(
+                root, adapter_config=cfg, batch_id="batch-resume"
+            )
+            self.assertEqual(second["state"], "succeeded")
+            self.assertEqual(second["skipped"], ["EP001-RESUME-1"])
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-RESUME-1")["state"],
+                "succeeded",
+            )
+            self.assertEqual(
+                production_tool.batch_status(root, batch_id="batch-resume")["state"],
+                "succeeded",
+            )
+            with self.assertRaises(production_tool.ConfirmationRequiredError):
+                production_tool.run_job(
+                    root, job_id="EP001-RESUME-1", adapter_config=cfg
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

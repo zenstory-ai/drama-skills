@@ -621,7 +621,10 @@ class CompactRefsMigrationSafetyTests(unittest.TestCase):
             proj = base / "proj"
             proj.mkdir()
             (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
-            (proj / "linked.json").symlink_to(outside)
+            try:
+                (proj / "linked.json").symlink_to(outside)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
 
             for flag in ("--check", "--migrate"):
                 proc = subprocess.run(
@@ -637,7 +640,10 @@ class CompactRefsMigrationSafetyTests(unittest.TestCase):
 
             (proj / "linked.json").unlink()
             link_parent = base / "link-parent"
-            link_parent.symlink_to(base, target_is_directory=True)
+            try:
+                link_parent.symlink_to(base, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             for flag in ("--check", "--migrate"):
                 proc = subprocess.run(
                     [sys.executable, "-B", str(tool), flag, "link-parent/proj"],

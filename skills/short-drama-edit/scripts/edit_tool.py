@@ -467,6 +467,40 @@ def _normalize_markdown_text(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _line_opens_multiline_comment(line: str) -> bool:
+    idx = 0
+    while True:
+        open_at = line.find("<!--", idx)
+        if open_at == -1:
+            return False
+        close_at = line.find("-->", open_at + 4)
+        if close_at == -1:
+            return True
+        idx = close_at + 3
+
+
+def _copyable_protected_end(text: str, heading_end: int) -> int:
+    length = len(text)
+    cursor = heading_end
+    if cursor < length and text[cursor] == "\r":
+        cursor += 1
+    if cursor < length and text[cursor] == "\n":
+        cursor += 1
+    last_quote_end: Optional[int] = None
+    while cursor < length:
+        nl = text.find("\n", cursor)
+        line_end = length if nl == -1 else nl + 1
+        raw_line = text[cursor:line_end].rstrip("\r\n")
+        if _COPYABLE_END_RE.match(raw_line):
+            break
+        if raw_line.lstrip(" \t\u3000").startswith(">"):
+            last_quote_end = line_end
+        elif _line_opens_multiline_comment(raw_line):
+            break
+        cursor = line_end
+    return last_quote_end if last_quote_end is not None else heading_end
+
+
 def _strip_html_comments(text: str, *, preserve_copyable: bool = False) -> str:
     """Strip HTML comments outside Markdown code spans/fences while keeping line numbers."""
 
@@ -512,9 +546,8 @@ def _strip_html_comments(text: str, *, preserve_copyable: bool = False) -> str:
                 and copy_block.start() < comment_open
                 and (protected_start is None or copy_block.start() < protected_start)
             ):
-                following = _COPYABLE_END_RE.search(text, copy_block.end())
                 protected_start = copy_block.start()
-                protected_end = length if following is None else following.start()
+                protected_end = _copyable_protected_end(text, copy_block.end())
 
         inline_code = _INLINE_CODE_RE.search(text, pos)
         if (

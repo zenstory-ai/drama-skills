@@ -766,6 +766,59 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
             [],
         )
 
+    def test_post_blockquote_comments_do_not_revive_sections_and_unused_splits_respect_parens(
+        self,
+    ) -> None:
+        doc = (
+            "## SHOT-EP001-001 · 开场\n"
+            "- 时长：4s\n\n"
+            "### 首帧提示词\n"
+            "> 屏幕上保留字面量 <!-- keep --> 代码片段。\n\n"
+            "<!--\n"
+            "## SHOT-EP001-999 · 已注释废镜\n"
+            "- 时长：99s\n"
+            "-->\n\n"
+            "## SHOT-EP001-002 · 收尾\n"
+            "- 时长：3s\n\n"
+            "### 首帧提示词\n"
+            "> 走廊尽头定格。\n"
+            "<!-- 本集完 -->\n"
+        )
+        for strip_fn in (
+            lambda s: creator_check._strip_html_comments(s, preserve_copyable=True),
+            lambda s: production_tool._strip_html_comments(s, preserve_copyable=True),
+            lambda s: edit_tool._strip_html_comments(s, preserve_copyable=True),
+        ):
+            stripped = strip_fn(doc)
+            self.assertIn("<!-- keep -->", stripped)
+            self.assertNotIn("SHOT-EP001-999", stripped)
+            self.assertNotIn("本集完", stripped)
+
+        _, unclosed = creator_check._scan_html_comments(
+            doc + "<!-- 未闭合尾注\n", preserve_copyable=True
+        )
+        self.assertTrue(unclosed)
+
+        cut_md = (
+            "# EP001 剪辑单\n\n"
+            "- 未采用镜头：MOTION-EP001-002（景别过近；改用反应镜）；"
+            "MOTION-EP001-003(时长不足;留作备选)\n\n"
+            "## CUT-001 · 主镜\n"
+            "- 来源：MOTION-EP001-001 · 剧集/EP001/制作成果/video/group01.mp4\n"
+            "- 入点：0.00\n"
+            "- 出点：4.00\n"
+            "- 时长：4.00\n"
+            "- 取舍：保留开门动作。\n"
+        )
+        view_cuts = creator_views.parse_cut_list(cut_md)
+        self.assertEqual(
+            view_cuts["unused"],
+            [
+                "MOTION-EP001-002（景别过近；改用反应镜）",
+                "MOTION-EP001-003(时长不足;留作备选)",
+            ],
+        )
+
 
 class CrossSkillRuleTierParityTests(unittest.TestCase):
     TIERS = {

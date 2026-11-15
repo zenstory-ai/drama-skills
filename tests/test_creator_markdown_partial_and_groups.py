@@ -811,7 +811,10 @@ class RelaxedGateContractTests(EpisodeCase):
         episode = voice.bound_episode(self.project)
         with tempfile.TemporaryDirectory() as link_parent:
             symlink_root = Path(link_parent) / "linked_project"
-            symlink_root.symlink_to(self.project, target_is_directory=True)
+            try:
+                symlink_root.symlink_to(self.project, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             self.assertEqual(
                 check.validate_episode(symlink_root / "剧集/EP001", symlink_root),
                 [],
@@ -831,7 +834,10 @@ class RelaxedGateContractTests(EpisodeCase):
             outside_file = Path(outside_dir) / "outside.png"
             outside_file.write_bytes(b"PNG")
             escaped_link = self.project / "输入/参考图/越界软链.png"
-            escaped_link.symlink_to(outside_file)
+            try:
+                escaped_link.symlink_to(outside_file)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             board_path = episode / "分镜.md"
             board_path.write_text(
                 board_path.read_text(encoding="utf-8").replace(
@@ -976,6 +982,68 @@ class RelaxedGateContractTests(EpisodeCase):
             any("视觉设定.md" in err and "未闭合的 HTML 注释" in err for err in unclosed_errors),
             unclosed_errors,
         )
+
+    def test_group_ref_start_frame_only_exempts_locks_carried_by_group_opening_shot(self) -> None:
+        start_rel = "剧集/EP001/制作成果/shot001_start.png"
+        (self.project / start_rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.project / start_rel).write_bytes(b"PNG")
+        subj_rel = "输入/参考图/江晨军装.png"
+        (self.project / subj_rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.project / subj_rel).write_bytes(b"PNG")
+
+        # Scope LOCK-JIANGCHEN-DRESS to SHOT-EP001-002 only, and strip SURFACE from SHOT-EP001-001's keyframe.
+        visual_path = self.episode / "视觉设定.md"
+        visual_path.write_text(
+            visual_path.read_text(encoding="utf-8")
+            .replace("（镜头：入画；", "（镜头：SHOT-EP001-002；", 1)
+            .replace(
+                "- 提示词名称：Jiangchen\n",
+                f"- 提示词名称：Jiangchen\n- 参考图：{subj_rel}\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        board_path = self.episode / "分镜.md"
+        s1 = check._sections(board_path.read_text(encoding="utf-8"), "SHOT")["SHOT-EP001-001"]
+        board_path.write_text(
+            board_path.read_text(encoding="utf-8").replace(
+                s1, s1.replace(SURFACE, "plain dark coat"), 1
+            ),
+            encoding="utf-8",
+        )
+
+        videos_path = self.episode / "视频提示词.md"
+        base_videos = videos_path.read_text(encoding="utf-8")
+        group_only_start_ref = (
+            base_videos.rstrip()
+            + "\n\n## GROUP-EP001-01 · 前两镜合生\n"
+            + "- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
+            + "- 时长：7s\n"
+            + f"- 输入参考图：REF-G01（顺序：1）· {start_rel}《首镜起始帧》"
+            "（用途：起始帧；控制：开场构图；不得控制：后续动作）\n\n"
+            + "### 可复制提示词\n"
+            + "> Empty office doorway at first, then Jiangchen steps in and pauses.\n"
+        )
+        videos_path.write_text(group_only_start_ref, encoding="utf-8")
+        missing_lock_errors = self.errors()
+        self.assertTrue(
+            any(
+                "LOCK-JIANGCHEN-DRESS" in err and "GROUP-EP001-01" in err
+                for err in missing_lock_errors
+            ),
+            missing_lock_errors,
+        )
+
+        # Adding a subject reference for Jiangchen on GROUP-EP001-01 exempts the lock cleanly.
+        group_with_subject_ref = group_only_start_ref.replace(
+            "（用途：起始帧；控制：开场构图；不得控制：后续动作）",
+            "（用途：起始帧；控制：开场构图；不得控制：后续动作）；"
+            f"REF-G02（顺序：2）· {subj_rel}《江晨定妆》"
+            "（用途：主体；控制：服装外貌；不得控制：构图、动作）",
+            1,
+        )
+        videos_path.write_text(group_with_subject_ref, encoding="utf-8")
+        self.assertEqual(self.errors(), [])
 
 
 if __name__ == "__main__":

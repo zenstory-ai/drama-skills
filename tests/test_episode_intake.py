@@ -850,9 +850,10 @@ class HardenedValidationTests(unittest.TestCase):
             boundaries = root / "boundaries.jsonl"
             index = root / "manual-index.json"
             sliced = root / "ep001.txt"
-            source.write_text(
-                "EP01：许棠在后台拒签假合同。\n\nEP02：周薄森当场截住录音笔。\n",
-                encoding="utf-8",
+            source.write_bytes(
+                "EP01：许棠在后台拒签假合同。\n\nEP02：周薄森当场截住录音笔。\n".encode(
+                    "utf-8"
+                )
             )
             boundaries.write_text(
                 '{"episode_id":"EP001","line_start":1,"line_end":2}\n'
@@ -866,7 +867,7 @@ class HardenedValidationTests(unittest.TestCase):
                 run_cli("slice", index, source, "EP001", "--out", sliced).returncode, 0
             )
             self.assertEqual(
-                sliced.read_text(encoding="utf-8"),
+                sliced.read_bytes().decode("utf-8"),
                 "EP01：许棠在后台拒签假合同。\n\n",
             )
             self.assertEqual(
@@ -876,7 +877,7 @@ class HardenedValidationTests(unittest.TestCase):
 
             # A whitespace-only manual span is still flagged as empty.
             blank_source = root / "blank-manual.txt"
-            blank_source.write_text("   \n\n正文第二集。\n", encoding="utf-8")
+            blank_source.write_bytes("   \n\n正文第二集。\n".encode("utf-8"))
             blank_doc = episode_intake.make_manual_index(
                 blank_source,
                 [
@@ -893,16 +894,17 @@ class HardenedValidationTests(unittest.TestCase):
             "<!--\n"
             "# EP099 注释里的废弃集标题\n"
             "第88集 注释里的中文集标题\n"
-            "-->\n"
-            "<!--> # EP098 退化注释包裹的假标题 -->\n"
-            "```markdown\n"
+            "-->```markdown\n"
             "# EP077 代码块里的示例集标题\n"
             "第66集 代码块示例\n"
             "```\n"
+            "<!--> # EP098 退化注释包裹的假标题 -->\n"
             "~~~text\n"
             "# EP055 波浪线代码块示例\n"
             "~~~\n"
-            "# EP001·夜班 <!-- 行尾备注 -->\n"
+            "<!--\n"
+            "跨行前置备注\n"
+            "--># EP001·夜班 <!-- 行尾备注 -->\n"
             "甲推门进来。\n"
             "# EP002—转折\n"
             "乙转身按住门把。\n"
@@ -927,7 +929,7 @@ class HardenedValidationTests(unittest.TestCase):
             episode_intake.write_index(index, document)
             self.assertTrue(episode_intake.verify_index(index, source)["verified"])
             ep1 = episode_intake.slice_episode(index, source, "EP001").decode("utf-8")
-            self.assertTrue(ep1.startswith("# EP001·夜班"))
+            self.assertIn("# EP001·夜班", ep1.splitlines()[0])
 
     def test_manual_index_and_verify_reject_invalid_utf8_bytes_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

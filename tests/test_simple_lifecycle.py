@@ -2137,6 +2137,104 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 [item["source"] for item in packaged["files"]],
             )
 
+    def test_nested_authority_updates_refresh_bound_ancestors_without_laundering_hand_edits(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            project_tool.initialize_project(
+                root,
+                title="权威层级测试",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            project_tool.configure_project(
+                root,
+                visual_direction={"form": "实拍", "palette": "冷青"},
+            )
+            decisions_rel = "创作者决策/decisions.jsonl"
+            decisions_text = (
+                json.dumps(
+                    {
+                        "decision_id": "DEC-PALETTE-1",
+                        "status": "accepted",
+                        "target_locators": [
+                            {
+                                "src": "short-drama",
+                                "field": "/creator_authority/visual_direction/choices/palette",
+                            }
+                        ],
+                        "accepted_value": "暖琥珀",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "decision_id": "DEC-PALETTE-2",
+                        "status": "accepted",
+                        "target_locators": [
+                            {
+                                "src": "short-drama",
+                                "field": "/creator_authority/visual_direction/choices/palette",
+                            }
+                        ],
+                        "accepted_value": "深海蓝",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="decisions",
+                outputs={decisions_rel: decisions_text},
+                inputs=[],
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="decisions", decision="accepted"
+            )
+
+            project_tool.set_creator_authority(
+                root,
+                field="/creator_authority/visual_direction/choices/palette",
+                decision_path=decisions_rel,
+                decision_id="DEC-PALETTE-1",
+            )
+            authority_status = project_tool.project_status(root)["authority"]
+            self.assertEqual(
+                authority_status["/creator_authority/visual_direction"], "bound"
+            )
+            self.assertEqual(
+                authority_status["/creator_authority/visual_direction/choices/palette"],
+                "bound",
+            )
+
+            # A genuine hand edit to a sibling key must NOT be laundered by a subsequent leaf write.
+            manifest_path = root / "short-drama.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["creator_authority"]["visual_direction"]["choices"]["form"] = "手改画风"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            project_tool.set_creator_authority(
+                root,
+                field="/creator_authority/visual_direction/choices/palette",
+                decision_path=decisions_rel,
+                decision_id="DEC-PALETTE-2",
+            )
+            after_hand_edit = project_tool.project_status(root)["authority"]
+            self.assertEqual(
+                after_hand_edit["/creator_authority/visual_direction"], "hand_edited"
+            )
+            self.assertEqual(
+                after_hand_edit["/creator_authority/visual_direction/choices/palette"],
+                "bound",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

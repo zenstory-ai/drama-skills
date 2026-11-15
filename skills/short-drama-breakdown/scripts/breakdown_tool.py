@@ -1060,6 +1060,40 @@ def _strip_html_comments(text: str) -> str:
     return "".join(out)
 
 
+def _strip_fenced_code(text: str) -> str:
+    """Blank fenced Markdown code blocks while keeping line numbers."""
+
+    text = _normalize_text(text)
+    out: List[str] = []
+    pos = 0
+    length = len(text)
+    while pos < length:
+        fence = _FENCE_OPEN_RE.search(text, pos)
+        while (
+            fence is not None
+            and fence.group(1)[0] == "`"
+            and "`" in fence.group(2)
+        ):
+            fence = _FENCE_OPEN_RE.search(text, fence.end())
+        if fence is None:
+            out.append(text[pos:])
+            break
+        out.append(text[pos : fence.start()])
+        marker = fence.group(1)
+        after_open = text.find("\n", fence.end())
+        if after_open == -1:
+            break
+        close_re = re.compile(
+            rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*\r?$",
+            re.MULTILINE,
+        )
+        close = close_re.search(text, after_open + 1)
+        end_idx = length if close is None else close.end()
+        out.append("\n" * text[fence.start() : end_idx].count("\n"))
+        pos = end_idx
+    return "".join(out)
+
+
 def project_pacing(episode_dir: Path) -> Optional[Dict[str, Optional[float]]]:
     """The project's declared speaking and action rates, when it has them."""
 
@@ -1151,7 +1185,7 @@ def blocks(text: str) -> List[str]:
     keeps its content.
     """
 
-    text = _strip_html_comments(text)
+    text = _strip_fenced_code(_strip_html_comments(text))
     _, text = _scan_cast_lines(text)
     first_scene = SCENE_SECTION.search(text)
     if first_scene is not None:
@@ -1324,7 +1358,7 @@ def screenplay_speakers(text: str, named: Iterable[str] = ()) -> Set[str]:
 
     counts: Dict[str, int] = {}
     speakers = {item for item in named if item and item != "人物"}
-    cleaned_text = _strip_html_comments(_normalize_text(text))
+    cleaned_text = _strip_fenced_code(_strip_html_comments(_normalize_text(text)))
     cast_values, _ = _scan_cast_lines(cleaned_text)
     for raw_value in cast_values:
         stripped_value = raw_value
@@ -1433,7 +1467,9 @@ def plan_episode(episode_dir: Path, named_speakers: Iterable[str] = ()) -> Dict[
     }
     problems: List[str] = []
     if storyboard.is_file():
-        text = _strip_html_comments(_normalize_text(storyboard.read_text(encoding="utf-8")))
+        text = _strip_fenced_code(
+            _strip_html_comments(_normalize_text(storyboard.read_text(encoding="utf-8")))
+        )
         section_starts = [match.start() for match in ANY_SECTION.finditer(text)]
         shot_sections = [
             re.split(r"(?m)^###[ \t\u3000]+", text[start : (section_starts[idx + 1] if idx + 1 < len(section_starts) else len(text))], maxsplit=1)[0]
