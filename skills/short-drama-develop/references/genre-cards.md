@@ -1,6 +1,6 @@
 # 题材卡目录与选用规则
 
-题材卡放在同目录的 `genre-cards/` 下，只负责提供该赛道常用的矛盾抓手、名场面细节与制作省钱巧劲（整体属 `craft_default`，留钩与结局基调属 `taste_option`）。单集剧情永远服从创作者已敲定的设定事实、单集大纲与 [episode-design.md](episode-design.md)。
+题材卡放在同目录的 `genre-cards/` 下，只负责提供该赛道常用的矛盾支点、名场面细节与制作省钱巧劲（整体属 `craft_default`，留钩与结局基调属 `taste_option`）。单集剧情永远服从创作者已敲定的设定事实、单集大纲与 [episode-design.md](episode-design.md)。
 
 ## 选用原则
 

@@ -10,7 +10,7 @@ Compact form::
 
     {"src": "<sources key>", "record_id": "..."}
 
-with the file declaring each upstream snapshot exactly once:
+with the file declaring each upstream artifact once:
 
 * ``.json``  -> a top-level ``"sources"`` object.
 * ``.jsonl`` -> a first-line header record
@@ -22,8 +22,9 @@ with the file declaring each upstream snapshot exactly once:
 
 Usage::
 
-    python3 tools/compact_refs.py <project-dir>            # rewrite in place
-    python3 tools/compact_refs.py --check <project-dir>    # verify only
+    python3 tools/compact_refs.py <project-dir>              # rewrite in place
+    python3 tools/compact_refs.py --migrate <project-dir>    # rewrite in place (explicit)
+    python3 tools/compact_refs.py --check <project-dir>      # verify only
 
 Guarantees:
 
@@ -35,19 +36,21 @@ Guarantees:
   declaration is touched: record order, key order, creative text, IDs and every
   other field survive unchanged, and each file keeps its own indentation and
   trailing-newline convention.
-* Fixed point. Files are rewritten in topological order. When file ``F`` is
-  rewritten its bytes change, so every later reference whose recorded hash was
-  ``F``'s pre-rewrite hash is re-bound to ``F``'s new hash. A recorded hash that
-  did not match the pre-rewrite bytes names some other snapshot and is preserved
-  verbatim.
+* Fixed point. Files are rewritten in topological order, and a file keeps the
+  inline form when declaring ``sources`` would not shrink its byte size. Keys
+  ending in ``_locator`` (such as ``target_locator`` for a not-yet-published
+  artifact) keep their inline ``{"owner", "artifact"}`` form and are never
+  folded into ``sources``.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import os
+import stat
 import sys
+import tempfile
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePosixPath
@@ -67,7 +70,7 @@ SOURCES_SCHEMA_VERSION = "1.0.0"
 
 
 class ResolvedRef(NamedTuple):
-    """An upstream reference with its snapshot resolved, whichever form it used."""
+    """An upstream reference with its owner and artifact resolved, whichever form it used."""
 
     owner: str
     artifact: str
@@ -151,16 +154,19 @@ MAX_KEY_QUALIFIER_DEPTH = 8
 # A reference slot is named by convention, so --check can tell a defective
 # reference from an ordinary object. ``reviewed_artifacts`` is the one carrier in
 # the suite that predates the convention; ``boundary_refs`` holds named refs
-# rather than one ref, and is handled as a container below.
+# rather than one ref, and is handled as a container below. Keys ending in
+# ``_locator`` point at targets that may not be published yet and always stay in
+# inline ``{"owner", "artifact"}`` form.
 REF_CARRIER_SUFFIXES = ("_ref", "_refs")
 EXTRA_REF_CARRIERS = ("reviewed_artifacts",)
+LOCATOR_SUFFIX = "_locator"
 
 # (owner, artifact) identifies one upstream artifact.
 SourceId = tuple[str, str]
 
 
 class Finding(NamedTuple):
-    """A defect reported by ``--check``."""
+    """A defect reported by ``--check`` or ``--migrate``."""
 
     path: str
     code: str
@@ -209,8 +215,181 @@ def emit(line: str, *, stream: TextIO | None = None) -> None:
     buffer.flush()
 
 
-def sha256_bytes(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+def is_locator_key(key: str) -> bool:
+    """True for ``*_locator`` slots, which stay inline and out of ``sources``."""
+    return key.endswith(LOCATOR_SUFFIX)
+
+
+def _is_within(candidate: Path, resolved_root: Path) -> bool:
+    """Python 3.9-compatible containment check after resolving symlinks."""
+    try:
+        candidate.relative_to(resolved_root)
+        return True
+    except ValueError:
+        return False
+
+
+def _relative_posix(path: Path, root: Path) -> str:
+    return PurePosixPath(path.relative_to(root).as_posix()).as_posix()
+
+
+def _has_symlink_component(root: Path, rel_parts: tuple[str, ...]) -> bool:
+    if root.is_symlink():
+        return True
+    current = root
+    for part in rel_parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def _scan_tree_safety(root: Path, resolved_root: Path) -> list[Finding]:
+    """Report symlinks and root-escaping files among non-hidden project entries."""
+    if root.is_symlink():
+        return [Finding(".", "SYMLINK_NOT_ALLOWED", "project root may not be a symlink")]
+    findings: list[Finding] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirpath_path = Path(dirpath)
+        kept_dirs: list[str] = []
+        for dirname in sorted(dirnames):
+            if dirname.startswith("."):
+                continue
+            subdir = dirpath_path / dirname
+            if subdir.is_symlink():
+                findings.append(
+                    Finding(
+                        _relative_posix(subdir, root),
+                        "SYMLINK_NOT_ALLOWED",
+                        "symlinked directory is not allowed in project tree",
+                    )
+                )
+                continue
+            if not _is_within(subdir.resolve(), resolved_root):
+                findings.append(
+                    Finding(
+                        _relative_posix(subdir, root),
+                        "PATH_ESCAPES_ROOT",
+                        "directory resolves outside project root",
+                    )
+                )
+                continue
+            kept_dirs.append(dirname)
+        dirnames[:] = kept_dirs
+
+        for filename in sorted(filenames):
+            if filename.startswith("."):
+                continue
+            entry = dirpath_path / filename
+            if entry.is_symlink():
+                findings.append(
+                    Finding(
+                        _relative_posix(entry, root),
+                        "SYMLINK_NOT_ALLOWED",
+                        "symlinked file is not allowed in project tree",
+                    )
+                )
+                continue
+            if entry.suffix in DATA_SUFFIXES and not _is_within(entry.resolve(), resolved_root):
+                findings.append(
+                    Finding(
+                        _relative_posix(entry, root),
+                        "PATH_ESCAPES_ROOT",
+                        "data file resolves outside project root",
+                    )
+                )
+    return findings
+
+
+def _validate_artifact_target(root: Path, resolved_root: Path, artifact: str) -> str | None:
+    """Validate an ``artifact`` path relative to ``root``.
+
+    Returns ``None`` when ``artifact`` names a regular in-project file with no
+    symlink components; otherwise returns ``"ESCAPES_ROOT"``, ``"SYMLINK"`` or
+    ``"MISSING"``.
+    """
+    if (
+        not artifact
+        or "\x00" in artifact
+        or "\\" in artifact
+        or artifact.startswith("/")
+        or Path(artifact).is_absolute()
+    ):
+        return "ESCAPES_ROOT"
+    parts = PurePosixPath(artifact).parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        return "ESCAPES_ROOT"
+    if _has_symlink_component(root, parts):
+        return "SYMLINK"
+    candidate = root.joinpath(*parts)
+    try:
+        resolved = candidate.resolve()
+    except (OSError, ValueError):
+        return "ESCAPES_ROOT"
+    if not _is_within(resolved, resolved_root):
+        return "ESCAPES_ROOT"
+    if not resolved.is_file():
+        return "MISSING"
+    return None
+
+
+def _ensure_safe_write_target(path: Path, root: Path, resolved_root: Path) -> None:
+    """Raise ``ValueError`` if ``path`` or any in-project ancestor is unsafe."""
+    if root.is_symlink():
+        raise ValueError("project root may not be a symlink")
+    try:
+        rel_parts = path.relative_to(root).parts
+    except ValueError as exc:
+        raise ValueError(f"{path} escapes project root {root}") from exc
+    if not rel_parts:
+        raise ValueError(f"refusing to overwrite project root {root}")
+    relative = _relative_posix(path, root)
+    if _has_symlink_component(root, rel_parts):
+        raise ValueError(f"{relative}: SYMLINK_NOT_ALLOWED: refusing to write unsafe path")
+    if not _is_within(path.parent.resolve(), resolved_root) or not _is_within(
+        path.resolve(), resolved_root
+    ):
+        raise ValueError(f"{relative}: PATH_ESCAPES_ROOT: refusing to write outside project root")
+
+
+def _atomic_write_bytes(path: Path, root: Path, resolved_root: Path, payload: bytes) -> None:
+    """Atomically write ``payload`` to ``path`` via a same-directory temp file + ``os.replace``."""
+    _ensure_safe_write_target(path, root, resolved_root)
+    mode: int | None = None
+    try:
+        details = os.lstat(path)
+    except FileNotFoundError:
+        details = None
+    if details is not None:
+        if stat.S_ISLNK(details.st_mode):
+            relative = _relative_posix(path, root)
+            raise ValueError(f"{relative}: SYMLINK_NOT_ALLOWED: refusing to overwrite symlink")
+        mode = stat.S_IMODE(details.st_mode)
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(tmp_path, mode)
+        _ensure_safe_write_target(path, root, resolved_root)
+        os.replace(tmp_path, path)
+        tmp_path = None
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -243,29 +422,84 @@ def render(records: list[Any], fmt: FileFormat) -> str:
     return text + "\n" if fmt.trailing_newline else text
 
 
-def load_file(path: Path, root: Path) -> LoadedFile | None:
+def load_file(
+    path: Path, root: Path, findings: list[Finding] | None = None
+) -> LoadedFile | None:
+    if root.is_symlink():
+        if findings is not None:
+            findings.append(Finding(".", "SYMLINK_NOT_ALLOWED", "project root may not be a symlink"))
+        return None
+    resolved_root = root.resolve()
+    try:
+        rel_parts = path.relative_to(root).parts
+    except ValueError:
+        if findings is not None:
+            findings.append(Finding(str(path), "PATH_ESCAPES_ROOT", "file is outside project root"))
+        return None
+    relative = _relative_posix(path, root)
+    if _has_symlink_component(root, rel_parts):
+        if findings is not None:
+            findings.append(
+                Finding(relative, "SYMLINK_NOT_ALLOWED", "symlinked data file is not allowed")
+            )
+        return None
+    if not _is_within(path.resolve(), resolved_root):
+        if findings is not None:
+            findings.append(
+                Finding(relative, "PATH_ESCAPES_ROOT", "data file resolves outside project root")
+            )
+        return None
+
     original_bytes = path.read_bytes()
-    text = original_bytes.decode("utf-8")
+    try:
+        text = original_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if findings is not None:
+            findings.append(
+                Finding(relative, "INVALID_JSON", f"file is not valid UTF-8 ({exc})")
+            )
+        return None
     try:
         if path.suffix == ".jsonl":
             records: list[Any] = [json.loads(line) for line in text.splitlines() if line.strip()]
         else:
             records = [json.loads(text)]
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        if findings is not None:
+            findings.append(
+                Finding(relative, "INVALID_JSON", f"invalid JSON ({exc.msg} at line {exc.lineno})")
+            )
         return None
     if not records:
         return None
-    relative = PurePosixPath(path.relative_to(root).as_posix()).as_posix()
     return LoadedFile(path, relative, detect_format(path, text, records), records, original_bytes)
 
 
 def iter_data_files(root: Path) -> Iterator[Path]:
-    for path in sorted(root.rglob("*")):
-        if path.suffix not in DATA_SUFFIXES or not path.is_file():
-            continue
-        if any(part.startswith(".") for part in path.relative_to(root).parts):
-            continue
-        yield path
+    if root.is_symlink() or not root.is_dir():
+        return
+    resolved_root = root.resolve()
+    collected: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirpath_path = Path(dirpath)
+        dirnames[:] = [
+            dirname
+            for dirname in sorted(dirnames)
+            if not dirname.startswith(".")
+            and not (dirpath_path / dirname).is_symlink()
+            and _is_within((dirpath_path / dirname).resolve(), resolved_root)
+        ]
+        for filename in sorted(filenames):
+            if filename.startswith("."):
+                continue
+            candidate = dirpath_path / filename
+            if candidate.suffix not in DATA_SUFFIXES or candidate.is_symlink():
+                continue
+            resolved = candidate.resolve()
+            if not _is_within(resolved, resolved_root) or not resolved.is_file():
+                continue
+            collected.append(candidate)
+    yield from sorted(collected)
 
 
 # ---------------------------------------------------------------------------
@@ -274,12 +508,12 @@ def iter_data_files(root: Path) -> Iterator[Path]:
 
 
 def is_expanded_ref(node: Any) -> bool:
-    """True for an object carrying the full snapshot triple as non-empty strings.
+    """True for an object carrying both ``owner`` and ``artifact`` as non-empty strings.
 
-    Requiring all three keys is what keeps look-alikes out: an ``observer``
-    object has ``owner`` but no ``artifact``, and a deliberately hash-free
-    locator has ``owner`` and ``artifact`` but no ``hash`` because its target is
-    not published yet. Neither becomes a ``sources`` entry.
+    Requiring both keys keeps ``observer`` objects (which carry ``owner`` without
+    ``artifact``) out; ``*_locator`` slots also carry ``owner`` and ``artifact``
+    for targets that may not exist yet, so callers skip keys ending in
+    ``_locator`` before testing ``is_expanded_ref``.
     """
     if not isinstance(node, dict):
         return False
@@ -290,12 +524,15 @@ def is_compact_ref(node: Any) -> bool:
     return isinstance(node, dict) and isinstance(node.get("src"), str)
 
 
-def expand_refs(node: Any, sources: dict[str, dict[str, Any]]) -> Any:
-    """Rewrite every compact ref back to the expanded triple, in memory.
+def expand_refs(
+    node: Any, sources: dict[str, dict[str, Any]], *, key_name: str | None = None
+) -> Any:
+    """Rewrite every compact ref back to inline ``owner`` + ``artifact``, in memory.
 
-    Normalising first is what makes the tool idempotent and lets an already
-    migrated tree be re-bound to new upstream hashes.
+    Normalising first is what makes ``--migrate`` idempotent across repeated runs.
     """
+    if key_name is not None and is_locator_key(key_name):
+        return node
     if isinstance(node, list):
         return [expand_refs(item, sources) for item in node]
     if not isinstance(node, dict):
@@ -304,13 +541,17 @@ def expand_refs(node: Any, sources: dict[str, dict[str, Any]]) -> Any:
         entry = sources.get(str(node["src"]))
         if entry is not None and all(isinstance(entry.get(key), str) for key in REF_PAIR):
             rest = {
-                key: expand_refs(value, sources) for key, value in node.items() if key != "src"
+                key: expand_refs(value, sources, key_name=key)
+                for key, value in node.items()
+                if key != "src"
             }
             return {key: entry[key] for key in REF_PAIR} | rest
-    return {key: expand_refs(value, sources) for key, value in node.items()}
+    return {key: expand_refs(value, sources, key_name=key) for key, value in node.items()}
 
 
-def iter_expanded_refs(node: Any) -> Iterator[dict[str, Any]]:
+def iter_expanded_refs(node: Any, *, key_name: str | None = None) -> Iterator[dict[str, Any]]:
+    if key_name is not None and is_locator_key(key_name):
+        return
     if isinstance(node, list):
         for item in node:
             yield from iter_expanded_refs(item)
@@ -319,11 +560,15 @@ def iter_expanded_refs(node: Any) -> Iterator[dict[str, Any]]:
         return
     if is_expanded_ref(node):
         yield node
-    for value in node.values():
-        yield from iter_expanded_refs(value)
+    for key, value in node.items():
+        yield from iter_expanded_refs(value, key_name=key)
 
 
-def compact_refs(node: Any, keys: dict[SourceId, str]) -> Any:
+def compact_refs(
+    node: Any, keys: dict[SourceId, str], *, key_name: str | None = None
+) -> Any:
+    if key_name is not None and is_locator_key(key_name):
+        return node
     if isinstance(node, list):
         return [compact_refs(item, keys) for item in node]
     if not isinstance(node, dict):
@@ -331,19 +576,18 @@ def compact_refs(node: Any, keys: dict[SourceId, str]) -> Any:
     if is_expanded_ref(node):
         source_id = resolved_source_id(node)
         rest = {
-            key: compact_refs(value, keys)
+            key: compact_refs(value, keys, key_name=key)
             for key, value in node.items()
             if key not in REF_PAIR
         }
         return {"src": keys[source_id]} | rest
-    return {key: compact_refs(value, keys) for key, value in node.items()}
+    return {key: compact_refs(value, keys, key_name=key) for key, value in node.items()}
 
 
 def resolved_source_id(ref: dict[str, Any]) -> SourceId:
     """A reference identifies its upstream by owner and artifact."""
     owner, artifact = (str(ref[key]) for key in REF_PAIR)
     return owner, artifact
-
 
 
 def slug(text: str) -> str:
@@ -369,14 +613,14 @@ def _candidate_key(artifact: str, depths: set[int]) -> str:
 
 
 def derive_source_keys(source_ids: Iterable[SourceId]) -> dict[SourceId, str]:
-    """Map each upstream snapshot to a short, lowercase, file-unique key.
+    """Map each ``(owner, artifact)`` pair to a short, lowercase, file-unique key.
 
     The key starts as the artifact's basename. Basenames collide often -- eight
     episodes each own a ``shots.jsonl`` -- so a colliding group is qualified by
     the nearest ancestor directory that actually differs between its members,
-    which yields ``ep001-shots`` rather than ``ep001-storyboard-shots``. Two
-    snapshots of the same artifact (a supersession record naming a candidate and
-    an accepted hash) get a numeric suffix in hash order.
+    which yields ``ep001-shots`` rather than ``ep001-storyboard-shots``. Pairs
+    whose artifact paths still share every qualifier (for instance, two owners
+    naming the same path) get a deterministic numeric suffix in sorted order.
     """
     entries = sorted(set(source_ids))
     depths: dict[SourceId, set[int]] = {entry: set() for entry in entries}
@@ -506,47 +750,171 @@ def build_order(files: dict[str, LoadedFile]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _verify_file_records(
+    relative: str,
+    records: list[Any],
+    on_disk: set[str],
+    root: Path,
+    resolved_root: Path,
+    *,
+    check_unused_sources: bool = True,
+) -> list[Finding]:
+    """Validate every reference candidate and ``sources`` entry in ``records``."""
+    findings: list[Finding] = []
+    sources = load_sources(records)
+    used: set[str] = set()
+    for index, record in enumerate(records, start=1):
+        for ref, location in iter_ref_candidates(record, f"{relative}#record{index}"):
+            compact = isinstance(ref.get("src"), str)
+            if compact:
+                used.add(str(ref["src"]))
+            resolved, defect = resolve_ref(ref, sources, location)
+            if defect is not None:
+                detail = f"{defect.location}: {defect.detail}"
+                findings.append(Finding(relative, defect.code, detail))
+                continue
+            # A declared source is checked once below; an inline one is only
+            # reachable here.
+            if resolved is not None and not compact and resolved.artifact not in on_disk:
+                status = _validate_artifact_target(root, resolved_root, resolved.artifact)
+                if status == "ESCAPES_ROOT":
+                    detail = (
+                        f"{location} names {resolved.artifact}, which escapes the project root"
+                    )
+                    findings.append(Finding(relative, "REF_TARGET_ESCAPES_ROOT", detail))
+                elif status == "SYMLINK":
+                    detail = (
+                        f"{location} names {resolved.artifact}, which is or traverses a symlink"
+                    )
+                    findings.append(Finding(relative, "REF_TARGET_IS_SYMLINK", detail))
+                elif status == "MISSING":
+                    detail = (
+                        f"{location} names {resolved.artifact}, which is not in this project"
+                    )
+                    findings.append(Finding(relative, "REF_TARGET_IS_MISSING", detail))
+    for key in sorted(sources):
+        entry = sources[key]
+        artifact = entry.get("artifact")
+        if key not in used:
+            if check_unused_sources:
+                detail = f"sources[{key!r}] is declared but no reference uses it"
+                findings.append(Finding(relative, "SOURCE_IS_UNUSED", detail))
+            else:
+                continue
+        if not isinstance(artifact, str) or artifact in on_disk:
+            continue
+        status = _validate_artifact_target(root, resolved_root, artifact)
+        if status == "ESCAPES_ROOT":
+            detail = f"sources[{key!r}] names {artifact}, which escapes the project root"
+            findings.append(Finding(relative, "SOURCE_TARGET_ESCAPES_ROOT", detail))
+        elif status == "SYMLINK":
+            detail = f"sources[{key!r}] names {artifact}, which is or traverses a symlink"
+            findings.append(Finding(relative, "SOURCE_TARGET_IS_SYMLINK", detail))
+        elif status == "MISSING":
+            detail = f"sources[{key!r}] names {artifact}, which is not in this project"
+            findings.append(Finding(relative, "SOURCE_TARGET_IS_MISSING", detail))
+    return findings
+
+
 def migrate(root: Path) -> int:
+    if root.is_symlink():
+        emit(".: SYMLINK_NOT_ALLOWED: project root may not be a symlink", stream=sys.stderr)
+        return 1
+    resolved_root = root.resolve()
+    findings: list[Finding] = _scan_tree_safety(root, resolved_root)
     files: dict[str, LoadedFile] = {}
     for path in iter_data_files(root):
-        loaded = load_file(path, root)
+        loaded = load_file(path, root, findings=findings)
         if loaded is not None:
             files[loaded.relative] = loaded
-
-    # (artifact, pre-rewrite hash) -> post-rewrite hash.
-    changed = 0
-    for relative in build_order(files):
-        loaded = files[relative]
-        declared = load_sources(loaded.records)
-        records, mode, position = strip_sources(loaded)
-        records = [expand_refs(record, declared) for record in records]
-
-        source_ids = {
-            resolved_source_id(ref)
-            for record in records
-            for ref in iter_expanded_refs(record)
-        }
-        keys = derive_source_keys(source_ids)
-        sources = {
-            keys[source_id]: {"owner": source_id[0], "artifact": source_id[1]}
-            for source_id in sorted(source_ids, key=lambda entry: keys[entry])
-        }
-        compact = place_sources(
-            [compact_refs(record, keys) for record in records], mode, position, sources
+    on_disk = set(files)
+    for relative in sorted(files):
+        findings.extend(
+            _verify_file_records(
+                relative,
+                files[relative].records,
+                on_disk,
+                root,
+                resolved_root,
+                check_unused_sources=False,
+            )
         )
-        compact_payload = render(compact, loaded.fmt).encode("utf-8")
-        inline_payload = render(records, loaded.fmt).encode("utf-8")
-        # Declaring a snapshot once pays off only when something references it
-        # more than once. A fan-in manifest naming 104 artifacts once each would
-        # grow, so it keeps the inline form.
-        payload = (
-            compact_payload if len(compact_payload) < len(inline_payload) else inline_payload
-        )
-        if payload != loaded.original_bytes:
-            loaded.path.write_bytes(payload)
-            changed += 1
+    if findings:
+        for report in findings:
+            emit(f"{report.path}: {report.code}: {report.detail}", stream=sys.stderr)
+        emit(f"\n{len(findings)} finding(s)", stream=sys.stderr)
+        return 1
 
-    emit(f"rewrote {changed} of {len(files)} data files under {root}")
+    planned_writes: list[tuple[LoadedFile, bytes]] = []
+    try:
+        for relative in build_order(files):
+            loaded = files[relative]
+            declared = load_sources(loaded.records)
+            records, mode, position = strip_sources(loaded)
+            records = [expand_refs(record, declared) for record in records]
+
+            source_ids = {
+                resolved_source_id(ref)
+                for record in records
+                for ref in iter_expanded_refs(record)
+            }
+            keys = derive_source_keys(source_ids)
+            sources = {
+                keys[source_id]: {"owner": source_id[0], "artifact": source_id[1]}
+                for source_id in sorted(source_ids, key=lambda entry: keys[entry])
+            }
+            compact = place_sources(
+                [compact_refs(record, keys) for record in records], mode, position, sources
+            )
+            compact_payload = render(compact, loaded.fmt).encode("utf-8")
+            inline_payload = render(records, loaded.fmt).encode("utf-8")
+            # Declaring an upstream artifact once pays off only when something
+            # references it more than once. A fan-in manifest naming 104 artifacts
+            # once each would grow, so it keeps the inline form.
+            use_compact = len(compact_payload) < len(inline_payload)
+            chosen_records = compact if use_compact else records
+            payload = compact_payload if use_compact else inline_payload
+
+            findings.extend(
+                _verify_file_records(
+                    relative,
+                    chosen_records,
+                    on_disk,
+                    root,
+                    resolved_root,
+                    check_unused_sources=True,
+                )
+            )
+            if payload != loaded.original_bytes:
+                _ensure_safe_write_target(loaded.path, root, resolved_root)
+                planned_writes.append((loaded, payload))
+    except (OSError, ValueError) as exc:
+        emit(f"error: {exc}", stream=sys.stderr)
+        return 1
+
+    if findings:
+        for report in findings:
+            emit(f"{report.path}: {report.code}: {report.detail}", stream=sys.stderr)
+        emit(f"\n{len(findings)} finding(s)", stream=sys.stderr)
+        return 1
+
+    written: list[LoadedFile] = []
+    try:
+        for loaded, payload in planned_writes:
+            _atomic_write_bytes(loaded.path, root, resolved_root, payload)
+            written.append(loaded)
+    except (OSError, ValueError) as exc:
+        for previous in reversed(written):
+            try:
+                _atomic_write_bytes(
+                    previous.path, root, resolved_root, previous.original_bytes
+                )
+            except (OSError, ValueError):
+                pass
+        emit(f"error: {exc}", stream=sys.stderr)
+        return 1
+
+    emit(f"rewrote {len(planned_writes)} of {len(files)} data files under {root}")
     return 0
 
 
@@ -556,51 +924,39 @@ def migrate(root: Path) -> int:
 
 
 def check(root: Path) -> int:
+    if root.is_symlink():
+        emit(".: SYMLINK_NOT_ALLOWED: project root may not be a symlink")
+        emit("\n1 finding(s)", stream=sys.stderr)
+        return 1
+    resolved_root = root.resolve()
+    findings: list[Finding] = _scan_tree_safety(root, resolved_root)
     files: dict[str, LoadedFile] = {}
     for path in iter_data_files(root):
-        loaded = load_file(path, root)
+        loaded = load_file(path, root, findings=findings)
         if loaded is not None:
             files[loaded.relative] = loaded
     # References no longer carry bytes, so the strongest local claim is that the
-    # artifact a reference names is really there. Whether it is *current* is a
-    # lifecycle question, answered by project_tool state, not by these files.
+    # artifact a reference names is really there inside the project root.
+    # Whether it is *current* is a lifecycle question, answered by project_tool
+    # state, not by these files.
     on_disk = set(files)
 
-    findings: list[Finding] = []
     for relative in sorted(files):
-        loaded = files[relative]
-        sources = load_sources(loaded.records)
-        used: set[str] = set()
-        for index, record in enumerate(loaded.records, start=1):
-            for ref, location in iter_ref_candidates(record, f"{relative}#record{index}"):
-                compact = isinstance(ref.get("src"), str)
-                if compact:
-                    used.add(str(ref["src"]))
-                resolved, defect = resolve_ref(ref, sources, location)
-                if defect is not None:
-                    detail = f"{defect.location}: {defect.detail}"
-                    findings.append(Finding(relative, defect.code, detail))
-                    continue
-                # A declared source is checked once below; an inline one is only
-                # reachable here.
-                if resolved is not None and not compact:
-                    if resolved.artifact not in on_disk and (root / resolved.artifact).is_file() is False:
-                        detail = f"{location} names {resolved.artifact}, which is not in this project"
-                        findings.append(Finding(relative, "REF_TARGET_IS_MISSING", detail))
-        for key in sorted(sources):
-            entry = sources[key]
-            artifact = entry.get("artifact")
-            if key not in used:
-                detail = f"sources[{key!r}] is declared but no reference uses it"
-                findings.append(Finding(relative, "SOURCE_IS_UNUSED", detail))
-            if not isinstance(artifact, str):
-                continue
-            if artifact not in on_disk and not (root / artifact).is_file():
-                detail = f"sources[{key!r}] names {artifact}, which is not in this project"
-                findings.append(Finding(relative, "SOURCE_TARGET_IS_MISSING", detail))
+        findings.extend(
+            _verify_file_records(
+                relative,
+                files[relative].records,
+                on_disk,
+                root,
+                resolved_root,
+                check_unused_sources=True,
+            )
+        )
 
     if not findings:
-        emit(f"every reference in {len(files)} data files under {root} names an artifact that exists")
+        emit(
+            f"every reference in {len(files)} data files under {root} names an artifact that exists"
+        )
         return 0
     for report in findings:
         emit(f"{report.path}: {report.code}: {report.detail}")
@@ -624,7 +980,8 @@ def iter_ref_candidates(
 
     Objects in either valid form are found structurally. An object sitting in a
     reference slot in *neither* form is yielded too, so ``--check`` reports it
-    rather than silently skipping it.
+    rather than silently skipping it. Keys ending in ``_locator`` are skipped
+    because locators identify targets that may not be published yet.
     """
     if isinstance(node, list):
         for index, item in enumerate(node):
@@ -639,24 +996,60 @@ def iter_ref_candidates(
             yield node, location
             return
         for key, value in node.items():
+            if is_locator_key(key):
+                continue
             yield from iter_ref_candidates(value, f"{location}/{key}", True)
         return
     for key, value in node.items():
-        if key == SOURCES_KEY:
+        if key == SOURCES_KEY or is_locator_key(key):
             continue
         yield from iter_ref_candidates(value, f"{location}/{key}", is_ref_carrier(key))
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("project", type=Path, help="project directory to rewrite or verify")
-    parser.add_argument("--check", action="store_true", help="verify only; never write")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--migrate",
+        action="store_true",
+        help=(
+            "rewrite inline {owner, artifact} references into compact {src} "
+            "references with a per-file sources map (default mode; leaves "
+            "*_locator fields untouched)"
+        ),
+    )
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "verify that every reference resolves to a regular in-project "
+            "artifact and every declared sources entry is used; never write"
+        ),
+    )
     args = parser.parse_args(argv)
     root: Path = args.project
-    if not root.is_dir():
-        emit(f"error: {root} is not a directory", stream=sys.stderr)
+    if root.is_symlink():
+        emit(f"error: {root} may not be a symlink", stream=sys.stderr)
         return 2
-    return check(root) if args.check else migrate(root)
+    try:
+        if not root.is_absolute():
+            current = Path(".")
+            for part in root.parts:
+                if part in ("", "."):
+                    continue
+                current = current / part
+                if current.is_symlink():
+                    raise ValueError(f"{root} traverses a symlink")
+        if not root.is_dir():
+            emit(f"error: {root} is not a directory", stream=sys.stderr)
+            return 2
+        return check(root) if args.check else migrate(root)
+    except (OSError, ValueError) as exc:
+        emit(f"error: {exc}", stream=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -23,6 +23,8 @@ Status: implemented
 
 规则与参考说明保持同一约束力，模板使用者能分清机器检查与内容审查。代价是仍需审查者核对容器引用源和字段；本次不增加自动校验能力，也不重新验证供应商模型规格。
 
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（移除 `VID-09/18` 与 `开场画面` 逐字粘贴门禁，允许 `MOTION.输入参考图` 在分镜基础上按需增减，并将 `motion-recipe.md` 等微文件归并入 `video-prompt-guide.md`）。
+
 ## Validation
 
 - 视频技能自测 10 项通过。

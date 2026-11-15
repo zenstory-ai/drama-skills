@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { assertFamilyResolves, useFaces } from "../font";
+import { FACES, isCheckableBmpGlyph } from "../rules.mjs";
 import { COLOURS, MONO, SANS, StyleProps, TOP_U, entrance, exit, unit } from "./tokens";
 
 /**
@@ -16,6 +18,17 @@ const splitRow = (row: string): { name: string; unit: string; value: string } =>
 export const Card: React.FC<StyleProps> = ({ text }) => {
   const frame = useCurrentFrame();
   const { fps, height, width } = useVideoConfig();
+  const rows = useMemo(() => text.items.map((item) => splitRow(item.text)), [text.items]);
+  const monoPlan = useMemo(() => {
+    const raw = ["0", ...rows.map((row) => row.value)].join("");
+    const uniqueBmp = [...new Set(Array.from(raw).filter(isCheckableBmpGlyph))].join("");
+    return [{ font: FACES.mono, text: uniqueBmp }];
+  }, [rows]);
+  const ready = useFaces(monoPlan);
+  const monoSample = rows.map((row) => row.value).join("");
+  if (ready) assertFamilyResolves(MONO, monoSample);
+  if (!ready) return null;
+
   const u = unit(height);
   const shown = entrance(frame, fps, 0, 15);
   return (
@@ -32,8 +45,7 @@ export const Card: React.FC<StyleProps> = ({ text }) => {
           opacity: shown,
         }}
       >
-        {text.items.map((item, index) => {
-          const row = splitRow(item.text);
+        {rows.map((row, index) => {
           return (
             <div
               key={index}

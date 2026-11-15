@@ -19,13 +19,34 @@ placeholders that resolve to nothing by design, so they are out of scope here.
 
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 SUITE = Path(__file__).resolve().parents[1]
 GOLDEN = SUITE / "examples/golden-project"
+
+
+def _load_compact_refs() -> Any:
+    tool_path = SUITE / "tools/compact_refs.py"
+    spec = importlib.util.spec_from_file_location("test_compact_refs_module", tool_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+compact_refs = _load_compact_refs()
 
 # Keys whose value is a JSON pointer into the artifact the same object (or its
 # enclosing record) references.
@@ -500,6 +521,134 @@ class ShippedTemplateReferenceTests(unittest.TestCase):
         for record in data_records(SUITE / "skills" / SCHEMA_TEMPLATES["episode-map.jsonl"]):
             walk(record, "")
         self.assertEqual(concrete, [])
+
+
+class CompactRefsMigrationSafetyTests(unittest.TestCase):
+    @staticmethod
+    def _expandable_payload() -> str:
+        return (
+            json.dumps(
+                {
+                    "upstream_refs": [
+                        {
+                            "owner": "short-drama",
+                            "artifact": "short-drama.json",
+                            "record_id": f"R{i}",
+                        }
+                        for i in range(1, 4)
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n"
+        )
+
+    def test_migrate_leaves_no_partial_writes_when_later_file_has_broken_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proj = Path(directory) / "proj"
+            ep_dir = proj / "剧集/EP001"
+            ep_dir.mkdir(parents=True)
+            (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
+
+            first = ep_dir / "a.json"
+            second = ep_dir / "z.json"
+            original_first = self._expandable_payload().encode("utf-8")
+            original_second = (
+                json.dumps(
+                    {"upstream_ref": {"src": "undeclared"}},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n"
+            ).encode("utf-8")
+            first.write_bytes(original_first)
+            second.write_bytes(original_second)
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = compact_refs.main(["--migrate", str(proj)])
+
+            self.assertEqual(rc, 1)
+            self.assertIn("REF_SRC_IS_NOT_DECLARED", stderr.getvalue())
+            self.assertEqual(first.read_bytes(), original_first)
+            self.assertEqual(second.read_bytes(), original_second)
+
+    def test_migrate_rolls_back_earlier_atomic_writes_when_later_replace_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proj = Path(directory) / "proj"
+            ep_dir = proj / "剧集/EP001"
+            ep_dir.mkdir(parents=True)
+            (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
+
+            first = ep_dir / "a.json"
+            second = ep_dir / "z.json"
+            original_bytes = self._expandable_payload().encode("utf-8")
+            first.write_bytes(original_bytes)
+            second.write_bytes(original_bytes)
+
+            real_replace = os.replace
+            failed_once = False
+
+            def flaky_replace(src: Any, dst: Any) -> None:
+                nonlocal failed_once
+                if Path(dst) == second and not failed_once:
+                    failed_once = True
+                    raise OSError("simulated atomic replace failure on z.json")
+                real_replace(src, dst)
+
+            stderr = io.StringIO()
+            with (
+                mock.patch("os.replace", side_effect=flaky_replace),
+                contextlib.redirect_stderr(stderr),
+            ):
+                rc = compact_refs.migrate(proj)
+
+            self.assertEqual(rc, 1)
+            self.assertIn("simulated atomic replace failure", stderr.getvalue())
+            self.assertEqual(first.read_bytes(), original_bytes)
+            self.assertEqual(second.read_bytes(), original_bytes)
+            leftovers = [entry.name for entry in ep_dir.iterdir() if entry.name.endswith(".tmp")]
+            self.assertEqual(leftovers, [])
+
+    def test_cli_returns_clean_exit_code_1_on_symlinked_input_without_traceback(self) -> None:
+        tool = SUITE / "tools/compact_refs.py"
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            outside = base / "outside.json"
+            outside.write_text('{"secret": true}\n', encoding="utf-8")
+
+            proj = base / "proj"
+            proj.mkdir()
+            (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
+            (proj / "linked.json").symlink_to(outside)
+
+            for flag in ("--check", "--migrate"):
+                proc = subprocess.run(
+                    [sys.executable, "-B", str(tool), flag, str(proj)],
+                    cwd=base,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(proc.returncode, 1, f"{flag}: {proc.stderr}")
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertIn("SYMLINK_NOT_ALLOWED", proc.stdout + proc.stderr)
+
+            (proj / "linked.json").unlink()
+            link_parent = base / "link-parent"
+            link_parent.symlink_to(base, target_is_directory=True)
+            for flag in ("--check", "--migrate"):
+                proc = subprocess.run(
+                    [sys.executable, "-B", str(tool), flag, "link-parent/proj"],
+                    cwd=base,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(proc.returncode, 1, f"{flag}: {proc.stderr}")
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertIn("error:", proc.stderr)
 
 
 if __name__ == "__main__":

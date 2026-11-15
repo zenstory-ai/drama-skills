@@ -14,14 +14,15 @@ export const FACES = {
 export const CHROME_TEXT = "【系统提示】【新任务】进度传说史诗稀有·";
 const DIGITS = "0123456789天:/, ";
 
-const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
+const EMOJI_GLYPH_RE = /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u;
+
+export const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
   const cp = ch.codePointAt(0);
   if (cp === undefined || cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return false;
   if (cp > 0xffff) return false;
   if (cp >= 0xd800 && cp <= 0xdfff) return false;
   if (cp === 0x200d || cp === 0x20e3 || (cp >= 0xfe00 && cp <= 0xfe0f)) return false;
-  if ((cp >= 0x2300 && cp <= 0x23ff) || (cp >= 0x2600 && cp <= 0x27bf)) return false;
-  if (cp === 0x2b50 || cp === 0x2b55) return false;
+  if (EMOJI_GLYPH_RE.test(ch)) return false;
   return true;
 };
 
@@ -31,8 +32,8 @@ const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
  * The faces are split by unicode range, and a browser fetches a range only
  * when text in it is laid out -- after the frame has been captured. Asking for
  * every BMP character the film will draw, up front, is what makes frame 0 look
- * like frame 1000, while supplementary-plane Emoji and control characters fall
- * back cleanly to system faces without aborting the render.
+ * like frame 1000, while Emoji and control characters fall back cleanly to
+ * system faces without aborting the render.
  *
  * @param {{ text: string }[]} cues
  * @param {{ items: { text: string }[] }[]} screenTexts
@@ -176,6 +177,23 @@ export const parseProgress = (text) => {
   const total = Number(found[2].replace(/,/g, ""));
   if (!(total > 0)) return null;
   return { done, total, ratio: Math.min(1, Math.max(0, done / total)) };
+};
+
+/**
+ * Split a task panel's items into `{ title, goal, progressItem, progress, rewards }`
+ * by extracting the `N / M` progress item across `items.slice(1)` first so a
+ * 2-item `标题｜0 / 100` renders its progress bar instead of consuming it as `goal`.
+ *
+ * @template {{ text: string }} T
+ * @param {T[]} items
+ */
+export const splitTaskItems = (items) => {
+  const [title] = items;
+  const tail = items.slice(1);
+  const progressItem = tail.find((item) => parseProgress(item.text)) ?? null;
+  const progress = progressItem ? parseProgress(progressItem.text) : null;
+  const [goal = null, ...rewards] = tail.filter((item) => item !== progressItem);
+  return { title, goal, progressItem, progress, rewards };
 };
 
 // ---------------------------------------------------------------- countdown

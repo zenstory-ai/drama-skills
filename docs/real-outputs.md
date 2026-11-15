@@ -106,7 +106,7 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
   PLAN-JC-LOOK-C（顺序：2）· IMG-JIANGCHEN-LOOK-C《江晨干泥凌晨作训服状态板》（用途：造型状态；……）；……
 ```
 
-这一镜按 MiniMax H3 写成图生视频提示词。《视觉设定.md》里江晨作训服的锁定短语 `olive drab field fatigue uniform with blank collar tabs`（v0.6.6 当时记作「锁面」）原样出现在 `subject_definitions` 里，台词只在 `<d>` 标签内逐字给出：
+这一镜按 MiniMax H3 写成图生视频提示词。《视觉设定.md》里江晨作训服的锁定短语 `olive drab field fatigue uniform with blank collar tabs` 原样出现在 `subject_definitions` 里，台词只在 `<d>` 标签内逐字给出：
 
 ```markdown
 ## MOTION-EP001-017 · 诸君，且听龙吟
@@ -149,7 +149,7 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
 - 字幕：诸君，且听龙吟
 ```
 
-`edit_tool.py check` 核对区间自洽、素材是否比剪辑单新、字幕能否在剧本里逐字找到；`verify` 只输出实测数据。这一趟的 `RUN-LOG` 里记着这两道机械校验第一次拦下的就是写它的人：作者按语音转写估的字幕时间窗超出了片段区间，被 `check` 拦下；画幅写成 `1080×1920` 而实际素材是 `768×1344`，被 `verify` 拦下。同一份记录还留着两条实测结论：单遍 `loudnorm` 落在 `-12.33 LUFS`、偏离目标 `3.7 dB`，跑两遍之后才压准到 `-15.79`；语音转写把「诸君，且听龙吟」听成了「朱军且听龙银」，所以转写只用来定位发声起止时间，字幕一律取自剧本原词。
+`edit_tool.py check` 核对区间自洽与字幕能否在剧本里逐字找到，并在素材晚于剪辑单更新时给出非阻断的提醒；`verify` 只输出实测数据。这一趟的 `RUN-LOG` 里记着这两道机械校验第一次拦下的就是写它的人：作者按语音转写估的字幕时间窗超出了片段区间，被 `check` 拦下；画幅写成 `1080×1920` 而实际素材是 `768×1344`，被 `verify` 拦下。同一份记录还留着两条实测结论：单遍 `loudnorm` 落在 `-12.33 LUFS`、偏离目标 `3.7 dB`，跑两遍之后才压准到 `-15.79`；语音转写把「诸君，且听龙吟」听成了「朱军且听龙银」，所以转写只用来定位发声起止时间，字幕一律取自剧本原词。
 
 这次实跑的原件——[剪辑单](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%89%AA%E8%BE%91%E5%8D%95.md)、
 [21 镜分镜](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%88%86%E9%95%9C.md)
@@ -171,7 +171,7 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
 > 下一本书做快评时，应当先看这一章起什么戏剧作用，再看原著用了什么表现形式。
 
 （这次的执行者事先通读过全书，`triage.md` 开头的「执行者声明」写明对照结果因此偏乐观：它示范的是回查核对做法，测不出盲抽本身的准确度。）
-每个候选集都带 `source_ref` / `chapter_range` 指回章节索引，`creator_acceptance` 一律填 `pending`——拆解技能不会自行拍板通过，必须留待创作者确认。
+该次 v0.4.2 实跑记录中，每个候选集都带 `source_ref` / `chapter_range` 指回章节索引，`creator_acceptance` 一律填 `pending`；现行流程改为写入含 `chapter_range`、`payoffs` 等核心字段的轻量记录，作为待定建议移交故事开发（`$short-drama-develop`）由创作者拍板。
 原文：[`triage.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/triage.md) ·
 [`adaptation-value.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/adaptation-value.md) ·
 [`episode-candidates.jsonl`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/episode-candidates.jsonl)
@@ -186,7 +186,7 @@ ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视
 | F-C5 | 主角不懂音乐，前世靠请音乐顾问，连有名的曲子都抄不出来 | **EP001 兑现**。画面表现：他写下「配乐」两个字后笔尖停住，把笔扔开 |
 | F-SYS-COST | 装置有代价 | **明确留到第 7 集（EP007）交代**（代价第一次在画面里显现）。EP001 只埋下规则伏笔，暂不揭晓 |
 
-金手指的使用规则与代价在开写 EP001 之前就一次定清并经创作者确认；如果写到后面卡壳才临时打补丁救场，按剧作漏洞处理：
+这一轮在开写 EP001 前先把金手指的作者侧规则底表（适用边界、失效条件与使用代价）梳清并经创作者确认，剧内披露再按集分步展开；这也对应开发阶段的默认写法建议（`STY-17`，`craft_default`），避免写到死角才毫无铺垫地临时追加规则救场：
 
 > DEV-04 · 使用代价：装置给的每一样东西都会被这个世界当成他自己的才华。这个误认无法澄清——他一旦否认，
 > 装置授予的能力在该次表演中失效。首次生效：EP001（代价第一次可见在 EP007）。

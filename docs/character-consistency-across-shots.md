@@ -12,7 +12,7 @@
 
 - **固定外貌**：这个人长什么样，跨集不变（对应参考图用途里的「外貌」）。
 - **换装或状态造型**：人是同一个人，但服装、伤势、时段、天气、开合或手持状态变了。换了件外套属于新造型，不是新角色。
-- **连戏锁**：只锁本场戏里不随剧情改变、一旦走样观众一眼能看穿的外观细节。「锁定词」用提示词语言写成最简短语（例如一枚固定耳饰、某件外套的颜色与版型），会随动作改变的部分留给镜头状态。
+- **连戏锁**：只锁本集或指定镜头范围内不随剧情改变、一旦走样观众一眼能看穿的外观细节。「锁定词」用提示词语言写成最简短语（例如一枚固定耳饰、某件外套的颜色与版型），会随动作改变的部分留给镜头状态。
 
 每个出场条目都归为四类之一：新建、复用、换装或新状态、待创作者拍板。剧本里指代不清的地方先留待确认，不瞎猜。
 
@@ -50,8 +50,8 @@
 
 ## 相关
 
-- 站点指南（含一个三镜头连续案例）：https://zenstory.ai/zh/drama-skills/character-consistency
-- 角色三视图提示词模板（附 6 个原创示例）：https://zenstory.ai/zh/drama-skills/character-turnaround-prompt
+- 站点指南（含一个三镜头连续案例）：<https://zenstory.ai/zh/drama-skills/character-consistency>
+- 角色三视图提示词模板（附 6 个原创示例）：<https://zenstory.ai/zh/drama-skills/character-turnaround-prompt>
 - 全流程：[漫剧创作全流程指引](comic-drama-workflow.md)
 - 实现细节：`skills/short-drama-assets/references/continuity-and-locks.md`、`asset-design-guide.md`；`skills/short-drama-image-prompts/references/sheet-prompt-guide.md`
-- 仓库地址：https://github.com/zenstory-ai/drama-skills（原 `worldwonderer/drama-skills`，旧链接自动跳转）
+- 仓库地址：<https://github.com/zenstory-ai/drama-skills>（原 `worldwonderer/drama-skills`，旧链接自动跳转）

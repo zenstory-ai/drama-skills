@@ -1,4 +1,4 @@
-# Agent Note: Pin Ubuntu 24.04 for Python 3.9 and Pinned Playwright CI Jobs
+# Agent Note: 为 Python 3.9 与固定版本 Playwright CI 任务锁定 Ubuntu 24.04
 
 Status: implemented
 

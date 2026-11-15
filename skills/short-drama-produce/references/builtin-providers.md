@@ -9,7 +9,7 @@
 ```
 
 - **环境变量**：`OPENAI_API_KEY`（必填）；`OPENAI_BASE_URL`（可选 HTTPS 地址覆盖，默认 `https://api.openai.com/v1`）。
-- **任务与路由**：`modality` 为 `image`，单次支持产出 1–16 张同格式图片（`.png`、`.jpeg` 或 `.webp`），自动按 `n = len(outputs)` 请求并逐张解码 `b64_json` 写入临时中转目录。无参考图时调用 `POST /images/generations`；带 1–16 张参考图时调用 `POST /images/edits`（`image[]` 表单上传，固定 `model: "gpt-image-2"`）。
+- **任务与路由**：`modality` 为 `image`，单次支持产出 1–16 张同格式图片（`.png`、`.jpg`/`.jpeg` 或 `.webp`），自动按 `n = len(outputs)` 请求并逐张解码 `b64_json` 写入临时中转目录。无参考图时调用 `POST /images/generations`；带 1–16 张参考图时调用 `POST /images/edits`（`image[]` 表单上传，固定 `model: "gpt-image-2"`）。
 - **支持参数**：`width` + `height`（自动拼成 `size`）或直接传 `size`，另支持 `quality`、`background`（不支持透明背景）与 `moderation`。
 
 官方文档：[GPT Image 2 模型说明](https://developers.openai.com/api/docs/models/gpt-image-2)、[图片生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)。

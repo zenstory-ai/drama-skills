@@ -4,7 +4,7 @@
 
 ## 角色三视图提示词模板（可复制）
 
-人物外观和造型由创作者在视觉设定里先定好；视图、光线、背景和排除项按这张图的用途来选，项目或创作者另定了版式时，按项目约定走。人物外观还没定准时，先列出备选方案请创作者拍板，别靠空泛词句糊弄过去。
+人物外观和造型由创作者在视觉设定里先定好；视图、光线、背景和排除项按这张图的用途来选，项目或创作者另定了版式时，按项目约定走。人物外观还没想准时，先把备选特征定具体，别靠空泛词句凑数。
 
 | 字段 | 写什么 | 依据 |
 |---|---|---|
@@ -89,7 +89,7 @@
 
 多视图并排常见的毛病是变脸、换衣服、配饰换边，比如右臂的袖套到了背面跑到左臂；把佩戴位置和相对大小写进几个视图共用的造型句里就能稳住。跨镜头的一致性做法见 [AI 短剧角色一致性](https://zenstory.ai/zh/drama-skills/character-consistency)。
 
-漫剧如果主要靠剪影认人，外观特征不换，只换画法：发际形状落到发型剪影的缺口上，体态落到肩背重心上。找不到可靠画法时交回创作者商量，别擅自改成更好画的另一张脸。
+漫剧如果主要靠剪影认人，外观特征不换，只换画法：发际形状落到发型剪影的缺口上，体态落到肩背重心上。找不到可靠画法时先回到视觉设定调整特征，别临时换成另一张脸。
 
 ## 三视图提示词要不要写“正面”“侧面”标签？
 
@@ -156,7 +156,7 @@
 
 ## 相关
 
-- 站点原文（含更多示例与相关指南）：https://zenstory.ai/zh/drama-skills/character-turnaround-prompt
+- 站点原文（含更多示例与相关指南）：<https://zenstory.ai/zh/drama-skills/character-turnaround-prompt>
 - [参考板用途、单一造型与布光指南](../skills/short-drama-image-prompts/references/sheet-prompt-guide.md)
 - [换装造型板、状态板与局部改图](../skills/short-drama-image-prompts/references/variants-and-edits.md)
-- 仓库地址：https://github.com/zenstory-ai/drama-skills
+- 仓库地址：<https://github.com/zenstory-ai/drama-skills>

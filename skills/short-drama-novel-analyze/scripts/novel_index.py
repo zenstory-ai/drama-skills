@@ -4,8 +4,8 @@
 Every stage of source analysis slices the same file. If each stage ran its own
 regular expression the slices would disagree, and a chapter analysed under one
 boundary would be aggregated under another. This script owns the only slicing
-truth: it detects chapter boundaries once, binds each span to a content hash,
-and refuses to stay quiet about numbering it cannot explain.
+truth: it detects chapter boundaries once, records each span's line range and
+character count, and refuses to stay quiet about numbering it cannot explain.
 
 It performs no editorial judgement. Which chapters matter, what they mean and
 how they adapt are decisions for the skill workflow, not for this file.
@@ -20,14 +20,14 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # Creators run these scripts on whatever interpreter their machine provides, so
 # an unsupported version must say so instead of failing inside an import.
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit(
-        "short-drama needs Python {}.{} or newer; this interpreter is {}.{}".format(
+        "short-drama-novel-analyze needs Python {}.{} or newer; this interpreter is {}.{}".format(
             *MINIMUM_PYTHON, sys.version_info.major, sys.version_info.minor
         )
     )
@@ -37,7 +37,7 @@ SCHEMA_VERSION = "1.0.0-draft"
 # Chapter numbers appear as Arabic digits or Chinese numerals. 千 and 两 are
 # included because serialized fiction routinely passes 1000 chapters, and
 # 第两百章 is as common as 第二百章 in that range.
-CHINESE_NUMERALS = "零一二三四五六七八九十百千两"
+CHINESE_NUMERALS = "零〇一二三四五六七八九十百千两"
 # Books and episodic scripts number their chapters with 章, 回, 集, 话/話, 幕 or 节 —
 # but a book that uses 章 for chapters may also use 节 for subsections inside
 # them. Matching every unit at once turns those subsections into chapters, so
@@ -52,7 +52,7 @@ CHAPTER_RE = re.compile(
 )
 MD_HEADING_PREFIX_RE = re.compile(r"^[ \t　]*#{1,6}\s+")
 CHINESE_DIGITS = {
-    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+    "零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
     "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
 }
 CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
@@ -64,7 +64,7 @@ MAX_HEADING_LINE_WIDTH = 50
 
 
 def chinese_to_int(text: str) -> int | None:
-    """Convert 一 / 十五 / 两百零三 / 一千零一 to an int, or None if malformed.
+    """Convert 一 / 十五 / 两百零三 / 一零八 / 一千零一 to an int, or None if malformed.
 
     Returning None rather than raising matters: a heading whose number cannot be
     read must be reported as an unreadable heading, not crash the whole index
@@ -73,25 +73,58 @@ def chinese_to_int(text: str) -> int | None:
 
     if not text:
         return None
-    if text.isdigit():
+    if text.isascii() and text.isdigit():
         return int(text)
+    if not any(character in CHINESE_UNITS for character in text):
+        if not all(character in CHINESE_DIGITS for character in text):
+            return None
+        if len(text) == 1:
+            return CHINESE_DIGITS[text]
+        if "两" in text:
+            return None
+        return int("".join(str(CHINESE_DIGITS[character]) for character in text))
+
     total = 0
-    section = 0
-    digit_seen = False
+    current_digit: int | None = None
+    last_unit = 10000
+    zero_pending = False
     for character in text:
-        if character in CHINESE_DIGITS:
-            section = CHINESE_DIGITS[character]
-            digit_seen = True
+        if character in ("零", "〇"):
+            if total == 0 or current_digit is not None or zero_pending:
+                return None
+            zero_pending = True
+        elif character in CHINESE_DIGITS:
+            if current_digit is not None:
+                return None
+            current_digit = CHINESE_DIGITS[character]
         elif character in CHINESE_UNITS:
-            # 十五 means 15, so a leading 十 carries an implicit one.
-            total += (section or 1) * CHINESE_UNITS[character]
-            section = 0
-            digit_seen = True
+            unit_val = CHINESE_UNITS[character]
+            if unit_val >= last_unit:
+                return None
+            if total > 0 and not zero_pending and last_unit // unit_val > 10:
+                return None
+            if current_digit is None:
+                if unit_val != 10 or not (
+                    (total == 0 and not zero_pending)
+                    or (zero_pending and last_unit >= 1000)
+                ):
+                    return None
+                multiplier = 1
+            else:
+                multiplier = current_digit
+            total += multiplier * unit_val
+            last_unit = unit_val
+            current_digit = None
+            zero_pending = False
         else:
             return None
-    if not digit_seen:
+    if zero_pending and current_digit is None:
         return None
-    return total + section
+    if current_digit is not None:
+        if not zero_pending and last_unit >= 100:
+            return None
+        total += current_digit
+    return total
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
@@ -401,9 +434,24 @@ def validate_chapters(
     return problems, warnings
 
 
+def _decode_utf8(raw: bytes, path: Path) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        safe_name = str(path).encode("ascii", "backslashreplace").decode("ascii")
+        raise UnicodeDecodeError(
+            exc.encoding,
+            exc.object,
+            exc.start,
+            exc.end,
+            f"{safe_name} is not valid UTF-8 ({exc.reason}); convert the file to UTF-8 "
+            "(for example: iconv -f GB18030 -t UTF-8 input.txt > output.txt) before indexing",
+        ) from exc
+
+
 def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any]:
     raw = source.read_bytes()
-    text = raw.decode("utf-8")
+    text = _decode_utf8(raw, source)
     lines = text.split("\n")
     headings, long_heading_lines = find_heading_lines(lines)
     unit, ignored_units = select_chapter_unit(headings, unit_override)
@@ -472,7 +520,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
     it: an exception here reads as a broken tool, not as a fixable index.
     """
 
-    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index = json.loads(_decode_utf8(index_path.read_bytes(), index_path))
     raw = source.read_bytes()
     problems: list[str] = []
     if not isinstance(index, dict):
@@ -486,8 +534,29 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             ],
             "warnings": [],
         }
-    text = raw.decode("utf-8")
+    text = _decode_utf8(raw, source)
     lines = text.split("\n")
+    line_offsets = _line_offsets(lines)
+    expected_lines = source_record.get("line_count")
+    if (
+        isinstance(expected_lines, int)
+        and not isinstance(expected_lines, bool)
+        and expected_lines != len(lines)
+    ):
+        problems.append(
+            f"source line_count is {expected_lines}; current source has {len(lines)} lines"
+        )
+    expected_chars = source_record.get("char_count")
+    actual_total_chars = _visible_width(text)
+    if (
+        isinstance(expected_chars, int)
+        and not isinstance(expected_chars, bool)
+        and expected_chars != actual_total_chars
+    ):
+        problems.append(
+            f"source char_count is {expected_chars}; "
+            f"current source has {actual_total_chars} characters"
+        )
     chapters = index.get("chapters", [])
     if not isinstance(chapters, list) or not chapters:
         return {"verified": False, "problems": ["index carries no chapters"], "warnings": []}
@@ -549,6 +618,24 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             )
             continue
         previous_end = end_line
+        span_body = text[
+            line_offsets[start_line - 1] : (
+                line_offsets[end_line] if end_line < len(line_offsets) else len(text)
+            )
+        ]
+        actual_span_chars = _visible_width(span_body)
+        first_line = (
+            lines[0].removeprefix("\ufeff")
+            if start_line == 1
+            else lines[start_line - 1]
+        )
+        actual_heading = first_line.strip()
+        raw_heading = chapter.get("heading")
+        if isinstance(raw_heading, str) and raw_heading and raw_heading != actual_heading:
+            problems.append(
+                f"chapter {sequence} heading is {raw_heading!r}; "
+                f"line {start_line} now reads {actual_heading!r}"
+            )
         raw_number = chapter.get("source_number")
         source_number = (
             raw_number
@@ -556,11 +643,13 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             else None
         )
         raw_chars = chapter.get("char_count")
-        char_count = (
-            raw_chars
-            if isinstance(raw_chars, int) and not isinstance(raw_chars, bool)
-            else _visible_width("\n".join(lines[start_line - 1 : end_line]))
-        )
+        has_int_chars = isinstance(raw_chars, int) and not isinstance(raw_chars, bool)
+        if has_int_chars and raw_chars != actual_span_chars:
+            problems.append(
+                f"chapter {sequence} char_count is {raw_chars}; "
+                f"lines {start_line}-{end_line} now have {actual_span_chars} characters"
+            )
+        char_count = raw_chars if has_int_chars else actual_span_chars
         normalized_chapters.append(
             {
                 "sequence": sequence,
@@ -579,6 +668,14 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
         if normalized_chapters
         else []
     )
+    recorded_problems = index.get("problems")
+    if recorded_problems is not None and not isinstance(recorded_problems, list):
+        problems.append("index problems field must be a list")
+    elif recorded_problems:
+        warnings.append(
+            "index still carries non-empty top-level problems from an earlier build; "
+            'clear "problems": [] once the spans are resolved'
+        )
     return {"verified": not problems, "problems": problems, "warnings": warnings}
 
 
@@ -590,6 +687,7 @@ DEFAULT_SAMPLE_COUNT = 12
 # flag. Spelling it twice is how the two drift apart, and a drifted default
 # reports every chapter as missing while the files sit right there.
 DEFAULT_COVERAGE_STAGE = "extract"
+KNOWN_COVERAGE_STAGES = ("extract", "triage")
 
 
 def sample_chapters(index_path: Path, count: int = DEFAULT_SAMPLE_COUNT) -> dict[str, Any]:
@@ -601,7 +699,7 @@ def sample_chapters(index_path: Path, count: int = DEFAULT_SAMPLE_COUNT) -> dict
     is deterministic so a second run cites the same chapters as the first.
     """
 
-    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index = json.loads(_decode_utf8(index_path.read_bytes(), index_path))
     chapters = index.get("chapters", [])
     total = len(chapters)
     if total == 0:
@@ -632,7 +730,11 @@ def sample_chapters(index_path: Path, count: int = DEFAULT_SAMPLE_COUNT) -> dict
 
 
 def coverage(
-    index_path: Path, analysis_dir: Path, stage: str = DEFAULT_COVERAGE_STAGE
+    index_path: Path,
+    analysis_dir: Path,
+    stage: str = DEFAULT_COVERAGE_STAGE,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
 ) -> dict[str, Any]:
     """Report which chapters have no analysis file for one named stage.
 
@@ -643,29 +745,52 @@ def coverage(
     as complete.
     """
 
-    index = json.loads(index_path.read_text(encoding="utf-8"))
-    expected = {chapter["sequence"] for chapter in index.get("chapters", [])}
+    if start is not None and end is not None and start > end:
+        raise ValueError(
+            f"invalid chapter range: start ({start}) must not exceed end ({end})"
+        )
+    index = json.loads(_decode_utf8(index_path.read_bytes(), index_path))
+    all_sequences = {chapter["sequence"] for chapter in index.get("chapters", [])}
+    expected = {
+        sequence
+        for sequence in all_sequences
+        if (start is None or sequence >= start) and (end is None or sequence <= end)
+    }
     pattern = re.compile(rf"^ch-(\d+)-{re.escape(stage)}$")
+    sibling_stages = tuple(item for item in KNOWN_COVERAGE_STAGES if item != stage)
+    sibling_pattern = (
+        re.compile(r"^ch-(\d+)-(?:" + "|".join(re.escape(item) for item in sibling_stages) + r")$")
+        if sibling_stages
+        else None
+    )
     found: set[int] = set()
     unmatched: list[str] = []
-    for path in sorted(analysis_dir.glob("*.md")):
-        match = pattern.fullmatch(path.stem)
-        if match is None:
+    dir_exists = analysis_dir.is_dir()
+    if dir_exists:
+        for path in sorted(analysis_dir.glob("*.md")):
+            match = pattern.fullmatch(path.stem)
+            if match is not None:
+                found.add(int(match.group(1)))
+                continue
+            if sibling_pattern is not None and sibling_pattern.fullmatch(path.stem) is not None:
+                continue
             unmatched.append(path.name)
-        else:
-            found.add(int(match.group(1)))
     missing = sorted(expected - found)
-    return {
+    has_range = start is not None or end is not None
+    result: dict[str, Any] = {
         "stage": stage,
         "expected": len(expected),
         "present": len(expected & found),
         "missing": missing,
-        "unexpected": sorted(found - expected),
+        "unexpected": sorted(found - (all_sequences if has_range else expected)),
         # Named rather than counted: a file whose name drifted by one character
         # is invisible to the gate, and looks identical to a missing chapter.
         "unmatched_files": unmatched,
-        "complete": not missing,
+        "complete": bool(expected) and dir_exists and not missing and not unmatched,
     }
+    if has_range:
+        result["range"] = [start, end]
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -694,45 +819,55 @@ def main(argv: list[str] | None = None) -> int:
     cover.add_argument("index", type=Path)
     cover.add_argument("analysis_dir", type=Path)
     cover.add_argument("--stage", default=DEFAULT_COVERAGE_STAGE)
+    cover.add_argument("--start", type=int, default=None, help="first chapter sequence in range")
+    cover.add_argument("--end", type=int, default=None, help="last chapter sequence in range")
 
     args = parser.parse_args(argv)
 
-    if args.command == "index":
-        document = build_index(args.source, args.unit)
-        payload = json.dumps(document, ensure_ascii=True, indent=2, sort_keys=True)
-        if args.out is not None:
-            _atomic_write_text(args.out, payload + "\n")
-            print(
-                json.dumps(
-                    {
-                        "chapter_count": document["chapter_count"],
-                        "chapter_unit": document["chapter_unit"],
-                        "ignored_heading_units": document["ignored_heading_units"],
-                        "problems": document["problems"],
-                        "warnings": document["warnings"],
-                        "out": str(args.out),
-                    },
-                    ensure_ascii=True,
-                    indent=2,
+    try:
+        if args.command == "index":
+            document = build_index(args.source, args.unit)
+            payload = json.dumps(document, ensure_ascii=True, indent=2, sort_keys=True)
+            if args.out is not None:
+                _atomic_write_text(args.out, payload + "\n")
+                print(
+                    json.dumps(
+                        {
+                            "chapter_count": document["chapter_count"],
+                            "chapter_unit": document["chapter_unit"],
+                            "ignored_heading_units": document["ignored_heading_units"],
+                            "problems": document["problems"],
+                            "warnings": document["warnings"],
+                            "out": str(args.out),
+                        },
+                        ensure_ascii=True,
+                        indent=2,
+                    )
                 )
-            )
-        else:
-            print(payload)
-        return 1 if document["problems"] else 0
+            else:
+                print(payload)
+            return 1 if document["problems"] else 0
 
-    if args.command == "verify":
-        result = verify_index(args.index, args.source)
+        if args.command == "verify":
+            result = verify_index(args.index, args.source)
+            print(json.dumps(result, ensure_ascii=True, indent=2))
+            return 0 if result["verified"] else 1
+
+        if args.command == "sample":
+            result = sample_chapters(args.index, args.count)
+            print(json.dumps(result, ensure_ascii=True, indent=2))
+            return 0 if result["sampled"] else 1
+
+        result = coverage(
+            args.index, args.analysis_dir, args.stage, start=args.start, end=args.end
+        )
         print(json.dumps(result, ensure_ascii=True, indent=2))
-        return 0 if result["verified"] else 1
-
-    if args.command == "sample":
-        result = sample_chapters(args.index, args.count)
-        print(json.dumps(result, ensure_ascii=True, indent=2))
-        return 0 if result["sampled"] else 1
-
-    result = coverage(args.index, args.analysis_dir, args.stage)
-    print(json.dumps(result, ensure_ascii=True, indent=2))
-    return 0 if result["complete"] else 1
+        return 0 if result["complete"] else 1
+    except (UnicodeDecodeError, ValueError) as exc:
+        reason = exc.reason if isinstance(exc, UnicodeDecodeError) else str(exc)
+        message = f"error: {reason}"
+        print(message.encode("ascii", "backslashreplace").decode("ascii"), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

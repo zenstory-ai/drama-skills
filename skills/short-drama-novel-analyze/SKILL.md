@@ -59,9 +59,7 @@ python3 {技能目录}/scripts/novel_index.py verify \
 
 ### S1 改编价值快评
 
-按 [改编价值快评](references/adaptation-triage.md) 执行：
-- **短篇小说（如 30 章以内）或创作者已指定拆解范围（如前 100 章 / 第一季）、明确要求直接拆完**：**不在 S1 暂停等待拍板**，直接推进 S2（短篇无需单独停步交快评）。
-- **未划定范围的超长篇**：用 `novel_index.py sample --count 12` 等距抽样写出 `triage.md`（首行标明 `coverage_ratio`，结合目标制作形态评估对话与心理描写转化负担），汇报建议拆解范围并请创作者确认。
+未定范围的超长篇按 [改编价值快评](references/adaptation-triage.md) 跑 `sample --count 12` 写出 `triage.md`，汇报建议拆解区间并请创作者确认；短篇作品、创作者已指定拆解范围或明确要求直接拆完时，**不在 S1 暂停等拍板**，直接进入 S2。
 
 ### S2 逐章情节提取
 
@@ -69,10 +67,10 @@ python3 {技能目录}/scripts/novel_index.py verify \
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py coverage \
-  项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters
+  项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters [--start <起> --end <止>]
 ```
 
-全书拆解时要求 `complete: true`；按创作者指定章节区间（如 `sequence` 1–100）分批拆解时，核实 `chapters/` 已完整覆盖本次目标区间且无 `unmatched_files` 错名文件即可进入 S3。
+全书拆解时直接跑 `coverage`，按创作者指定区间（如 `sequence` 1–100）分批拆解时传 `--start 1 --end 100`；确认返回 `complete: true`（目标章齐全且无 `unmatched_files` 错名文件）即可进入 S3。
 
 ### S3 剧情单元与爽点梳理
 

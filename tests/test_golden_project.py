@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import io
 import json
@@ -503,6 +504,151 @@ class GoldenProjectTests(unittest.TestCase):
         stream.flush()
         written = stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]
         self.assertIn("剧集/EP001/storyboard/keyframes.jsonl", written)
+
+    def test_compact_refs_preserves_hashless_locator_fields_outside_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proj = Path(directory) / "proj"
+            proj.mkdir()
+            (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
+            manifest = proj / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "upstream_refs": [
+                            {
+                                "owner": "short-drama",
+                                "artifact": "short-drama.json",
+                                "record_id": "R1",
+                            },
+                            {
+                                "owner": "short-drama",
+                                "artifact": "short-drama.json",
+                                "record_id": "R2",
+                            },
+                            {
+                                "owner": "short-drama",
+                                "artifact": "short-drama.json",
+                                "record_id": "R3",
+                            },
+                        ],
+                        "target_locator": {
+                            "owner": "short-drama-storyboard",
+                            "artifact": "剧集/EP002/分镜.md",
+                        },
+                        "fallback_locator": {
+                            "owner": "short-drama",
+                            "artifact": "short-drama.json",
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = compact_refs.main(["--migrate", str(proj)])
+            self.assertEqual(rc, 0)
+
+            rewritten = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(
+                rewritten["sources"],
+                {"short-drama": {"owner": "short-drama", "artifact": "short-drama.json"}},
+            )
+            self.assertTrue(
+                all(ref.get("src") == "short-drama" for ref in rewritten["upstream_refs"])
+            )
+            self.assertEqual(
+                rewritten["target_locator"],
+                {"owner": "short-drama-storyboard", "artifact": "剧集/EP002/分镜.md"},
+            )
+            self.assertEqual(
+                rewritten["fallback_locator"],
+                {"owner": "short-drama", "artifact": "short-drama.json"},
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(compact_refs.check(proj), 0)
+
+    def test_compact_refs_reports_invalid_utf8_as_invalid_json_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proj = Path(directory) / "proj"
+            proj.mkdir()
+            bad = proj / "broken.json"
+            bad.write_bytes(b'{"title": "\xff\xfe"}\n')
+
+            findings: list[Any] = []
+            self.assertIsNone(compact_refs.load_file(bad, proj, findings))
+            self.assertEqual([item.code for item in findings], ["INVALID_JSON"])
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = compact_refs.check(proj)
+            self.assertEqual(rc, 1)
+            self.assertIn("broken.json: INVALID_JSON:", stdout.getvalue())
+
+            err_migrate = io.StringIO()
+            with contextlib.redirect_stderr(err_migrate):
+                self.assertEqual(compact_refs.migrate(proj), 1)
+            self.assertIn("broken.json: INVALID_JSON:", err_migrate.getvalue())
+
+    def test_compact_refs_rejects_symlinks_and_root_escaping_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            outside = base / "outside.json"
+            outside.write_text('{"secret": true}\n', encoding="utf-8")
+            outside_md = base / "outside.md"
+            outside_md.write_text("# secret\n", encoding="utf-8")
+
+            proj = base / "proj"
+            proj.mkdir()
+            (proj / "short-drama.json").write_text('{"title": "测试"}\n', encoding="utf-8")
+
+            root_link = base / "proj-link"
+            root_link.symlink_to(proj, target_is_directory=True)
+            self.assertEqual(list(compact_refs.iter_data_files(root_link)), [])
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+                io.StringIO()
+            ):
+                self.assertEqual(compact_refs.check(root_link), 1)
+                self.assertEqual(compact_refs.migrate(root_link), 1)
+                self.assertEqual(compact_refs.main(["--check", str(root_link)]), 2)
+
+            file_link = proj / "linked.json"
+            file_link.symlink_to(outside)
+            self.assertNotIn(file_link, list(compact_refs.iter_data_files(proj)))
+            out_link, err_link = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out_link), contextlib.redirect_stderr(err_link):
+                self.assertEqual(compact_refs.check(proj), 1)
+                self.assertEqual(compact_refs.migrate(proj), 1)
+            self.assertIn("SYMLINK_NOT_ALLOWED", out_link.getvalue())
+            self.assertIn("SYMLINK_NOT_ALLOWED", err_link.getvalue())
+            file_link.unlink()
+
+            md_link = proj / "note-link.md"
+            md_link.symlink_to(outside_md)
+            (proj / "escape.json").write_text(
+                json.dumps(
+                    {
+                        "sources": {
+                            "esc": {"owner": "short-drama", "artifact": "../outside.json"}
+                        },
+                        "first_ref": {"src": "esc"},
+                        "second_ref": {"owner": "short-drama", "artifact": "../outside.md"},
+                        "third_ref": {"owner": "short-drama", "artifact": "note-link.md"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            out_esc, err_esc = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out_esc), contextlib.redirect_stderr(err_esc):
+                self.assertEqual(compact_refs.check(proj), 1)
+            report_text = out_esc.getvalue()
+            self.assertIn("SOURCE_TARGET_ESCAPES_ROOT", report_text)
+            self.assertIn("REF_TARGET_ESCAPES_ROOT", report_text)
+            self.assertIn("REF_TARGET_IS_SYMLINK", report_text)
 
     def test_approved_review_is_bound_to_creator_accepted_artifacts_and_text_policy(self) -> None:
         acceptance_path = GOLDEN / "创作者决策/golden-production-acceptance.jsonl"

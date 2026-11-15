@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -484,11 +485,6 @@ class RelaxedGateContractTests(EpisodeCase):
         self,
     ) -> None:
         # Multi-word speaker with ASCII performance cue in 剧本.md is attributed cleanly.
-        self.edit(
-            "剧本.md",
-            "## EP001-SC001",
-            "## EP001-SC001",
-        )
         screenplay_path = self.episode / "剧本.md"
         screenplay_path.write_text(
             screenplay_path.read_text(encoding="utf-8")
@@ -651,6 +647,335 @@ class RelaxedGateContractTests(EpisodeCase):
         )
         episode = voice.bound_episode(self.project, audio_line=flexible_line)
         self.assertEqual(check.validate_episode(episode, self.project), [])
+
+    def test_image_reference_rejects_plan_and_pending_tokens_while_allowing_benign_notes(self) -> None:
+        base_img = (self.episode / "图片提示词.md").read_text(encoding="utf-8")
+        # Baseline example already has benign `无外部参考；三视图…` notes.
+        self.assertEqual(self.errors(), [])
+
+        for bad_ref in (
+            "- 参考：PLAN-ABA-01（顺序：1）· SHOT-EP001-001《攥紧的茶杯》（用途：外貌；控制：外貌；不得控制：动作）",
+            "- 参考：无（待补参考图：定妆照）",
+            "- 参考：无外部参考；待补参考图：角色定妆照",
+            "- 参考：无外部参考;待补参考图: 角色定妆照",
+            "- 参考：ref-low-01（顺序：1）· 输入/参考/定妆.png《定妆》（用途：外貌；控制：外貌；不得控制：动作）",
+        ):
+            with self.subTest(bad_ref=bad_ref):
+                mutated = base_img.replace(
+                    "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                    bad_ref,
+                    1,
+                )
+                (self.episode / "图片提示词.md").write_text(mutated, encoding="utf-8")
+                errs = self.errors()
+                self.assertTrue(errs, f"expected errors for {bad_ref}")
+        (self.episode / "图片提示词.md").write_text(base_img, encoding="utf-8")
+
+    def test_delivery_group_enforces_pending_ref_gate_and_validates_audio_references(self) -> None:
+        from tests import test_voice_reference_binding as voice
+
+        opus_rel = "输入/声音/江晨音色.opus"
+        episode = voice.bound_episode(self.project, voice_path=opus_rel)
+        opus_voice = self.project / opus_rel
+        opus_voice.write_bytes(b"OggS")
+        self.assertEqual(check.validate_episode(episode, self.project), [])
+
+        videos_path = episode / "视频提示词.md"
+        base_videos = videos_path.read_text(encoding="utf-8")
+        group_with_pending = (
+            base_videos
+            + "\n## GROUP-EP001-01 · 双镜测试\n"
+            + "- 成员：MOTION-EP001-011、MOTION-EP001-012\n"
+            + "- 时长：5s\n"
+            + "- 输入参考图：无（待补参考图：走廊实拍图）\n"
+            + f"- 参考音频：REF-VOICE-G1（顺序：1）· {opus_rel}《江晨声线》"
+            "（用途：音色；角色：江晨；控制：音色；不得控制：台词）\n\n"
+            + "### 可复制提示词\n"
+            + '> @音频1 Jiangchen in a pine-green lapel service jacket presses his index finger onto the closed laptop and says, “下周榜首，是我们团。”\n'
+        )
+        videos_path.write_text(group_with_pending, encoding="utf-8")
+        partial_errors = check.validate_episode(episode, self.project, partial=True)
+        self.assertEqual(partial_errors, [])
+        full_errors = check.validate_episode(episode, self.project, partial=False)
+        self.assertTrue(
+            any("GROUP-EP001-01" in err and "待补参考图" in err for err in full_errors),
+            full_errors,
+        )
+
+        group_resolved = group_with_pending.replace(
+            "- 输入参考图：无（待补参考图：走廊实拍图）\n",
+            "- 输入参考图：PLAN-G1-01（顺序：1）· SHOT-EP001-011《冷茶》（用途：起始帧；控制：构图；不得控制：动作）\n",
+        )
+        videos_path.write_text(group_resolved, encoding="utf-8")
+        self.assertEqual(check.validate_episode(episode, self.project, partial=False), [])
+
+        group_bad_audio = group_resolved.replace(opus_rel, "输入/声音/不存在.opus")
+        videos_path.write_text(group_bad_audio, encoding="utf-8")
+        audio_errors = check.validate_episode(episode, self.project, partial=False)
+        self.assertTrue(
+            any("GROUP-EP001-01" in err and "不存在.opus" in err for err in audio_errors),
+            audio_errors,
+        )
+
+    def test_html_comments_emphasized_keys_per_scene_blocking_and_screenplay_grammar(self) -> None:
+        # Per-scene blocking between SHOT sections + HTML comment outside fences + trailing ## 备注
+        board_path = self.episode / "分镜.md"
+        board = board_path.read_text(encoding="utf-8")
+        board = "<!--\n## SHOT-EP001-999 · 废弃镜头\n- 来源：EP999-SC999\n-->\n" + board
+        board = board.replace(
+            "## SHOT-EP001-002",
+            "## 场景站位 · EP001-SC001 · 茶水间补充\n- 站位：门内对峙\n- 轴线：南北向\n- 视线：互视\n\n## SHOT-EP001-002",
+            1,
+        )
+        board_path.write_text(board, encoding="utf-8")
+
+        visual_path = self.episode / "视觉设定.md"
+        visual = visual_path.read_text(encoding="utf-8")
+        visual = visual.replace("- 提示词名称：", "- **提示词名称**：", 1)
+        visual = visual.replace("- 连戏锁：", "- **连戏锁**：", 1)
+        visual += "\n## 备注\n这里写审片备忘，不应并入上一条设定。\n"
+        visual_path.write_text(visual, encoding="utf-8")
+
+        script_path = self.episode / "剧本.md"
+        base_script = script_path.read_text(encoding="utf-8")
+        # `内外` scene space is valid
+        script_path.write_text(
+            base_script.replace("EP001-SC001 内 ·", "EP001-SC001 内外 ·", 1),
+            encoding="utf-8",
+        )
+        self.assertEqual(self.errors(), [])
+
+        # Malformed `## EP001-SC...` heading is caught with `内外` in diagnostic
+        script_path.write_text(
+            base_script + "\n## EP001-SC099 走廊夜戏\n\n江晨：谁？\n",
+            encoding="utf-8",
+        )
+        bad_heading_errors = self.errors()
+        self.assertTrue(
+            any("EP001-SC099" in err and "内外" in err for err in bad_heading_errors),
+            bad_heading_errors,
+        )
+        script_path.write_text(base_script, encoding="utf-8")
+
+        # Strict `### 可复制提示词` heading rejects `### 可复制通用提示词`
+        videos_path = self.episode / "视频提示词.md"
+        base_videos = videos_path.read_text(encoding="utf-8")
+        videos_path.write_text(
+            base_videos.replace("### 可复制提示词", "### 可复制通用提示词", 1),
+            encoding="utf-8",
+        )
+        heading_errors = self.errors()
+        self.assertTrue(
+            any("可复制提示词" in err for err in heading_errors),
+            heading_errors,
+        )
+
+        # ASCII-colon foreign dialogue is recognized in `_screenplay_dialogue`
+        dialogue = check._screenplay_dialogue(
+            "<!-- 场记注释 -->\n## EP001-SC001 外 · Pier · 夜\n\nElena: Stay back.\n\n12:30 灯亮。\n"
+        )
+        self.assertEqual(
+            [(line.scene, line.speaker, line.key) for line in dialogue],
+            [("EP001-SC001", "Elena", "stayback")],
+        )
+
+    def test_crlf_and_utf8_bom_normalize_across_all_episode_documents_and_helpers(self) -> None:
+        videos_path = self.episode / "视频提示词.md"
+        videos_path.write_text(
+            videos_path.read_text(encoding="utf-8")
+            + "\n## GROUP-EP001-01 · 双镜测试\n"
+            + "- 成员：MOTION-EP001-011、MOTION-EP001-012\n"
+            + "- 时长：5s\n"
+            + "- 输入参考图：PLAN-G1-01（顺序：1）· SHOT-EP001-011《冷茶》（用途：起始帧；控制：构图；不得控制：动作）\n\n"
+            + "### 可复制提示词\n"
+            + '> Jiangchen in a pine-green lapel service jacket presses his index finger onto the closed laptop and says, “下周榜首，是我们团。”\n',
+            encoding="utf-8",
+        )
+        for name in ("剧本.md", "视觉设定.md", "分镜.md", "图片提示词.md", "视频提示词.md"):
+            path = self.episode / name
+            crlf_bom = "\ufeff" + path.read_text(encoding="utf-8").replace("\n", "\r\n")
+            path.write_bytes(crlf_bom.encode("utf-8"))
+        self.assertEqual(self.errors(), [])
+
+        raw_visual = (self.episode / "视觉设定.md").read_bytes().decode("utf-8")
+        helper_errs: list[str] = []
+        entries = check._visual_entries(raw_visual, helper_errs)
+        locks = check._continuity_locks(raw_visual, helper_errs)
+        self.assertEqual(helper_errs, [])
+        self.assertTrue(any(entry.name == "江晨" for entry in entries))
+        self.assertTrue(any(lock.lock_id == "LOCK-JIANGCHEN-DRESS" for lock in locks))
+
+    def test_inside_resolves_relative_and_symlinked_project_roots(self) -> None:
+        from tests import test_voice_reference_binding as voice
+
+        episode = voice.bound_episode(self.project)
+        with tempfile.TemporaryDirectory() as link_parent:
+            symlink_root = Path(link_parent) / "linked_project"
+            symlink_root.symlink_to(self.project, target_is_directory=True)
+            self.assertEqual(
+                check.validate_episode(symlink_root / "剧集/EP001", symlink_root),
+                [],
+            )
+
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(self.project)
+            self.assertEqual(
+                check.validate_episode(Path("剧集/EP001"), Path(".")),
+                [],
+            )
+        finally:
+            os.chdir(previous_cwd)
+
+        with tempfile.TemporaryDirectory() as outside_dir:
+            outside_file = Path(outside_dir) / "outside.png"
+            outside_file.write_bytes(b"PNG")
+            escaped_link = self.project / "输入/参考图/越界软链.png"
+            escaped_link.symlink_to(outside_file)
+            board_path = episode / "分镜.md"
+            board_path.write_text(
+                board_path.read_text(encoding="utf-8").replace(
+                    voice.PICTURE_PATH, "输入/参考图/越界软链.png", 1
+                ),
+                encoding="utf-8",
+            )
+            escape_errors = check.validate_episode(episode, self.project)
+            self.assertTrue(
+                any("越出项目根目录" in err for err in escape_errors), escape_errors
+            )
+
+    def test_cast_lines_in_screenplay_do_not_swallow_dialogue_or_create_fake_speaker(self) -> None:
+        raw = (
+            "# EP001\n\n"
+            "人物：许棠、顾沉\n\n"
+            "## EP001-SC001 内 · 走廊 · 夜\n"
+            "- **人物：**许棠、顾沉\n"
+            "许棠：站住。\n"
+        )
+        dialogue = check._screenplay_dialogue(raw)
+        self.assertEqual(
+            [(line.scene, line.speaker, line.key) for line in dialogue],
+            [("EP001-SC001", "许棠", "站住")],
+        )
+
+        script_path = self.episode / "剧本.md"
+        base = script_path.read_text(encoding="utf-8")
+        injected = "人物：江晨、周薄森\n\n" + base.replace(
+            "## EP001-SC001 内 · 副团长办公室 · 日\n",
+            "## EP001-SC001 内 · 副团长办公室 · 日\n- **人物：**江晨、周薄森\n",
+            1,
+        )
+        script_path.write_text(injected, encoding="utf-8")
+        self.assertEqual(self.errors(), [])
+
+    def test_con07_subject_slot_exempts_lock_via_registered_setting_image_path(self) -> None:
+        ref_rel = "输入/参考图/江晨定妆.png"
+        (self.project / ref_rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.project / ref_rel).write_bytes(b"PNG")
+        other_rel = "输入/参考图/路人定妆.png"
+        (self.project / other_rel).write_bytes(b"PNG")
+
+        visual_path = self.episode / "视觉设定.md"
+        visual_path.write_text(
+            visual_path.read_text(encoding="utf-8").replace(
+                "- 提示词名称：Jiangchen\n",
+                f"- 提示词名称：Jiangchen\n- 参考图：{ref_rel}\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        slot_registered = (
+            f"REF-SUBJECT-01（顺序：1）· {ref_rel}《定妆实拍》"
+            "（用途：主体；控制：姿态；不得控制：构图、动作）"
+        )
+        board_path = self.episode / "分镜.md"
+        s2 = check._sections(board_path.read_text(encoding="utf-8"), "SHOT")["SHOT-EP001-002"]
+        board_path.write_text(
+            board_path.read_text(encoding="utf-8").replace(
+                s2,
+                s2.replace("- 输入参考图：无（文生视频）。", f"- 输入参考图：{slot_registered}", 1),
+                1,
+            ),
+            encoding="utf-8",
+        )
+        videos_path = self.episode / "视频提示词.md"
+        m2 = check._sections(videos_path.read_text(encoding="utf-8"), "MOTION")["MOTION-EP001-002"]
+        m2_exempt = (
+            m2.replace("- 生成方式：文生视频", "- 生成方式：图生视频", 1)
+            .replace("- 输入参考图：无（文生视频）。", f"- 输入参考图：{slot_registered}", 1)
+            .replace(SURFACE, "tailored uniform coat")
+        )
+        base_videos = videos_path.read_text(encoding="utf-8")
+        videos_path.write_text(base_videos.replace(m2, m2_exempt, 1), encoding="utf-8")
+        self.assertEqual(self.errors(), [])
+
+        # Unregistered image path without entry name in label/control does NOT exempt the lock.
+        videos_path.write_text(
+            videos_path.read_text(encoding="utf-8").replace(ref_rel, other_rel, 1),
+            encoding="utf-8",
+        )
+        board_path.write_text(
+            board_path.read_text(encoding="utf-8").replace(ref_rel, other_rel, 1),
+            encoding="utf-8",
+        )
+        unregistered_errors = self.errors()
+        self.assertTrue(
+            any("LOCK-JIANGCHEN-DRESS" in err and "MOTION-EP001-002" in err for err in unregistered_errors),
+            unregistered_errors,
+        )
+
+    def test_scene_heading_spacing_unclosed_comments_inline_code_and_emphasized_fields(self) -> None:
+        script_path = self.episode / "剧本.md"
+        base_script = script_path.read_text(encoding="utf-8")
+
+        # Missing separator between SC001 and 内 is rejected.
+        script_path.write_text(
+            base_script.replace("EP001-SC001 内 ·", "EP001-SC001内 ·", 1),
+            encoding="utf-8",
+        )
+        self.assertTrue(any("场景标题必须写成" in err for err in self.errors()))
+
+        # Malformed H2 in 剧本.md without SC<digits> is rejected instead of slipping through.
+        script_path.write_text(base_script + "\n## 幕间过渡\n\n走廊灯暗。\n", encoding="utf-8")
+        self.assertTrue(any("幕间过渡" in err and "场景标题必须写成" in err for err in self.errors()))
+        script_path.write_text(base_script, encoding="utf-8")
+
+        # Inline backtick code span containing `<!--` does not strip subsequent sections,
+        # while an unclosed `<!--` outside fences/copyable blocks reports a clear error.
+        visual_path = self.episode / "视觉设定.md"
+        base_visual = visual_path.read_text(encoding="utf-8")
+        visual_with_code = (
+            base_visual.replace(
+                "- 提示词名称：Jiangchen",
+                "- ***提示词名称***：\u3000Jiangchen",
+                1,
+            ).replace(
+                "- 提示词名称：Zhoubosen",
+                "- **提示词名称：**Zhoubosen",
+                1,
+            )
+            + "\n## 备注\n- 说明：保留行内 `` `<!-- 字面量` `` 标记。\n- 12:00 走廊换灯。\n"
+        )
+        visual_path.write_text(visual_with_code, encoding="utf-8")
+        self.assertEqual(self.errors(), [])
+
+        field_errs: list[str] = []
+        parsed_fields = check._fields(
+            "- **甲**与**乙**：并列项\n- 12:00 准点打卡\n- ***标识***：OK\n",
+            owner="TEST",
+            errors=field_errs,
+        )
+        self.assertEqual(field_errs, [])
+        self.assertEqual(parsed_fields.get("**甲**与**乙**"), "并列项")
+        self.assertEqual(parsed_fields.get("标识"), "OK")
+        self.assertNotIn("12", parsed_fields)
+
+        visual_path.write_text(visual_with_code + "\n<!-- 未闭合注释\n", encoding="utf-8")
+        unclosed_errors = self.errors()
+        self.assertTrue(
+            any("视觉设定.md" in err and "未闭合的 HTML 注释" in err for err in unclosed_errors),
+            unclosed_errors,
+        )
 
 
 if __name__ == "__main__":

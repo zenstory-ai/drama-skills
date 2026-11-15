@@ -383,26 +383,72 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 self.assertEqual(fields["输入参考图"], EXPLICIT_TEXT_TO_VIDEO)
 
     def test_reference_discovery_contract_prevents_silent_text_fallback(self) -> None:
-        storyboard_skill = (
-            ROOT / "skills/short-drama-storyboard/SKILL.md"
-        ).read_text(encoding="utf-8")
-        video_skill = (
-            ROOT / "skills/short-drama-video-prompts/SKILL.md"
-        ).read_text(encoding="utf-8")
+        for skill_name in ("short-drama-storyboard", "short-drama-video-prompts"):
+            skill_md = ROOT / "skills" / skill_name / "SKILL.md"
+            raw = skill_md.read_text(encoding="utf-8")
+            match = re.match(r"^---\n([\s\S]+?)\n---\n([\s\S]+)$", raw)
+            self.assertIsNotNone(match, f"{skill_name}/SKILL.md missing YAML frontmatter")
+            assert match is not None
+            frontmatter, body = match.groups()
+            fields = {
+                key.strip(): value.strip()
+                for line in frontmatter.splitlines()
+                if ":" in line
+                for key, value in [line.split(":", 1)]
+            }
+            self.assertEqual(fields.get("name"), skill_name)
+            self.assertTrue(fields.get("description"))
+            self.assertGreaterEqual(len(re.findall(r"^##\s+\S+", body, re.MULTILINE)), 2)
 
-        self.assertIn("用户没有手工点名参考图，不等于选择文生视频", storyboard_skill)
-        self.assertIn("用户提供的输入、`剧集/<EP>/制作成果/`", storyboard_skill)
-        self.assertIn("无（待补参考图：", storyboard_skill)
-        self.assertIn(
-            "REF-<slot>（顺序：<n>）· <项目相对路径>《<中文名称>》",
-            storyboard_skill,
-        )
-        self.assertIn("不得用 `/` 代替字段分隔符", storyboard_skill)
-        self.assertIn("先自动查找可用真实图片", video_skill)
-        self.assertIn("不靠相似文件名猜图", video_skill)
-        self.assertIn("不擅自改成文生视频", video_skill)
-        self.assertIn("不写最终《视频提示词.md》", video_skill)
-        self.assertIn("该字段只写这两个精确值", video_skill)
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            real_image = project / "剧集/EP001/制作成果/role.png"
+            real_image.parent.mkdir(parents=True, exist_ok=True)
+            real_image.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            prose_errors: list[str] = []
+            creator_markdown_check._references(
+                "暂未指定参考图，先按文字生成", "SHOT-EP001-001", project, prose_errors
+            )
+            self.assertTrue(prose_errors, "prose fallback in 输入参考图 must be rejected")
+
+            slash_errors: list[str] = []
+            creator_markdown_check._references(
+                "REF-1（顺序：1）· 剧集/EP001/制作成果/role.png《江晨》"
+                "（用途：外貌 / 控制：五官 / 不得控制：构图）",
+                "SHOT-EP001-001",
+                project,
+                slash_errors,
+            )
+            self.assertTrue(slash_errors, "`/` separator inside REF scope must be rejected")
+
+            missing_file_errors: list[str] = []
+            creator_markdown_check._references(
+                "REF-1（顺序：1）· 剧集/EP001/制作成果/missing.png《江晨》"
+                "（用途：外貌；控制：五官；不得控制：构图）",
+                "SHOT-EP001-001",
+                project,
+                missing_file_errors,
+            )
+            self.assertTrue(missing_file_errors, "REF naming a missing file must be rejected")
+
+            valid_errors: list[str] = []
+            kinds = creator_markdown_check._references(
+                "PLAN-1（顺序：1）· IMG-JIANGCHEN-SHEET《江晨角色设定图》"
+                "（用途：外貌；控制：五官与发型；不得控制：机位与构图）；待补参考图：江晨角色图。",
+                "SHOT-EP001-001",
+                project,
+                valid_errors,
+            )
+            self.assertEqual(valid_errors, [])
+            self.assertEqual(kinds, frozenset({"PLAN"}))
+
+            t2v_errors: list[str] = []
+            t2v_kinds = creator_markdown_check._references(
+                EXPLICIT_TEXT_TO_VIDEO, "SHOT-EP001-001", project, t2v_errors
+            )
+            self.assertEqual(t2v_errors, [])
+            self.assertEqual(t2v_kinds, frozenset())
 
     def test_source_quotes_do_not_force_offscreen_tags_while_keyframe_subjects_must_be_covered(
         self,

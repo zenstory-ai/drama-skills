@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from edit_tool import (  # noqa: E402
+    Cut,
     _unaccounted_shots,
     DEFAULT_REMOTION_CONCURRENCY,
     DisplayCue,
@@ -431,12 +432,12 @@ def check_missing_shots_are_reported() -> None:
 
     known = {f"MOTION-EP006-{i:03d}" for i in range(1, 5)}
 
-    class Stub:
-        def __init__(self, motion): self.motion = motion
+    def make_cut(motion: str) -> Cut:
+        return Cut("CUT-EP006-001", "", motion, "media/001.mp4", 0.0, 1.0, 1.0, (), {}, 1)
 
-    used = [Stub("MOTION-EP006-003"), Stub("MOTION-EP006-004")]
+    used = [make_cut("MOTION-EP006-003"), make_cut("MOTION-EP006-004")]
     findings = _unaccounted_shots(known, used, [])
-    require(findings, "少了两镜却没有任何 finding")
+    require(bool(findings), "少了两镜却没有任何 finding")
     require("001" in findings[0] and "002" in findings[0], f"没点名缺的镜头: {findings}")
 
     excused = _unaccounted_shots(
@@ -444,7 +445,7 @@ def check_missing_shots_are_reported() -> None:
     )
     require(not excused, f"写进未采用的镜头不该再报: {excused}")
 
-    require(not _unaccounted_shots(known, [Stub(m) for m in known], []), "全采用时不该报")
+    require(not _unaccounted_shots(known, [make_cut(m) for m in known], []), "全采用时不该报")
 
 
 def check_screen_text_and_effects() -> None:
@@ -502,7 +503,11 @@ def check_still_cuts() -> None:
         )
         (episode / "剪辑单.md").write_text(still, encoding="utf-8")
         delivery, cuts, unused = parse_cut_list(episode / "剪辑单.md")
-        require(cuts[0].still and cuts[0].move[:2] == ("推近", 8), f"静帧与运镜没有解析出来: {cuts[0]}")
+        move = cuts[0].move
+        require(
+            cuts[0].still and move is not None and move[:2] == ("推近", 8),
+            f"静帧与运镜没有解析出来: {cuts[0]}",
+        )
         require(len(cuts[0].voices) == 1, "配音没有解析出来")
         findings = check_cuts(episode, cuts, root, probe=False, unused=unused, delivery=delivery)
         require(

@@ -251,7 +251,16 @@ class SuiteAnatomyTests(unittest.TestCase):
                     )
 
     def test_shipping_json_is_valid(self) -> None:
+        excluded_roots = {("evaluations", "local-runs")}
+        excluded_parts = {".git", ".venv", "venv", "node_modules", "__pycache__"}
         for path in SUITE.rglob("*.json"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(SUITE)
+            if rel.parts[:2] in excluded_roots or any(
+                part in excluded_parts for part in rel.parts
+            ):
+                continue
             with self.subTest(path=path):
                 json.loads(path.read_text(encoding="utf-8"))
 
@@ -629,9 +638,6 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(policy_ref["field"], "/text_policy")
         self.assertIn("text_policy", prop)
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DiagnosticCatalogueTests(unittest.TestCase):
     """Every public checker code must appear in its skill's public guidance.
@@ -693,7 +699,10 @@ class MarkdownBoldRunTests(unittest.TestCase):
 
     # Recorded creator prose, not shipped documentation. The reference run is a
     # record of what one run produced; its wording is not this suite's to edit.
-    EXCLUDED = ("evaluations/让你管账号/reference-run",)
+    EXCLUDED = (
+        "evaluations/让你管账号/reference-run",
+        "evaluations/local-runs",
+    )
 
     def shipped_markdown(self) -> list[Path]:
         files = [
@@ -709,7 +718,10 @@ class MarkdownBoldRunTests(unittest.TestCase):
             path
             for path in files
             if path.is_file()
-            and not any(part in str(path) for part in self.EXCLUDED)
+            and not any(
+                path.relative_to(SUITE).as_posix().startswith(part)
+                for part in self.EXCLUDED
+            )
         ]
 
     def unclosable_runs(self, text: str) -> list[str]:
@@ -744,3 +756,7 @@ class MarkdownBoldRunTests(unittest.TestCase):
                     f"inside the markers, so it renders literally on GitHub; move "
                     f"the punctuation outside",
                 )
+
+
+if __name__ == "__main__":
+    unittest.main()

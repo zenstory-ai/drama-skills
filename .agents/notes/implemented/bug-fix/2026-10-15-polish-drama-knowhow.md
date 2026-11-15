@@ -33,3 +33,5 @@ agent 自己看过。卡片说明中的“纯文本链固定为 none”也没有
 
 来源：本技能的 `cards-and-coverage.md` 观察尾段、`blind-forward-eval.md` 独立审查交接、
 `promotion-ledger.md` 事件字段，以及既有维护者技能隔离与受保护发布门禁笔记（2026-07-21）。
+
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（`$short-drama-knowhow` 已移除 `promotion-ledger.md` 与 `prompt-production-learning.md`，精简 `cards-and-coverage.md`，降级或删除过严旧规则免跑双盲评测）。

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,6 +43,7 @@ class LanguageTagTests(unittest.TestCase):
 class ProjectLanguageTests(unittest.TestCase):
     def initialize(self, **kwargs: str) -> tuple[Path, dict[str, Any]]:
         directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         root = Path(directory) / "project"
         options: dict[str, str] = {
             "title": "测试项目",
@@ -226,6 +228,172 @@ class ShippedPromptTemplateTests(unittest.TestCase):
                         f"{path.relative_to(SUITE)} fixes the prompt-body language; "
                         "it must defer to #/format/prompt_language",
                     )
+
+
+CHECKER_SCRIPT = SUITE / "skills/short-drama/scripts/creator_markdown_check.py"
+CHECKER_SPEC = importlib.util.spec_from_file_location(
+    "short_drama_creator_markdown_check", CHECKER_SCRIPT
+)
+assert CHECKER_SPEC and CHECKER_SPEC.loader
+checker = importlib.util.module_from_spec(CHECKER_SPEC)
+CHECKER_SPEC.loader.exec_module(checker)
+
+
+class CheckerLanguageAndDialogueTests(unittest.TestCase):
+    def _write_episode(
+        self,
+        root: Path,
+        *,
+        prompt_language: str,
+        character_name: str,
+        prompt_text: str,
+        declare_in_basis: bool = True,
+    ) -> Path:
+        project_tool.initialize_project(
+            root,
+            suite_root=CORE,
+            title="Language Check",
+            language="en",
+            prompt_language=prompt_language,
+            aspect_ratio="9:16",
+        )
+        ep = root / "剧集/EP001"
+        ep.mkdir(parents=True)
+        (ep / "剧本.md").write_text(
+            "# EP001 · Night Watch\n\n"
+            "## EP001-SC001 外 · Pier · 夜\n\n"
+            f"{character_name}： Stay right there.\n",
+            encoding="utf-8",
+        )
+        (ep / "视觉设定.md").write_text(
+            "# EP001 视觉设定\n"
+            "- 制作形态：真人写实。\n"
+            "- 时代背景：当下。\n\n"
+            f"## 人物 · {character_name}\n"
+            "- 外观特征：dark wool coat, calm gaze。\n\n"
+            "## 地点 · Pier\n"
+            "- 外观特征：wet wooden pier under fog lamps。\n",
+            encoding="utf-8",
+        )
+        basis = (
+            f"《视觉设定.md》·人物「{character_name}」（控制：外貌、服装）；地点「Pier」（控制：空间）"
+            if declare_in_basis
+            else "《视觉设定.md》·地点「Pier」（控制：空间）"
+        )
+        (ep / "分镜.md").write_text(
+            "# EP001 分镜\n\n"
+            "## SHOT-EP001-001 · Stand Still\n"
+            "- 来源：EP001-SC001\n"
+            "- 时长：3 秒\n"
+            "- 目的：立住人物对峙\n"
+            "- 景别/机位：近景 · 平视\n"
+            "- 运镜：固定\n"
+            "- 起点：人物站在码头灯下\n"
+            "- 动作：目光锁定前方\n"
+            "- 终点：嘴角绷紧\n"
+            f"- 声音：{character_name}：「Stay right there.」\n"
+            "- 画面文字：无\n"
+            f"- 出场设定：{basis}\n"
+            "- 图片提示词项：无\n"
+            "- 输入参考图：无（纯文生视频）\n\n"
+            "### 首帧提示词\n"
+            f"> {prompt_text}\n",
+            encoding="utf-8",
+        )
+        return ep
+
+    def test_english_character_heading_passes_without_designator_in_english_prompts(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "en_project"
+            ep = self._write_episode(
+                root,
+                prompt_language="en",
+                character_name="Elena Vance",
+                prompt_text="9:16 vertical still, Elena Vance stands on the wet wooden Pier in a dark wool coat.",
+            )
+            self.assertEqual(
+                checker.validate_episode(ep, root, partial=True), []
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "en_missing_basis"
+            ep = self._write_episode(
+                root,
+                prompt_language="en",
+                character_name="Elena Vance",
+                prompt_text="9:16 vertical still, Elena Vance stands on the wet wooden Pier in a dark wool coat.",
+                declare_in_basis=False,
+            )
+            errors = checker.validate_episode(ep, root, partial=True)
+            self.assertTrue(
+                any("Elena Vance" in err and "出场设定" in err for err in errors),
+                errors,
+            )
+
+    def test_cross_language_character_headings_require_prompt_designator(self) -> None:
+        cases = (
+            (
+                "zh_name_in_en_prompt",
+                "en",
+                "陈予安",
+                "9:16 vertical still, a figure stands on the wet wooden pier.",
+            ),
+            (
+                "en_name_in_zh_prompt",
+                "zh-CN",
+                "Elena Vance",
+                "9:16 竖屏静帧，码头雾灯下穿深色呢大衣的女子驻足凝视。",
+            ),
+        )
+        for label, prompt_lang, name, prompt_text in cases:
+            with self.subTest(case=label):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory) / label
+                    ep = self._write_episode(
+                        root,
+                        prompt_language=prompt_lang,
+                        character_name=name,
+                        prompt_text=prompt_text,
+                    )
+                    errors = checker.validate_episode(ep, root, partial=True)
+                    self.assertTrue(
+                        any(
+                            f"人物「{name}」缺少提示词名称" in err
+                            for err in errors
+                        ),
+                        errors,
+                    )
+
+    def test_fullwidth_colon_allows_optional_horizontal_whitespace_in_dialogue(
+        self,
+    ) -> None:
+        screenplay = (
+            "# EP001 · Test\n\n"
+            "## EP001-SC001 内 · 走廊 · 夜\n\n"
+            "Elena Vance： 站在那别动。\n\n"
+            "陈予安（压低声音）：\t别回头。\n\n"
+            "[VO] Elena Vance (whisper)： 我们来晚了。\n"
+        )
+        lines = checker._screenplay_dialogue(screenplay)
+        self.assertEqual(
+            [(item.scene, item.speaker, item.key) for item in lines],
+            [
+                ("EP001-SC001", "Elena Vance", "站在那别动"),
+                ("EP001-SC001", "陈予安", "别回头"),
+                ("EP001-SC001", "Elena Vance", "我们来晚了"),
+            ],
+        )
+        english = checker.SCREENPLAY_DIALOGUE_RE.fullmatch(
+            "Elena Vance： Stay right there."
+        )
+        self.assertIsNotNone(english)
+        assert english is not None
+        self.assertEqual(
+            (english.group("speaker"), english.group("text")),
+            ("Elena Vance", "Stay right there."),
+        )
 
 
 if __name__ == "__main__":

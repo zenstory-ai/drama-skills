@@ -2,7 +2,9 @@ import base64
 import io
 import importlib.util
 import json
+import mimetypes
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -1274,11 +1276,12 @@ class ProviderRuntimeTests(unittest.TestCase):
     def test_multipart_references_are_bounded_and_read_from_pinned_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "reference.png"
-            path.write_bytes(b"small-image")
+            valid_png = b"\x89PNG\r\n\x1a\nsmall-image"
+            path.write_bytes(valid_png)
             encoded, content_type = provider_adapters._multipart(
                 {"model": "gpt-image-2"}, [path]
             )
-            self.assertIn(b"small-image", encoded)
+            self.assertIn(valid_png, encoded)
             self.assertTrue(content_type.startswith("multipart/form-data; boundary="))
             with mock.patch.object(provider_adapters, "MAX_REFERENCE_BYTES", 4):
                 with self.assertRaisesRegex(ValueError, "size limit"):
@@ -1606,6 +1609,447 @@ class ProviderRuntimeTests(unittest.TestCase):
                 prod_mod.job_status(root, job_id="EP001-H3-OVERCAP")["state"],
                 "confirmed",
             )
+
+    def test_validate_media_content_accepts_flac_m4a_aac_mov_and_webm(self) -> None:
+        valid_samples = {
+            "voice.flac": b"fLaC\x00\x00\x00\x22" + b"\x00" * 16,
+            "voice.m4a": b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00",
+            "voice-id3.aac": b"ID3\x04\x00\x00\x00\x00\x00\x00\xff\xf1\x50\x80",
+            "voice-adts.aac": b"\xff\xf1\x50\x80\x01\x3f\xfc",
+            "clip-ftyp.mov": b"\x00\x00\x00\x14ftypqt  \x20\x05\x03\x00",
+            "clip-moov.mov": b"\x00\x00\x00\x08moov\x00\x00\x00\x08mdat",
+            "clip.webm": b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01",
+        }
+        for name, header in valid_samples.items():
+            with self.subTest(valid=name):
+                provider_adapters._validate_media_content(name, header)
+            with self.subTest(invalid=name):
+                with self.assertRaises(provider_adapters.AdapterFailure):
+                    provider_adapters._validate_media_content(name, b"NOT_MEDIA_BYTES!!")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            flac_path = root / "voice.flac"
+            mov_path = root / "ref.mov"
+            webm_path = root / "ref.webm"
+            flac_path.write_bytes(valid_samples["voice.flac"])
+            mov_path.write_bytes(valid_samples["clip-ftyp.mov"])
+            webm_path.write_bytes(valid_samples["clip.webm"])
+            urls = provider_adapters._inline_reference_urls(
+                [flac_path, mov_path, webm_path],
+                ["reference_audio", "reference_video", "reference_video"],
+                allowed=provider_adapters.SEEDANCE_REFERENCE_ROLES,
+                provider="Seedance",
+            )
+            self.assertTrue(urls[0].startswith("data:audio/flac;base64,"))
+            self.assertTrue(urls[1].startswith("data:video/quicktime;base64,"))
+            self.assertTrue(urls[2].startswith("data:video/webm;base64,"))
+
+    def test_seedance_and_minimax_validate_polling_config_before_paid_post(self) -> None:
+        seedance_job = {
+            "modality": "video",
+            "prompt": "Slow push in",
+            "references": [],
+            "outputs": ["制作成果/shot.mp4"],
+            "parameters": {"duration": 5, "ratio": "9:16"},
+        }
+        minimax_job = {
+            "modality": "video",
+            "prompt": "Slow push in",
+            "references": [],
+            "outputs": ["制作成果/shot.mp4"],
+            "parameters": {"duration": 6, "ratio": "9:16", "resolution": "768P"},
+        }
+        for bad_value in ("0", "-2", "nan", "not-a-number"):
+            with self.subTest(provider="seedance", value=bad_value):
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "ARK_API_KEY": "secret-ark",
+                        "SEEDANCE_MODEL": "ep-model",
+                        "SEEDANCE_POLL_INTERVAL": bad_value,
+                        "SEEDANCE_TIMEOUT_SECONDS": "60",
+                    },
+                    clear=False,
+                ), mock.patch.object(provider_adapters, "_request_json") as req:
+                    with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                        provider_adapters._run_seedance(seedance_job)
+                    self.assertEqual(ctx.exception.category, "configuration")
+                    self.assertEqual(ctx.exception.code, "invalid_polling_config")
+                    self.assertFalse(ctx.exception.submitted)
+                    self.assertEqual(req.call_count, 0)
+
+            with self.subTest(provider="minimax-h3", value=bad_value):
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "MINIMAX_API_KEY": "secret-mm",
+                        "MINIMAX_VIDEO_MODEL": "MiniMax-Hailuo-03",
+                        "MINIMAX_VIDEO_POLL_INTERVAL": "5",
+                        "MINIMAX_VIDEO_TIMEOUT_SECONDS": bad_value,
+                    },
+                    clear=False,
+                ), mock.patch.object(provider_adapters, "_request_json") as req:
+                    with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                        provider_adapters._run_minimax_video(minimax_job)
+                    self.assertEqual(ctx.exception.category, "configuration")
+                    self.assertEqual(ctx.exception.code, "invalid_polling_config")
+                    self.assertFalse(ctx.exception.submitted)
+                    self.assertEqual(req.call_count, 0)
+
+    def test_read_reference_oserror_maps_to_unsubmitted_invalid_request_and_subject_role_label(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing-ref.png"
+            with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                provider_adapters._read_reference(missing)
+            self.assertEqual(ctx.exception.category, "invalid_request")
+            self.assertEqual(ctx.exception.code, "unreadable_reference")
+            self.assertFalse(ctx.exception.submitted)
+
+        compiled = provider_adapters.compile_seedance_payload(
+            {
+                "modality": "video",
+                "prompt": "雨夜走廊推进",
+                "references": ["输入/hero.png"],
+                "reference_bindings": [
+                    {
+                        "slot_id": "REF-HERO",
+                        "order": 1,
+                        "path": "输入/hero.png",
+                        "label": "女主定妆照",
+                        "role": "subject",
+                        "may_control": ["人物外貌"],
+                        "must_not_control": ["走廊构图"],
+                    }
+                ],
+                "outputs": ["制作成果/shot.mp4"],
+                "parameters": {
+                    "duration": 5,
+                    "ratio": "9:16",
+                    "prompt_language": "zh-CN",
+                },
+            },
+            model="ep-model",
+            reference_urls=["https://cdn.example.com/hero.png"],
+            reference_roles=["reference_image"],
+            allowed_ratios={"9:16"},
+            duration_range=(5, 10),
+        )
+        prompt_text = compiled["content"][0]["text"]
+        self.assertIn("用途：主体", prompt_text)
+
+    def test_timeout_errors_including_socket_timeout_and_urlerror_map_to_timeout_category(
+        self,
+    ) -> None:
+        timeout_exceptions = (
+            socket.timeout("socket timed out"),
+            TimeoutError("read timed out"),
+            urllib.error.URLError(socket.timeout("handshake timed out")),
+            urllib.error.URLError(TimeoutError("connect timed out")),
+        )
+        for exc in timeout_exceptions:
+            with self.subTest(target="_request_json", exc=repr(exc)):
+                with mock.patch(
+                    "urllib.request.urlopen", side_effect=exc
+                ):
+                    with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                        provider_adapters._request_json(
+                            "https://api.example.com/v1/test",
+                            provider="seedance",
+                            token="tok",
+                        )
+                    self.assertEqual(ctx.exception.category, "timeout")
+                    self.assertEqual(ctx.exception.code, "request_timeout")
+                    self.assertTrue(ctx.exception.retryable)
+
+            with self.subTest(target="_download", exc=repr(exc)):
+                with tempfile.TemporaryDirectory() as directory:
+                    with mock.patch(
+                        "urllib.request.urlopen", side_effect=exc
+                    ):
+                        with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                            provider_adapters._download(
+                                {"output_root": directory},
+                                "https://cdn.example.com/out.png",
+                                "剧集/EP001/制作成果/image/out.png",
+                                provider="seedance",
+                            )
+                        self.assertEqual(ctx.exception.category, "timeout")
+                        self.assertEqual(ctx.exception.code, "download_timeout")
+                        self.assertTrue(ctx.exception.retryable)
+                    self.assertEqual(list(Path(directory).iterdir()), [])
+
+            with self.subTest(target="_run_openai_multipart", exc=repr(exc)):
+                with tempfile.TemporaryDirectory() as directory:
+                    ref = Path(directory) / "ref.png"
+                    ref.write_bytes(b"\x89PNG\r\n\x1a\nvalid-png")
+                    job = {
+                        "modality": "image",
+                        "prompt": "Portrait edit",
+                        "project_root": directory,
+                        "output_root": directory,
+                        "references": ["ref.png"],
+                        "outputs": ["剧集/EP001/制作成果/image/out.png"],
+                        "parameters": {},
+                    }
+                    with mock.patch.dict(
+                        os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+                    ), mock.patch("urllib.request.urlopen", side_effect=exc):
+                        with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                            provider_adapters._run_openai(job)
+                        self.assertEqual(ctx.exception.category, "timeout")
+                        self.assertEqual(ctx.exception.code, "request_timeout")
+                        self.assertTrue(ctx.exception.retryable)
+                        self.assertIsNot(ctx.exception.submitted, False)
+
+    def test_sync_providers_reject_collect_without_submitting_or_requiring_credentials(
+        self,
+    ) -> None:
+        sync_runners = (
+            ("gpt-image-2", provider_adapters._run_openai),
+            ("minimax-image-01", provider_adapters._run_minimax),
+            ("minimax-speech-2.8-hd", provider_adapters._run_minimax_speech),
+        )
+        for name, runner in sync_runners:
+            with self.subTest(provider=name):
+                with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(
+                    provider_adapters, "_request_json"
+                ) as req, mock.patch("urllib.request.urlopen") as urlopen:
+                    with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                        runner(
+                            {
+                                "collect_provider_job_id": "remote-task-999",
+                                "modality": "image" if name != "minimax-speech-2.8-hd" else "tts",
+                                "prompt": "Should never submit",
+                                "outputs": ["out.png" if name != "minimax-speech-2.8-hd" else "out.mp3"],
+                            }
+                        )
+                    self.assertEqual(ctx.exception.category, "invalid_request")
+                    self.assertEqual(ctx.exception.code, "collect_not_supported")
+                    self.assertFalse(ctx.exception.submitted)
+                    self.assertFalse(ctx.exception.retryable)
+                    self.assertEqual(req.call_count, 0)
+                    self.assertEqual(urlopen.call_count, 0)
+
+        # Multipart _run_openai extracts request_id case-insensitively via _request_id.
+        with tempfile.TemporaryDirectory() as directory:
+            ref = Path(directory) / "ref.png"
+            png_bytes = b"\x89PNG\r\n\x1a\nvalid-png"
+            ref.write_bytes(png_bytes)
+
+            class FakeResponse:
+                headers = {"X-Trace-Id": "trace-mixed-case-42"}
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def read(self, _limit: int) -> bytes:
+                    return json.dumps(
+                        {"data": [{"b64_json": base64.b64encode(png_bytes).decode("ascii")}]}
+                    ).encode("utf-8")
+
+            job = {
+                "modality": "image",
+                "prompt": "Portrait edit",
+                "project_root": directory,
+                "output_root": directory,
+                "references": ["ref.png"],
+                "outputs": ["剧集/EP001/制作成果/image/out.png"],
+                "parameters": {},
+            }
+            with mock.patch.dict(
+                os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+            ), mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
+                out_path, request_id = provider_adapters._run_openai(job)
+                self.assertEqual(request_id, "trace-mixed-case-42")
+                self.assertTrue(Path(out_path).exists())
+
+    def test_multipart_local_preflight_validates_magic_size_empty_mime_and_filename(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty_png = root / "empty.png"
+            empty_png.write_bytes(b"")
+            with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                provider_adapters._multipart({"model": "gpt-image-2"}, [empty_png])
+            self.assertEqual(ctx.exception.code, "empty_reference")
+            self.assertFalse(ctx.exception.submitted)
+
+            bad_png = root / "bad.png"
+            bad_png.write_bytes(b"not-a-real-png")
+            with mock.patch("urllib.request.urlopen") as urlopen, mock.patch.dict(
+                os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+            ):
+                with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                    provider_adapters._run_openai(
+                        {
+                            "modality": "image",
+                            "prompt": "Edit",
+                            "project_root": directory,
+                            "output_root": directory,
+                            "references": ["bad.png"],
+                            "outputs": ["out.png"],
+                            "parameters": {},
+                        }
+                    )
+                self.assertEqual(ctx.exception.code, "invalid_reference_media")
+                self.assertFalse(ctx.exception.submitted)
+                self.assertEqual(urlopen.call_count, 0)
+
+            big_png = root / "big.png"
+            big_png.write_bytes(b"\x89PNG\r\n\x1a\n1234567890")
+            with mock.patch.dict(
+                provider_adapters.INLINE_REFERENCE_LIMITS, {"image_url": 10}
+            ):
+                with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
+                    provider_adapters._multipart({"model": "gpt-image-2"}, [big_png])
+                self.assertEqual(ctx.exception.code, "reference_too_large")
+                self.assertFalse(ctx.exception.submitted)
+
+            webp_bytes = b"RIFF\x10\x00\x00\x00WEBPVP8 "
+            portable_webp = root / "semi;space 'ref.webp"
+            portable_webp.write_bytes(webp_bytes)
+            with mock.patch.object(mimetypes, "guess_type", return_value=(None, None)):
+                encoded_portable, _ = provider_adapters._multipart(
+                    {"model": "gpt-image-2"}, [portable_webp]
+                )
+            self.assertIn(b"Content-Type: image/webp\r\n", encoded_portable)
+            portable_disposition = next(
+                line
+                for line in encoded_portable.split(b"\r\n")
+                if line.startswith(b'Content-Disposition: form-data; name="image[]";')
+            )
+            self.assertIn(b'filename="semi;space \'ref.webp"', portable_disposition)
+
+            if os.name != "nt":
+                weird_webp = root / 'quote"break\r\nslash\\ref.webp'
+                weird_webp.write_bytes(webp_bytes)
+                with mock.patch.object(mimetypes, "guess_type", return_value=(None, None)):
+                    encoded, _ = provider_adapters._multipart(
+                        {"model": "gpt-image-2"}, [weird_webp]
+                    )
+                self.assertIn(b"Content-Type: image/webp\r\n", encoded)
+                disposition_line = next(
+                    line
+                    for line in encoded.split(b"\r\n")
+                    if line.startswith(b'Content-Disposition: form-data; name="image[]";')
+                )
+                self.assertIn(b'filename="quote_break__slash_ref.webp"', disposition_line)
+
+    def test_main_preserves_custom_job_adapter_token_on_failures(self) -> None:
+        cases = (
+            (
+                json.dumps(
+                    {
+                        "adapter": "custom-seedance",
+                        "modality": "video",
+                        "prompt": "vertical close-up",
+                        "outputs": ["out/1.mp4"],
+                    }
+                ),
+                "custom-seedance",
+            ),
+            (
+                json.dumps({"adapter": "custom-seedance"}),
+                "custom-seedance",
+            ),
+            (
+                "{not-valid-json",
+                "seedance",
+            ),
+            (
+                json.dumps({"adapter": "unsafe token/with slash"}),
+                "seedance",
+            ),
+        )
+        clean_env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"ARK_API_KEY", "VOLC_ARK_API_KEY", "SEEDANCE_API_KEY"}
+        }
+        for raw_stdin, expected_provider in cases:
+            with self.subTest(expected_provider=expected_provider, raw=raw_stdin[:24]):
+                stdout_buf = io.StringIO()
+                stderr_buf = io.StringIO()
+                with mock.patch.dict(os.environ, clean_env, clear=True), \
+                        mock.patch.object(sys, "stdin", io.StringIO(raw_stdin)), \
+                        mock.patch.object(sys, "stdout", stdout_buf), \
+                        mock.patch.object(sys, "stderr", stderr_buf):
+                    code = provider_adapters.main(["seedance"])
+                self.assertEqual(code, 1)
+                emitted = json.loads(stdout_buf.getvalue().strip())["error"]
+                self.assertEqual(emitted["provider"], expected_provider)
+                self.assertFalse(emitted["submitted"])
+
+    def test_opus_audio_reference_compilation_validation_and_safe_token_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            opus_bytes = b"OggS" + b"\x00" * 24 + b"OpusHead" + b"\x01\x02\x00\x00"
+            vorbis_bytes = b"OggS" + b"\x00" * 24 + b"\x01vorbis" + b"\x00" * 16
+            valid_opus = root / "voice.opus"
+            valid_opus.write_bytes(opus_bytes)
+            fake_opus = root / "vorbis_in_opus.opus"
+            fake_opus.write_bytes(vorbis_bytes)
+
+            provider_adapters._validate_media_content(str(valid_opus), opus_bytes)
+            with self.assertRaises(provider_adapters.AdapterFailure):
+                provider_adapters._validate_media_content(str(fake_opus), vorbis_bytes)
+            with self.assertRaises(provider_adapters.AdapterFailure) as bad_magic:
+                provider_adapters._inline_reference_urls(
+                    [fake_opus],
+                    ["reference_audio"],
+                    allowed=provider_adapters.SEEDANCE_REFERENCE_ROLES,
+                    provider="Seedance",
+                )
+            self.assertEqual(bad_magic.exception.code, "invalid_reference_media")
+
+            binding = {
+                "slot_id": "REF-AUD-01",
+                "order": 1,
+                "path": "voice.opus",
+                "label": "男主音色",
+                "role": "reference_audio",
+                "character": "江晨",
+                "may_control": ["音色"],
+                "must_not_control": ["台词"],
+            }
+            inline_urls = provider_adapters._inline_reference_urls(
+                [valid_opus],
+                ["reference_audio"],
+                allowed=provider_adapters.SEEDANCE_REFERENCE_ROLES,
+                provider="Seedance",
+            )
+            compiled = provider_adapters.compile_seedance_payload(
+                {
+                    "modality": "video",
+                    "prompt": "角色开口说话",
+                    "references": ["voice.opus"],
+                    "reference_bindings": [binding],
+                    "outputs": ["out/clip.mp4"],
+                    "parameters": {},
+                },
+                model="configured-model",
+                reference_urls=inline_urls,
+                reference_roles=["reference_audio"],
+            )
+            audio_items = [
+                item
+                for item in compiled["content"]
+                if item.get("type") == "audio_url"
+            ]
+            self.assertEqual(len(audio_items), 1)
+            self.assertTrue(
+                audio_items[0]["audio_url"]["url"].startswith("data:audio/ogg;base64,")
+            )
+
+            self.assertIsNone(provider_adapters._safe_public_id("bad id/with spaces"))
+            self.assertEqual(provider_adapters._safe_public_id("task_123-ok.v1"), "task_123-ok.v1")
 
 
 if __name__ == "__main__":

@@ -127,7 +127,7 @@
 
 ## 相关
 
-- 站点原文（含更多示例与相关指南）：https://zenstory.ai/zh/drama-skills/vertical-drama-script-format
+- 站点原文（含更多示例与相关指南）：<https://zenstory.ai/zh/drama-skills/vertical-drama-script-format>
 - [Markdown 剧本格式、标签与整理规则](../skills/short-drama-write/references/screenplay-format.md)
 - [三角符号片场制作稿格式与 OS 用法](../skills/short-drama-write/references/production-format-dialect.md)
-- 仓库地址：https://github.com/zenstory-ai/drama-skills
+- 仓库地址：<https://github.com/zenstory-ai/drama-skills>

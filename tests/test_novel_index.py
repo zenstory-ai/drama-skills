@@ -304,6 +304,51 @@ class VerifyTests(unittest.TestCase):
             self.assertFalse(result["verified"])
             self.assertTrue(result["problems"])
 
+    def test_same_line_count_source_edits_invalidate_the_index(self) -> None:
+        original = (
+            f"第一章 雨夜\n{prose()}\n\n"
+            f"第二章 破局\n{prose()}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "book.txt"
+            source.write_text(original, encoding="utf-8")
+            index_path = root / "index.json"
+            index_path.write_text(
+                json.dumps(novel_index.build_index(source), ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            edits = {
+                "char_count_change": original.replace("正文内容", "扩充后的正文内容", 1),
+                "heading_change_same_length": original.replace("第一章 雨夜", "第一章 晴天", 1),
+                "boundary_shift_same_total_chars": (
+                    f"第一章 雨夜\n{prose()}甲乙\n\n"
+                    f"第二章 破局\n{prose()[:-2]}\n"
+                ),
+            }
+            for label, mutated in edits.items():
+                with self.subTest(edit=label):
+                    self.assertEqual(
+                        len(mutated.split("\n")), len(original.split("\n"))
+                    )
+                    source.write_text(mutated, encoding="utf-8")
+                    result = novel_index.verify_index(index_path, source)
+                    self.assertFalse(result["verified"], result)
+                    self.assertTrue(result["problems"])
+
+            # A minimal hand-written index omitting char_count/heading remains valid.
+            source.write_text(original, encoding="utf-8")
+            line_total = len(original.split("\n"))
+            minimal = {
+                "source": {"artifact": "book.txt"},
+                "chapter_count": 1,
+                "chapters": [{"sequence": 1, "line_start": 1, "line_end": line_total}],
+            }
+            minimal_path = root / "minimal.json"
+            minimal_path.write_text(json.dumps(minimal), encoding="utf-8")
+            self.assertTrue(novel_index.verify_index(minimal_path, source)["verified"])
+
     def test_hand_written_index_reports_instead_of_crashing(self) -> None:
         # The workflow tells creators to write spans by hand when a source has
         # no headings, so a hand-written row is an expected input.
@@ -535,9 +580,124 @@ class CoverageTests(unittest.TestCase):
             result = novel_index.coverage(index_path, analysis, stage="triage")
             self.assertTrue(result["complete"])
 
+    def test_unmatched_file_blocks_completion_even_when_all_expected_chapters_exist(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index_path, analysis = self._prepare(Path(directory), 2)
+            for sequence in (1, 2):
+                (analysis / f"ch-{sequence}-extract.md").write_text("x", encoding="utf-8")
+            (analysis / "ch-2-typo.md").write_text("x", encoding="utf-8")
 
-if __name__ == "__main__":
-    unittest.main()
+            result = novel_index.coverage(index_path, analysis)
+            self.assertEqual(result["missing"], [])
+            self.assertEqual(result["unmatched_files"], ["ch-2-typo.md"])
+            self.assertFalse(result["complete"])
+
+    def test_range_filters_expected_chapters_and_cli_flags_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index_path, analysis = self._prepare(Path(directory), 5)
+            for sequence in (1, 2, 3):
+                (analysis / f"ch-{sequence}-extract.md").write_text("x", encoding="utf-8")
+
+            scoped = novel_index.coverage(index_path, analysis, start=2, end=3)
+            self.assertTrue(scoped["complete"])
+            self.assertEqual(scoped["expected"], 2)
+            self.assertEqual(scoped["present"], 2)
+            self.assertEqual(scoped["missing"], [])
+            self.assertEqual(scoped["unexpected"], [])
+            self.assertEqual(scoped["range"], [2, 3])
+
+            incomplete = novel_index.coverage(index_path, analysis, start=2, end=4)
+            self.assertFalse(incomplete["complete"])
+            self.assertEqual(incomplete["missing"], [4])
+
+            self.assertEqual(
+                novel_index.main(
+                    ["coverage", str(index_path), str(analysis), "--start", "1", "--end", "3"]
+                ),
+                0,
+            )
+
+    def test_sibling_stage_files_are_ignored_and_inverted_range_fails_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            index_path, analysis = self._prepare(Path(directory), 3)
+            for sequence in (1, 2, 3):
+                (analysis / f"ch-{sequence}-extract.md").write_text("x", encoding="utf-8")
+            # Triage notes sit in the same directory alongside extract files.
+            (analysis / "ch-1-triage.md").write_text("x", encoding="utf-8")
+            (analysis / "ch-3-triage.md").write_text("x", encoding="utf-8")
+
+            extract_cov = novel_index.coverage(index_path, analysis, stage="extract")
+            self.assertTrue(extract_cov["complete"])
+            self.assertEqual(extract_cov["unmatched_files"], [])
+            self.assertEqual(extract_cov["missing"], [])
+
+            triage_cov = novel_index.coverage(
+                index_path, analysis, stage="triage", start=1, end=1
+            )
+            self.assertTrue(triage_cov["complete"])
+            self.assertEqual(triage_cov["unmatched_files"], [])
+
+            # Unknown suffixes still surface as unmatched drift.
+            (analysis / "ch-2-typo.md").write_text("x", encoding="utf-8")
+            drifted = novel_index.coverage(index_path, analysis, stage="extract")
+            self.assertFalse(drifted["complete"])
+            self.assertEqual(drifted["unmatched_files"], ["ch-2-typo.md"])
+
+            with self.assertRaises(ValueError):
+                novel_index.coverage(index_path, analysis, start=3, end=1)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(SCRIPT),
+                    "coverage",
+                    str(index_path),
+                    str(analysis),
+                    "--start",
+                    "3",
+                    "--end",
+                    "1",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(completed.returncode, 1)
+            self.assertNotIn("Traceback", completed.stderr)
+            self.assertIn("start", completed.stderr)
+            self.assertEqual(
+                novel_index.main(
+                    ["coverage", str(index_path), str(analysis), "--start", "1", "--end", "4"]
+                ),
+                1,
+            )
+
+    def test_empty_index_or_missing_analysis_dir_is_not_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty_index = root / "empty.json"
+            empty_index.write_text(
+                json.dumps({"chapters": []}, ensure_ascii=False), encoding="utf-8"
+            )
+            analysis = root / "chapters"
+            analysis.mkdir()
+            self.assertFalse(novel_index.coverage(empty_index, analysis)["complete"])
+            self.assertEqual(
+                novel_index.main(["coverage", str(empty_index), str(analysis)]), 1
+            )
+
+            chapters_root = root / "with_chapters"
+            chapters_root.mkdir()
+            index_path, _ = self._prepare(chapters_root, 2)
+            missing_dir = root / "does_not_exist"
+            self.assertFalse(novel_index.coverage(index_path, missing_dir)["complete"])
+            self.assertEqual(
+                novel_index.main(["coverage", str(index_path), str(missing_dir)]), 1
+            )
 
 
 class CommandLineTests(unittest.TestCase):
@@ -717,3 +877,70 @@ class HeadingLineTests(unittest.TestCase):
         index = build_from(f"{long_title}\n{prose()}\n\n第二章 标题\n{prose()}\n")
         self.assertEqual(index["chapter_count"], 2)
         self.assertEqual(index["long_heading_lines_skipped"], 0)
+
+
+class RoundThreeEdgeCaseTests(unittest.TestCase):
+    def test_positional_digits_and_strict_unit_order_in_chinese_numerals(self) -> None:
+        valid = {
+            "零": 0,
+            "〇": 0,
+            "一零八": 108,
+            "一〇八": 108,
+            "一二三": 123,
+            "一百〇三": 103,
+            "一千零十五": 1015,
+        }
+        for numeral, expected in valid.items():
+            with self.subTest(numeral=numeral):
+                self.assertEqual(novel_index.chinese_to_int(numeral), expected)
+
+        for malformed in ("十十", "一百百", "十百", "一二百", "一百零", "零百", "一百二", "一两三"):
+            with self.subTest(malformed=malformed):
+                self.assertIsNone(novel_index.chinese_to_int(malformed))
+
+        doc = build_from(
+            f"第一零八章 夜渡\n{prose()}\n\n第一〇九章 破晓\n{prose()}\n\n第一一零章 归途\n{prose()}\n"
+        )
+        self.assertEqual([c["source_number"] for c in doc["chapters"]], [108, 109, 110])
+        self.assertEqual(doc["problems"], [])
+
+    def test_non_utf8_source_reports_clear_conversion_error_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gbk_source = root / "gbk_book.txt"
+            gbk_source.write_bytes("第一章 雨夜\n正文内容\n".encode("gb18030"))
+            completed = subprocess.run(
+                [sys.executable, "-B", str(SCRIPT), "index", str(gbk_source)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 1)
+            self.assertNotIn("Traceback", completed.stderr)
+            self.assertIn("UTF-8", completed.stderr)
+
+    def test_verify_surfaces_stale_or_invalid_top_level_problems(self) -> None:
+        text = chapters(["一", "二"]) + "\n"
+        _, warned = index_and_verify(
+            text,
+            lambda doc: {**doc, "problems": ["leftover manual note"]},
+        )
+        self.assertTrue(warned["verified"], warned)
+        self.assertTrue(
+            any("top-level problems" in item for item in warned["warnings"]),
+            warned["warnings"],
+        )
+
+        _, invalid = index_and_verify(
+            text,
+            lambda doc: {**doc, "problems": "not-a-list"},
+        )
+        self.assertFalse(invalid["verified"], invalid)
+        self.assertTrue(
+            any("problems field must be a list" in item for item in invalid["problems"]),
+            invalid["problems"],
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

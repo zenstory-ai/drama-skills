@@ -28,17 +28,18 @@ REQUIRED_DOCUMENTS = (
     "分镜.md",
     "视频提示词.md",
 )
-SECTION_RE = re.compile(r"^## ((?:SHOT|MOTION|GROUP)-[A-Z0-9-]+)\b", re.MULTILINE)
-ANY_SECTION_RE = re.compile(r"^## ", re.MULTILINE)
+SECTION_RE = re.compile(r"^##[ \t\u3000]+((?:IMG|SHOT|MOTION|GROUP)-[A-Z0-9-]+)\b", re.MULTILINE)
+ANY_SECTION_RE = re.compile(r"^##[ \t\u3000]+", re.MULTILINE)
 IMG_RE = re.compile(r"\b(IMG-[A-Z0-9-]+)《([^》]+)》（控制：([^）]+)）")
+REF_SLOT_ID_PATTERN = r"REF-[A-Z0-9][A-Z0-9-]{0,79}"
+PLAN_SLOT_ID_PATTERN = r"PLAN-[A-Z0-9][A-Z0-9-]{0,79}"
 # 用途 is optional in the pattern on purpose: a declaration written before this
 # field existed still parses, so the creator gets "REF 缺少用途" instead of the
 # generic syntax error that gives no hint about what to add.
 REF_RE = re.compile(
-    r"(REF-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
-    r"([^；\n]+?\.(?:png|jpe?g|webp))《([^》\n]+)》"
-    r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
-    re.IGNORECASE,
+    r"(" + REF_SLOT_ID_PATTERN + r")（顺序：([1-9]\d*)）· "
+    r"([^；\n]+?\.(?i:png|jpe?g|webp))《([^》\n]+)》"
+    r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）"
 )
 # The same slot grammar, but the locator is a document entry instead of a file.
 # A creator who generates in an external tool never has the file inside the
@@ -47,10 +48,12 @@ REF_RE = re.compile(
 # here; attach it yourself in this order", which is a different claim from
 # 「已有图片」 and from 「待补」.
 PLAN_RE = re.compile(
-    r"(PLAN-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
+    r"(" + PLAN_SLOT_ID_PATTERN + r")（顺序：([1-9]\d*)）· "
     r"((?:IMG|SHOT)-[A-Z0-9-]+)《([^》\n]+)》"
-    r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）",
-    re.IGNORECASE,
+    r"（(?:用途：([^；）\n]+)；)?控制：([^；）]+)；不得控制：([^）]+)）"
+)
+MALFORMED_SLOT_ID_RE = re.compile(
+    r"(?:(?i:ref|plan)-[A-Za-z0-9-]*[a-z][A-Za-z0-9-]*|(?:REF|PLAN)-[A-Z0-9-]{81,})（顺序："
 )
 # One picture takes one slot, and its 用途 names the slot's main job (a second
 # job goes in 控制, per references/reference-roles.md). That single purpose is
@@ -72,27 +75,196 @@ REF_PURPOSES = (
 # 输入参考图: the picture slots number `@图片N`/`<Picture N>`/`图N` and the audio
 # slots number `@音频N`/`<Audio N>`/`音频N`, each from 1, so mixing them in one
 # field would renumber every picture after the first voice.
-AUDIO_SUFFIXES = ("wav", "mp3", "m4a", "aac", "flac")
+def _normalize_text(text: str) -> str:
+    """Strip a leading UTF-8 BOM and normalize CRLF/CR line endings to LF."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    if "\r" in text:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text
+
+
+def _emph_key(label: str) -> str:
+    escaped = re.escape(label)
+    return (
+        rf"(?:\*\*\*{escaped}\*\*\*|___{escaped}___"
+        rf"|\*\*{escaped}\*\*|__{escaped}__"
+        rf"|\*{escaped}\*|_{escaped}_|{escaped})"
+    )
+
+
+def _emph_field_head(label: str) -> str:
+    escaped = re.escape(label)
+    ws = r"[ \t\u3000]*"
+    return (
+        rf"(?:{_emph_key(label)}{ws}[：:]"
+        rf"|\*\*\*{escaped}{ws}[：:]{ws}\*\*\*"
+        rf"|___{escaped}{ws}[：:]{ws}___"
+        rf"|\*\*{escaped}{ws}[：:]{ws}\*\*"
+        rf"|__{escaped}{ws}[：:]{ws}__"
+        rf"|\*{escaped}{ws}[：:]{ws}\*"
+        rf"|_{escaped}{ws}[：:]{ws}_)"
+    )
+
+
+_EMPH_MARKERS = ("***", "___", "**", "__", "*", "_")
+
+
+def _strip_key_emphasis(key: str) -> str:
+    stripped = re.sub(r"[ \t\u3000]*[：:]$", "", key.strip()).strip()
+    peeled = False
+    changed = True
+    while changed:
+        changed = False
+        for marker in _EMPH_MARKERS:
+            if (
+                len(stripped) > 2 * len(marker)
+                and stripped.startswith(marker)
+                and stripped.endswith(marker)
+            ):
+                inner = stripped[len(marker) : -len(marker)]
+                if marker[0] not in inner:
+                    stripped = inner.strip()
+                    peeled = True
+                    changed = True
+                    break
+    if peeled:
+        stripped = re.sub(r"[ \t\u3000]*[：:]$", "", stripped).strip()
+    return stripped
+
+
+_FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$", re.MULTILINE)
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+_COPYABLE_BLOCK_RE = re.compile(
+    r"^###[ \t\u3000]+(?:可复制提示词|首帧提示词|尾帧提示词)[ \t\u3000]*\r?$",
+    re.MULTILINE,
+)
+_COPYABLE_END_RE = re.compile(r"^#{1,6}[ \t\u3000]+", re.MULTILINE)
+_INLINE_TICK_RE = re.compile(r"`+")
+
+
+def _scan_html_comments(
+    text: str, *, preserve_copyable: bool = False
+) -> tuple[str, bool]:
+    """Strip HTML comments outside protected Markdown spans while keeping line numbers.
+
+    Returns ``(stripped_text, has_unclosed_comment)``. Single-line backtick code
+    spans, fenced code blocks, and (when ``preserve_copyable`` is True) copyable
+    prompt blocks protect literal ``<!--`` from starting a comment.
+    """
+    text = _normalize_text(text)
+    if "<!--" not in text:
+        return text, False
+    out: list[str] = []
+    pos = 0
+    length = len(text)
+    unclosed = False
+    while pos < length:
+        comment_idx = text.find("<!--", pos)
+        if comment_idx == -1:
+            out.append(text[pos:])
+            break
+        candidates: list[tuple[int, str, object]] = []
+        fence = _FENCE_OPEN_RE.search(text, pos)
+        while (
+            fence is not None
+            and fence.start() <= comment_idx
+            and fence.group(1)[0] == "`"
+            and "`" in fence.group(2)
+        ):
+            fence = _FENCE_OPEN_RE.search(text, fence.end())
+        if fence is not None and fence.start() <= comment_idx:
+            candidates.append((fence.start(), "fence", fence))
+        if preserve_copyable:
+            copy_block = _COPYABLE_BLOCK_RE.search(text, pos)
+            if copy_block is not None and copy_block.start() <= comment_idx:
+                candidates.append((copy_block.start(), "copy", copy_block))
+        tick = _INLINE_TICK_RE.search(text, pos)
+        if tick is not None and tick.start() <= comment_idx:
+            candidates.append((tick.start(), "tick", tick))
+        if candidates:
+            # At identical start offsets, block fences beat inline backtick runs.
+            priority = {"fence": 0, "copy": 1, "tick": 2}
+            candidates.sort(key=lambda item: (item[0], priority[item[1]]))
+            kind = candidates[0][1]
+            token = candidates[0][2]
+            if kind == "fence":
+                assert isinstance(token, re.Match)
+                marker = token.group(1)
+                after_open = text.find("\n", token.end())
+                if after_open == -1:
+                    protected_end = length
+                else:
+                    close_re = re.compile(
+                        rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*\r?$",
+                        re.MULTILINE,
+                    )
+                    close = close_re.search(text, after_open + 1)
+                    protected_end = length if close is None else close.end()
+                out.append(text[pos:protected_end])
+                pos = protected_end
+                continue
+            if kind == "copy":
+                assert isinstance(token, re.Match)
+                following = _COPYABLE_END_RE.search(text, token.end())
+                protected_end = length if following is None else following.start()
+                out.append(text[pos:protected_end])
+                pos = protected_end
+                continue
+            assert isinstance(token, re.Match)
+            run_len = len(token.group(0))
+            line_end = text.find("\n", token.end())
+            if line_end == -1:
+                line_end = length
+            close_tick_re = re.compile(rf"(?<!`){'`' * run_len}(?!`)")
+            close_tick = close_tick_re.search(text, token.end(), line_end)
+            if close_tick is not None:
+                out.append(text[pos : close_tick.end()])
+                pos = close_tick.end()
+            else:
+                out.append(text[pos : token.end()])
+                pos = token.end()
+            continue
+        out.append(text[pos:comment_idx])
+        close_comment = text.find("-->", comment_idx + 4)
+        if close_comment == -1:
+            out.append("\n" * text[comment_idx:].count("\n"))
+            unclosed = True
+            pos = length
+            break
+        comment_end = close_comment + 3
+        out.append("\n" * text[comment_idx:comment_end].count("\n"))
+        pos = comment_end
+    return "".join(out), unclosed
+
+
+def _strip_html_comments(text: str, *, preserve_copyable: bool = False) -> str:
+    """Strip HTML comments outside Markdown fences while keeping line numbers."""
+    stripped, _ = _scan_html_comments(text, preserve_copyable=preserve_copyable)
+    return stripped
+
+
+AUDIO_SUFFIXES = ("wav", "mp3", "m4a", "aac", "flac", "opus")
 AUDIO_REF_RE = re.compile(
-    r"(REF-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
-    r"([^；\n]+?\.(?:" + "|".join(AUDIO_SUFFIXES) + r"))《([^》\n]+)》"
-    r"（用途：([^；）\n]+)；角色：([^；）\n]+)；控制：([^；）]+)；不得控制：([^）]+)）",
-    re.IGNORECASE,
+    r"(" + REF_SLOT_ID_PATTERN + r")（顺序：([1-9]\d*)）· "
+    r"([^；\n]+?\.(?i:" + "|".join(AUDIO_SUFFIXES) + r"))《([^》\n]+)》"
+    r"（用途：([^；）\n]+)；角色：([^；）\n]+)；控制：([^；）]+)；不得控制：([^）]+)）"
 )
 AUDIO_PURPOSE = "音色"
 AUDIO_SYNTAX = (
-    "REF-<槽位>（顺序：<n>）· <音频路径>《<中文名>》"
+    "REF-<槽位>（顺序：<n>）· <音频路径>《<名称>》"
     "（用途：音色；角色：<人物名>；控制：<范围>；不得控制：<范围>）"
 )
 # An audio file or 用途：音色 in a picture field is a voice binding written in
 # the wrong place; the generic "broken REF syntax" would not say where it goes.
 AUDIO_IN_IMAGE_FIELD_RE = re.compile(
-    r"\.(?:" + "|".join(AUDIO_SUFFIXES) + r"|opus)《|用途：音色", re.IGNORECASE
+    r"\.(?:" + "|".join(AUDIO_SUFFIXES) + r")《|用途：音色", re.IGNORECASE
 )
 # Where 《视觉设定.md》 records a character's accepted voice reference: one
 # line under that 人物 entry, path first.
 VOICE_RECORD_RE = re.compile(
-    r"^[ \t　]*[-*+][ \t　]*声音参考[：:](.*)$", re.MULTILINE
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]*{_emph_field_head('声音参考')}[ \t\u3000]*(.*)$",
+    re.MULTILINE,
 )
 # Same filename rule as the binding's locator (`[^；\n]+?`), so any path a
 # 参考音频 slot may name can also be the recorded one -- spaces included.
@@ -103,26 +275,38 @@ VOICE_RECORD_PATH_RE = re.compile(
 # screenplay_index.py (DIALOGUE_RE, and TAG_RE + VOICE_TAG_BODY_RE for [VO] and
 # [OS]). Each is matched against a whole paragraph, so a line that wraps onto
 # the next physical line is still one line of dialogue.
+_NOT_CLOCK_PREFIX = r"(?!\d{1,2}[:：]\d{2}(?:\D|$))"
 _MAX_SPEAKER_LENGTH = 40
 _SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
 _SPEAKER_LABEL = (
-    rf"(?=.{{1,{_MAX_SPEAKER_LENGTH}}}(?:[ \t]*[（(]|：|:))"
+    rf"(?=.{{1,{_MAX_SPEAKER_LENGTH}}}(?:[ \t\u3000]*[（(]|：|:))"
     rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
 )
-_OPTIONAL_CUE = r"(?:[ \t]*(?:（[^（）\r\n]+）|\([^()\r\n]+\)))?"
+_OPTIONAL_CUE = r"(?:[ \t\u3000]*(?:（[^（）\r\n]+）|\([^()\r\n]+\)))?"
 SCREENPLAY_DIALOGUE_RE = re.compile(
-    rf"^(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
+    rf"^{_NOT_CLOCK_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:][ \t\u3000]*(?P<text>\S[\s\S]*)$"
 )
 SCREENPLAY_VOICE_TAG_RE = re.compile(
-    rf"^\[(?:VO|OS)\]\s*(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
+    rf"^\[(?:VO|OS)\][ \t\u3000]*{_NOT_CLOCK_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:][ \t\u3000]*(?P<text>\S[\s\S]*)$"
 )
 # A later line of a paragraph that starts another block (the index's
 # ASCII_DIALOGUE_RE, ANY_TAG_RE and MALFORMED_TAG_RE): the paragraph is missing
 # a separator and the index emits no dialogue for it.
 SCREENPLAY_BLOCK_START_RE = re.compile(
-    rf"^{_SPEAKER_LABEL}{_OPTIONAL_CUE}:\s*\S"
+    rf"^{_NOT_CLOCK_PREFIX}{_SPEAKER_LABEL}{_OPTIONAL_CUE}:\s*\S"
     r"|^\[[^\]\r\n]+\]"
     r"|^\[(?:VO|OS|SFX|画面文字|连续性|转场)(?:\s|：|:)"
+)
+CAST_LINE_RE = re.compile(
+    r"^[ \t\u3000]*(?:[-*+][ \t\u3000]+)?(?:"
+    r"人物[ \t\u3000]*[：:]"
+    r"|\*\*\*人物(?:[ \t\u3000]*\*\*\*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*\*\*\*)"
+    r"|___人物(?:[ \t\u3000]*___[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*___)"
+    r"|\*\*人物(?:[ \t\u3000]*\*\*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*\*\*)"
+    r"|__人物(?:[ \t\u3000]*__[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*__)"
+    r"|\*人物(?:[ \t\u3000]*\*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*\*)"
+    r"|_人物(?:[ \t\u3000]*_[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*_)"
+    r").*$"
 )
 # Where the clause that introduces a quote begins.
 CLAUSE_BREAK_RE = re.compile(r"[。！？；!?;]|(?<!\d)\.(?!\d)")
@@ -134,16 +318,36 @@ SLOT_HEAD_RE = re.compile(
 )
 SCENE_ID_PATTERN = r"(?:[A-Za-z0-9]+-)+SC[0-9]+"
 SCENE_HEADING_RE = re.compile(
-    r"^## (" + SCENE_ID_PATTERN + r")\b", re.MULTILINE
+    r"^##[ \t\u3000]+(" + SCENE_ID_PATTERN + r")\b", re.MULTILINE
+)
+FULL_SCENE_HEADING_RE = re.compile(
+    r"^##[ \t\u3000]+(?P<scene>(?:[A-Za-z0-9]+-)*?EP(?:[0-9]{3}|[1-9][0-9]{3,})-SC(?:[0-9]{3}|[1-9][0-9]{3,}))"
+    r"(?:[ \t\u3000]+|[ \t\u3000]*·[ \t\u3000]*)(?P<space>内外|内|外)"
+    r"[ \t\u3000]*·[ \t\u3000]*(?P<location>[^·\r\n]+?)"
+    r"[ \t\u3000]*·[ \t\u3000]*(?P<time>[^·\r\n]+?)[ \t\u3000]*\r?$",
+    re.MULTILINE,
+)
+SCENE_LINE_CANDIDATE_RE = re.compile(
+    r"^##(?![#])[^\r\n]*$", re.MULTILINE
+)
+BLOCKING_LINE_RE = re.compile(
+    r"^#{2,4}[ \t\u3000]*场景站位(?![ \t\u3000]*$)[^\r\n]*$", re.MULTILINE
+)
+BLOCKING_HEADING_RE = re.compile(
+    r"^##[ \t\u3000]+场景站位[ \t\u3000]*·[ \t\u3000]*("
+    + SCENE_ID_PATTERN
+    + r")[ \t\u3000]*·[ \t\u3000]*([^\r\n]+?)[ \t\u3000]*\r?$",
+    re.MULTILINE,
 )
 SCENE_ID_RE = re.compile(SCENE_ID_PATTERN)
-# A quoted span of the source line, 「…」 or 『…』.
-QUOTE_RE = re.compile(r"「[^」]*」|『[^』]*』")
+# A quoted span of the source line, 「…」, 『…』, “…” or "...".
+QUOTE_RE = re.compile(r"「[^」]*」|『[^』]*』|“[^”]*”|\"[^\"]*\"")
 # A scene the storyboard decided not to film. SHT-01 has always allowed the
 # omission and always required a reason; without a place to write it the
 # omission and an oversight look identical in the finished document.
 UNFILMED_LINE_RE = re.compile(
-    r"^[ \t\u3000]*[-*+][ \t\u3000]*未拍场次[：:](.*)$", re.MULTILINE
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]*{_emph_field_head('未拍场次')}[ \t\u3000]*(.*)$",
+    re.MULTILINE,
 )
 UNFILMED_ENTRY_RE = re.compile(
     r"(" + SCENE_ID_PATTERN + r")（理由：([^）\n]+)）"
@@ -183,28 +387,35 @@ VISUAL_SETTING_LINE_RE = re.compile(
     re.MULTILINE,
 )
 VISUAL_SETTING_HEADING_RE = re.compile(
-    r"^## (" + "|".join(VISUAL_CATEGORIES) + r") · (.+?)[ \t　]*$", re.MULTILINE
+    r"^##[ \t\u3000]+(" + "|".join(VISUAL_CATEGORIES) + r") · (.+?)[ \t\u3000]*\r?$",
+    re.MULTILINE,
 )
 # Any other `## <word> · <name>` heading, so an 出场设定 entry that fails to
 # resolve can say "the entry is there, the section word is not one of the four"
 # instead of blaming the storyboard for a `视觉设定.md` problem.
-OTHER_SETTING_HEADING_RE = re.compile(r"^## ([^\n·]+?) · (.+?)[ \t　]*$", re.MULTILINE)
+OTHER_SETTING_HEADING_RE = re.compile(
+    r"^##[ \t\u3000]+([^\r\n·]+?) · (.+?)[ \t\u3000]*\r?$", re.MULTILINE
+)
 # 提示词名称 is the one field the coverage check depends on, so — like a
 # continuity lock — anything that looks like it has to parse rather than
 # silently drop out.
 # Anchored at the start of the line so a sentence that merely mentions the
 # field is prose, not a malformed declaration.
 SCREEN_NAME_LINE_RE = re.compile(
-    r"^[ \t　]*[-*+]?[ \t　]*提示词名称[ \t　]*[：:][^\n]*$", re.MULTILINE
+    r"^[ \t\u3000]*[-*+]?[ \t\u3000]*(?:\*\*|__|\*|_)*提示词名称(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*)[^\r\n]*$",
+    re.MULTILINE,
 )
 SCREEN_NAME_RE = re.compile(
-    r"^[ \t　]*[-*+][ \t　]*提示词名称[：:](.+)$", re.MULTILINE
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]*{_emph_field_head('提示词名称')}[ \t\u3000]*(.+)$",
+    re.MULTILINE,
 )
 ROLE_VOICE_LINE_RE = re.compile(
-    r"^[ \t　]*[-*+]?[ \t　]*角色声线[ \t　]*[：:][^\n]*$", re.MULTILINE
+    r"^[ \t\u3000]*[-*+]?[ \t\u3000]*(?:\*\*|__|\*|_)*角色声线(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*)[^\r\n]*$",
+    re.MULTILINE,
 )
 ROLE_VOICE_RE = re.compile(
-    r"^[ \t　]*[-*+][ \t　]*角色声线[：:](.+)$", re.MULTILINE
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]*{_emph_field_head('角色声线')}[ \t\u3000]*(.+)$",
+    re.MULTILINE,
 )
 VISUAL_BASIS_PREFIX = "《视觉设定.md》·"
 VISUAL_BASIS_ENTRY_RE = re.compile(
@@ -223,9 +434,12 @@ OFFSCREEN_ENTRY_RE = re.compile(
 # has to parse, so a creator who indents the bullet under 外观特征 gets an error
 # instead of silent non-enforcement.
 IN_FRAME_SCOPE = "入画"
-LOCK_LINE_RE = re.compile(r"^[ \t\u3000]*[-*+][ \t\u3000]*连戏锁[：:].*$", re.MULTILINE)
+LOCK_LINE_RE = re.compile(
+    r"^[ \t\u3000]*[-*+][ \t\u3000]*(?:\*\*|__|\*|_)*连戏锁(?:(?:\*\*|__|\*|_)*[ \t\u3000]*[：:]|[ \t\u3000]*[：:][ \t\u3000]*(?:\*\*|__|\*|_)*).*$",
+    re.MULTILINE,
+)
 LOCK_RE = re.compile(
-    r"^[ \t\u3000]*[-*+][ \t\u3000]*连戏锁[：:]\s*(LOCK-[A-Z0-9-]+)《([^》\n]+)》"
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]*{_emph_field_head('连戏锁')}[ \t\u3000]*(LOCK-[A-Z0-9-]+)《([^》\n]+)》"
     r"（镜头：([^；）\n]+)"
     r"(?:；图片提示词项：([^；）\n]+))?）"
     r"· 锁定词：(.+)$"
@@ -254,6 +468,7 @@ def _sections(document: str, kind: str) -> dict[str, str]:
     kind: a report or a delivery group written after the last shot would
     otherwise be read as that shot's fields.
     """
+    document = _normalize_text(document)
     headings = [match.start() for match in ANY_SECTION_RE.finditer(document)]
     sections: dict[str, str] = {}
     for match in SECTION_RE.finditer(document):
@@ -264,14 +479,36 @@ def _sections(document: str, kind: str) -> dict[str, str]:
     return sections
 
 
+_PLAIN_KEY_CHARS = r"[^：:（()），,。；;\r\n]+?"
+_STAR_KEY_CHARS = r"[^*：:（()），,。；;\r\n]+?"
+_UNDER_KEY_CHARS = r"[^_：:（()），,。；;\r\n]+?"
+_NOT_EMPH_CLOCK_PREFIX = (
+    r"(?!\*{0,3}\d{1,2}[：:]\d{2}(?:\D|$)|_{0,3}\d{1,2}[：:]\d{2}(?:\D|$))"
+)
+FIELD_LINE_RE = re.compile(
+    rf"^[ \t\u3000]*[-*+][ \t\u3000]+"
+    rf"((?:"
+    rf"\*\*\*{_NOT_CLOCK_PREFIX}{_STAR_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*\*\*\*"
+    rf"|___{_NOT_CLOCK_PREFIX}{_UNDER_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*___"
+    rf"|\*\*{_NOT_CLOCK_PREFIX}{_STAR_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*\*\*"
+    rf"|__{_NOT_CLOCK_PREFIX}{_UNDER_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*__"
+    rf"|\*{_NOT_CLOCK_PREFIX}{_STAR_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*\*"
+    rf"|_{_NOT_CLOCK_PREFIX}{_UNDER_KEY_CHARS}[ \t\u3000]*[：:][ \t\u3000]*_"
+    rf"|{_NOT_EMPH_CLOCK_PREFIX}{_PLAIN_KEY_CHARS}[ \t\u3000]*[：:]"
+    rf"))[ \t\u3000]*(.+)$",
+    re.MULTILINE,
+)
+
+
 def _fields(section: str, *, owner: str, errors: list[str]) -> dict[str, str]:
-    pairs = re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE)
+    section = _normalize_text(section)
+    pairs = FIELD_LINE_RE.findall(section)
     fields: dict[str, str] = {}
     for key, value in pairs:
         # `- **参考**：…` is ordinary Markdown and reads as the same field to a
         # human. Taking the emphasis literally turned it into a different key,
         # so the author got "缺少参考字段" while looking straight at 参考.
-        key = re.sub(r"^(?:\*\*|__|\*|_)(.+?)(?:\*\*|__|\*|_)$", r"\1", key.strip())
+        key = _strip_key_emphasis(key)
         if key in fields:
             errors.append(f"{owner}: 字段重复: {key}")
         fields[key] = value
@@ -311,25 +548,32 @@ def _is_explicit_text_to_video(value: str) -> bool:
 
 def _has_pending_references(value: str) -> bool:
     plain = _plain(value)
-    return plain.startswith("无（待补参考图：") or bool(
-        PENDING_REFERENCE_SUFFIX_RE.search(value.strip())
+    return plain.startswith("无（待补参考图") or bool(
+        re.search(r"[；;]\s*待补参考图[：:][^；;。\n]+。?$", value.strip())
     )
 
 
 def _is_no_external_reference(value: str) -> bool:
-    return not _contains_slot_token(value) and bool(
-        re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", value.strip())
+    stripped = value.strip()
+    return (
+        not _contains_slot_token(stripped)
+        and not _has_pending_references(stripped)
+        and "待补参考图" not in stripped
+        and bool(re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", stripped))
     )
 
 
 def _copyable_prompt(
-    section: str, heading: str = r"可复制(?:通用)?提示词"
+    section: str, heading: str = "可复制提示词"
 ) -> Optional[str]:
-    markers = list(re.finditer(rf"^### {heading}\s*$", section, re.MULTILINE))
+    section = _normalize_text(section)
+    markers = list(
+        re.finditer(rf"^###[ \t\u3000]+{heading}[ \t\u3000]*\r?$", section, re.MULTILINE)
+    )
     if len(markers) != 1:
         return None
     body = section[markers[0].end() :]
-    following = re.search(r"^###\s+|^##\s+", body, re.MULTILINE)
+    following = _COPYABLE_END_RE.search(body)
     if following is not None:
         body = body[: following.start()]
     lines = [line for line in body.splitlines() if line.strip()]
@@ -340,7 +584,7 @@ def _copyable_prompt(
 
 
 def _copyable_prompt_cause(
-    section: str, heading: str = r"可复制(?:通用)?提示词"
+    section: str, heading: str = "可复制提示词"
 ) -> str:
     """Why `_copyable_prompt` returned None, as a suffix for the error.
 
@@ -351,17 +595,20 @@ def _copyable_prompt_cause(
     reads as a checker bug and the real line goes unlooked at.
     """
 
+    section = _normalize_text(section)
     # Name the heading the author actually has to write, not this one's default:
     # the keyframe caller passes a different one, and pointing at the wrong
     # heading is worse than saying nothing.
     label = "### " + re.sub(r"\(\?:([^)]*)\)\?", "", heading).replace("\\", "")
-    markers = list(re.finditer(rf"^### {heading}\s*$", section, re.MULTILINE))
+    markers = list(
+        re.finditer(rf"^###[ \t\u3000]+{heading}[ \t\u3000]*\r?$", section, re.MULTILINE)
+    )
     if not markers:
         return f"：没有 `{label}` 小节标题"
     if len(markers) > 1:
         return f"：`{label}` 出现了 {len(markers)} 次，只能有一个"
     body = section[markers[0].end() :]
-    following = re.search(r"^###\s+|^##\s+", body, re.MULTILINE)
+    following = _COPYABLE_END_RE.search(body)
     if following is not None:
         body = body[: following.start()]
     lines = [line for line in body.splitlines() if line.strip()]
@@ -387,7 +634,8 @@ def _portable_path(value: str) -> bool:
 
 def _inside(path: Path, root: Path) -> bool:
     resolved = path.resolve()
-    return resolved == root or root in resolved.parents
+    resolved_root = root.resolve()
+    return resolved == resolved_root or resolved_root in resolved.parents
 
 
 class EntryIndex(NamedTuple):
@@ -418,6 +666,7 @@ def _input_exempts_lock(
     lock: ContinuityLock,
     shot_id: str,
     shots: Optional[Mapping[str, str]],
+    entry_images: Optional[Mapping[tuple[str, str], frozenset[str]]] = None,
 ) -> bool:
     """Whether an 输入参考图 line already carries ``lock`` visually for ``shot_id``."""
     if not value or _is_none(value):
@@ -444,6 +693,10 @@ def _input_exempts_lock(
                 entry_name = lock.entry[1]
                 if entry_name and (entry_name in label or entry_name in may_control):
                     return True
+                if kind == "REF" and entry_images is not None:
+                    norm_locator = PurePosixPath(locator.strip()).as_posix()
+                    if norm_locator in entry_images.get(lock.entry, frozenset()):
+                        return True
     return False
 
 
@@ -490,6 +743,11 @@ def _references(
             errors.append(
                 f"{owner}: 待补参考图必须写在最后一个 REF 槽位之后，"
                 "缺口之间只用、分隔"
+            )
+        elif MALFORMED_SLOT_ID_RE.search(reference_value):
+            errors.append(
+                f"{owner}: 槽位 ID 必须使用大写字母、数字与连字符且不超过 80 字符"
+                "（REF-[A-Z0-9][A-Z0-9-]{0,79}）"
             )
         elif _contains_plan_token(value) and not _contains_ref_token(value):
             errors.append(f"{owner}: 输入参考图必须使用完整 PLAN 语法")
@@ -585,32 +843,57 @@ def _han_key(value: str) -> str:
     return "".join(re.findall(r"[\u3400-\u9fff]+", value))
 
 
+_LEADING_LANG_TAG_RE = re.compile(r"^\s*\[[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\]\s*")
+
+
+def _dialogue_key(value: str) -> str:
+    """Comparison key for a spoken line: Han characters when present, else folded letters/digits."""
+    han = _han_key(value)
+    if han:
+        return han
+    cleaned = _LEADING_LANG_TAG_RE.sub("", value)
+    return re.sub(r"[^0-9A-Za-z\u00C0-\u024F\u0400-\u04FF]+", "", cleaned).casefold()
+
+
 class SpokenLine(NamedTuple):
-    """One dialogue paragraph of 剧本.md: its scene, speaker and Han text."""
+    """One dialogue paragraph of 剧本.md: its scene, speaker and comparison key."""
 
     scene: Optional[str]
     speaker: str
     key: str
 
 
+def _valid_scene_heading_id(line: str) -> Optional[str]:
+    match = FULL_SCENE_HEADING_RE.fullmatch(line)
+    if match is None:
+        return None
+    if not match.group("location").strip() or not match.group("time").strip():
+        return None
+    return match.group("scene")
+
+
 def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
     """Every dialogue paragraph, read the way screenplay_index.py reads it.
 
-    Mirrors `_parse_screenplay` block by block: a comment runs through the line
-    that closes it, and an unclosed one ends the parse; a heading sets or clears
-    the scene (scene ids use this checker's own SCENE_HEADING_RE, the one
-    来源 resolves against); a paragraph runs until a blank line, a heading or a comment and
-    counts only inside a scene; a later line that starts another block means a
-    missing separator, so the paragraph is not dialogue. The one difference is
-    the speaker list: the index takes it from the project, and here a speaker
-    is only ever looked up by 人物 entry name.
+    Mirrors `_parse_screenplay` block by block: closed comments are stripped with
+    line preservation, and an unclosed comment ends the parse; a heading sets or
+    clears the scene (scene ids use FULL_SCENE_HEADING_RE); a paragraph runs
+    until a blank line, a heading or a comment and counts only inside a scene; a
+    later line that starts another block means a missing separator, so the
+    paragraph is not dialogue. The one difference is the speaker list: the index
+    takes it from the project, and here a speaker is only ever looked up by 人物
+    entry name.
     """
+    screenplay = _strip_html_comments(screenplay)
     found: list[SpokenLine] = []
     scene: Optional[str] = None
+    seen_first_scene = False
+    at_scene_head = False
     lines = screenplay.splitlines()
     index = 0
     while index < len(lines):
-        stripped = lines[index].strip()
+        raw_line = lines[index]
+        stripped = raw_line.strip()
         if not stripped:
             index += 1
             continue
@@ -623,14 +906,28 @@ def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
             index = end + 1
             continue
         if stripped.startswith("#"):
-            heading = SCENE_HEADING_RE.match(stripped)
-            scene = heading.group(1) if heading else None
+            if re.match(r"^##(?![#])", stripped):
+                seen_first_scene = True
+                scene = _valid_scene_heading_id(stripped)
+                at_scene_head = scene is not None
+            else:
+                if seen_first_scene:
+                    scene = None
+                    at_scene_head = False
             index += 1
             continue
+        if (not seen_first_scene or at_scene_head) and CAST_LINE_RE.match(raw_line):
+            index += 1
+            continue
+        was_before_first_scene = not seen_first_scene
+        at_scene_head = False
         end = index
         while end + 1 < len(lines):
-            following = lines[end + 1].strip()
+            next_raw = lines[end + 1]
+            following = next_raw.strip()
             if not following or following.startswith(("#", "<!--")):
+                break
+            if was_before_first_scene and CAST_LINE_RE.match(next_raw):
                 break
             end += 1
         paragraph = [line.strip() for line in lines[index : end + 1]]
@@ -644,10 +941,10 @@ def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
         match = SCREENPLAY_VOICE_TAG_RE.fullmatch(text) or SCREENPLAY_DIALOGUE_RE.fullmatch(
             text
         )
-        if match is not None and _han_key(match.group("text")):
-            found.append(
-                SpokenLine(scene, match.group("speaker"), _han_key(match.group("text")))
-            )
+        if match is not None:
+            key = _dialogue_key(match.group("text"))
+            if key:
+                found.append(SpokenLine(scene, match.group("speaker"), key))
     return found
 
 
@@ -678,11 +975,12 @@ def _quote_speakers(
             (group for group in match.groups() if group is not None), ""
         )
         span = _normalize_spoken_span(raw_span, is_dialogue_tag=is_dialogue_tag)
-        key = _han_key(span) if len(span) <= 200 else ""
+        key = _dialogue_key(span) if len(span) <= 200 else ""
+        min_substring = 4 if _han_key(span) else 6
         candidates = frozenset(
             line.speaker
             for line in lines
-            if key and (key == line.key or (len(key) >= 4 and key in line.key))
+            if key and (key == line.key or (len(key) >= min_substring and key in line.key))
         )
         if len(candidates) > 1:
             lead = prompt[previous_end : match.start()].replace("\n", " ")
@@ -703,7 +1001,8 @@ def _quote_speakers(
 
 def _voice_records(visual: str, errors: list[str]) -> dict[str, str]:
     """Each 人物 entry's `- 声音参考：` value, keyed by the entry name."""
-    headings = list(re.finditer(r"^## [^\n]*$", visual, re.MULTILINE))
+    visual = _normalize_text(visual)
+    headings = list(re.finditer(r"^##[ \t\u3000]+[^\n]*$", visual, re.MULTILINE))
     records: dict[str, str] = {}
     for index, heading in enumerate(headings):
         entry = VISUAL_SETTING_HEADING_RE.match(heading.group(0))
@@ -720,13 +1019,14 @@ def _voice_records(visual: str, errors: list[str]) -> dict[str, str]:
 
 def _role_voices(visual: str, errors: list[str]) -> dict[str, str]:
     """Each 人物 entry's `- 角色声线：` value, keyed by the entry name."""
+    visual = _normalize_text(visual)
     for line in ROLE_VOICE_LINE_RE.findall(visual):
         match = ROLE_VOICE_RE.match(line)
         if match is None or not _plain(match.group(1)):
             errors.append(
                 "视觉设定.md: 角色声线必须写成 `- 角色声线：<声线说明>`: " + _excerpt(line)
             )
-    headings = list(re.finditer(r"^## [^\n]*$", visual, re.MULTILINE))
+    headings = list(re.finditer(r"^##[ \t\u3000]+[^\n]*$", visual, re.MULTILINE))
     voices: dict[str, str] = {}
     for index, heading in enumerate(headings):
         entry = VISUAL_SETTING_HEADING_RE.match(heading.group(0))
@@ -805,7 +1105,13 @@ def _audio_references(
             break
         cursor = match.end()
     if not matches or plain[cursor:] not in {"", "。"}:
-        errors.append(f"{owner}: 参考音频必须写成 {AUDIO_SYNTAX}，多条用；连接")
+        if MALFORMED_SLOT_ID_RE.search(plain):
+            errors.append(
+                f"{owner}: 参考音频槽位 ID 必须使用大写字母、数字与连字符且不超过 80 字符"
+                "（REF-[A-Z0-9][A-Z0-9-]{0,79}）"
+            )
+        else:
+            errors.append(f"{owner}: 参考音频必须写成 {AUDIO_SYNTAX}，多条用；连接")
         return
     slots = [match.group(1) for match in matches]
     orders = sorted(int(match.group(2)) for match in matches)
@@ -970,6 +1276,26 @@ def _carries_surface(prompt: str, surface: str) -> bool:
     return False
 
 
+_SETTING_IMAGE_PATH_RE = re.compile(
+    r"([^`\"'<>（()）《》【】\[\]；;，,\r\n]+?\.(?:png|jpe?g|webp))(?=[`\"'（(《；;，,。\s]|$)",
+    re.IGNORECASE,
+)
+
+
+def _extract_entry_image_paths(section_body: str) -> frozenset[str]:
+    paths: set[str] = set()
+    for match in REF_RE.finditer(section_body):
+        raw_path = match.group(3).strip()
+        if _portable_path(raw_path):
+            paths.add(PurePosixPath(raw_path).as_posix())
+    for _key, value in FIELD_LINE_RE.findall(section_body):
+        for match in _SETTING_IMAGE_PATH_RE.finditer(value):
+            candidate = match.group(1).strip().lstrip("·").strip()
+            if _portable_path(candidate):
+                paths.add(PurePosixPath(candidate).as_posix())
+    return frozenset(paths)
+
+
 class VisualEntry(NamedTuple):
     """One `视觉设定.md` entry plus every name a prompt body may call it by."""
 
@@ -977,6 +1303,7 @@ class VisualEntry(NamedTuple):
     name: str
     designators: list[str]
     has_screen_name: bool = False
+    image_paths: frozenset[str] = frozenset()
 
     @property
     def key(self) -> tuple[str, str]:
@@ -990,6 +1317,7 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
     out of the coverage check and then reappear as "出场设定 names an entry that
     does not exist", so it is rejected here where the cause is visible.
     """
+    document = _normalize_text(document)
     for line in VISUAL_SETTING_LINE_RE.findall(document):
         if VISUAL_SETTING_HEADING_RE.match(line) is None:
             errors.append(
@@ -1002,14 +1330,14 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
                 "视觉设定.md: 提示词名称必须写成 `- 提示词名称：<正文里的拼写>`: "
                 + _excerpt(line)
             )
+    any_headings = [match.start() for match in ANY_SECTION_RE.finditer(document)]
     headings = list(VISUAL_SETTING_HEADING_RE.finditer(document))
     entries: list[VisualEntry] = []
     seen: set[tuple[str, str]] = set()
-    for index, heading in enumerate(headings):
-        end = (
-            headings[index + 1].start()
-            if index + 1 < len(headings)
-            else len(document)
+    for heading in headings:
+        end = next(
+            (at for at in any_headings if at > heading.start()),
+            len(document),
         )
         category, name = heading.group(1), heading.group(2).strip()
         if not name:
@@ -1019,7 +1347,8 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
             errors.append(f"视觉设定.md: 条目重复: {category}「{name}」")
             continue
         seen.add((category, name))
-        declared = SCREEN_NAME_RE.findall(document[heading.end() : end])
+        section_body = document[heading.end() : end]
+        declared = SCREEN_NAME_RE.findall(section_body)
         if not declared:
             # No declaration: the entry's own name is the designator, which is
             # what a prompt body written in the project's own language calls it.
@@ -1051,7 +1380,13 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
                         "过短，无法在正文中可靠识别；请写成至少两个字符，或写「提示词名称：无」"
                     )
         entries.append(
-            VisualEntry(category, name, designators, bool(declared))
+            VisualEntry(
+                category,
+                name,
+                designators,
+                bool(declared),
+                _extract_entry_image_paths(section_body),
+            )
         )
     return entries
 
@@ -1297,6 +1632,7 @@ class ContinuityLock(NamedTuple):
 
 def _continuity_locks(document: str, errors: list[str]) -> list[ContinuityLock]:
     """Parse the declared continuity locks of one 视觉设定.md."""
+    document = _normalize_text(document)
     locks: list[ContinuityLock] = []
     seen: set[str] = set()
     sections = [match.start() for match in ANY_SECTION_RE.finditer(document)]
@@ -1479,17 +1815,27 @@ def _check_language_designators(
             active_languages.append(_infer_prompt_language(legacy_texts))
         if not active_languages:
             active_languages.append(_infer_prompt_language((), fallback_texts))
-    if all(lang.casefold().startswith("zh") for lang in active_languages):
-        return
+    has_zh_prompt = any(lang.casefold().startswith("zh") for lang in active_languages)
+    has_non_zh_prompt = any(
+        not lang.casefold().startswith("zh") for lang in active_languages
+    )
     for entry in entries:
         if entry.category != "人物":
             continue
         if not entry.has_screen_name and entry.designators == [entry.name]:
-            errors.append(
-                f"视觉设定.md: 人物「{entry.name}」缺少提示词名称；"
-                "提示词正文不是中文时，写「提示词名称：<正文里的拼写>」，"
-                "正文从不点名时写「提示词名称：无」"
-            )
+            name_has_zh = bool(re.search(r"[\u3400-\u9fff]", entry.name))
+            if name_has_zh and has_non_zh_prompt:
+                errors.append(
+                    f"视觉设定.md: 人物「{entry.name}」缺少提示词名称；"
+                    "提示词正文不是中文时，写「提示词名称：<正文里的拼写>」，"
+                    "正文从不点名时写「提示词名称：无」"
+                )
+            elif not name_has_zh and has_zh_prompt:
+                errors.append(
+                    f"视觉设定.md: 人物「{entry.name}」缺少提示词名称；"
+                    "提示词正文是中文时，写「提示词名称：<正文里的拼写>」，"
+                    "正文从不点名时写「提示词名称：无」"
+                )
 
 
 def _declared_seconds(value: str) -> Optional[float]:
@@ -1520,6 +1866,7 @@ def _check_continuity_locks(
         ]
     ] = None,
     motion_inputs: Optional[Mapping[str, str]] = None,
+    entry_images: Optional[Mapping[tuple[str, str], frozenset[str]]] = None,
 ) -> None:
     """Require every declared lock surface to be present where it was scoped.
 
@@ -1573,7 +1920,7 @@ def _check_continuity_locks(
                 continue
             motion_id, _motion_body, copyable_prompt = motion
             motion_input = input_for_shot(shot_id)
-            if _input_exempts_lock(motion_input, lock, shot_id, shots):
+            if _input_exempts_lock(motion_input, lock, shot_id, shots, entry_images):
                 continue
             if copyable_prompt is not None and not _carries_surface(
                 copyable_prompt, surface
@@ -1592,14 +1939,14 @@ def _check_continuity_locks(
                 group_exempt = third
             elif third.strip():
                 group_exempt = all(
-                    _input_exempts_lock(third, lock, shot_id, shots)
+                    _input_exempts_lock(third, lock, shot_id, shots, entry_images)
                     for shot_id in locked_shots
                 )
             else:
                 group_exempt = all(
                     shot_id in motion_by_shot
                     and _input_exempts_lock(
-                        input_for_shot(shot_id), lock, shot_id, shots
+                        input_for_shot(shot_id), lock, shot_id, shots, entry_images
                     )
                     for shot_id in locked_shots
                 )
@@ -1635,11 +1982,15 @@ def _check_delivery_groups(
     project_root: Optional[Path] = None,
     entries: Optional[EntryIndex] = None,
     motion_fields_by_id: Optional[Mapping[str, Mapping[str, str]]] = None,
+    partial: bool = False,
+    voices: Optional[VoiceContext] = None,
 ) -> dict[str, tuple[list[str], Optional[str], str]]:
     """Check the multi-shot delivery groups of 视频提示词.md (VID-13, VID-15)."""
     result: dict[str, tuple[list[str], Optional[str], str]] = {}
     owner_of: dict[str, str] = {}
-    titled = dict(re.findall(r"^## (GROUP-[A-Z0-9-]+) · ([^\n]+)$", video, re.MULTILINE))
+    titled = dict(
+        re.findall(r"^##[ \t\u3000]+(GROUP-[A-Z0-9-]+) · ([^\r\n]+)\r?$", video, re.MULTILINE)
+    )
     shot_of_motion = {
         motion_id: _plain(
             (
@@ -1657,6 +2008,8 @@ def _check_delivery_groups(
         group_input = fields.get("输入参考图", "")
         if group_input:
             _references(group_input, group_id, project_root, errors, entries)
+            if not partial and _has_pending_references(group_input):
+                errors.append(f"{group_id}: 仍有待补参考图，不能生成最终视频提示词")
         listed = _group_members(fields.get("成员", ""))
         members = _unique(listed)
         if len(members) != len(listed):
@@ -1668,10 +2021,33 @@ def _check_delivery_groups(
             )
         elif spoken_sources is not None:
             _check_spoken_lines(prompt, group_id, spoken_sources, errors)
+        unknown = [item for item in members if item not in motions]
+        combined_scenes: Optional[list[str]] = None
+        if members and not unknown and shot_order is not None:
+            combined_scenes = _unique(
+                scene
+                for item in members
+                for scene in shot_scenes.get(shot_of_motion[item], [])
+            )
+        if "参考音频" in fields and voices is not None:
+            _audio_references(
+                fields["参考音频"],
+                group_id,
+                project_root,
+                errors,
+                image_slots=[
+                    item[3][0]
+                    for item in _slot_matches(
+                        PENDING_REFERENCE_SUFFIX_RE.sub("", group_input.strip())
+                    )
+                ],
+                prompt=prompt,
+                voices=voices,
+                scenes=combined_scenes,
+            )
         if not members:
             errors.append(f"{group_id}: 缺少成员字段")
             continue
-        unknown = [item for item in members if item not in motions]
         for item in unknown:
             errors.append(f"{group_id}: 成员不是已有的 MOTION 条目: {item}")
         for item in members:
@@ -1710,7 +2086,7 @@ def _check_delivery_groups(
 
 def _storyboard_head(storyboard: str) -> str:
     """The part of 分镜.md that belongs to the episode rather than to a shot."""
-    match = re.search(r"^## SHOT-", storyboard, re.MULTILINE)
+    match = re.search(r"^##[ \t\u3000]+SHOT-", storyboard, re.MULTILINE)
     return storyboard if match is None else storyboard[: match.start()]
 
 
@@ -1875,20 +2251,37 @@ def validate_documents(
         # the CLI says so instead of reporting an error the creator cannot fix.
         return []
 
-    def read(name: str) -> str:
-        return texts.get(name) or ""
+    def read(name: str, *, preserve_copyable: bool = False) -> str:
+        raw = _normalize_text(texts.get(name) or "")
+        stripped, has_unclosed = _scan_html_comments(
+            raw, preserve_copyable=preserve_copyable
+        )
+        if name in present and has_unclosed:
+            errors.append(f"{name}: 存在未闭合的 HTML 注释（缺少 `-->`）")
+        return stripped
 
     has_screenplay = "剧本.md" in present
     has_visual = "视觉设定.md" in present
     has_images = "图片提示词.md" in present
     has_storyboard = "分镜.md" in present
     has_video = "视频提示词.md" in present
-    images = read("图片提示词.md")
-    storyboard = read("分镜.md")
-    video = read("视频提示词.md")
+    images = read("图片提示词.md", preserve_copyable=True)
+    storyboard = read("分镜.md", preserve_copyable=True)
+    video = read("视频提示词.md", preserve_copyable=True)
     visual = read("视觉设定.md")
     screenplay = read("剧本.md")
-    scene_headings = SCENE_HEADING_RE.findall(screenplay)
+    if has_screenplay:
+        for candidate_line in SCENE_LINE_CANDIDATE_RE.findall(screenplay):
+            if _valid_scene_heading_id(candidate_line) is None:
+                errors.append(
+                    "剧本.md: 场景标题必须写成 ## <场景 ID> 内|外|内外 · 地点 · 时间: "
+                    + _excerpt(candidate_line)
+                )
+    scene_headings = [
+        match.group("scene")
+        for match in FULL_SCENE_HEADING_RE.finditer(screenplay)
+        if match.group("location").strip() and match.group("time").strip()
+    ]
     scenes = frozenset(scene_headings)
     known_scenes = scenes if has_screenplay else None
     # A quote may come from any of the three; with one missing, an unmatched
@@ -1896,10 +2289,22 @@ def validate_documents(
     quote_sources_complete = has_screenplay and has_visual and has_storyboard
     if has_screenplay and not scenes:
         errors.append(
-            "剧本.md: 没有可解析的场景标题；场景标题写成 ## <场景 ID> 内|外 · 地点 · 时间"
+            "剧本.md: 没有可解析的场景标题；场景标题写成 ## <场景 ID> 内|外|内外 · 地点 · 时间"
         )
     if len(scene_headings) != len(scenes):
         errors.append("剧本.md: 场景 ID 重复")
+    if has_storyboard:
+        for blocking_line in BLOCKING_LINE_RE.findall(storyboard):
+            matched_blocking = BLOCKING_HEADING_RE.fullmatch(blocking_line)
+            if matched_blocking is None or not matched_blocking.group(2).strip():
+                errors.append(
+                    "分镜.md: 场景站位标题必须写成 ## 场景站位 · <场景 ID> · <地点名>: "
+                    + _excerpt(blocking_line)
+                )
+            elif known_scenes is not None and matched_blocking.group(1) not in known_scenes:
+                errors.append(
+                    f"分镜.md: 场景站位场景不在《剧本.md》中: {matched_blocking.group(1)}"
+                )
     spoken_sources = (
         _spoken_key(screenplay),
         _spoken_key(visual),
@@ -1937,7 +2342,9 @@ def validate_documents(
         if match.group(1).strip() not in VISUAL_CATEGORIES
     }
     shots = _sections(storyboard, "SHOT")
-    image_pairs = re.findall(r"^## (IMG-[A-Z0-9-]+) · (.+)$", images, re.MULTILINE)
+    image_pairs = re.findall(
+        r"^##[ \t\u3000]+(IMG-[A-Z0-9-]+) · ([^\r\n]+)\r?$", images, re.MULTILINE
+    )
     image_headings = dict(image_pairs)
     # A planned picture names the board or keyframe that already decides what it
     # depicts, so both indexes have to exist before any declaration is read.
@@ -1945,59 +2352,63 @@ def validate_documents(
         images=image_headings if has_images else None,
         shots=frozenset(shots) if has_storyboard else None,
     )
-    all_image_headings = re.findall(r"^## (IMG-[A-Z0-9-]+)\b", images, re.MULTILINE)
+    all_image_headings = re.findall(
+        r"^##[ \t\u3000]+(IMG-[A-Z0-9-]+)\b", images, re.MULTILINE
+    )
     if len(image_pairs) != len(all_image_headings) or any(
         not label.strip() for _, label in image_pairs
     ):
         errors.append("图片提示词.md: IMG 标题必须写成 ## IMG-... · <名称>")
-    if len(image_pairs) != len(image_headings):
+    if len(image_pairs) != len(image_headings) or len(all_image_headings) != len(
+        set(all_image_headings)
+    ):
         errors.append("图片提示词.md: IMG 标题 ID 重复")
-    image_matches = list(re.finditer(r"^## (IMG-[A-Z0-9-]+)\b", images, re.MULTILINE))
     image_prompts: dict[str, Optional[str]] = {}
-    for index, match in enumerate(image_matches):
-        body = images[
-            match.start() : image_matches[index + 1].start()
-            if index + 1 < len(image_matches)
-            else None
-        ]
-        reference_value = _fields(body, owner=match.group(1), errors=errors).get(
+    for image_id, body in _sections(images, "IMG").items():
+        reference_value = _fields(body, owner=image_id, errors=errors).get(
             "参考", ""
         )
         if not reference_value:
-            errors.append(f"{match.group(1)}: 缺少参考字段")
+            errors.append(f"{image_id}: 缺少参考字段")
+        elif _has_pending_references(reference_value) or "待补参考图" in reference_value:
+            errors.append(f"{image_id}: 图片提示词参考不能留有待补参考图")
+        elif _contains_plan_token(reference_value):
+            errors.append(
+                f"{image_id}: 图片提示词参考只能使用真实图片 REF 槽位或无外部参考，不能使用 PLAN 槽位"
+            )
         elif _is_no_external_reference(reference_value):
             pass
         elif _contains_ref_token(reference_value):
             _references(
-                reference_value, match.group(1), project_root, errors, entries
+                reference_value, image_id, project_root, errors, entries
             )
         else:
             errors.append(
-                f"{match.group(1)}: 参考必须声明无外部参考或使用完整 REF 语法"
+                f"{image_id}: 参考必须声明无外部参考或使用完整 REF 语法"
             )
         image_prompt = _copyable_prompt(body)
-        image_prompts[match.group(1)] = image_prompt
+        image_prompts[image_id] = image_prompt
         if image_prompt is None:
             errors.append(
-                f"{match.group(1)}: 缺少唯一且非空的可复制提示词"
+                f"{image_id}: 缺少唯一且非空的可复制提示词"
                 + _copyable_prompt_cause(body)
             )
 
     motions = _sections(video, "MOTION")
-    shot_ids = re.findall(r"^## (SHOT-[A-Z0-9-]+)\b", storyboard, re.MULTILINE)
-    motion_ids = re.findall(r"^## (MOTION-[A-Z0-9-]+)\b", video, re.MULTILINE)
+    shot_ids = re.findall(r"^##[ \t\u3000]+(SHOT-[A-Z0-9-]+)\b", storyboard, re.MULTILINE)
+    motion_ids = re.findall(r"^##[ \t\u3000]+(MOTION-[A-Z0-9-]+)\b", video, re.MULTILINE)
     if len(shot_ids) != len(set(shot_ids)):
         errors.append("分镜.md: SHOT 标题 ID 重复")
     if len(motion_ids) != len(set(motion_ids)):
         errors.append("视频提示词.md: MOTION 标题 ID 重复")
-    group_ids = re.findall(r"^## (GROUP-[A-Z0-9-]+)\b", video, re.MULTILINE)
+    group_ids = re.findall(r"^##[ \t\u3000]+(GROUP-[A-Z0-9-]+)\b", video, re.MULTILINE)
     if len(group_ids) != len(set(group_ids)):
         errors.append("视频提示词.md: GROUP 标题 ID 重复")
     named_shots = re.findall(
-        r"^## (SHOT-[A-Z0-9-]+) · ([^\n]+)$", storyboard, re.MULTILINE
+        r"^##[ \t\u3000]+(SHOT-[A-Z0-9-]+) · ([^\r\n]+)\r?$", storyboard, re.MULTILINE
     )
     named_motions = re.findall(
-        r"^## (MOTION-[A-Z0-9-]+) · ([^\n]+)$", video, re.MULTILINE
+        r"^##[ \t\u3000]+(MOTION-[A-Z0-9-]+) · ([^\r\n]+)\r?$", video, re.MULTILINE
     )
     if len(named_shots) != len(shot_ids) or any(
         not label.strip() for _, label in named_shots
@@ -2225,6 +2636,8 @@ def validate_documents(
         project_root=project_root,
         entries=entries,
         motion_fields_by_id=motion_fields_by_id,
+        partial=partial,
+        voices=voices,
     )
 
     image_family_prompts: list[Optional[str]] = [
@@ -2256,6 +2669,11 @@ def validate_documents(
         motion_inputs={
             m_id: mf.get("输入参考图", "")
             for m_id, mf in motion_fields_by_id.items()
+        },
+        entry_images={
+            entry.key: entry.image_paths
+            for entry in visual_entries
+            if entry.image_paths
         },
     )
     return errors

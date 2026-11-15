@@ -121,3 +121,4 @@ Status: implemented
   字幕颜色常量在 `edit_tool.py` 与 `tokens.ts` 各有一份；Node 端测试在没有 Node 的环境里跳过，
   真实混音测试在没有 ffmpeg 的环境里跳过；叠层产物改名，依赖旧文件名 `字幕叠层.webm` 的外部脚本要改。
 - **已知上限**：重点词不拆开，含重点词的一条可能比均分的更长或更短；音效只从文件开头截取，不支持从文件中段取声或淡入。
+- **后续调整**：音效起点支持见 [配音与字幕跨切点、有声区间与起点](2026-09-28-edit-voice-across-cuts.md)；新增无框 `字卡` 图层、`st_mtime` 变动降为提醒、任务面板 `,/` 进度归一化及过滤全部 Emoji 见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

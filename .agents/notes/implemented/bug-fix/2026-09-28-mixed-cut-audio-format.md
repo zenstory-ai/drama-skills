@@ -1,5 +1,7 @@
 # Agent Note: 混剪分段统一音频格式
 
+Status: implemented
+
 ## Problem
 
 PR #184 的静音段匹配第一个有声视频，但后续有声视频仍保留不同的采样率与声道布局，流拷贝拼接后

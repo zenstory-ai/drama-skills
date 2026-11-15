@@ -115,9 +115,9 @@ Seedance 2.0 版只改两处：去掉方括号里的时间段，改成 `镜头1�
 
 ## 相关
 
-- 站点原文（含更多示例与相关指南）：https://zenstory.ai/zh/drama-skills/seedance-prompts
+- 站点原文（含更多示例与相关指南）：<https://zenstory.ai/zh/drama-skills/seedance-prompts>
 - [起点、连续动作、参考帧与声音](../skills/short-drama-video-prompts/references/video-prompt-guide.md)
 - [Seedance 2.5 提示词写法](../skills/short-drama-video-prompts/references/seedance-2.5.md)
 - [Seedance 2.0 提示词写法](../skills/short-drama-video-prompts/references/seedance-2.0.md)
-- [当前工作流依据（2026-10-15）](../skills/short-drama-video-prompts/SKILL.md)
-- 仓库地址：https://github.com/zenstory-ai/drama-skills
+- [视频提示词技能说明](../skills/short-drama-video-prompts/SKILL.md)
+- 仓库地址：<https://github.com/zenstory-ai/drama-skills>

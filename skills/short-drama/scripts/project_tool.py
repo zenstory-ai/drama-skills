@@ -443,10 +443,19 @@ def profile_notes(project: Mapping[str, Any]) -> list[str]:
     # The same rule the write stage's estimator applies: a positive speech rate
     # (per character, per word, or both) and a non-negative action-paragraph
     # duration.
-    usable = any(
-        isinstance(speech, (int, float)) and not isinstance(speech, bool) and speech > 0
-        for speech in (rates.get(name) for name in SPEECH_RATES)
-    ) and isinstance(action, (int, float)) and not isinstance(action, bool) and action >= 0
+    usable = (
+        any(
+            isinstance(speech, (int, float))
+            and not isinstance(speech, bool)
+            and math.isfinite(speech)
+            and speech > 0
+            for speech in (rates.get(name) for name in SPEECH_RATES)
+        )
+        and isinstance(action, (int, float))
+        and not isinstance(action, bool)
+        and math.isfinite(action)
+        and action >= 0
+    )
     if isinstance(target, (int, float)) and not usable:
         notes.append(
             "format.target_seconds_per_episode is set but format.pacing has no usable rates: "
@@ -762,7 +771,7 @@ def _legacy_artifact(record: Mapping[str, Any]) -> dict[str, Any]:
         }
     review: dict[str, Any] | None = None
     legacy_verdict = record.get("independent_review")
-    if legacy_verdict in {"approve", "approve_with_notes", "revise", "provisional"}:
+    if legacy_verdict in {"approve", "approve_with_notes", "revise", "reject", "provisional"}:
         review_outputs = (
             reviewed_targets
             if isinstance(reviewed_targets, Mapping)
@@ -1104,7 +1113,7 @@ def _artifact_state_from(
     verdict = review.get("verdict")
     if verdict in {"approve", "approve_with_notes"}:
         return "approved"
-    if verdict == "revise":
+    if verdict in {"revise", "reject"}:
         return "revise"
     return "accepted"
 
@@ -1615,7 +1624,7 @@ def record_review(
     reviewer: str = "",
     note: str = "",
 ) -> dict[str, Any]:
-    if verdict not in {"approve", "approve_with_notes", "revise", "provisional"}:
+    if verdict not in {"approve", "approve_with_notes", "revise", "reject", "provisional"}:
         raise ValueError("unsupported review verdict")
     root = find_project(root)
     with _project_lock(root):
@@ -1814,10 +1823,18 @@ def set_creator_authority(
             decision_id=decision_id,
             field=field,
         )
-        if field == EPISODE_LENGTH_POINTER and not (
-            isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
-        ):
-            raise ValueError("target_seconds_per_episode must be a positive number of seconds")
+        if field == EPISODE_LENGTH_POINTER:
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(
+                    "target_seconds_per_episode must be a positive number of seconds "
+                    "(Out of range float values are not JSON compliant)"
+                )
+            if not (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and value > 0
+            ):
+                raise ValueError("target_seconds_per_episode must be a positive number of seconds")
         if field == EPISODE_COUNT_POINTER and not (
             isinstance(value, int) and not isinstance(value, bool) and value > 0
         ):
@@ -1846,36 +1863,19 @@ def set_creator_authority(
             # The project template declares this slot as unset; a manifest made
             # from an older template lacks it, so a whole-profile write adds it.
             authority["rhythm_profile"] = {"status": "unset"}
+        if field == PACING_POINTER:
+            format_obj = project.get("format")
+            existing_pacing = format_obj.get("pacing") if isinstance(format_obj, Mapping) else None
+            value = _normalize_pacing_payload(
+                value, existing_pacing, require_usable=True
+            )
+            if isinstance(format_obj, dict) and isinstance(format_obj.get("pacing"), dict):
+                format_obj["pacing"] = {}
         written = _write_authority_value(project, tokens, value)
         if rhythm:
             problems = rhythm_profile_problems(project[AUTHORITY_ROOT_TOKEN]["rhythm_profile"])
             if problems:
                 raise ValueError("; ".join(problems))
-        if field == PACING_POINTER:
-            # Check what the manifest will hold, not what the decision said: an
-            # object slot is merged, so a half decision leaves the other rate at
-            # null and the estimate stays unusable while the write reports bound.
-            # Type only — which rates make an estimate usable is the write
-            # stage's call, and it stays in one place.
-            if not isinstance(written, Mapping) or not written:
-                raise ValueError("pacing must be an object of named rates")
-            speaks = any(
-                isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0
-                for rate in (written.get(name) for name in SPEECH_RATES)
-            )
-            for name, rate in written.items():
-                if rate is None and name in SPEECH_RATES and speaks:
-                    # A project in one language leaves the other unit unset.
-                    continue
-                if not (
-                    isinstance(rate, (int, float))
-                    and not isinstance(rate, bool)
-                    and rate > 0
-                ):
-                    raise ValueError(
-                        f"pacing rate {name} must be a positive number; "
-                        f"a decision that sets only some rates leaves the rest unset"
-                    )
         atomic_json(project_path, project)
         # Record which decision produced the value, so a later reader can tell a
         # bound write from a hand edit and see what a re-bind replaced.
@@ -1910,7 +1910,86 @@ CONFIGURE_KEYS = frozenset(
         "rhythm_profile",
     }
 )
-PACING_KEYS = frozenset({*SPEECH_RATES, "seconds_per_action_paragraph"})
+PACING_KEYS = frozenset(
+    {
+        *SPEECH_RATES,
+        "seconds_per_action_paragraph",
+        "on_screen_text_characters_per_second",
+    }
+)
+
+
+def _normalize_pacing_payload(
+    raw_pacing: Any,
+    existing_pacing: Any = None,
+    *,
+    require_usable: bool = False,
+) -> dict[str, Any]:
+    if (
+        not isinstance(raw_pacing, Mapping)
+        or isinstance(raw_pacing, bool)
+        or not raw_pacing
+    ):
+        raise ValueError("pacing must be an object of named rates")
+    unknown_pacing = sorted(str(key) for key in raw_pacing if key not in PACING_KEYS)
+    if unknown_pacing:
+        raise ValueError(
+            f"pacing has unknown field(s): {', '.join(unknown_pacing)}"
+        )
+    if isinstance(existing_pacing, Mapping):
+        unknown_existing = sorted(
+            str(key) for key in existing_pacing if key not in PACING_KEYS
+        )
+        if require_usable and unknown_existing:
+            raise ValueError(
+                f"pacing has unknown field(s): {', '.join(unknown_existing)}"
+            )
+        merged_pacing = {
+            **{k: v for k, v in existing_pacing.items() if k in PACING_KEYS},
+            **raw_pacing,
+        }
+    else:
+        merged_pacing = dict(raw_pacing)
+    has_non_null = False
+    for name, rate in merged_pacing.items():
+        if rate is None:
+            continue
+        has_non_null = True
+        if name == "seconds_per_action_paragraph":
+            if (
+                isinstance(rate, bool)
+                or not isinstance(rate, (int, float))
+                or not math.isfinite(rate)
+                or rate < 0
+            ):
+                raise ValueError(
+                    "pacing rate seconds_per_action_paragraph must be a number >= 0"
+                )
+        elif (
+            isinstance(rate, bool)
+            or not isinstance(rate, (int, float))
+            or not math.isfinite(rate)
+            or rate <= 0
+        ):
+            raise ValueError(f"pacing rate {name} must be a positive number")
+    if not has_non_null:
+        raise ValueError("pacing must set at least one non-null rate")
+    if require_usable:
+        speaks = any(
+            isinstance(merged_pacing.get(name), (int, float))
+            and not isinstance(merged_pacing.get(name), bool)
+            and math.isfinite(merged_pacing[name])
+            and merged_pacing[name] > 0
+            for name in SPEECH_RATES
+        )
+        if not speaks:
+            raise ValueError("pacing must set at least one speech rate to a positive number")
+        if merged_pacing.get("seconds_per_action_paragraph") is None:
+            raise ValueError(
+                "pacing rate seconds_per_action_paragraph must be a number >= 0 "
+                "(positive number or 0); a decision that sets only some rates leaves the rest unset"
+            )
+    return merged_pacing
 PRODUCTION_PROFILE_CHOICE_KEYS = frozenset(
     {
         "target_video_model",
@@ -2140,53 +2219,9 @@ def configure_project(
             updated_fields.append("target_seconds_per_episode")
 
         if "pacing" in merged:
-            raw_pacing = merged["pacing"]
-            if (
-                not isinstance(raw_pacing, Mapping)
-                or isinstance(raw_pacing, bool)
-                or not raw_pacing
-            ):
-                raise ValueError("pacing must be an object of named rates")
-            unknown_pacing = sorted(
-                str(key) for key in raw_pacing if key not in PACING_KEYS
+            merged_pacing = _normalize_pacing_payload(
+                merged["pacing"], format_block.get("pacing")
             )
-            if unknown_pacing:
-                raise ValueError(
-                    f"pacing has unknown field(s): {', '.join(unknown_pacing)}"
-                )
-            existing_pacing = format_block.get("pacing")
-            merged_pacing = (
-                {
-                    **{k: v for k, v in existing_pacing.items() if k in PACING_KEYS},
-                    **raw_pacing,
-                }
-                if isinstance(existing_pacing, Mapping)
-                else dict(raw_pacing)
-            )
-            has_non_null = False
-            for name, rate in merged_pacing.items():
-                if rate is None:
-                    continue
-                has_non_null = True
-                if name == "seconds_per_action_paragraph":
-                    if (
-                        isinstance(rate, bool)
-                        or not isinstance(rate, (int, float))
-                        or not math.isfinite(rate)
-                        or rate < 0
-                    ):
-                        raise ValueError(
-                            "pacing rate seconds_per_action_paragraph must be a number >= 0"
-                        )
-                elif (
-                    isinstance(rate, bool)
-                    or not isinstance(rate, (int, float))
-                    or not math.isfinite(rate)
-                    or rate <= 0
-                ):
-                    raise ValueError(f"pacing rate {name} must be a positive number")
-            if not has_non_null:
-                raise ValueError("pacing must set at least one non-null rate")
             format_block["pacing"] = merged_pacing
             bound_pointers[PACING_POINTER] = merged_pacing
             updated_fields.append("pacing")
@@ -2431,7 +2466,7 @@ def build_delivery_package(
                         and accepted_outputs.get(relative) == digest
                     ):
                         raise PackageBlockedError(f"delivery source was rejected: {relative}")
-                if isinstance(review, Mapping) and review.get("verdict") == "revise":
+                if isinstance(review, Mapping) and review.get("verdict") in {"revise", "reject"}:
                     reviewed_outputs = review.get("outputs")
                     if (
                         isinstance(reviewed_outputs, Mapping)
@@ -2774,6 +2809,8 @@ def _export_exclusions(root: Path, episodes_name: str) -> list[str]:
 
 def _is_portable_windows_path(relative: str) -> bool:
     for part in PurePosixPath(relative).parts:
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in part):
+            return False
         stem = part.split(".")[0].casefold()
         if stem in WINDOWS_RESERVED_PATH_STEMS:
             return False
@@ -3167,7 +3204,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--artifact-id", required=True)
     review.add_argument(
         "--verdict",
-        choices=("approve", "approve_with_notes", "revise", "provisional"),
+        choices=("approve", "approve_with_notes", "revise", "reject", "provisional"),
         required=True,
     )
     review.add_argument("--reviewer", default="")

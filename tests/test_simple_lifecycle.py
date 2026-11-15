@@ -64,8 +64,8 @@ class SimpleLifecycleTests(unittest.TestCase):
     def test_init_creates_small_state_and_creator_directories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            state = json.loads((root / ".short-drama/state.json").read_text())
-            project = json.loads((root / "short-drama.json").read_text())
+            state = json.loads((root / ".short-drama/state.json").read_text(encoding="utf-8"))
+            project = json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
             self.assertEqual(state["schema_version"], "2.0")
             self.assertEqual(state["artifacts"], {})
             self.assertNotIn("current_checkpoint", project)
@@ -99,6 +99,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0)
         for command in ("publish", "accept", "review", "package", "verify"):
@@ -180,7 +181,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             source.write_text('{"episode_id":"EP001","changed":true}\n', encoding="utf-8")
             status = project_tool.project_status(root)
             self.assertEqual(status["artifacts"]["EP001:script"], "update_needed")
-            persisted = json.loads((root / ".short-drama/state.json").read_text())
+            persisted = json.loads((root / ".short-drama/state.json").read_text(encoding="utf-8"))
             self.assertNotIn("stale", json.dumps(persisted))
 
     def test_output_edit_invalidates_acceptance_on_read_without_rewriting_state(self) -> None:
@@ -202,7 +203,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             self.publish_script(root)
             self.approve_script(root)
             self.publish_script(root, text="# 第一集\n第二版\n")
-            state = json.loads((root / ".short-drama/state.json").read_text())
+            state = json.loads((root / ".short-drama/state.json").read_text(encoding="utf-8"))
             record = state["artifacts"]["EP001:script"]
             self.assertIsNone(record["acceptance"])
             self.assertIsNone(record["review"])
@@ -355,7 +356,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             target.write_text("legacy", encoding="utf-8")
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             state_path = root / ".short-drama/state.json"
-            legacy = json.loads(state_path.read_text())
+            legacy = json.loads(state_path.read_text(encoding="utf-8"))
             legacy["schema_version"] = "1.0.0-draft"
             legacy["artifacts"] = {
                 "EP001:script": {
@@ -378,11 +379,11 @@ class SimpleLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             state_path = root / ".short-drama/state.json"
-            state = json.loads(state_path.read_text())
+            state = json.loads(state_path.read_text(encoding="utf-8"))
             state["schema_version"] = "1.0.0-draft"
             project_tool.atomic_json(state_path, state)
             self.publish_script(root)
-            migrated = json.loads(state_path.read_text())
+            migrated = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(migrated["schema_version"], "2.0")
             self.assertNotIn("active_transaction", migrated)
 
@@ -399,7 +400,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             def digest(path: Path) -> str:
                 return hashlib.sha256(path.read_bytes()).hexdigest()
             state_path = root / ".short-drama/state.json"
-            legacy = json.loads(state_path.read_text())
+            legacy = json.loads(state_path.read_text(encoding="utf-8"))
             legacy["schema_version"] = "1.0.0-draft"
             legacy["artifacts"] = {
                 "EP001:script": {
@@ -567,8 +568,10 @@ class SimpleLifecycleTests(unittest.TestCase):
                 root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
             )
             delivery = root / result["delivery_root"]
-            (delivery / "artifacts/剧集/EP001/screenplay.md").write_text("tampered")
-            (delivery / "extra.md").write_text("extra")
+            (delivery / "artifacts/剧集/EP001/screenplay.md").write_text(
+                "tampered", encoding="utf-8"
+            )
+            (delivery / "extra.md").write_text("extra", encoding="utf-8")
             verified = project_tool.verify_delivery_package(root, episode="EP001")
             self.assertEqual(verified["status"], "tampered")
             self.assertTrue(any("checksum mismatch" in item for item in verified["problems"]))
@@ -646,7 +649,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                 includes=["剧集/EP001/screenplay.md"],
                 omissions={"剧集/EP001/notes.md": "not requested"},
             )
-            manifest = json.loads((root / "交付/EP001/manifest.json").read_text())
+            manifest = json.loads((root / "交付/EP001/manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 manifest["omitted"],
                 [{"reason": "not requested", "source": "剧集/EP001/notes.md"}],
@@ -695,6 +698,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                     check=False,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIsInstance(json.loads(result.stdout), dict)
@@ -787,9 +791,22 @@ class SimpleLifecycleTests(unittest.TestCase):
             self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
             self._bind(
                 root, "/format/pacing", "CD-PACING-EN",
-                {"spoken_words_per_second": 3.0, "seconds_per_action_paragraph": 2.5},
+                {
+                    "spoken_words_per_second": 3.0,
+                    "seconds_per_action_paragraph": 2.5,
+                    "on_screen_text_characters_per_second": 5.0,
+                },
             )
             self.assertEqual(project_tool.project_status(root)["profile_notes"], [])
+            with self.assertRaisesRegex(ValueError, "positive number"):
+                self._bind(
+                    root, "/format/pacing", "CD-PACING-BAD-OST",
+                    {
+                        "spoken_words_per_second": 3.0,
+                        "seconds_per_action_paragraph": 2.5,
+                        "on_screen_text_characters_per_second": 0,
+                    },
+                )
             with self.assertRaisesRegex(ValueError, "positive number"):
                 self._bind(
                     root, "/format/pacing", "CD-PACING-BAD",
@@ -1305,9 +1322,94 @@ class SimpleLifecycleTests(unittest.TestCase):
             self.assertEqual(status["language"], "zh-CN")
             self.assertEqual(status["prompt_language"], "en")
 
+    def test_set_authority_pacing_and_windows_portability_guards(self) -> None:
+        relative = "创作者决策/decisions.jsonl"
+        records = [
+            {
+                "decision_id": "CD-PACE-ZERO",
+                "status": "accepted",
+                "accepted_value": {
+                    "spoken_characters_per_second": 4.2,
+                    "seconds_per_action_paragraph": 0,
+                },
+                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
+            },
+            {
+                "decision_id": "CD-PACE-EXTRA",
+                "status": "accepted",
+                "accepted_value": {
+                    "spoken_characters_per_second": 4.2,
+                    "seconds_per_action_paragraph": 2,
+                    "unexpected_rate": 1,
+                },
+                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
+            },
+            {
+                "decision_id": "CD-PACE-NAN",
+                "status": "accepted",
+                "accepted_value": {
+                    "spoken_characters_per_second": float("nan"),
+                    "seconds_per_action_paragraph": 2,
+                },
+                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
+            },
+            {
+                "decision_id": "CD-LEN-NAN",
+                "status": "accepted",
+                "accepted_value": float("nan"),
+                "target_locators": [
+                    {"src": "short-drama", "field": "/format/target_seconds_per_episode"}
+                ],
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            source = root / "decisions.draft.jsonl"
+            source.write_text(
+                "".join(json.dumps(record, ensure_ascii=False, allow_nan=True) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="project:decisions",
+                outputs={relative: source.read_bytes()},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
 
-if __name__ == "__main__":
-    unittest.main()
+            project_tool.set_creator_authority(
+                root,
+                field="/format/pacing",
+                decision_path=relative,
+                decision_id="CD-PACE-ZERO",
+            )
+            manifest = json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                manifest["format"]["pacing"],
+                {
+                    "spoken_characters_per_second": 4.2,
+                    "seconds_per_action_paragraph": 0,
+                },
+            )
+
+            for field, decision_id in (
+                ("/format/pacing", "CD-PACE-EXTRA"),
+                ("/format/pacing", "CD-PACE-NAN"),
+                ("/format/target_seconds_per_episode", "CD-LEN-NAN"),
+            ):
+                with self.subTest(decision_id=decision_id), self.assertRaises(ValueError):
+                    project_tool.set_creator_authority(
+                        root,
+                        field=field,
+                        decision_path=relative,
+                        decision_id=decision_id,
+                    )
+
+        for bad_path in ("剧集/EP001/\x1fname.md", "剧集/EP001/\x7fname.md", "剧集/EP001/a\nb.md"):
+            with self.subTest(bad_path=repr(bad_path)):
+                self.assertFalse(project_tool._is_portable_windows_path(bad_path))
 
 
 class CreatorExportTests(unittest.TestCase):
@@ -1596,6 +1698,7 @@ class CreatorExportTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -1770,6 +1873,7 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(cli.returncode, 0, cli.stderr)
             updated = json.loads(cli.stdout)["status"]
@@ -1800,6 +1904,7 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
             self.assertEqual(cli.returncode, 0, cli.stderr)
             packaged = json.loads(cli.stdout)
@@ -1970,3 +2075,68 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 "剧集/EP001/screenplay.md",
                 [item["source"] for item in packaged_after_revise["files"]],
             )
+
+    def test_review_verdict_reject_sets_revise_state_and_blocks_unedited_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_accepted_project(directory)
+            cli = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "review",
+                    str(root),
+                    "--artifact-id",
+                    "EP001:script",
+                    "--verdict",
+                    "reject",
+                    "--reviewer",
+                    "independent reviewer",
+                    "--note",
+                    "结构推翻重写",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            payload = json.loads(cli.stdout)
+            self.assertEqual(payload["verdict"], "reject")
+            self.assertEqual(payload["state"], "revise")
+            self.assertEqual(self.states(root), {"EP001:script": "revise"})
+
+            state_path = root / ".short-drama/state.json"
+            record = json.loads(state_path.read_text(encoding="utf-8"))["artifacts"][
+                "EP001:script"
+            ]
+            self.assertEqual(project_tool._artifact_state(root, record), "revise")
+            if os.name != "nt":
+                directory_fd = os.open(root, os.O_RDONLY)
+                try:
+                    self.assertEqual(
+                        project_tool._artifact_state_at(directory_fd, record), "revise"
+                    )
+                finally:
+                    os.close(directory_fd)
+
+            with self.assertRaisesRegex(
+                project_tool.PackageBlockedError, "requires revision before packaging"
+            ):
+                project_tool.build_delivery_package(root, episode="EP001")
+            with self.assertRaises(project_tool.PackageBlockedError):
+                project_tool.build_delivery_package(
+                    root, episode="EP001", strict_ledger=True
+                )
+
+            (root / "剧集/EP001/screenplay.md").write_text(
+                "# 第一集\n重写稿\n", encoding="utf-8"
+            )
+            packaged = project_tool.build_delivery_package(root, episode="EP001")
+            self.assertIn(
+                "剧集/EP001/screenplay.md",
+                [item["source"] for item in packaged["files"]],
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

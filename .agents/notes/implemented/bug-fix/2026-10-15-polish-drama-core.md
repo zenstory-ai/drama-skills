@@ -27,4 +27,4 @@ Look Development 参考仍以 `purpose: lookdev_frame`、`role`、`must_not_cont
 
 最终复核：独立review修复形态卡范围矛盾：单一形态读一张，已声明混合形态按层读取所需两张，继续避免预加载全部。
 
-旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；本文其余精修与真值修复结论继续适用。
+旧模板保留、旧根迁移与锁定旧版的部分由后续[退役旧创作模板决定](../simplification/2026-10-15-retire-legacy-authoring-templates.md)取代；`画面代称` 重命名为 `提示词名称` 见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)，非中文提示词名称按跨语种实际需要核验与参考文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。

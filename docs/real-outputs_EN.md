@@ -184,8 +184,8 @@ script, and gets its timings from measuring the source clip (translated):
 - Subtitle: 诸君，且听龙吟 ("Gentlemen, hear the dragon roar", verbatim from the script)
 ```
 
-`edit_tool.py check` verifies that intervals add up, that no clip is newer than the cut list, and that every subtitle
-can be found verbatim in the script; `verify` only outputs measured data. That run's `RUN-LOG` records that the first
+`edit_tool.py check` verifies that intervals add up and that every subtitle can be found verbatim in the script, and
+surfaces a non-blocking notice (`提醒`) when a clip is newer than the cut list; `verify` only outputs measured data. That run's `RUN-LOG` records that the first
 person these two checks caught was the author: a subtitle window estimated from a transcript fell outside its
 interval and `check` stopped it; the resolution was written as `1080×1920` while the clips were `768×1344`, and `verify`
 stopped that. The same log keeps two measurement results: a single `loudnorm` pass landed at `-12.33 LUFS`, `3.7 dB` off
@@ -222,8 +222,9 @@ by line and says which calls were overturned (4 of the table's 7 rows, translate
 
 (The operator of this run had read the whole book before the triage; the declaration at the top of `triage.md` says
 the comparison is therefore optimistic: it demonstrates the cross-check step, not the accuracy of blind sampling.)
-Every episode candidate carries `source_ref` / `chapter_range` back into the chapter index, and
-`creator_acceptance` is always `pending` — the analysis skill never approves its own output; the creator signs off.
+In that v0.4.2 run, every episode candidate carried `source_ref` / `chapter_range` back into the chapter index with
+`creator_acceptance` set to `pending`; the current workflow writes a lightweight record with core fields such as
+`chapter_range` and `payoffs` and hands it to story development (`$short-drama-develop`) for the creator to decide.
 Originals: [`triage.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/triage.md) ·
 [`adaptation-value.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/adaptation-value.md) ·
 [`episode-candidates.jsonl`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/episode-candidates.jsonl)
@@ -240,8 +241,9 @@ later episode (3 of the table's 9 rows, translated):
 | F-C5 | He knows nothing about music; in his previous life he hired music consultants, and he cannot even copy a famous tune | **Shown in EP001**. How we show it: he writes the word "score", the pen stops, he tosses it aside |
 | F-SYS-COST | The device has a cost | **Explicitly scheduled for EP007** (first visible cost). EP001 only plants the rule setup without revealing the cost |
 
-The system's rules and cost are written out in full and accepted before EP001 begins; inventing a new rule mid-season
-to rescue a stuck plot is treated as a writing defect:
+In this run, the author's rule sheet for the device (bounds, failure conditions and cost) was worked out and accepted
+before writing EP001 while in-story reveals stayed staged across later episodes — matching the development stage's
+default craft advice (`STY-17`, `craft_default`) against inventing unforeshadowed ad-hoc plot patches in a corner:
 
 > DEV-04 · Cost of use: everything the device grants is taken by this world as his own talent. The misattribution
 > cannot be corrected — the moment he denies it, the granted ability fails for that performance. First in effect:

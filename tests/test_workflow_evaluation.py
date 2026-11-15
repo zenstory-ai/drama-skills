@@ -357,10 +357,6 @@ class DerivedLayerTests(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PromptLanguageTests(unittest.TestCase):
     """The copyable prompt body follows the language the project declared.
 
@@ -400,3 +396,7 @@ class PromptLanguageTests(unittest.TestCase):
                     "the prompt body carries prose in a language the project did "
                     "not declare; only readable in-image text may differ",
                 )
+
+
+if __name__ == "__main__":
+    unittest.main()

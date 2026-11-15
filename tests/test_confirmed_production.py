@@ -985,13 +985,21 @@ class ConfirmedProductionTests(unittest.TestCase):
             # the adapter must not hold the project lock for minutes.
             original = production_tool._run_adapter
 
-            def finish_then_answer(command, timeout, payload, adapter_root):
+            def finish_then_answer(
+                command, timeout, payload, adapter_root, *, consumes_confirmation=True
+            ):
                 history = production_tool._read_run_history(root, "EP001-SHOT001")
                 finished = dict(history[-1])
                 finished["status"] = "succeeded"
                 finished["outputs"] = []
                 production_tool._write_run(root, "EP001-SHOT001", finished)
-                return original(command, timeout, payload, adapter_root)
+                return original(
+                    command,
+                    timeout,
+                    payload,
+                    adapter_root,
+                    consumes_confirmation=consumes_confirmation,
+                )
 
             production_tool._run_adapter = finish_then_answer
             self.addCleanup(setattr, production_tool, "_run_adapter", original)
@@ -2342,6 +2350,1187 @@ class ConfirmedProductionTests(unittest.TestCase):
                     returncode=1,
                 )
                 self.assertNotIn("detail", parsed)
+
+    def test_job_status_prioritizes_running_and_resets_after_reprepare(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            config = self.adapter_config(directory)
+            job_file = root / "status-reprepare.json"
+            payload = {
+                "schema_version": "1.0",
+                "job_id": "EP001-STATUS-REPREP",
+                "modality": "image",
+                "adapter": "fixture",
+                "prompt": "Initial portrait",
+                "outputs": ["剧集/EP001/制作成果/image/STATUS-REPREP.png"],
+                "overwrite": True,
+            }
+            job_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            preview = production_tool.prepare_job(root, job_file)
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-STATUS-REPREP")["state"],
+                "needs_confirmation",
+            )
+            production_tool.confirm_job(
+                root,
+                job_id="EP001-STATUS-REPREP",
+                confirmation=preview["confirmation"],
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-STATUS-REPREP")["state"],
+                "confirmed",
+            )
+            production_tool.run_job(
+                root, job_id="EP001-STATUS-REPREP", adapter_config=config
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-STATUS-REPREP")["state"],
+                "succeeded",
+            )
+
+            # Re-preparing the same job_id with a new prompt changes the fingerprint
+            # and must reset status to needs_confirmation instead of stale succeeded.
+            payload["prompt"] = "Updated portrait after creative revision"
+            payload["references"] = ["输入/reference.png"]
+            job_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            production_tool.prepare_job(root, job_file)
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-STATUS-REPREP")["state"],
+                "needs_confirmation",
+            )
+
+            # An active running record takes precedence even if an input changes on disk.
+            stored_job = production_tool._read_job(root, "EP001-STATUS-REPREP")
+            production_tool._write_run(
+                root,
+                "EP001-STATUS-REPREP",
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-live-check",
+                    "job_id": "EP001-STATUS-REPREP",
+                    "fingerprint": stored_job["fingerprint"],
+                    "status": "running",
+                    "started_at": production_tool.utc_now(),
+                    "finished_at": None,
+                    "outputs": [],
+                },
+            )
+            (root / "输入/reference.png").write_bytes(b"mutated-while-running")
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-STATUS-REPREP")["state"],
+                "running",
+            )
+
+    def test_crlf_markdown_sources_heading_whitespace_and_symlink_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            lf_text = (
+                "# EP001 图片提示词\n\n"
+                "## IMG-EP001-001 · 雨夜设定\n\n"
+                "- 参考：REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（用途：人物参考；控制：身份；不得控制：构图）\n\n"
+                "### 可复制提示词\n"
+                "> Cinematic rain portrait.\n"
+                "> Moody key light.\n\n"
+                "## IMG-EP001-002 · 后镜\n\n"
+                "- 参考：无\n\n"
+                "### 可复制提示词\n"
+                "> Empty street.\n"
+            )
+            md_path = root / "剧集/EP001/图片提示词.md"
+            md_path.write_bytes(lf_text.encode("utf-8"))
+            job_file = root / "crlf-job.json"
+            job_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-CRLF-001",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "IMG-EP001-001",
+                        "prompt": "Cinematic rain portrait.\nMoody key light.",
+                        "outputs": ["剧集/EP001/制作成果/image/CRLF-001.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            lf_preview = production_tool.prepare_job(root, job_file)
+
+            # Converting the Markdown file to CRLF must keep the section hash and
+            # confirmation valid without invalidating the prepared job.
+            md_path.write_bytes(lf_text.replace("\n", "\r\n").encode("utf-8"))
+            production_tool.confirm_job(
+                root,
+                job_id="EP001-CRLF-001",
+                confirmation=lf_preview["confirmation"],
+            )
+            ran = production_tool.run_job(
+                root,
+                job_id="EP001-CRLF-001",
+                adapter_config=self.adapter_config(directory),
+            )
+            self.assertEqual(ran["state"], "succeeded")
+
+            # Horizontal whitespace only: `##\nIMG-...` must not match as a heading.
+            with self.assertRaisesRegex(ValueError, "missing from Markdown"):
+                production_tool._markdown_section(
+                    "##\nIMG-EP001-009\n### 可复制提示词\n> Prompt\n",
+                    "IMG-EP001-009",
+                )
+            with self.assertRaisesRegex(ValueError, "no copyable prompt"):
+                production_tool._copyable_prompt("###\n可复制提示词\n> Prompt\n")
+
+            # Symlinked Markdown sources must be rejected by _read_project_input_bytes.
+            outside = Path(directory) / "outside.md"
+            outside.write_text(lf_text, encoding="utf-8")
+            md_path.unlink()
+            try:
+                md_path.symlink_to(outside)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable")
+            symlink_job = root / "symlink-md.json"
+            symlink_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-SYMLINK-MD",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "IMG-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/image/SYM.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "symlink|unsafe job input path"):
+                production_tool.prepare_job(root, symlink_job)
+
+    def test_batch_resume_skips_succeeded_jobs_and_status_supports_batch_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            counter_file = Path(directory) / "counts.json"
+            flag_file = Path(directory) / "fail_second.flag"
+            flag_file.write_text("fail", encoding="utf-8")
+            counting_adapter = Path(directory) / "counting_adapter.py"
+            counting_adapter.write_text(
+                "import json, pathlib, sys\n"
+                f"counts_path = pathlib.Path({str(counter_file)!r})\n"
+                f"flag_path = pathlib.Path({str(flag_file)!r})\n"
+                "payload = json.load(sys.stdin)\n"
+                "jid = payload['job_id']\n"
+                "counts = json.loads(counts_path.read_text('utf-8')) if counts_path.exists() else {}\n"
+                "counts[jid] = counts.get(jid, 0) + 1\n"
+                "counts_path.write_text(json.dumps(counts), 'utf-8')\n"
+                "if jid == 'EP001-R2' and flag_path.exists():\n"
+                "    json.dump({'error': {'provider': 'counting', 'category': 'server', "
+                "'code': 'upstream_502', 'http_status': 502, 'retryable': True, 'submitted': True}}, sys.stdout)\n"
+                "    raise SystemExit(1)\n"
+                "out = pathlib.Path(payload['output_root']) / 'result.png'\n"
+                "out.write_bytes(b'\\x89PNG\\r\\n\\x1a\\n' + jid.encode('ascii'))\n"
+                "json.dump({'outputs': [{'target': payload['outputs'][0], 'source': str(out)}]}, sys.stdout)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "counting-config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "counting": {
+                                "command": [sys.executable, str(counting_adapter)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            job_files: list[Path] = []
+            for jid in ("EP001-R1", "EP001-R2", "EP001-R3"):
+                path = root / f"{jid}.json"
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": "1.0",
+                            "job_id": jid,
+                            "modality": "image",
+                            "adapter": "counting",
+                            "prompt": f"Render {jid}",
+                            "outputs": [f"剧集/EP001/制作成果/image/{jid}.png"],
+                            "overwrite": False,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                job_files.append(path)
+
+            preview = production_tool.prepare_batch(root, job_files)
+            for summary in preview["jobs"]:
+                self.assertTrue(
+                    summary["confirmation"].startswith(f"CONFIRM {summary['job_id']} ")
+                )
+            initial_status = subprocess.run(
+                [
+                    sys.executable,
+                    str(PRODUCTION_SCRIPT),
+                    "status",
+                    str(root),
+                    "--batch-id",
+                    preview["batch_id"],
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(initial_status.returncode, 0, initial_status.stderr)
+            self.assertEqual(json.loads(initial_status.stdout)["state"], "needs_confirmation")
+
+            production_tool.confirm_batch(
+                root,
+                batch_id=preview["batch_id"],
+                confirmation=preview["confirmation"],
+            )
+            self.assertEqual(
+                production_tool.batch_status(root, batch_id=preview["batch_id"])["state"],
+                "confirmed",
+            )
+
+            first_run = production_tool.run_batch(
+                root, adapter_config=config, batch_id=preview["batch_id"]
+            )
+            self.assertEqual(first_run["state"], "failed")
+            self.assertEqual([item["job_id"] for item in first_run["succeeded"]], ["EP001-R1"])
+            self.assertEqual([item["job_id"] for item in first_run["failed"]], ["EP001-R2"])
+            self.assertEqual(first_run["remaining"], ["EP001-R3"])
+            self.assertEqual(
+                production_tool.batch_status(root, batch_id=preview["batch_id"])["state"],
+                "failed",
+            )
+
+            # Fix R2, reconfirm only R2 with its per-job confirmation token from prepare_batch,
+            # and resume run-batch: R1 must be skipped without re-invoking the adapter or failing overwrite=False.
+            flag_file.unlink()
+            production_tool.confirm_job(
+                root,
+                job_id="EP001-R2",
+                confirmation=preview["jobs"][1]["confirmation"],
+            )
+            self.assertEqual(
+                production_tool.batch_status(root, batch_id=preview["batch_id"])["state"],
+                "confirmed",
+            )
+            resumed = production_tool.run_batch(
+                root, adapter_config=config, batch_id=preview["batch_id"]
+            )
+            self.assertEqual(resumed["state"], "succeeded")
+            self.assertEqual(resumed["skipped"], ["EP001-R1"])
+            self.assertEqual(
+                [item["job_id"] for item in resumed["succeeded"]],
+                ["EP001-R1", "EP001-R2", "EP001-R3"],
+            )
+            counts = json.loads(counter_file.read_text(encoding="utf-8"))
+            self.assertEqual(counts, {"EP001-R1": 1, "EP001-R2": 2, "EP001-R3": 1})
+            self.assertEqual(
+                production_tool.batch_status(root, batch_id=preview["batch_id"])["state"],
+                "succeeded",
+            )
+
+    def test_superseded_failed_provider_handle_is_not_orphaned_or_recollected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            fail_flag = Path(directory) / "fail_first.flag"
+            fail_flag.write_text("1", encoding="utf-8")
+            recoverable_adapter = Path(directory) / "recoverable_adapter.py"
+            recoverable_adapter.write_text(
+                "import json, pathlib, sys\n"
+                f"flag = pathlib.Path({str(fail_flag)!r})\n"
+                "payload = json.load(sys.stdin)\n"
+                "if flag.exists():\n"
+                "    hp = pathlib.Path(payload['handle_path'])\n"
+                "    hp.parent.mkdir(parents=True, exist_ok=True)\n"
+                "    hp.write_text("
+                "json.dumps({'provider_job_id': 'remote-attempt-1'}), 'utf-8')\n"
+                "    json.dump({'error': {'provider': 'rec', 'category': 'timeout', "
+                "'code': 'task_poll_timeout', 'retryable': True, 'submitted': True}}, sys.stdout)\n"
+                "    raise SystemExit(1)\n"
+                "out = pathlib.Path(payload['output_root']) / 'ok.mp4'\n"
+                "out.write_bytes(b'\\x00\\x00\\x00\\x18ftypmp42\\x00\\x00\\x00\\x00mp42isom')\n"
+                "json.dump({'outputs': [{'target': payload['outputs'][0], 'source': str(out)}], "
+                "'provider_job_id': 'remote-attempt-2'}, sys.stdout)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "rec-config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "rec": {
+                                "command": [sys.executable, str(recoverable_adapter)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            job_file = root / "rec-job.json"
+            job_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-ORPHAN-SUPERSEDED",
+                        "modality": "video",
+                        "adapter": "rec",
+                        "prompt": "Push in through rain.",
+                        "outputs": ["剧集/EP001/制作成果/video/ORPHAN.mp4"],
+                        "overwrite": True,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            preview = self.prepare_and_confirm(root, job_file)
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-ORPHAN-SUPERSEDED", adapter_config=config
+                )
+            audit_before = production_tool.audit_project(root)
+            self.assertIn(
+                "orphaned_provider_job",
+                {item["code"] for item in audit_before["problems"]},
+            )
+
+            # Reconfirm and succeed under the exact same job fingerprint.
+            fail_flag.unlink()
+            production_tool.confirm_job(
+                root,
+                job_id="EP001-ORPHAN-SUPERSEDED",
+                confirmation=preview["confirmation"],
+            )
+            second = production_tool.run_job(
+                root, job_id="EP001-ORPHAN-SUPERSEDED", adapter_config=config
+            )
+            self.assertEqual(second["state"], "succeeded")
+
+            audit_after = production_tool.audit_project(root)
+            self.assertEqual(audit_after["problems"], [])
+            with self.assertRaisesRegex(RuntimeError, "nothing to collect"):
+                production_tool.collect_job(
+                    root, job_id="EP001-ORPHAN-SUPERSEDED", adapter_config=config
+                )
+
+    def test_motion_empty_reference_accepts_only_explicit_t2v_and_rejects_pending_or_unsubmittable(
+        self,
+    ) -> None:
+        for valid_empty in ("无", "无。", "无（文生视频）", "无（文生视频）。"):
+            with self.subTest(valid_empty=valid_empty):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = self.make_project(directory)
+                    job = self.write_creator_video_job(root)
+                    source = root / "剧集/EP001/视频提示词.md"
+                    source.write_text(
+                        source.read_text(encoding="utf-8").replace(
+                            "- 输入参考图：REF-HERO（顺序：1）· "
+                            "输入/reference.png《女主定妆照》"
+                            "（控制：身份、造型；不得控制：构图、动作）",
+                            f"- 输入参考图：{valid_empty}",
+                        ),
+                        encoding="utf-8",
+                    )
+                    document = json.loads(job.read_text(encoding="utf-8"))
+                    document["reference_bindings"] = []
+                    job.write_text(
+                        json.dumps(document, ensure_ascii=False), encoding="utf-8"
+                    )
+                    preview = production_tool.prepare_job(root, job)
+                    self.assertEqual(preview["reference_bindings"], [])
+
+        for blocked in (
+            "无（待补参考图：IMG-EP001-001）",
+            "无（待续接上一段视频，不可提交）",
+            "无（待补参考图：女主角图（IMG-EP001-HERO））。",
+            "REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+            "（控制：身份、造型；不得控制：构图、动作）；待补参考图：IMG-EP001-002",
+        ):
+            with self.subTest(blocked=blocked):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = self.make_project(directory)
+                    job = self.write_creator_video_job(root)
+                    source = root / "剧集/EP001/视频提示词.md"
+                    source.write_text(
+                        source.read_text(encoding="utf-8").replace(
+                            "- 输入参考图：REF-HERO（顺序：1）· "
+                            "输入/reference.png《女主定妆照》"
+                            "（控制：身份、造型；不得控制：构图、动作）",
+                            f"- 输入参考图：{blocked}",
+                        ),
+                        encoding="utf-8",
+                    )
+                    document = json.loads(job.read_text(encoding="utf-8"))
+                    if not blocked.startswith("REF-HERO"):
+                        document["reference_bindings"] = []
+                    job.write_text(
+                        json.dumps(document, ensure_ascii=False), encoding="utf-8"
+                    )
+                    with self.assertRaisesRegex(
+                        ValueError, "pending or unsubmittable"
+                    ):
+                        production_tool.prepare_job(root, job)
+
+        # SHOT-* in 分镜.md renders its own keyframe image, so pending input notes remain allowed there.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            storyboard = root / "剧集/EP001/分镜.md"
+            shot_prompt = "Medium close-up of a woman standing in rain light."
+            storyboard.write_text(
+                "# EP001 分镜\n\n"
+                "## SHOT-EP001-001 · 雨门前\n\n"
+                "- 输入参考图：无（待补参考图：IMG-EP001-HERO）\n\n"
+                "### 首帧提示词\n"
+                f"> {shot_prompt}\n",
+                encoding="utf-8",
+            )
+            shot_job = root / "shot-job.json"
+            shot_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-SHOT001-KEYFRAME",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "prompt": shot_prompt,
+                        "source": "剧集/EP001/分镜.md",
+                        "source_entry": "SHOT-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/image/SHOT-001.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            shot_preview = production_tool.prepare_job(root, shot_job)
+            self.assertEqual(shot_preview["source_entry"], "SHOT-EP001-001")
+
+        # Strict creator section heading & copyable prompt heading alignment.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            img_doc = root / "剧集/EP001/图片提示词.md"
+            original = img_doc.read_text(encoding="utf-8")
+            img_doc.write_text(
+                original.replace("### 可复制提示词", "### 可复制通用提示词"),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "no copyable prompt"):
+                production_tool.prepare_job(root, job)
+
+            img_doc.write_text(
+                original.replace(
+                    "## IMG-EP001-HERO · 女主角色板",
+                    "## `IMG-EP001-HERO` · 女主角色板",
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "missing from Markdown"):
+                production_tool.prepare_job(root, job)
+
+    def test_run_job_does_not_clobber_run_already_succeeded_by_collect_job(
+        self,
+    ) -> None:
+        for adapter_outcome in ("raises_after_collect", "returns_stale_after_collect"):
+            with self.subTest(adapter_outcome=adapter_outcome):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = self.make_project(directory)
+                    config = Path(directory) / "race-config.json"
+                    config.write_text(
+                        json.dumps(
+                            {
+                                "adapters": {
+                                    "fixture": {
+                                        "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                        "timeout_seconds": 30,
+                                    }
+                                }
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    job_file = self.write_job(
+                        root,
+                        job_id="EP001-RACE",
+                        modality="image",
+                        overwrite=True,
+                    )
+                    self.prepare_and_confirm(root, job_file)
+                    collected_bytes = b"\x89PNG\r\n\x1a\ncollected-winner"
+                    stale_bytes = b"\x89PNG\r\n\x1a\nstale-runner"
+
+                    def fake_run_adapter(
+                        command, timeout, payload, project_root, *, consumes_confirmation=True
+                    ):
+                        out_dir = Path(payload["output_root"])
+                        target_rel = payload["outputs"][0]
+                        if payload.get("collect_provider_job_id"):
+                            collected_src = out_dir / "collected.png"
+                            collected_src.write_bytes(collected_bytes)
+                            return {
+                                "outputs": [
+                                    {"target": target_rel, "source": str(collected_src)}
+                                ],
+                                "provider_job_id": payload["collect_provider_job_id"],
+                            }
+                        handle_path = Path(payload["handle_path"])
+                        handle_path.parent.mkdir(parents=True, exist_ok=True)
+                        handle_path.write_text(
+                            json.dumps({"provider_job_id": "remote-race-handle"}),
+                            encoding="utf-8",
+                        )
+                        collected = production_tool.collect_job(
+                            root, job_id="EP001-RACE", adapter_config=config
+                        )
+                        self.assertEqual(collected["state"], "succeeded")
+                        if adapter_outcome == "raises_after_collect":
+                            raise production_tool.AdapterError(
+                                "poll timed out after collect already finished",
+                                public_error={
+                                    "provider": "race",
+                                    "category": "timeout",
+                                    "code": "task_poll_timeout",
+                                    "retryable": True,
+                                    "submitted": True,
+                                },
+                            )
+                        stale_src = out_dir / "stale.png"
+                        stale_src.write_bytes(stale_bytes)
+                        return {
+                            "outputs": [{"target": target_rel, "source": str(stale_src)}],
+                            "provider_job_id": "remote-race-handle",
+                        }
+
+                    with mock.patch.object(
+                        production_tool, "_run_adapter", side_effect=fake_run_adapter
+                    ):
+                        expected_exc = (
+                            production_tool.AdapterError
+                            if adapter_outcome == "raises_after_collect"
+                            else RuntimeError
+                        )
+                        with self.assertRaises(expected_exc):
+                            production_tool.run_job(
+                                root, job_id="EP001-RACE", adapter_config=config
+                            )
+
+                    status = production_tool.job_status(root, job_id="EP001-RACE")
+                    self.assertEqual(status["state"], "succeeded")
+                    history = production_tool._read_run_history(root, "EP001-RACE")
+                    self.assertEqual(len(history), 1)
+                    self.assertEqual(history[0]["status"], "succeeded")
+                    output_file = root / "剧集/EP001/制作成果/image/EP001-RACE.png"
+                    self.assertEqual(output_file.read_bytes(), collected_bytes)
+                    self.assertEqual(production_tool.audit_project(root)["problems"], [])
+
+    def test_collect_job_preflights_all_output_targets_before_adapter_and_before_disk_write(
+        self,
+    ) -> None:
+        for stage in ("before_adapter", "during_adapter"):
+            with self.subTest(stage=stage):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = self.make_project(directory)
+                    config = Path(directory) / "multi-collect-config.json"
+                    config.write_text(
+                        json.dumps(
+                            {
+                                "adapters": {
+                                    "fixture": {
+                                        "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                        "timeout_seconds": 30,
+                                    }
+                                }
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    out1 = "剧集/EP001/制作成果/image/MULTI-1.png"
+                    out2 = "剧集/EP001/制作成果/image/MULTI-2.png"
+                    job_file = root / "multi-collect-job.json"
+                    job_file.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "job_id": "EP001-MULTI-COLLECT",
+                                "modality": "image",
+                                "adapter": "fixture",
+                                "prompt": "Two frames",
+                                "outputs": [out1, out2],
+                                "overwrite": False,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    self.prepare_and_confirm(root, job_file)
+
+                    def fail_with_handle(command, timeout, payload, project_root):
+                        hp = Path(payload["handle_path"])
+                        hp.parent.mkdir(parents=True, exist_ok=True)
+                        hp.write_text(
+                            json.dumps({"provider_job_id": "remote-multi-1"}),
+                            encoding="utf-8",
+                        )
+                        raise production_tool.AdapterError(
+                            "interrupted",
+                            public_error={
+                                "provider": "fixture",
+                                "category": "timeout",
+                                "code": "task_poll_timeout",
+                                "retryable": True,
+                                "submitted": True,
+                            },
+                        )
+
+                    with mock.patch.object(
+                        production_tool, "_run_adapter", side_effect=fail_with_handle
+                    ):
+                        with self.assertRaises(production_tool.AdapterError):
+                            production_tool.run_job(
+                                root,
+                                job_id="EP001-MULTI-COLLECT",
+                                adapter_config=config,
+                            )
+
+                    out2_path = root / out2
+                    out2_path.parent.mkdir(parents=True, exist_ok=True)
+                    if stage == "before_adapter":
+                        out2_path.write_bytes(b"\x89PNG\r\n\x1a\nexisting-second")
+
+                    adapter_calls = 0
+
+                    def collect_adapter(
+                        command, timeout, payload, project_root, *, consumes_confirmation=True
+                    ):
+                        nonlocal adapter_calls
+                        adapter_calls += 1
+                        out_dir = Path(payload["output_root"])
+                        s1 = out_dir / "1.png"
+                        s2 = out_dir / "2.png"
+                        s1.write_bytes(b"\x89PNG\r\n\x1a\nnew-first")
+                        s2.write_bytes(b"\x89PNG\r\n\x1a\nnew-second")
+                        if stage == "during_adapter":
+                            out2_path.write_bytes(b"\x89PNG\r\n\x1a\nappeared-mid-collect")
+                        return {
+                            "outputs": [
+                                {"target": out1, "source": str(s1)},
+                                {"target": out2, "source": str(s2)},
+                            ],
+                            "provider_job_id": "remote-multi-1",
+                        }
+
+                    with mock.patch.object(
+                        production_tool, "_run_adapter", side_effect=collect_adapter
+                    ):
+                        with self.assertRaises(FileExistsError):
+                            production_tool.collect_job(
+                                root,
+                                job_id="EP001-MULTI-COLLECT",
+                                adapter_config=config,
+                            )
+
+                    if stage == "before_adapter":
+                        self.assertEqual(adapter_calls, 0)
+                    else:
+                        self.assertEqual(adapter_calls, 1)
+                    self.assertFalse(
+                        (root / out1).exists(),
+                        "第一个输出文件不应在第二个输出冲突时被半途写入磁盘",
+                    )
+
+    def test_cli_batch_id_and_confirm_batch_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job1 = self.write_job(root, job_id="EP001-CLI-B1")
+            job2_doc = json.loads(job1.read_text(encoding="utf-8"))
+            job2_doc["job_id"] = "EP001-CLI-B2"
+            job2_doc["outputs"] = ["剧集/EP001/制作成果/image/EP001-CLI-B2.png"]
+            job2 = root / "job2.json"
+            job2.write_text(
+                json.dumps(job2_doc, ensure_ascii=False), encoding="utf-8"
+            )
+
+            def run_cli(*args: str) -> dict:
+                proc = subprocess.run(
+                    [sys.executable, "-B", str(PRODUCTION_SCRIPT), *args],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                )
+                return json.loads(proc.stdout)
+
+            prepared = run_cli(
+                "prepare-batch",
+                str(root),
+                "--jobs",
+                str(job1),
+                str(job2),
+                "--batch-id",
+                "batch-cli-round3",
+            )
+            self.assertEqual(prepared["batch_id"], "batch-cli-round3")
+
+            confirmed = run_cli(
+                "confirm-batch",
+                str(root),
+                "--batch-id",
+                "batch-cli-round3",
+                "--confirmation",
+                prepared["confirmation"],
+            )
+            self.assertEqual(confirmed["state"], "confirmed")
+
+            # `confirm --batch-id` also accepts the batch confirmation token via the single-command alias.
+            prepared2 = run_cli(
+                "prepare-batch",
+                str(root),
+                "--jobs",
+                str(job1),
+                str(job2),
+                "--batch-id",
+                "batch-cli-alias",
+            )
+            confirmed2 = run_cli(
+                "confirm",
+                str(root),
+                "--batch-id",
+                "batch-cli-alias",
+                "--confirmation",
+                prepared2["confirmation"],
+            )
+            self.assertEqual(confirmed2["state"], "confirmed")
+
+    def test_custom_adapter_profile_preserves_structured_error_and_keeps_confirmation(
+        self,
+    ) -> None:
+        provider_script = SUITE / "skills/short-drama-produce/scripts/provider_adapters.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            config = Path(directory) / "custom-profile-config.json"
+            pre_json_script = Path(directory) / "pre_json_fail.py"
+            pre_json_script.write_text(
+                "import json, sys\n"
+                'print(json.dumps({"error": {"provider": "seedance", "category": "configuration", '
+                '"code": "missing_api_key", "retryable": False, "submitted": False, '
+                '"detail": "Missing API key before stdin"}}))\n'
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "my-seedance-profile": {
+                                "command": [
+                                    sys.executable,
+                                    str(provider_script),
+                                    "seedance",
+                                ],
+                                "timeout_seconds": 30,
+                            },
+                            "my-prejson-profile": {
+                                "command": [
+                                    sys.executable,
+                                    str(pre_json_script),
+                                    "--provider",
+                                    "seedance",
+                                ],
+                                "timeout_seconds": 30,
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if k not in {"ARK_API_KEY", "VOLC_ARK_API_KEY", "SEEDANCE_API_KEY"}
+            }
+            for profile, job_id in (
+                ("my-seedance-profile", "EP001-CUSTOM-PROF-1"),
+                ("my-prejson-profile", "EP001-CUSTOM-PROF-2"),
+            ):
+                with self.subTest(profile=profile):
+                    job_file = root / f"{job_id}.json"
+                    job_file.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "job_id": job_id,
+                                "modality": "video",
+                                "adapter": profile,
+                                "prompt": "vertical close-up",
+                                "outputs": [f"剧集/EP001/制作成果/video/{job_id}.mp4"],
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    self.prepare_and_confirm(root, job_file)
+                    with mock.patch.dict(os.environ, clean_env, clear=True):
+                        with self.assertRaises(production_tool.AdapterError) as ctx:
+                            production_tool.run_job(
+                                root, job_id=job_id, adapter_config=config
+                            )
+                    self.assertIsNotNone(ctx.exception.public_error)
+                    assert ctx.exception.public_error is not None
+                    self.assertEqual(ctx.exception.public_error["provider"], profile)
+                    self.assertFalse(ctx.exception.public_error["submitted"])
+                    self.assertEqual(
+                        production_tool.job_status(root, job_id=job_id)["state"],
+                        "confirmed",
+                    )
+
+    def test_collect_terminal_failure_unlocks_interrupted_running_job_and_clears_audit(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            config = self.adapter_config(directory)
+            job_file = self.write_job(root, job_id="EP001-COLLECT-TERM", modality="video")
+            self.prepare_and_confirm(root, job_file)
+
+            def interrupt_after_submit(
+                command, timeout, payload, adapter_root, *, consumes_confirmation=True
+            ):
+                hp = Path(payload["handle_path"])
+                hp.parent.mkdir(parents=True, exist_ok=True)
+                hp.write_text(
+                    json.dumps({"provider_job_id": "remote-term-99"}), encoding="utf-8"
+                )
+                raise KeyboardInterrupt("simulated operator ctrl-c")
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=interrupt_after_submit
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    production_tool.run_job(
+                        root, job_id="EP001-COLLECT-TERM", adapter_config=config
+                    )
+
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-COLLECT-TERM")["state"],
+                "running",
+            )
+
+            terminal_script = Path(directory) / "terminal_collect.py"
+            terminal_script.write_text(
+                "import json, sys\n"
+                "job = json.load(sys.stdin)\n"
+                'print(json.dumps({"error": {"provider": job["adapter"], "category": "provider_task", '
+                '"code": "task_failed", "retryable": False, "submitted": True, '
+                '"request_id": job["collect_provider_job_id"], '
+                '"detail": "Remote generation rejected"}}))\n'
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            term_config = Path(directory) / "term-config.json"
+            term_config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(terminal_script)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(production_tool.AdapterError) as ctx:
+                production_tool.collect_job(
+                    root, job_id="EP001-COLLECT-TERM", adapter_config=term_config
+                )
+            self.assertIn("confirmation was not required", str(ctx.exception))
+            self.assertNotIn("confirmation was consumed", str(ctx.exception))
+
+            status = production_tool.job_status(root, job_id="EP001-COLLECT-TERM")
+            self.assertEqual(status["state"], "failed")
+            last_run = production_tool._read_run_history(root, "EP001-COLLECT-TERM")[-1]
+            self.assertEqual(last_run["status"], "failed")
+            self.assertTrue(last_run["collected"])
+            self.assertEqual(last_run["provider_job_id"], "remote-term-99")
+            audit_codes = [
+                item["code"] for item in production_tool.audit_project(root)["problems"]
+            ]
+            self.assertNotIn("orphaned_provider_job", audit_codes)
+            self.assertNotIn("running_attempt", audit_codes)
+            self.assertEqual(audit_codes, ["terminal_failure"])
+
+            # Job is unlocked: creator can re-prepare, confirm, and run cleanly.
+            self.prepare_and_confirm(root, job_file)
+            rerun = production_tool.run_job(
+                root, job_id="EP001-COLLECT-TERM", adapter_config=config
+            )
+            self.assertEqual(rerun["state"], "succeeded")
+            self.assertEqual(production_tool.audit_project(root)["problems"], [])
+
+    def test_group_source_entries_opus_audio_refs_and_pending_ref_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            opus_bytes = b"OggS" + b"\x00" * 24 + b"OpusHead" + b"\x01\x02\x00\x00"
+            (root / "输入/voice.opus").write_bytes(opus_bytes)
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 首镜\n"
+                "- 分镜：SHOT-EP001-001\n"
+                "- 输入参考图：无（文生视频）\n\n"
+                "### 可复制提示词\n"
+                "> 镜头1\n\n"
+                "## GROUP-EP001-01 · 双镜合拍（省输入参考图 + opus 参考音频）\n"
+                "- 成员：MOTION-EP001-001\n"
+                "- 时长：5s\n"
+                "- 参考音频：REF-VOICE-01（顺序：1）· 输入/voice.opus《男主音色》（用途：声音参考；角色：江晨；控制：音色；不得控制：台词）\n\n"
+                "### 可复制提示词\n"
+                "> 镜头1：江晨低声开口。\n\n"
+                "## GROUP-EP001-02 · 带输入参考图的合拍\n"
+                "- 成员：MOTION-EP001-001\n"
+                "- 输入参考图：REF-HERO-01（顺序：1）· 输入/reference.png《定妆》（用途：主体；控制：外貌；不得控制：动作）\n\n"
+                "### 可复制提示词\n"
+                "> 镜头1：江晨转身。\n\n"
+                "## GROUP-EP001-03 · 待补参考图的合拍\n"
+                "- 成员：MOTION-EP001-001\n"
+                "- 输入参考图：无；待补参考图：等首帧定稿\n\n"
+                "### 可复制提示词\n"
+                "> 镜头1：草稿。\n",
+                encoding="utf-8",
+            )
+
+            g1_job = root / "g1.json"
+            g1_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-GROUP-01",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "GROUP-EP001-01",
+                        "outputs": ["剧集/EP001/制作成果/video/GROUP-01.mp4"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            prepared_g1 = production_tool.prepare_job(root, g1_job)
+            stored_g1 = production_tool._read_job(root, "EP001-GROUP-01")
+            self.assertEqual(len(stored_g1["reference_bindings"]), 1)
+            self.assertEqual(
+                stored_g1["reference_bindings"][0]["path"], "输入/voice.opus"
+            )
+            self.assertEqual(
+                stored_g1["reference_bindings"][0]["role"], "reference_audio"
+            )
+            production_tool.confirm_job(
+                root,
+                job_id="EP001-GROUP-01",
+                confirmation=prepared_g1["confirmation"],
+            )
+            audio_cfg = Path(directory) / "audio-adapters.json"
+            audio_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                "timeout_seconds": 30,
+                                "reference_roles": ["reference_audio", "reference_image"],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ran_g1 = production_tool.run_job(
+                root, job_id="EP001-GROUP-01", adapter_config=audio_cfg
+            )
+            self.assertEqual(ran_g1["state"], "succeeded")
+
+            g2_job = root / "g2.json"
+            g2_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-GROUP-02",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "GROUP-EP001-02",
+                        "outputs": ["剧集/EP001/制作成果/video/GROUP-02.mp4"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            production_tool.prepare_job(root, g2_job)
+            stored_g2 = production_tool._read_job(root, "EP001-GROUP-02")
+            self.assertEqual(len(stored_g2["reference_bindings"]), 1)
+
+            g3_job = root / "g3.json"
+            g3_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-GROUP-03",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "GROUP-EP001-03",
+                        "outputs": ["剧集/EP001/制作成果/video/GROUP-03.mp4"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "pending or unsubmittable"):
+                production_tool.prepare_job(root, g3_job)
+
+            # IMG-* `- 参考：无；待补参考图：…` must also be blocked rather than returning [].
+            img_md = root / "剧集/EP001/图片提示词.md"
+            img_md.write_bytes(
+                (
+                    "\ufeff# EP001 图片提示词\r\n\r\n"
+                    "## IMG-EP001-001 · 正常条目\r\n"
+                    "- 参考：无（纯文生图（首版））\r\n\r\n"
+                    "### 可复制提示词\r\n"
+                    "> Keep literal `<!-- tag -->` in prompt\r\n"
+                    "#### 附注\r\n"
+                    "<!-- unclosed trailing comment\r\n"
+                ).encode("utf-8")
+            )
+            img_ok_job = root / "img-ok.json"
+            img_ok_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-IMG-BOM-CRLF",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "IMG-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/image/IMG-001.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            prepared_img = production_tool.prepare_job(root, img_ok_job)
+            self.assertTrue(prepared_img["confirmation"])
+            stored_img = production_tool._read_job(root, "EP001-IMG-BOM-CRLF")
+            self.assertEqual(
+                stored_img["prompt"], "Keep literal `<!-- tag -->` in prompt"
+            )
+
+            img_md.write_text(
+                "# EP001 图片提示词\n\n"
+                "## IMG-EP001-002 · 待补条目\n"
+                "- 参考：无；待补参考图：等外景参考\n\n"
+                "### 可复制提示词\n"
+                "> Pending ref prompt\n",
+                encoding="utf-8",
+            )
+            img_pending_job = root / "img-pending.json"
+            img_pending_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-IMG-PENDING",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "IMG-EP001-002",
+                        "outputs": ["剧集/EP001/制作成果/image/IMG-002.png"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "pending or unsubmittable"):
+                production_tool.prepare_job(root, img_pending_job)
+
+    def test_prepare_enforces_input_budget_and_multi_output_commit_rolls_back_atomically(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job_file = self.write_job(root, job_id="EP001-BUDGET")
+            with mock.patch.object(production_tool, "MAX_TOTAL_INPUT_BYTES", 8):
+                with self.assertRaisesRegex(ValueError, "exceed the production size limit"):
+                    production_tool.prepare_job(root, job_file)
+
+            out1 = "剧集/EP001/制作成果/image/STAGE-1.png"
+            out2 = "剧集/EP001/制作成果/image/STAGE-2.png"
+            multi_job = root / "stage-multi.json"
+            multi_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-STAGE-MULTI",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "prompt": "Two outputs",
+                        "outputs": [out1, out2],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            self.prepare_and_confirm(root, multi_job)
+
+            bad_multi_script = Path(directory) / "bad_multi.py"
+            bad_multi_script.write_text(
+                "import json, pathlib, sys\n"
+                "job = json.load(sys.stdin)\n"
+                "out = pathlib.Path(job['output_root'])\n"
+                "s1 = out / 'good.png'\n"
+                "s2 = out / 'bad_dir_output'\n"
+                "s1.write_bytes(b'\\x89PNG\\r\\n\\x1a\\ngood')\n"
+                "s2.mkdir()\n"
+                "print(json.dumps({'outputs': [\n"
+                "  {'target': job['outputs'][0], 'source': str(s1)},\n"
+                "  {'target': job['outputs'][1], 'source': str(s2)},\n"
+                "]}))\n",
+                encoding="utf-8",
+            )
+            bad_multi_cfg = Path(directory) / "bad-multi-cfg.json"
+            bad_multi_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(bad_multi_script)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(production_tool.AdapterError, "unsafe"):
+                production_tool.run_job(
+                    root,
+                    job_id="EP001-STAGE-MULTI",
+                    adapter_config=bad_multi_cfg,
+                )
+            self.assertFalse((root / out1).exists())
+            self.assertFalse((root / out2).exists())
+            out_dir = (root / out1).parent
+            if out_dir.exists():
+                self.assertEqual(list(out_dir.glob(".short-drama-tmp-*")), [])
 
 
 if __name__ == "__main__":

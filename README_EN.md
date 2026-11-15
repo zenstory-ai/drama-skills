@@ -55,8 +55,8 @@ that supports the Agent Skill spec); the writing model is that agent's model.
   `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts) and
   `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when you cut a film. These files are
   authoritative for their respective creative decisions.
-- **Written settings keep shots consistent** — a costume or look that must
-  hold across shots is given a continuity lock whose locked phrase is pasted into every affected prompt unchanged;
+- **Written settings keep shots consistent** —
+  a costume or look that must hold across shots is given a continuity lock with a short locked phrase that can be pasted unchanged into image, first-frame, and unanchored video prompts;
   every shot's first-frame prompt lists its on-screen settings. The checker verifies declared references and continuity locks;
   real error output is shown below.
 - **Preview, confirm, then produce** — every image, video, voice or music job is shown in a file first, with the
@@ -304,7 +304,7 @@ flowchart LR
 | `short-drama-image-prompts` | Lookdev style frames, reusable character/location/prop reference prompts, and targeted image edits |
 | `short-drama-storyboard` | Optional scene staging plans and multi-angle camera comparisons, script-to-shot coverage, start/end frames, and first/end-frame prompts |
 | `short-drama-video-prompts` | Single-shot action progression, multi-character staging and eyeline/focus shifts, camera moves, sound, start/end states, pickup notes, and cross-shot music cues |
-| `short-drama-produce` | Preview a scoped image/video/voice/music job, wait for explicit confirmation, run the external provider interface, and record results; includes profiles for Seedance, GPT Image 2, MiniMax H3 video, and MiniMax Music |
+| `short-drama-produce` | Preview a scoped image/video/voice/music job, wait for explicit confirmation, run the external provider interface, and record results; includes profiles for Seedance, GPT Image 2, MiniMax H3 video, MiniMax Speech, and MiniMax Music |
 | `short-drama-edit` | Usable trim ranges per generated clip, in/out rationale and shot order, dialogue completeness, subtitles, and loudness normalisation; written as a cut list and rendered into a film |
 | `short-drama-breakdown` | Measures and breaks down benchmark dramas (episode length, shot length, dialogue density, openings and endings), compares them on the same yardstick with your plan or footage, hands each gap to its responsible skill, and re-checks generated cuts; can also reverse-engineer episodes into scripts, visual settings, and prompts |
 | `short-drama-review` | Structural and story quality review; project-wide calibration and revision advice based on real generated outputs |
@@ -399,10 +399,10 @@ See the [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
 
 ### What do I do after upgrading?
 
-Run the same install command again; for an existing project, run `creator_markdown_check.py` once per episode, where
-updated document rules surface (for example, a character, location, or prop named in `首帧提示词`, `尾帧提示词`, or a text-to-video `开场画面`
-but missing from `出场设定` and not declared off-screen is reported, and a video prompt whose duration differs from
-its shot is reported); the upgrade notes in [CHANGELOG.md](CHANGELOG.md) explain field updates and how to migrate.
+Run the same install command again. **When upgrading an existing project from `<= v0.11.x`, first migrate the renamed Chinese headings and fields per the mapping table in [CHANGELOG.md](CHANGELOG.md)** (old field names are no longer accepted):
+`时代背景`, `外观特征`, `提示词名称`, and `连戏锁` (with `锁定词`) in `视觉设定.md`; `固定陈设`, `动作`, `出场设定`, `### 首帧提示词`, `### 尾帧提示词`, and `输入参考图：无（文生视频）` in `分镜.md`; `开场画面` and `动作过程` in `视频提示词.md`; `- 修改要求：` in `审查/*-审查.md`; and the 10 Chinese reference-purpose (`用途`) labels (`外貌`, `主体`, `造型状态`, `空间布局`, `构图`, `尺度`, `效果`, `起始帧`, `结束帧`, `风格`).
+Then run `creator_markdown_check.py` once per episode to surface any remaining issues (for example, a character, location, or prop named in `首帧提示词`, `尾帧提示词`, or a text-to-video `开场画面`
+but missing from `出场设定` and not declared off-screen, or a video prompt whose duration differs from its shot).
 For episodes you have cut, run `edit_tool.py check` too: since v0.7.1 every unused shot must be listed with its own
 ID and reason, and a range such as "001 to 009" is no longer accepted.
 

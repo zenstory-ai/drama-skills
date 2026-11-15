@@ -410,6 +410,229 @@ class RenderedAudioTests(unittest.TestCase):
         self.assertTrue(measured["切点音量变化"].startswith("未测"))
         self.assertNotIn("请回听", measured)
 
+    def test_render_normalizes_sar_and_vfr_segments_for_stream_copy_concat(self):
+        quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            media = episode / "media"
+            media.mkdir(parents=True)
+            subprocess.run(
+                quiet
+                + [
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=navy:size=180x320:rate=24:duration=1.2",
+                    "-vf",
+                    "setsar=4/3",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(media / "1.mp4"),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                quiet
+                + [
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=180x320:rate=30:duration=1.5",
+                    "-vf",
+                    "select='not(mod(n,4))+gt(t,0.7)'",
+                    "-fps_mode",
+                    "vfr",
+                    "-enc_time_base",
+                    "1/90000",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(media / "2.mp4"),
+                ],
+                check=True,
+            )
+            (episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1\n- 分镜：SHOT-1\n\n## MOTION-2\n- 分镜：SHOT-2\n",
+                encoding="utf-8",
+            )
+            (episode / edit.STORYBOARD_DOCUMENT).write_text(
+                "## SHOT-1\n- 来源：EP001-SC001\n\n## SHOT-2\n- 来源：EP001-SC002\n",
+                encoding="utf-8",
+            )
+            (episode / edit.CUT_LIST_NAME).write_text(
+                "# 剪辑单\n\n"
+                "- 画幅与帧率：9:16 · 180×320 · 24fps\n"
+                "- 字幕：无\n\n"
+                "## CUT-1 · 首镜\n\n"
+                "- 来源：MOTION-1 · media/1.mp4\n"
+                "- 入点：0.00\n- 出点：1.00\n- 时长：1.00\n- 声音：无\n\n"
+                "## CUT-2 · 次镜\n\n"
+                "- 来源：MOTION-2 · media/2.mp4\n"
+                "- 入点：0.00\n- 出点：1.00\n- 时长：1.00\n- 声音：无\n",
+                encoding="utf-8",
+            )
+            delivery, cuts, _ = edit.parse_cut_list(episode / edit.CUT_LIST_NAME)
+            report = edit.render(episode, root, cuts, delivery, burn_subtitles=False)
+
+            def probe_video_stream(path: Path) -> dict:
+                return json.loads(
+                    subprocess.check_output(
+                        [
+                            "ffprobe",
+                            "-v",
+                            "error",
+                            "-select_streams",
+                            "v:0",
+                            "-show_entries",
+                            "stream=sample_aspect_ratio,r_frame_rate,avg_frame_rate,time_base,nb_frames",
+                            "-of",
+                            "json",
+                            str(path),
+                        ],
+                        text=True,
+                    )
+                )["streams"][0]
+
+            seg1 = probe_video_stream(
+                episode / edit.OUTPUT_DIRECTORY / edit.SEGMENT_DIRECTORY / "CUT-1.mp4"
+            )
+            seg2 = probe_video_stream(
+                episode / edit.OUTPUT_DIRECTORY / edit.SEGMENT_DIRECTORY / "CUT-2.mp4"
+            )
+            final = probe_video_stream(Path(report["成片"]))
+
+        self.assertEqual(seg1["sample_aspect_ratio"], "1:1")
+        self.assertEqual(seg2["sample_aspect_ratio"], "1:1")
+        self.assertEqual(final["sample_aspect_ratio"], "1:1")
+        self.assertEqual(seg1["r_frame_rate"], "24/1")
+        self.assertEqual(seg2["r_frame_rate"], "24/1")
+        self.assertEqual(seg1["avg_frame_rate"], "24/1")
+        self.assertEqual(seg2["avg_frame_rate"], "24/1")
+        self.assertEqual(seg1["time_base"], seg2["time_base"])
+        self.assertEqual(int(final["nb_frames"]), 48)
+
+
+class OverlapContinuityTests(unittest.TestCase):
+    def test_overlap_catches_unmarked_cut_overlapping_replay_and_normalizes_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            media = episode / "media"
+            media.mkdir(parents=True)
+            (media / "shared.mp4").write_bytes(b"video")
+
+            cuts = [
+                edit.Cut(
+                    "CUT-1",
+                    "首段",
+                    "MOTION-1",
+                    "media/shared.mp4",
+                    0.0,
+                    1.0,
+                    1.0,
+                    (),
+                    {},
+                    1,
+                ),
+                edit.Cut(
+                    "CUT-2",
+                    "重放段",
+                    "MOTION-1",
+                    "media/shared.mp4",
+                    0.5,
+                    2.0,
+                    1.5,
+                    (),
+                    {},
+                    10,
+                    replay="高潮动作强调重放",
+                ),
+                edit.Cut(
+                    "CUT-3",
+                    "同片别名路径未标重放",
+                    "MOTION-1",
+                    "剧集/EP001/media/shared.mp4",
+                    1.2,
+                    1.9,
+                    0.7,
+                    (),
+                    {},
+                    20,
+                ),
+            ]
+            findings = edit._overlap_findings(cuts, episode, root)
+            self.assertEqual(len(findings), 1, findings)
+            self.assertIn("CUT-2 与 CUT-3", findings[0])
+
+    def test_scene_keys_ignore_quoted_scene_mentions_and_accept_markdown_emphasis_and_comments(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory)
+            (episode / edit.MOTION_DOCUMENT).write_text(
+                "<!-- 审阅备注：旧分镜 SHOT-999 已废弃 -->\n"
+                "## MOTION-1 · 首镜\n"
+                "* **分镜**: SHOT-1\n\n"
+                "## MOTION-2 · 次镜\n"
+                "+ __分镜__: SHOT-2\n",
+                encoding="utf-8",
+            )
+            (episode / edit.STORYBOARD_DOCUMENT).write_text(
+                "<!--\n## SHOT-999 · 注释草稿\n- 来源：EP001-SC099\n-->\n"
+                "## SHOT-1 · 首镜\n"
+                "- **来源**: EP001-SC001 承接「EP001-SC099」台词与『B2-SC02』道具\n\n"
+                "## SHOT-2 · 次镜\n"
+                "* _来源_: EP001-SC001\n",
+                encoding="utf-8",
+            )
+            cuts = [
+                edit.Cut(f"CUT-{i}", "段", f"MOTION-{i}", "x.mp4", 0, 1, 1, (), {}, 1)
+                for i in (1, 2)
+            ]
+            keys = edit._scene_keys(episode, cuts)
+            self.assertEqual(keys, [S1, S1])
+            measured = {"CUT-1": stats(90, 40), "CUT-2": stats(130, 40)}
+            plan = edit._plan_shot_match(cuts, keys, lambda c: measured[c.cut_id])
+            self.assertEqual(set(plan), {"CUT-1", "CUT-2"})
+
+    def test_scene_keys_resolve_group_cuts_and_strip_double_quoted_scene_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory)
+            (episode / edit.MOTION_DOCUMENT).write_text(
+                "## MOTION-1 · 一\n- 分镜：SHOT-1\n\n"
+                "## MOTION-2 · 二\n- 分镜：SHOT-2\n\n"
+                "## MOTION-3 · 三\n- 分镜：SHOT-3\n\n"
+                "## MOTION-4 · 四\n- 分镜：SHOT-MISSING\n\n"
+                "## GROUP-SAME · 同场合拍\n- 成员：MOTION-1、MOTION-2\n\n"
+                "## GROUP-CROSS · 跨场合拍\n- 成员：MOTION-1、MOTION-3\n\n"
+                "## GROUP-BROKEN · 缺分镜合拍\n- 成员：MOTION-1、MOTION-4\n",
+                encoding="utf-8",
+            )
+            (episode / edit.STORYBOARD_DOCUMENT).write_text(
+                "## SHOT-1 · 一\n"
+                '- 来源：EP001-SC001 闪回台词 "EP001-SC099" 与 “EP001-SC098”\n\n'
+                "## SHOT-2 · 二\n"
+                "- 来源：EP001-SC001\n\n"
+                "## SHOT-3 · 三\n"
+                "- 来源：EP001-SC002\n",
+                encoding="utf-8",
+            )
+            cuts = [
+                edit.Cut("CUT-1", "同场合拍", "GROUP-SAME", "g1.mp4", 0, 2, 2, (), {}, 1),
+                edit.Cut("CUT-2", "同场单镜", "MOTION-2", "m2.mp4", 0, 2, 2, (), {}, 2),
+                edit.Cut("CUT-3", "跨场合拍", "GROUP-CROSS", "g2.mp4", 0, 2, 2, (), {}, 3),
+                edit.Cut("CUT-4", "未解析合拍", "GROUP-BROKEN", "g3.mp4", 0, 2, 2, (), {}, 4),
+            ]
+            keys = edit._scene_keys(episode, cuts)
+            self.assertEqual(keys, [S1, S1, None, None])
+            measured = {cut.cut_id: stats(80 + 30 * idx, 35) for idx, cut in enumerate(cuts)}
+            plan = edit._plan_shot_match(cuts, keys, lambda c: measured[c.cut_id])
+            self.assertEqual(set(plan), {"CUT-1", "CUT-2"})
+
 
 if __name__ == "__main__":
     unittest.main()

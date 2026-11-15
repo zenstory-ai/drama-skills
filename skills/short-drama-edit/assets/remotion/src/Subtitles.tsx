@@ -33,18 +33,25 @@ const runs = (text: string, keys: string[]): { text: string; key: boolean }[] =>
 export const Subtitles: React.FC<{ cues: Cue[] }> = ({ cues }) => {
   const frame = useCurrentFrame();
   const { fps, height, width } = useVideoConfig();
-  const now = frame / fps;
-  const cue = cues.find((item) => now >= item.start && now < item.end);
+  const matched = cues
+    .map((item) => ({
+      cue: item,
+      startFrame: Math.round(item.start * fps),
+      endFrame: Math.round(item.end * fps),
+    }))
+    .find((entry) => frame >= entry.startFrame && frame < entry.endFrame);
+  const cue = matched?.cue;
   // Checked against a line about to be filmed, so a missing face stops the
   // render on the first subtitle frame rather than after the whole pass.
   assertFamilyResolves(SANS, cue?.text ?? "");
-  if (!cue) return null;
+  if (!matched || !cue) return null;
 
   const u = height / 100;
   // One line: long lines are split upstream; what still does not fit shrinks.
   const size = Math.min(u * 4.3, (width * 0.9) / (lineEms(cue.text) * 1.04));
-  const age = now - cue.start;
-  const pop = spring({ frame: Math.round(age * fps), fps, config: { damping: 12, stiffness: 260, mass: 0.5 } });
+  const ageFrames = frame - matched.startFrame;
+  const age = ageFrames / fps;
+  const pop = spring({ frame: ageFrames, fps, config: { damping: 12, stiffness: 260, mass: 0.5 } });
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: u * 24 }}>
       <div

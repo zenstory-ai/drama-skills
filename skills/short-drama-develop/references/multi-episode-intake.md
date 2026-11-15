@@ -34,7 +34,7 @@ python3 <本技能目录>/scripts/episode_intake.py manual-index \
   --out 项目开发/_work/episode-intake-index.next.json
 ```
 
-候选索引跑通 `verify` 后存到正式路径 `项目开发/episode-intake-index.json`（项目内有 core 工具时可用 `publish` 原子发布）：
+候选索引跑通 `verify` 后存到正式路径 `项目开发/episode-intake-index.json`：
 
 ```text
 python3 <本技能目录>/scripts/episode_intake.py verify \
@@ -62,7 +62,7 @@ python3 <本技能目录>/scripts/episode_intake.py slice \
 
 ## 3. 合并落盘、修订覆盖与分段续拆
 
-`merge` 把现有分集大纲与本轮 batch 按索引集序合并落盘：**允许用新批次中的同 `episode_id` 记录覆盖更新已有分集记录**（返回 `added` 与 `updated` 列表；完全一致的记录重放自动幂等跳过），同时严守核心护栏——**拒绝写入任何不在索引声明 `episode_ids` 集合内的未知集号**、同批重复集号或超出 `--batch-size` 上限的批次：
+`merge` 把现有分集大纲与本轮 batch 按集号数值升序合并落盘：**允许用新批次中的同 `episode_id` 记录覆盖更新已有分集记录**（返回 `added` 与 `updated` 列表；完全一致的记录重放自动幂等跳过），并**保留既有 `episode-map.jsonl` 中属于其他分卷的合法集号**；同时严守核心护栏——**拒绝本轮 batch 写入不在当前索引 `episodes` 声明范围内的未知集号**、同批重复集号或超出 `--batch-size` 上限的批次：
 
 ```text
 python3 <本技能目录>/scripts/episode_intake.py merge \
@@ -72,4 +72,4 @@ python3 <本技能目录>/scripts/episode_intake.py merge \
   --batch-size <本轮由 Agent 决定>
 ```
 
-核对无误后保存至 `项目开发/episode-map.jsonl`（或通过项目工具 `publish` 发布）并清理临时文件。中途断开后重跑 `progress`，自动按磁盘现有记录推导剩余 `pending` 集号。
+核对无误后保存至 `项目开发/episode-map.jsonl` 并清理临时文件。中途断开后重跑 `progress`，自动按磁盘现有记录推导剩余 `pending` 集号。

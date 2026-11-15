@@ -19,12 +19,12 @@
 ```
 
 - `modality`：必填，取值为 `image`、`video`、`tts`（单句角色配音）或 `music`（单段成片配乐或主题曲）。
-- `source` 与 `source_entry`：指向 `剧集|episodes/<EP>/` 下的创作文档时，`图片提示词.md` 选 `IMG-*`（`image`），`视频提示词.md` 选 `MOTION-*`（`video`），`分镜.md` 选 `SHOT-*`（`image`，读取 `### 首帧提示词`）；`music` 任务读取 `视频提示词.md` 配乐章节，不填 `MOTION-*`。
-  - **自动提取与一致性核对**：指定有效 `source` + `source_entry` 时，若省略 `prompt` 或 `reference_bindings`，`prepare` / `prepare-batch` 会从目标二级标题段落自动提取可复制提示词及已落盘的 `REF-...` 绑定（按文档 `用途` 自动映射 `first_frame` / `last_frame` / `reference_image` / `reference_video` 及 `reference_audio`）；显式填写时逐项核对与源条目完全一致。
+- `source` 与 `source_entry`：指向 `剧集|episodes/<EP>/` 下的创作文档时，`图片提示词.md` 选 `IMG-*`（`image`），`视频提示词.md` 选 `MOTION-*` 或 `GROUP-*`（`video`；`GROUP-*` 的组级 `输入参考图` 可省略，一旦写出则与 `MOTION-*` 按同一规则校验并拦截 `待补参考图`），`分镜.md` 选 `SHOT-*`（`image`，读取 `### 首帧提示词`）；`music` 任务读取 `视频提示词.md` 配乐章节，不填 `MOTION-*` 或 `GROUP-*`。
+  - **自动提取与一致性核对**：指定有效 `source` + `source_entry` 时，若省略 `prompt` 或 `reference_bindings`，`prepare` / `prepare-batch` 会从目标二级标题段落自动提取可复制提示词及已落盘的 `REF-...` 绑定（按文档 `用途` 自动映射 `first_frame` / `last_frame` / `reference_image` 及 `reference_audio`；`reference_video` 仅用于显式填写的任务单）；显式填写时逐项核对与源条目完全一致。
   - **条目级摘要**：带 `source_entry` 的 Markdown 源文档按该二级标题段落计算字节摘要，修改同一文档中其他条目的内容不会令当前条目的确认码失效，也不会在 `audit` 中把其他已完成镜头标为 `job_inputs_changed`；无 `source_entry` 的源文档与所有媒体参考文件按整文件字节摘要核验。
 - `reference_bindings`：0–16 条按序排列的参考素材绑定，每条包含 `slot_id`、从 1 连续递增的 `order`、项目相对路径 `path`、非空名称 `label`（支持中文、英文或字母数字标签，如 `女主定妆照`、`USB`、`Lead Hero`）、接口角色 `role`，以及互不重叠的非空列表 `may_control` 与 `must_not_control`。
   - 唯一性按 `(path, role)` 组合校验：允许循环镜头将同一静帧同时绑定为 `first_frame` 与 `last_frame`，禁止同一 `(path, role)` 重复绑定。
-  - `MOTION-*` 条目下的 `参考音频` 排在图片绑定之后写入，`role` 固定填 `"reference_audio"`，`character` 原字照抄文档里的 `角色` 名。
+  - `MOTION-*` 与 `GROUP-*` 条目下的 `参考音频` 排在图片绑定之后写入，`role` 固定填 `"reference_audio"`，`character` 原字照抄文档里的 `角色` 名。
   - 从 `分镜.md` 生成 `SHOT-*` 首帧图时，允许跳过尚未落盘的 `PLAN-...` 项，其余 `REF-...` 仍须从 1 连续编号。
 - `references`：0–16 条项目相对文件路径；省略时按 `reference_bindings` 顺序逐槽位推导（循环镜同图不同用途保留对应槽位顺序），显式填写时须与 `reference_bindings` 槽位路径顺序（或按序去重结果）一致。
 - `outputs`：1–16 条不重复的输出路径，落在项目根目录 `production/` 或 `剧集|episodes/<EP>/制作成果|production/` 下，扩展名与 `modality` 匹配。
@@ -33,9 +33,10 @@
 
 ## 批次预览与确认（Batch Workflow）
 
-- `prepare-batch <project> --jobs <job1.json> <job2.json> ...`：逐条校验任务单并生成批次清单（写入 `.short-drama/production/batches/<hash>.json`），返回本批条数、目标 `adapter` / 模型汇总、时长与画幅/尺寸摘要、全部 `outputs` 预览以及整批一次性确认口令 `"CONFIRM BATCH <batch_id> <code>"`。
-- `confirm <project> --confirmation "CONFIRM BATCH <batch_id> <code>"`（或 `confirm-batch`）：核验整批任务单与各自输入摘要未变动后，一次性为批内全部任务写入确认回执。
-- `run-batch <project> --batch-id <batch_id> --adapter-config <config.json>`（或传 `--job-ids`）：按批内顺序依次执行各条已确认任务并返回汇总状态。
+- `prepare-batch <project> --jobs <job1.json> <job2.json> ... [--batch-id <batch_id>]`：逐条校验任务单并生成批次清单（写入 `.short-drama/production/batches/<hash>.json`），返回本批条数、目标 `adapter` / 模型汇总、时长与画幅/尺寸摘要、全部 `outputs` 预览以及整批一次性确认口令 `"CONFIRM BATCH <batch_id> <code>"`。
+- `confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"`（或 `confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"`）：核验整批任务单与各自输入摘要未变动后，一次性为批内全部任务写入确认回执。
+- `run-batch <project> (--batch-id <batch_id> | --job-ids <id>...) --adapter-config <config.json> [--continue-on-error]`：按顺序依次执行各条已确认任务并返回汇总状态；默认遇错即停，传 `--continue-on-error` 时继续执行剩余项；指定 `--batch-id` 中断重跑时，自动跳过当前任务指纹下已成功且本地产出完好的条目。
+- `status <project> (--job-id <id> | --batch-id <batch_id>)`：查询单条任务或整批任务汇总状态。
 
 ## 生成接口配置
 

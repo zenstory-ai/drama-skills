@@ -8,7 +8,7 @@
 2. **固定核心外观**：跨造型、跨视角不变的五官骨相、空间结构方位或道具轮廓比例（不用“绝美、大片质感、8K 大师杰作”顶替具体特征）。
 3. **本张造型、视角或状态**：当前穿戴层次、观看朝向、时段光线或开合旧损状态。默认一图只画单一共存状态；确需在同一张设定板上展示开合、前后或两处关联分区对照时，开篇明确声明分栏/并列排版（如 `Two-panel location sheet: Panel A ..., Panel B ...` 或 `shown open from behind and closed from above`），标清各栏状态互不串混。
 4. **构图版式与尺寸参照**：景别、单图或多视图共享底线并排、普通尺寸参照物。并排展示正/侧/背多视图时，按当前提示词语言按需补充无图注约束（如 `no view labels, no callout arrows, no dimension marks`），防止模型自动生成标尺线与视图文字。
-5. **材质、色彩与布光**：面料/器物肌理、主次配色与受光方式。基础设定图优先用看清骨相起伏与服装层次的前侧柔光（避开扭曲五官的底光或把正脸打黑的纯逆光，也不按性别或正反派套刻板光位）；场景图与状态图对齐场内真实光源。
+5. **材质、色彩与布光**：面料/器物肌理、主次配色与受光方式。基础设定图优先用看清骨相起伏与服装层次的前侧柔光（避开扭曲五官的底光或把正脸打黑的纯逆光，也不按性别或正反派套刻板光位）；场景图与状态图贴合场内真实光源。
 6. **背景、清场与字迹排除项**：干净纯色底或空镜清场要求、印字部位处理，以及针对易画错处的具体排除词（排除词不得与前文磨损或字迹要求自相矛盾）。
 
 ## 2. 角色、场景与道具设定图要点（`IMG-03` ~ `IMG-05` / `IMG-10`）
@@ -52,8 +52,18 @@
 
 ## 5. 英文提示词正例（默认 `prompt_language: en`）
 
-- **角色多视图设定板（`IMG-LUOJING-SHEET · 罗静夜班工装角色板`）**：
-  > Full-body character sheet of a tall, lean woman around thirty, front view alongside a head-and-shoulders profile inset on one shared ground line. Narrow oval face, natural gap at the outer tail of her right eyebrow, short wavy black hair, calm guarded expression. Night-shift maintenance uniform: dark forest-green work overshirt with the top button undone over a washed off-white crew-neck T-shirt, a blank round cloth patch stitched on the left chest, a thumb-wide pale brown scorch mark at the right cuff, charcoal straight-leg work trousers and scuffed black ankle boots. Soft even studio key light from upper front-left showing facial bone structure, layered collar and lived-in cotton twill texture, plain neutral light-grey background, consistent facial identity and hair length across both views, no view labels, no callout lines, no dimension marks, no handheld tools, no text, no watermark.
+```markdown
+## IMG-LUOJING-SHEET · 罗静夜班工装角色板
+- 用途：人物「罗静」与造型「罗静—夜班工装」多视图角色设定板
+- 参考：无外部参考
 
-- **场景空镜设定板（`IMG-REPAIR-ROOM · 广播站维修间空镜板`）**：
-  > Empty interior location plate of a narrow community broadcast repair room seen from the south doorway looking straight toward the back wall. Along the right wall runs a waist-high worn wooden workbench ending beside a single grey steel fire door on the back wall; along the left wall sit two high horizontal windows above a row of shallow grey metal cabinets, leaving a clear central walkway from the entrance to the fire door. Cool white fluorescent tube lighting overhead with faint dusk blue outside the high windows, concrete floor with subtle cable tray along the skirting board. Eye-level architectural framing, clear spatial depth and furniture alignment, uninhabited empty room, no people, no text, no watermark.
+### 可复制提示词
+> Full-body character sheet of a tall, lean woman around thirty, front view alongside a head-and-shoulders profile inset on one shared ground line. Narrow oval face, natural gap at the outer tail of her right eyebrow, short wavy black hair, calm guarded expression. Night-shift maintenance uniform: dark forest-green work overshirt with the top button undone over a washed off-white crew-neck T-shirt, a blank round cloth patch stitched on the left chest, a thumb-wide pale brown scorch mark at the right cuff, charcoal straight-leg work trousers and scuffed black ankle boots. Soft even studio key light from upper front-left showing facial bone structure, layered collar and lived-in cotton twill texture, plain neutral light-grey background, consistent facial identity and hair length across both views, no view labels, no callout lines, no dimension marks, no handheld tools, no text, no watermark.
+
+## IMG-REPAIR-ROOM · 广播站维修间空镜板
+- 用途：地点「广播站维修间」南门北望空镜设定图
+- 参考：无外部参考
+
+### 可复制提示词
+> Empty interior location plate of a narrow community broadcast repair room seen from the south doorway looking straight toward the back wall. Along the right wall runs a waist-high worn wooden workbench ending beside a single grey steel fire door on the back wall; along the left wall sit two high horizontal windows above a row of shallow grey metal cabinets, leaving a clear central walkway from the entrance to the fire door. Cool white fluorescent tube lighting overhead with faint dusk blue outside the high windows, concrete floor with subtle cable tray along the skirting board. Eye-level architectural framing, clear spatial depth and furniture alignment, uninhabited empty room, no people, no text, no watermark.
+```

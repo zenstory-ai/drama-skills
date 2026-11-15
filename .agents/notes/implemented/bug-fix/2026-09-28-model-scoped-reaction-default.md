@@ -1,5 +1,7 @@
 # Agent Note: 反应镜默认写法按模型限定
 
+Status: implemented
+
 ## Problem
 
 [原决定](../feature/2026-09-28-reaction-contact-keyframe-framing.md) 把 H3 复测的
@@ -19,3 +21,5 @@ H3 才使用该复测默认；Seedance 2.5 保留完整可见反应链，其他�
 
 建议与证据适用范围一致；多模型项目要按目标方言选写法，不能再共用一个反应镜配方。
 没有新增生成实验，不把文案检查冒充模型效果验证。
+
+后续调整：见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)（小样本反应镜与接触拆镜配方进一步收敛为条件化创作建议，独立微文件归并入 `video-prompt-guide.md` 与 `shot-craft.md`）。

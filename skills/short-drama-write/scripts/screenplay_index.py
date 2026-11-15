@@ -139,37 +139,85 @@ KIND_CODES = {
     "dialogue": "D",
     "production_tag": "P",
     "comment": "C",
+    "code_fence": "F",
 }
 
 # Three digits through EP999, then unpadded — the same single spelling per
 # episode number the lifecycle tool enforces on `episodes/<EP>/`. A fixed three
 # digits would have made EP1000 a legal directory but an illegal heading.
 _EPISODE = r"EP(?:[0-9]{3}|[1-9][0-9]{3,})"
+_SCENE = r"SC(?:[0-9]{3}|[1-9][0-9]{3,})"
 _WS = r"[ \t\u3000]"
-EPISODE_HEADING_RE = re.compile(rf"^#{_WS}+(?P<episode>{_EPISODE})(?:{_WS}+.+)?$")
+EPISODE_HEADING_RE = re.compile(
+    rf"^#{_WS}+(?P<episode>{_EPISODE})"
+    rf"(?![0-9])(?!{_WS}*(?:——|[·：:–—-])?{_WS}*SC[0-9])"
+    rf"(?:{_WS}*(?:——|[·：:–—-])(?:{_WS}*.+)?|{_WS}+.+)?$"
+)
 # A project that scopes ids by season writes `S01-EP001-SC001`; the episode is
 # still the `EP` segment, and the cross-document checker accepts the same form.
 # Whitespace around `·` is optional so `内·客厅·夜` and `内 · 客厅 · 夜` both
 # parse instead of silently dropping the scene's blocks.
 SCENE_HEADING_RE = re.compile(
-    rf"^##{_WS}+(?P<scene>(?:[A-Za-z0-9]+-)*?(?P<episode>{_EPISODE})-SC[0-9]{{3}})"
+    rf"^##{_WS}+(?P<scene>(?:[A-Za-z0-9]+-)*?(?P<episode>{_EPISODE})-{_SCENE})"
     rf"(?:{_WS}+|{_WS}*·{_WS}*)"
     rf"(?P<space>内外|内|外){_WS}*·{_WS}*(?P<location>[^\s·](?:.*?[^\s·])?){_WS}*·{_WS}*"
     r"(?P<time>[^\s·](?:.*[^\s·])?)$"
 )
+CAST_LINE_RE = re.compile(
+    rf"^{_WS}*(?:[-*+]{_WS}+)?(?:"
+    rf"人物{_WS}*[：:]"
+    rf"|\*\*\*人物(?:{_WS}*\*\*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*\*\*)"
+    rf"|___人物(?:{_WS}*___{_WS}*[：:]|{_WS}*[：:]{_WS}*___)"
+    rf"|\*\*人物(?:{_WS}*\*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*\*)"
+    rf"|__人物(?:{_WS}*__{_WS}*[：:]|{_WS}*[：:]{_WS}*__)"
+    rf"|\*人物(?:{_WS}*\*{_WS}*[：:]|{_WS}*[：:]{_WS}*\*)"
+    rf"|_人物(?:{_WS}*_{_WS}*[：:]|{_WS}*[：:]{_WS}*_)"
+    rf"){_WS}*(?P<body>.*)$"
+)
+CAST_PLACEHOLDERS = frozenset(
+    {
+        "无",
+        "暂无",
+        "待定",
+        "待补",
+        "待确认",
+        "待填",
+        "填写",
+        "未定",
+        "略",
+        "空",
+        "未知",
+        "tbd",
+        "todo",
+        "tba",
+        "none",
+        "null",
+        "n/a",
+        "na",
+        "nil",
+    }
+)
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+_FENCE_OPEN_RE = re.compile(r"^[ \t\u3000]{0,3}(`{3,}|~{3,})([^\r\n]*)$")
+CLOCK_PREFIX_RE = re.compile(r"^\d{1,2}[:：]\d{2}(?=\D|$)")
+_NOT_CLOCK_PREFIX = r"(?!\d{1,2}[:：]\d{2}(?:\D|$))"
+_NOT_URL_PREFIX = r"(?![A-Za-z][A-Za-z0-9+.-]*://)(?!(?:https?|ftp|mailto|file|ws|wss):(?://|\s|$))"
 MAX_SPEAKER_LENGTH = 40
 _SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
 _SPEAKER_LABEL = (
-    rf"(?=.{{1,{MAX_SPEAKER_LENGTH}}}(?:[ \t]*[（(]|：|:))"
+    rf"(?=.{{1,{MAX_SPEAKER_LENGTH}}}(?:{_WS}*[（(]|：|:))"
     rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
 )
-_OPTIONAL_CUE = r"(?:[ \t]*(?:（(?P<cue_fw>[^（）\r\n]+)）|\((?P<cue_hw>[^()\r\n]+)\)))?"
-_OPTIONAL_CUE_UNNAMED = r"(?:[ \t]*(?:（[^（）\r\n]+）|\([^()\r\n]+\)))?"
+_OPTIONAL_CUE = rf"(?:{_WS}*(?:（(?P<cue_fw>[^（）\r\n]+)）|\((?P<cue_hw>[^()\r\n]+)\)))?"
+_OPTIONAL_CUE_UNNAMED = rf"(?:{_WS}*(?:（[^（）\r\n]+）|\([^()\r\n]+\)))?"
 DIALOGUE_RE = re.compile(
-    rf"^(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
+    rf"^{_NOT_CLOCK_PREFIX}{_NOT_URL_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：{_WS}*(?P<text>\S[\s\S]*)$"
+)
+KNOWN_SPEAKER_DIALOGUE_RE = re.compile(
+    rf"^{_NOT_CLOCK_PREFIX}{_NOT_URL_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:]{_WS}*(?P<text>\S[\s\S]*)$"
 )
 ASCII_DIALOGUE_RE = re.compile(
-    rf"^{_SPEAKER_LABEL}{_OPTIONAL_CUE_UNNAMED}:\s*\S"
+    rf"^{_NOT_CLOCK_PREFIX}{_NOT_URL_PREFIX}{_SPEAKER_LABEL}{_OPTIONAL_CUE_UNNAMED}:{_WS}*\S"
 )
 TAG_RE = re.compile(r"^\[(?P<tag>VO|OS|SFX|画面文字|连续性|转场)\]\s*(?P<body>\S[\s\S]*)$")
 ANY_TAG_RE = re.compile(r"^\[(?P<tag>[^\]\r\n]+)\]")
@@ -188,15 +236,202 @@ FULLWIDTH_TAG_RE = re.compile(
 )
 MALFORMED_TAG_RE = re.compile(r"^\[(?:VO|OS|SFX|画面文字|连续性|转场)(?:\s|：|:)")
 # A voiced tag carries the same optional performance cue as plain dialogue
-# (``[OS] 角色（提示）：台词`` or ``[OS] Dr. Lin (whispering)：...``).
+# (``[OS] 角色（提示）：台词`` or ``[VO] Elena: ...``).
 VOICE_TAG_BODY_RE = re.compile(
-    rf"^(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}：(?P<text>\S[\s\S]*)$"
+    rf"^{_NOT_CLOCK_PREFIX}{_NOT_URL_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:]{_WS}*(?P<text>\S[\s\S]*)$"
 )
-BLOCK_ID_RE = re.compile(r"^BLK-(?P<scope>.+)-(?P<code>[HADPC])(?P<number>\d+)$")
+BLOCK_ID_RE = re.compile(r"^BLK-(?P<scope>.+)-(?P<code>[HADPCF])(?P<number>\d+)$")
 
 
 def _extract_cue(match: re.Match[str]) -> str | None:
     return match.group("cue_fw") or match.group("cue_hw")
+
+
+def _fence_open(line_text: str) -> tuple[str, int] | None:
+    match = _FENCE_OPEN_RE.match(line_text)
+    if match is None:
+        return None
+    marker = match.group(1)
+    if marker[0] == "`" and "`" in match.group(2):
+        return None
+    return marker[0], len(marker)
+
+
+def _fence_close(line_text: str, fence_char: str, min_length: int) -> bool:
+    return (
+        re.match(
+            rf"^[ \t\u3000]{{0,3}}{re.escape(fence_char)}{{{min_length},}}[ \t\u3000]*$",
+            line_text,
+        )
+        is not None
+    )
+
+
+def _scan_comment_end(lines: list[dict[str, Any]], start_index: int) -> int | None:
+    """Return the first line index >= start_index where all opened ``<!--`` close."""
+    chunks: list[str] = []
+    for cursor in range(start_index, len(lines)):
+        chunks.append(lines[cursor]["text"])
+        remainder = _HTML_COMMENT_RE.sub("", "\n".join(chunks))
+        if "<!--" not in remainder:
+            return cursor
+    return None
+
+
+def _is_placeholder_cast_token(token: str) -> bool:
+    if not token:
+        return True
+    lowered = token.lower()
+    if lowered in CAST_PLACEHOLDERS:
+        return True
+    if token.startswith(("【", "[", "<", "〈", "《", "{")) or token.endswith(
+        ("】", "]", ">", "〉", "》", "}")
+    ):
+        return True
+    if token.startswith("__") and token.endswith("__"):
+        return True
+    return re.fullmatch(r"[-–—.~…？?＊*＿_]+", token) is not None
+
+
+def _parse_cast_speakers(raw_body: str) -> set[str]:
+    """Extract valid speaker names from a ``人物：`` declaration body."""
+    cleaned = _HTML_COMMENT_RE.sub("", raw_body).strip()
+    previous: str | None = None
+    while previous != cleaned:
+        previous = cleaned
+        cleaned = re.sub(r"（[^（）]*）|\([^()]*\)", "", cleaned)
+    cleaned = re.sub(r"(?i)\bn\s*/\s*a\b", "", cleaned)
+    cleaned = re.sub(r"[。．；;，,、\s]+$", "", cleaned).strip()
+    if not cleaned or _is_placeholder_cast_token(cleaned):
+        return set()
+    speakers: set[str] = set()
+    for raw_item in re.split(
+        r"[、，,；;｜|/]+|(?<![A-Za-z.\-])\s+(?![A-Za-z])",
+        cleaned,
+    ):
+        item = re.sub(r"[。．]+$", "", raw_item.strip()).strip()
+        normalized = " ".join(item.split())
+        if _is_placeholder_cast_token(normalized):
+            continue
+        if (
+            len(normalized) <= MAX_SPEAKER_LENGTH
+            and DIALOGUE_RE.fullmatch(f"{normalized}：占位") is not None
+        ):
+            speakers.add(normalized)
+    return speakers
+
+
+def _declared_script_speakers(
+    lines: list[dict[str, Any]],
+) -> tuple[bool, set[str]]:
+    """Collect speakers from ``人物：`` lines before the first scene and at scene heads."""
+    declared: set[str] = set()
+    episode_id: str | None = None
+    scene_id: str | None = None
+    seen_scene_heading = False
+    at_scene_head = False
+    index = 0
+
+    while index < len(lines):
+        text = lines[index]["text"]
+        stripped = text.strip()
+        if not stripped:
+            index += 1
+            continue
+
+        if stripped.startswith("<!--"):
+            end_index = _scan_comment_end(lines, index)
+            if end_index is None:
+                break
+            chunk = "\n".join(lines[i]["text"] for i in range(index, end_index + 1))
+            if _HTML_COMMENT_RE.sub("", chunk).strip():
+                at_scene_head = False
+            index = end_index + 1
+            continue
+
+        fence = _fence_open(text)
+        if fence is not None:
+            fence_char, fence_len = fence
+            end_index = index + 1
+            while end_index < len(lines) and not _fence_close(
+                lines[end_index]["text"], fence_char, fence_len
+            ):
+                end_index += 1
+            if end_index >= len(lines):
+                break
+            index = end_index + 1
+            continue
+
+        after_closed = _HTML_COMMENT_RE.sub("", text)
+        if "<!--" in after_closed:
+            end_index = _scan_comment_end(lines, index)
+            if end_index is None:
+                break
+            at_scene_head = False
+            index = end_index + 1
+            continue
+
+        clean_stripped = after_closed.strip()
+        if not clean_stripped:
+            index += 1
+            continue
+
+        if clean_stripped.startswith("##"):
+            seen_scene_heading = True
+            match = SCENE_HEADING_RE.fullmatch(clean_stripped)
+            if match and not (episode_id and episode_id != match.group("episode")):
+                episode_id = match.group("episode")
+                scene_id = match.group("scene")
+                at_scene_head = True
+            else:
+                scene_id = None
+                at_scene_head = False
+            index += 1
+            continue
+
+        if clean_stripped.startswith("#"):
+            match = EPISODE_HEADING_RE.fullmatch(clean_stripped)
+            if match:
+                episode_id = match.group("episode")
+                scene_id = None
+                seen_scene_heading = False
+                at_scene_head = False
+            else:
+                scene_id = None
+                seen_scene_heading = True
+                at_scene_head = False
+            index += 1
+            continue
+
+        if not seen_scene_heading or (at_scene_head and scene_id is not None):
+            cast_match = CAST_LINE_RE.match(after_closed)
+            if cast_match is not None:
+                declared.update(_parse_cast_speakers(cast_match.group("body")))
+                index += 1
+                continue
+
+        end_index = index
+        while end_index + 1 < len(lines):
+            next_text = lines[end_index + 1]["text"]
+            next_stripped = next_text.strip()
+            if (
+                not next_stripped
+                or next_stripped.startswith("<!--")
+                or _fence_open(next_text) is not None
+            ):
+                break
+            next_after_closed = _HTML_COMMENT_RE.sub("", next_text)
+            next_clean = next_after_closed.strip()
+            if next_clean.startswith("#") or (
+                not seen_scene_heading
+                and CAST_LINE_RE.match(next_after_closed) is not None
+            ):
+                break
+            end_index += 1
+        at_scene_head = False
+        index = end_index + 1
+
+    return bool(declared), declared
 
 
 def _newline_style(data: bytes) -> str:
@@ -230,11 +465,15 @@ def _line_table(data: bytes) -> list[dict[str, Any]]:
             content = raw[:-1]
         else:
             content = raw
+        line_start = offset
+        if number == 1 and content.startswith(b"\xef\xbb\xbf"):
+            line_start += 3
+            content = content[3:]
         lines.append(
             {
                 "number": number,
-                "start": offset,
-                "content_end": offset + len(content),
+                "start": line_start,
+                "content_end": line_start + len(content),
                 "end": offset + len(raw),
                 "raw": raw,
                 "content": content,
@@ -293,10 +532,17 @@ def _parse_screenplay(
     # Decode once up front so invalid UTF-8 fails before any output is written.
     data.decode("utf-8")
     lines = _line_table(data)
+    active_speakers = speaker_names
+    if "人物" not in speaker_names:
+        _, cast_speakers = _declared_script_speakers(lines)
+        if cast_speakers:
+            active_speakers = speaker_names | frozenset(cast_speakers)
     blocks: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
     episode_id: str | None = None
     scene_id: str | None = None
+    seen_scene_heading = False
+    at_scene_head = False
     index = 0
 
     def append_block(kind: str, span: dict[str, Any], **fields: Any) -> None:
@@ -319,28 +565,64 @@ def _parse_screenplay(
             continue
 
         if stripped.startswith("<!--"):
-            end_index = index
-            while end_index < len(lines) and "-->" not in lines[end_index]["text"]:
-                end_index += 1
-            if end_index >= len(lines):
+            end_index = _scan_comment_end(lines, index)
+            if end_index is None:
                 span = _span(data, lines, index, len(lines) - 1)
                 issues.append(_issue(span, "malformed_comment", "Markdown 注释缺少闭合的 -->。"))
                 break
             span = _span(data, lines, index, end_index)
-            if not span["_text"].strip().endswith("-->"):
+            remainder = _HTML_COMMENT_RE.sub("", span["_text"]).strip()
+            if remainder:
+                at_scene_head = False
                 issues.append(
-                    _issue(span, "mixed_comment_content", "注释闭合符后还有内容，不能机械分块。")
+                    _issue(span, "mixed_comment_content", "注释与正文混写在同一段落，不能机械分块。")
                 )
             else:
                 append_block("comment", span, production=False)
             index = end_index + 1
             continue
 
-        if stripped.startswith("##"):
+        fence = _fence_open(text)
+        if fence is not None:
+            fence_char, fence_len = fence
+            end_index = index + 1
+            while end_index < len(lines) and not _fence_close(
+                lines[end_index]["text"], fence_char, fence_len
+            ):
+                end_index += 1
+            if end_index >= len(lines):
+                span = _span(data, lines, index, len(lines) - 1)
+                issues.append(_issue(span, "unsupported_markdown", "代码块缺少闭合围栏。"))
+                break
+            span = _span(data, lines, index, end_index)
+            append_block("code_fence", span, production=False)
+            index = end_index + 1
+            continue
+
+        after_closed = _HTML_COMMENT_RE.sub("", text)
+        clean_stripped = after_closed.strip()
+
+        if clean_stripped.startswith("##"):
+            seen_scene_heading = True
+            if "<!--" in after_closed:
+                close_index = _scan_comment_end(lines, index)
+                if close_index is None:
+                    span = _span(data, lines, index, len(lines) - 1)
+                    issues.append(_issue(span, "malformed_comment", "Markdown 注释缺少闭合的 -->。"))
+                    break
+                span = _span(data, lines, index, close_index)
+                scene_id = None
+                at_scene_head = False
+                issues.append(
+                    _issue(span, "mixed_comment_content", "场景标题中混有多行注释，不能机械分块。")
+                )
+                index = close_index + 1
+                continue
             span = _span(data, lines, index, index)
-            match = SCENE_HEADING_RE.fullmatch(stripped)
+            match = SCENE_HEADING_RE.fullmatch(clean_stripped)
             if not match:
                 scene_id = None
+                at_scene_head = False
                 issues.append(
                     _issue(
                         span,
@@ -356,8 +638,10 @@ def _parse_screenplay(
                         _issue(span, "episode_scene_mismatch", "场景 ID 与当前集标题的集 ID 不一致。")
                     )
                     scene_id = None
+                    at_scene_head = False
                 else:
                     episode_id = heading_episode
+                    at_scene_head = True
                     append_block(
                         "scene_heading",
                         span,
@@ -368,26 +652,84 @@ def _parse_screenplay(
             index += 1
             continue
 
-        if stripped.startswith("#"):
+        if clean_stripped.startswith("#"):
+            if "<!--" in after_closed:
+                close_index = _scan_comment_end(lines, index)
+                if close_index is None:
+                    span = _span(data, lines, index, len(lines) - 1)
+                    issues.append(_issue(span, "malformed_comment", "Markdown 注释缺少闭合的 -->。"))
+                    break
+                span = _span(data, lines, index, close_index)
+                scene_id = None
+                seen_scene_heading = True
+                at_scene_head = False
+                issues.append(
+                    _issue(span, "mixed_comment_content", "集标题中混有多行注释，不能机械分块。")
+                )
+                index = close_index + 1
+                continue
             span = _span(data, lines, index, index)
-            match = EPISODE_HEADING_RE.fullmatch(stripped)
+            match = EPISODE_HEADING_RE.fullmatch(clean_stripped)
             if match:
                 episode_id = match.group("episode")
                 scene_id = None
+                seen_scene_heading = False
+                at_scene_head = False
             else:
                 scene_id = None
+                seen_scene_heading = True
+                at_scene_head = False
                 issues.append(_issue(span, "invalid_episode_heading", "集标题必须以 # EP001 开头（EP 加三位数字，超过 EP999 后不补零）。"))
             index += 1
             continue
 
+        if (
+            (not seen_scene_heading or at_scene_head)
+            and (scene_id is None or "人物" not in speaker_names)
+            and "<!--" not in after_closed
+            and CAST_LINE_RE.match(after_closed) is not None
+        ):
+            index += 1
+            continue
+
         end_index = index
-        while end_index + 1 < len(lines):
-            next_stripped = lines[end_index + 1]["text"].strip()
-            if not next_stripped or next_stripped.startswith(("#", "<!--")):
+        unclosed_comment = False
+        while True:
+            chunk = "\n".join(lines[i]["text"] for i in range(index, end_index + 1))
+            if "<!--" in _HTML_COMMENT_RE.sub("", chunk):
+                if end_index + 1 >= len(lines):
+                    unclosed_comment = True
+                    break
+                end_index += 1
+                continue
+            if end_index + 1 >= len(lines):
+                break
+            next_text = lines[end_index + 1]["text"]
+            next_stripped = next_text.strip()
+            if (
+                not next_stripped
+                or next_stripped.startswith("<!--")
+                or _fence_open(next_text) is not None
+            ):
+                break
+            next_after_closed = _HTML_COMMENT_RE.sub("", next_text)
+            next_clean = next_after_closed.strip()
+            if next_clean.startswith("#") or (
+                not seen_scene_heading
+                and "<!--" not in next_after_closed
+                and CAST_LINE_RE.match(next_after_closed) is not None
+            ):
                 break
             end_index += 1
+
+        if unclosed_comment:
+            span = _span(data, lines, index, len(lines) - 1)
+            issues.append(_issue(span, "malformed_comment", "Markdown 注释缺少闭合的 -->。"))
+            break
+
+        at_scene_head = False
         span = _span(data, lines, index, end_index)
-        paragraph = span["_text"].strip()
+        paragraph = _HTML_COMMENT_RE.sub("", span["_text"]).strip()
 
         if scene_id is None:
             issues.append(
@@ -398,12 +740,17 @@ def _parse_screenplay(
 
         paragraph_lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
         if len(paragraph_lines) > 1:
-            later_dialogues = [
+            later_fw = [
                 match
                 for line in paragraph_lines[1:]
                 if (match := DIALOGUE_RE.fullmatch(line)) is not None
             ]
-            if any(match.group("speaker") in speaker_names for match in later_dialogues) or any(
+            later_any = [
+                match
+                for line in paragraph_lines[1:]
+                if (match := KNOWN_SPEAKER_DIALOGUE_RE.fullmatch(line)) is not None
+            ]
+            if any(match.group("speaker") in active_speakers for match in later_any) or any(
                 ASCII_DIALOGUE_RE.match(line)
                 or TAG_RE.fullmatch(line)
                 or ANY_TAG_RE.match(line)
@@ -419,7 +766,7 @@ def _parse_screenplay(
                 )
                 index = end_index + 1
                 continue
-            if later_dialogues:
+            if later_fw:
                 issues.append(
                     _issue(
                         span,
@@ -442,7 +789,7 @@ def _parse_screenplay(
                         _issue(
                             span,
                             "invalid_voice_tag_syntax",
-                            f"[{tag}] 写成「[{tag}] 角色（可选提示）：台词」：要有说话者与全角冒号，提示可用全角或半角括号。",
+                            f"[{tag}] 写成「[{tag}] 角色（可选提示）：台词」：要有说话者与冒号，提示可用全角或半角括号。",
                         )
                     )
                     index = end_index + 1
@@ -471,30 +818,31 @@ def _parse_screenplay(
             index = end_index + 1
             continue
 
-        dialogue_match = DIALOGUE_RE.fullmatch(paragraph)
-        if dialogue_match:
-            if dialogue_match.group("speaker") not in speaker_names:
-                issues.append(
-                    _issue(
-                        span,
-                        "ambiguous_dialogue_or_action",
-                        "冒号前缀不在本次说话者清单中；由 write owner 判断是动作、画面文字还是对白。",
-                    )
-                )
-                index = end_index + 1
-                continue
+        known_dialogue_match = KNOWN_SPEAKER_DIALOGUE_RE.fullmatch(paragraph)
+        if known_dialogue_match and known_dialogue_match.group("speaker") in active_speakers:
             append_block(
                 "dialogue",
                 span,
-                speaker=dialogue_match.group("speaker"),
-                performance_cue=_extract_cue(dialogue_match),
+                speaker=known_dialogue_match.group("speaker"),
+                performance_cue=_extract_cue(known_dialogue_match),
                 production=False,
+            )
+            index = end_index + 1
+            continue
+        dialogue_match = DIALOGUE_RE.fullmatch(paragraph)
+        if dialogue_match:
+            issues.append(
+                _issue(
+                    span,
+                    "ambiguous_dialogue_or_action",
+                    "冒号前缀不在本次说话者清单中；由 write owner 判断是动作、画面文字还是对白。",
+                )
             )
             index = end_index + 1
             continue
         if ASCII_DIALOGUE_RE.match(paragraph):
             issues.append(
-                _issue(span, "invalid_dialogue_syntax", "对白说话者后必须使用全角冒号 ：。")
+                _issue(span, "invalid_dialogue_syntax", "未知说话者后不能使用半角冒号 :；请改用全角冒号 ： 或声明说话者。")
             )
             index = end_index + 1
             continue
@@ -543,6 +891,23 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _resolve_previous_snapshot(
+    records: list[dict[str, Any]],
+    previous_source_path: Path,
+) -> dict[str, str]:
+    sources = load_sources(records)
+    body = [record for record in records if record.get("record_type") != SOURCES_RECORD_TYPE]
+    if not body or body[0].get("record_type") != "screenplay_index_meta":
+        raise ValueError("previous index is missing screenplay_index_meta")
+    resolved, _defect = resolve_ref(body[0].get("source_ref"), sources, "previous_index")
+    if resolved is None:
+        raise ValueError("previous index does not name its screenplay")
+    return {
+        "owner": resolved.owner,
+        "artifact": _portable_source_ref(previous_source_path, resolved.artifact),
+    }
+
+
 def _load_previous(
     records: list[dict[str, Any]],
     previous_source_path: Path,
@@ -558,13 +923,20 @@ def _load_previous(
     body = [record for record in records if record.get("record_type") != SOURCES_RECORD_TYPE]
     if not body or body[0].get("record_type") != "screenplay_index_meta":
         raise ValueError("previous index is missing screenplay_index_meta")
-    # The previous index must name the screenplay it was built from. It no
-    # longer carries that screenplay's bytes, so a resume can confirm identity
-    # but not that the file is unchanged; a screenplay edited between runs is
-    # caught by re-parsing below, not by a stored digest.
+    declared_length = body[0].get("source_byte_length")
+    if (
+        not isinstance(declared_length, int)
+        or isinstance(declared_length, bool)
+        or declared_length != len(source_data)
+    ):
+        raise ValueError(
+            "previous index source_byte_length does not match previous source"
+        )
+    # The previous index must name the screenplay it was built from.
     resolved, _defect = resolve_ref(body[0].get("source_ref"), sources, "previous_index")
     if resolved is None:
         raise ValueError("previous index does not name its screenplay")
+    _portable_source_ref(previous_source_path, resolved.artifact)
     previous_speakers = previous_index_speakers(records)
     parsed_blocks, _ = _parse_screenplay(source_data, previous_speakers)
     parsed_by_span = {
@@ -717,7 +1089,7 @@ def _find_split_merge_requests(
         return bool(blocks) and all(
             block["kind"] == blocks[0]["kind"]
             and block.get("scene_id") == blocks[0].get("scene_id")
-            and block["kind"] in {"action", "dialogue", "production_tag", "comment"}
+            and block["kind"] in {"action", "dialogue", "production_tag", "comment", "code_fence"}
             for block in blocks
         )
 
@@ -871,7 +1243,7 @@ def _public_block(block: dict[str, Any], source_ref: dict[str, str]) -> dict[str
 def _atomic_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     body = "".join(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+        json.dumps(record, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
         for record in records
     ).encode("utf-8")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -887,9 +1259,18 @@ def _atomic_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def _portable_source_ref(source: Path, source_ref: str | None) -> str:
-    value = source_ref or source.name
+    value = source.name if source_ref is None else source_ref
+    if not isinstance(value, str) or not value:
+        raise ValueError("source_ref must be a portable project-relative path")
+    segments = value.split("/")
     candidate = Path(value)
-    if candidate.is_absolute() or ".." in candidate.parts or "://" in value:
+    if (
+        candidate.is_absolute()
+        or any(segment in {"", ".", ".."} for segment in segments)
+        or "://" in value
+        or "\\" in value
+        or re.match(r"^[A-Za-z]:", value)
+    ):
         raise ValueError("source_ref must be a portable project-relative path")
     return candidate.as_posix()
 
@@ -973,10 +1354,8 @@ def build_index(
             break
     if previous_index_path is not None and previous_source_path is not None:
         previous_source = Path(previous_source_path)
-        previous_snapshot = {
-            "owner": "short-drama-write",
-            "artifact": _portable_source_ref(previous_source, source_ref),
-        }
+        previous = _load_previous(previous_records, previous_source)
+        previous_snapshot = _resolve_previous_snapshot(previous_records, previous_source)
         previous_key = SCREENPLAY_SOURCE_KEY
         if previous_snapshot != declared_sources[SCREENPLAY_SOURCE_KEY]:
             previous_key = PREVIOUS_SCREENPLAY_SOURCE_KEY
@@ -984,7 +1363,6 @@ def build_index(
         previous_source_ref = {"src": previous_key}
         if authority == "candidate":
             previous_source_ref["authority"] = "candidate"
-        previous = _load_previous(previous_records, previous_source)
         raw_requests = _mark_revision_mappings(current, previous)
     block_id_high_water = _assign_new_ids(
         current, previous, previous_high_water
@@ -1057,7 +1435,7 @@ def build_index(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build a byte-accurate derived screenplay-index.jsonl without editing screenplay.md."
+        description="Build a byte-accurate derived screenplay-index.jsonl without editing 剧本.md."
     )
     parser.add_argument("source", type=Path, help="UTF-8 Markdown screenplay source")
     parser.add_argument("--output", type=Path, help="output JSONL path")
@@ -1107,9 +1485,12 @@ def main(argv: list[str] | None = None) -> int:
             no_previous=args.no_previous,
         )
     except (OSError, UnicodeDecodeError, ValueError) as error:
-        print(json.dumps({"error": str(error)}, ensure_ascii=True), file=sys.stderr)
+        print(
+            json.dumps({"error": str(error)}, ensure_ascii=True, allow_nan=False),
+            file=sys.stderr,
+        )
         return 1
-    print(json.dumps(summary, ensure_ascii=True, sort_keys=True))
+    print(json.dumps(summary, ensure_ascii=True, sort_keys=True, allow_nan=False))
     if args.fail_on_review and summary["review_status"] != "clean":
         return 2
     return 0

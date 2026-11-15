@@ -2010,11 +2010,33 @@ class DashboardHTTPTests(unittest.TestCase):
             "PUT", path, headers={"Content-Type": "application/json"}, body=good
         )
         self.assertEqual(status, 200)
-        self.assertEqual(self.project.joinpath("notes.md").read_text(), "new")
+        self.assertEqual(
+            self.project.joinpath("notes.md").read_text(encoding="utf-8"), "new"
+        )
         status, _, _ = self.request(
             "PUT", path, headers={"Content-Type": "application/json"}, body=good
         )
         self.assertEqual(status, 409)
+
+    def test_http_put_preserves_raw_byte_optimistic_concurrency_on_crlf_files(self) -> None:
+        crlf_note = self.project / "crlf-note.md"
+        raw_crlf = "\ufeff# 标题\r\n第一行\r\n".encode("utf-8")
+        crlf_note.write_bytes(raw_crlf)
+        project_id = self.project_id()
+        path = f"/api/file?project={project_id}&path=crlf-note.md"
+        status, _, body = self.request("GET", path)
+        self.assertEqual(status, 200)
+        opened = json.loads(body)
+        self.assertEqual(opened["version"], hashlib.sha256(raw_crlf).hexdigest())
+
+        updated = json.dumps(
+            {"content": "# 标题\r\n第二行\r\n", "expectedVersion": opened["version"]}
+        ).encode("utf-8")
+        status, _, _ = self.request(
+            "PUT", path, headers={"Content-Type": "application/json"}, body=updated
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(crlf_note.read_bytes(), "# 标题\r\n第二行\r\n".encode("utf-8"))
 
     def test_http_put_allows_json_escaping_within_the_file_limit(self) -> None:
         project_id = self.project_id()
@@ -2258,14 +2280,14 @@ REVIEW = """# EP001 审查
 - 位置：剧本.md / EP001-SC001；分镜.md / SHOT-EP001-010、SHOT-EP001-011
 - 证据：中间没有他听到这句话的反应。
 - 影响：反转的力量减半。
-- 修订结果：先给周薄森半拍停顿。
+- 修改要求：先给周薄森半拍停顿。
 - 规则：STY-14 · reviewed_invariant
 
 ## Minor · REV-002 · 字幕和面板同时出现
 - 位置：剪辑单.md / CUT-EP001-002
 - 证据：重叠。
 - 影响：容易扫过去。
-- 修订结果：字幕推后。
+- 修改要求：字幕推后。
 - 规则：EDT-03 · craft_default
 """
 PIXEL = bytes.fromhex(
@@ -2772,6 +2794,309 @@ class CreatorViewsTests(unittest.TestCase):
             [("设定", "江晨")],
         )
 
+    def test_screenplay_reader_aligns_foreign_names_cues_colons_and_comma_actions(self) -> None:
+        script = views.parse_screenplay(
+            "# EP001 · Night Ferry\n\n"
+            "## EP001-SC001 外 · Pier · 夜\n\n"
+            "Elena Vance (whispering): Don't look back.\n\n"
+            "陈予安（冷笑）：\t把门关上。\n\n"
+            "[VO] Marcus Cole (distant)： The train already left.\n\n"
+            "她猛地停下脚步，压低声音：别过来。\n"
+        )
+        blocks = script["scenes"][0]["blocks"]
+        self.assertEqual(
+            [(b["k"], b.get("tag", ""), b.get("who", ""), b.get("paren", ""), b["text"]) for b in blocks],
+            [
+                ("line", "", "Elena Vance", "whispering", "Don't look back."),
+                ("line", "", "陈予安", "冷笑", "把门关上。"),
+                ("line", "VO", "Marcus Cole", "distant", "The train already left."),
+                ("action", "", "", "", "她猛地停下脚步，压低声音：别过来。"),
+            ],
+        )
+
+    def test_emphasized_field_keys_and_first_keyframe_search_are_indexed(self) -> None:
+        settings_doc = (
+            "# EP001 视觉设定\n"
+            "- **制作形态**：真人写实。\n"
+            "- **时代背景**：当下；**照明**：冷白顶灯。\n\n"
+            "## 人物 · 江晨\n"
+            "- **外观特征**：深灰风衣\n"
+            "- __发型__：利落短发\n"
+            "- *配饰*：银框眼镜\n"
+            "- _步态_：沉稳\n"
+            "- **提示词名称**：Jiang Chen\n"
+            "- **连戏锁**：LOCK-JC-COAT《风衣》（镜头：入画）· 锁定词：charcoal trench coat\n"
+        )
+        parsed = views.parse_settings(settings_doc)
+        self.assertEqual(parsed["form"], "真人写实")
+        self.assertEqual(parsed["era"]["facets"], [{"k": "照明", "v": "冷白顶灯"}])
+        item = parsed["items"][0]
+        self.assertEqual(
+            item["fields"],
+            {"外观特征": "深灰风衣", "发型": "利落短发", "配饰": "银框眼镜", "步态": "沉稳"},
+        )
+        self.assertEqual(item["designators"], ["Jiang Chen"])
+        self.assertEqual(len(item["locks"]), 1)
+        self.assertEqual(item["locks"][0]["id"], "LOCK-JC-COAT")
+
+        blocking = views.parse_scene_blocking(
+            "# EP001 分镜\n\n## 场景站位 · EP001-SC001 · 茶水间\n- **站位**：左江晨右周薄森\n"
+        )
+        self.assertEqual(blocking[0]["rows"], [["站位", "左江晨右周薄森"]])
+
+        board = example("分镜.md").replace(
+            "double-walled glass tea tumbler",
+            "cobalt neon reflection on wet asphalt",
+            1,
+        )
+        ep = self.episode(**{"分镜.md": board})
+        rows = views.search_entries(ep)
+        self.assertEqual(
+            [(h["g"], h["arg"]) for h in views.search(rows, "cobalt neon reflection")],
+            [("镜头", "SHOT-EP001-001")],
+        )
+
+    def test_round_three_review_ligature_search_cut_mapping_blocking_and_screenplay(self) -> None:
+        custom_review = (
+            "# EP001 审查\n\n"
+            "- 范围：剧本、分镜\n"
+            "- 结论：PROVISIONAL\n"
+            "- 复核方式：独立 reviewer\n\n"
+            "## Major · REV-010 · 情绪停顿缺失\n"
+            "- 位置：分镜.md / SHOT-EP001-001\n"
+            "- 证据：切得太快。\n"
+            "- 影响：情绪落地不足。\n"
+            "- 修改要求：补拍停顿反应。\n\n"
+            "## 备注\n"
+            "- 修改要求：这条备注不应混进上一条问题。\n\n"
+            "## 被删的强钩子\n"
+            "- 删掉了开场摔杯子的强冲突\n"
+        )
+        texts = {name: example(name) for name in DOCUMENTS}
+        texts["剪辑单.md"] = CUT_LIST
+        ep_review = views.read_episode("EP001", texts, custom_review)
+        parsed_review = ep_review["review"]
+        self.assertEqual(parsed_review["verdict"], "待补材料复核")
+        self.assertEqual(parsed_review["verdictTone"], "warn")
+        self.assertEqual(parsed_review["findings"][0]["fix"], "补拍停顿反应。")
+        self.assertEqual(parsed_review["deleted_hooks"], ["删掉了开场摔杯子的强冲突"])
+        review_rows = views.search_entries(ep_review)
+        self.assertEqual(
+            [(h["g"], h["arg"]) for h in views.search(review_rows, "补拍停顿反应")],
+            [("审查", "REV-010")],
+        )
+        self.assertEqual(
+            [(h["g"], h["view"]) for h in views.search(review_rows, "开场摔杯子")],
+            [("审查", "review")],
+        )
+
+        ligature_rows = [
+            {
+                "ep": "EP001",
+                "g": "镜头",
+                "w": "SHOT-EP001-001",
+                "t": "开场",
+                "x": "ﬁnal İSTANBUL Straße target_token here",
+                "view": "board",
+                "arg": "SHOT-EP001-001",
+            }
+        ]
+        hits = views.search(ligature_rows, "target_token")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(
+            hits[0]["snippet"][hits[0]["at"] : hits[0]["at"] + hits[0]["len"]],
+            "target_token",
+        )
+
+        stripped_fenced = views.check._strip_html_comments(
+            "<!-- out\nline2 -->\n```\nkeep <!-- inside fence --> literal\n```\nafter"
+        )
+        self.assertIn("<!-- inside fence -->", stripped_fenced)
+        self.assertNotIn("out", stripped_fenced)
+        self.assertEqual(stripped_fenced.splitlines()[-1], "after")
+        self.assertEqual(len(stripped_fenced.splitlines()), 6)
+
+        board_doc = (
+            "# EP001 分镜\n\n"
+            "<!--\n## SHOT-EP001-999 · 注释镜头\n-->\n"
+            "## SHOT-EP001-001 · 甲\n"
+            "- 时长：3s\n\n"
+            "### 首帧提示词\n"
+            "> first keyframe body\n\n"
+            "## 场景站位 · EP001-SC002 · 走廊\n"
+            "- 站位：对峙\n\n"
+            "## SHOT-EP001-002 · 乙\n"
+            "- 时长：4s\n"
+        )
+        parsed_board = views.parse_storyboard(board_doc)
+        self.assertEqual([s["id"] for s in parsed_board["shots"]], ["SHOT-EP001-001", "SHOT-EP001-002"])
+        self.assertEqual(parsed_board["shots"][0]["keyframe"], "first keyframe body")
+        self.assertEqual(
+            [(b["scene"], b["place"]) for b in parsed_board["blocking"]],
+            [("EP001-SC002", "走廊")],
+        )
+
+        img_doc = (
+            "# EP001 图片提示词\n\n"
+            "## IMG-EP001-001 · 角色设定\n"
+            "- 用途：角色三视图\n"
+            "- 参考：无外部参考\n\n"
+            "### 可复制提示词\n"
+            "> clean character turnaround\n\n"
+            "## 备注\n"
+            "> 不要收进提示词\n"
+        )
+        parsed_imgs = views.parse_image_prompts(img_doc)
+        self.assertEqual(len(parsed_imgs), 1)
+        self.assertEqual(parsed_imgs[0]["prompt"], "clean character turnaround")
+
+        custom_video = (
+            "# EP001 视频提示词\n\n"
+            "## MOTION-EP001-CUSTOM · 特写\n"
+            "- 分镜：SHOT-EP001-002\n"
+            "- 时长：3s\n\n"
+            "### 可复制提示词\n"
+            "> custom motion\n"
+        )
+        custom_cut = (
+            "# EP001 剪辑单\n\n"
+            "- 颗粒：3\n"
+            "- 接镜匹配：开\n\n"
+            "## CUT-EP001-001 · 第一刀\n"
+            "- 来源：MOTION-EP001-CUSTOM · 制作成果/videos/c1.mp4\n"
+            "- 入点：0.00\n"
+            "- 出点：3.00\n"
+            "- 时长：3.00\n"
+            "- 画面文字：0.20–1.50 任务面板 进度 1／4｜完成\n"
+            "- 重放：0.5x\n"
+            "- 画面：亮度 +0.05 饱和 -0.1\n"
+        )
+        ep_cut = views.read_episode(
+            "EP001",
+            {**texts, "视频提示词.md": custom_video, "剪辑单.md": custom_cut},
+            REVIEW,
+        )
+        cutlist = ep_cut["cutlist"]
+        self.assertEqual(cutlist["grain"], 3.0)
+        self.assertTrue(cutlist["shot_match"])
+        cut = cutlist["cuts"][0]
+        self.assertEqual(cut["shot"], "SHOT-EP001-002")
+        self.assertEqual(cut["texts"][0]["items"], ["进度 1/4", "完成"])
+        self.assertEqual(cut["replay"], "0.5x")
+        self.assertEqual(cut["picture"], {"brightness": 0.05, "saturation": -0.1})
+
+        inout_script = views.parse_screenplay(
+            "# EP001\n\n## EP001-SC001 内外 · 走廊 · 夜\n\n12:30 监控亮起。\n\nElena: Stay back.\n"
+        )
+        self.assertEqual(inout_script["scenes"][0]["space"], "内外")
+        self.assertEqual(inout_script["scenes"][0]["blocks"][0]["k"], "action")
+        self.assertEqual(inout_script["scenes"][0]["blocks"][1]["who"], "Elena")
+        self.assertEqual(
+            [b.get("who") for b in inout_script["scenes"][0]["blocks"] if b["k"] == "line"],
+            ["Elena"],
+        )
+
+        malformed_script = "# EP001\n\n## EP001-SC001 内 · 走廊 · 夜\n\n开场动作。\n\n## EP001-SC002 走廊\n\n不完整场头。\n"
+        with self.assertRaises(ValueError):
+            views.parse_screenplay(malformed_script)
+        ep_bad = views.read_episode("EP001", {**texts, "剧本.md": malformed_script}, REVIEW)
+        self.assertIsNone(ep_bad["script"])
+        self.assertTrue(any("剧本.md" in p for p in ep_bad["problems"]))
+
+    def test_crlf_and_utf8_bom_normalize_across_all_views_and_usable_groups(self) -> None:
+        def crlf_bom(text: str) -> str:
+            return "\ufeff" + text.replace("\n", "\r\n")
+
+        video_with_group = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 双镜测试\n"
+            "- 成员：MOTION-EP001-011、MOTION-EP001-012\n"
+            "- 时长：5s\n\n"
+            "### 可复制提示词\n"
+            '> Jiangchen in a pine-green lapel service jacket presses his index finger onto the closed laptop and says, “下周榜首，是我们团。”\n'
+        )
+        review_with_hook = REVIEW + "\n## 被删的强钩子\n- 开场强冲突被删\n"
+        crlf_docs = {
+            "剧本.md": crlf_bom(example("剧本.md")),
+            "视觉设定.md": crlf_bom(example("视觉设定.md")),
+            "分镜.md": crlf_bom(example("分镜.md")),
+            "图片提示词.md": crlf_bom(example("图片提示词.md")),
+            "视频提示词.md": crlf_bom(video_with_group),
+            "剪辑单.md": crlf_bom(CUT_LIST),
+        }
+        ep = views.read_episode("EP001", crlf_docs, crlf_bom(review_with_hook))
+        self.assertEqual(ep["problems"], [])
+        self.assertEqual(ep["metrics"]["shots"], 22)
+        self.assertEqual(len(ep["videoGroups"]), 1)
+        self.assertEqual(ep["review"]["deleted_hooks"], ["开场强冲突被删"])
+        self.assertEqual(
+            len(views.parse_visual_settings(crlf_docs["视觉设定.md"])["items"]),
+            len(views.parse_settings(example("视觉设定.md"))["items"]),
+        )
+        groups = views.usable_groups(crlf_docs["视频提示词.md"], crlf_docs)
+        self.assertEqual([g["id"] for g in groups], ["GROUP-EP001-01"])
+
+    def test_cast_lines_delivery_group_cuts_t2v_ref_state_and_review_verdict_tones(self) -> None:
+        parsed_script = views.parse_screenplay(
+            "# EP001 · 测试\n\n"
+            "人物：许棠、顾沉\n\n"
+            "## EP001-SC001 内 · 走廊 · 夜\n"
+            "- **人物：**许棠、顾沉\n"
+            "许棠：站住。\n"
+        )
+        blocks = parsed_script["scenes"][0]["blocks"]
+        self.assertEqual(
+            blocks,
+            [{"k": "line", "tag": "", "who": "许棠", "paren": "", "text": "站住。"}],
+        )
+
+        video_with_group = example("视频提示词.md") + (
+            "\n## GROUP-EP001-01 · 双镜测试\n"
+            "- 成员：MOTION-EP001-011、MOTION-EP001-012\n"
+            "- 时长：5s\n\n"
+            "### 可复制提示词\n"
+            '> Jiangchen in a pine-green lapel service jacket presses his index finger onto the closed laptop and says, “下周榜首，是我们团。”\n'
+        )
+        group_cut_list = (
+            "# EP001 剪辑单\n\n"
+            "- 画幅与帧率：9:16 · 1080×1920 · 24fps\n\n"
+            "## CUT-EP001-001 · 合生片段\n"
+            "- 来源：GROUP-EP001-01 · 制作成果/videos/group1.mp4\n"
+            "- 入点：0.00\n"
+            "- 出点：5.00\n"
+            "- 时长：5.00\n"
+            "- 声音：保留原声\n"
+        )
+        texts = {name: example(name) for name in DOCUMENTS}
+        texts["视频提示词.md"] = video_with_group
+        texts["剪辑单.md"] = group_cut_list
+        ep = views.read_episode("EP001", texts, None)
+        cutlist = ep["cutlist"]
+        self.assertIsNone(cutlist["grain"])
+        self.assertFalse(cutlist["shot_match"])
+        cut = cutlist["cuts"][0]
+        self.assertEqual(cut["motion"], "GROUP-EP001-01")
+        self.assertEqual(cut["shot"], "SHOT-EP001-011")
+        self.assertEqual(cut["group_shots"], ["SHOT-EP001-011", "SHOT-EP001-012"])
+
+        self.assertEqual(views._ref_state("无（文生首帧）", []), "t2v")
+        self.assertEqual(views._ref_state("无（待补参考图：角色定妆照）", []), "pending")
+
+        self.assertEqual(
+            views.parse_review("# EP001 审查\n- 结论：PASS\n")["verdictTone"], "ok"
+        )
+        self.assertEqual(
+            views.parse_review("# EP001 审查\n- 结论：REVISE\n")["verdictTone"], "bad"
+        )
+        self.assertEqual(
+            views.parse_review("# EP001 审查\n- 结论：REJECT\n")["verdictTone"], "bad"
+        )
+        self.assertEqual(
+            views.parse_review("# EP001 审查\n- 结论：PROVISIONAL\n")["verdictTone"], "warn"
+        )
+        self.assertEqual(
+            views.parse_review("# EP001 审查\n- 范围：剧本\n")["verdictTone"], "warn"
+        )
+
 
 class StatusFormatTests(unittest.TestCase):
     def test_status_reports_only_a_well_formed_episode_shape(self) -> None:
@@ -2912,6 +3237,36 @@ class DashboardViewEndpointTests(unittest.TestCase):
         empty, _ = self.get(f"/api/search?project={project}&q=&scope=series")
         self.assertEqual(empty["hits"], [])
 
+    def test_series_review_tone_and_cast_appearance_fallback(self) -> None:
+        visual_path = self.project / "剧集/EP001/视觉设定.md"
+        visual_path.write_text(
+            "# EP001 视觉设定\n\n"
+            "## 人物 · 许棠\n"
+            "- 身份：\n"
+            "- 外观特征：清瘦长脸，黑色风衣。\n"
+            "- 提示词名称：Xutang\n",
+            encoding="utf-8",
+        )
+        review_path = self.project / "审查/EP001-审查.md"
+        project = self.project_id()
+
+        for verdict, expected_tone in (
+            ("REVISE", "bad"),
+            ("REJECT", "bad"),
+            ("PROVISIONAL", "warn"),
+            ("PASS", "ok"),
+        ):
+            review_path.write_text(
+                f"# EP001 审查\n\n- 范围：全集\n- 结论：{verdict}\n",
+                encoding="utf-8",
+            )
+            series, raw = self.get(f"/api/series?project={project}")
+            ep1 = series["episodes"][0]
+            self.assertEqual(ep1["review"], {"must": 0, "should": 0, "could": 0})
+            self.assertEqual(ep1["reviewTone"], expected_tone)
+            self.assertNotIn(verdict, raw)
+            self.assertEqual(series["cast"][0]["desc"], "清瘦长脸，黑色风衣。")
+
 
 class PathPinnedDashboardViewEndpointTests(DashboardViewEndpointTests):
     """The same read-only views through the backend Windows must use."""
@@ -3051,6 +3406,293 @@ class FrontendLogicTests(unittest.TestCase):
         )
         self.assertEqual(result["multiLocks"], ["L1", "L2"])
         self.assertEqual(result["singleLocks"], ["L0"])
+
+    def test_missing_image_prompts_only_yields_after_downstream_exists_and_aspect_labels_follow_ratio(
+        self,
+    ) -> None:
+        empty = {
+            "script": False,
+            "settings": False,
+            "board": False,
+            "imgp": False,
+            "vidp": False,
+            "cut": False,
+            "film": False,
+            "review": False,
+        }
+        before_downstream = {
+            "id": "EP001",
+            "has": {**empty, "script": True, "settings": True, "board": True},
+            "review": {"must": 0},
+            "must": [],
+        }
+        with_vidp = {
+            "id": "EP002",
+            "has": {**empty, "script": True, "settings": True, "board": True, "vidp": True},
+            "review": {"must": 0},
+            "must": [],
+        }
+        with_cut_no_vidp = {
+            "id": "EP003",
+            "has": {**empty, "script": True, "settings": True, "board": True, "cut": True, "film": True},
+            "review": {"must": 0},
+            "must": [],
+        }
+        with_vidp_and_film = {
+            "id": "EP004",
+            "has": {
+                **empty,
+                "script": True,
+                "settings": True,
+                "board": True,
+                "vidp": True,
+                "cut": True,
+                "film": True,
+            },
+            "review": {"must": 0},
+            "must": [],
+        }
+        result = self.run_app(
+            f"const rows = {json.dumps([before_downstream, with_vidp, with_cut_no_vidp, with_vidp_and_film], ensure_ascii=False)};\n"
+            "process.stdout.write(JSON.stringify({\n"
+            "  steps: rows.map((r) => { const n = logic.nextFor(r); return [n.kind, n.text]; }),\n"
+            "  aspects: ['9:16', '16:9', '1:1', 'cinema', ''].map((r) => logic.aspectLabel(r)),\n"
+            "}));"
+        )
+        self.assertEqual(
+            result["steps"],
+            [
+                ["write", "写图片提示词"],
+                ["cut", "出片后写剪辑单"],
+                ["write", "写视频提示词"],
+                ["review", "审查这一集"],
+            ],
+        )
+        self.assertEqual(
+            result["aspects"],
+            ["竖屏 9:16", "横屏 16:9", "方画幅 1:1", "画幅 cinema", ""],
+        )
+
+    def test_round_three_highlight_category_scoped_presence_and_provisional_review(self) -> None:
+        result = self.run_app(
+            """
+const highlighted = logic.highlight(
+  'Use <mark> & $1 $& Jiang Chen / Jiang',
+  ['Jiang', 'Jiang Chen', '<mark>', '$1', '']
+);
+const E = {
+  docs: { '视觉设定.md': '剧集/EP001/视觉设定.md', review: '审查/EP001-审查.md' },
+  problems: [],
+  media: { clips: {}, frames: {} },
+  board: {
+    shots: [
+      { id: 'SHOT-EP001-001', n: '001', sec: 3, basis: [{ cat: '人物', name: '江晨', ctl: '外观' }] },
+      { id: 'SHOT-EP001-002', n: '002', sec: 4, basis: [{ cat: '地点', name: '江晨', ctl: '空间' }] },
+    ],
+  },
+  settings: {
+    form: '真人写实',
+    era: { period: '', facets: [] },
+    items: [
+      { cat: '人物', name: '江晨', designators: [], overlay: false, desc: [], fields: {}, locks: [] },
+      { cat: '地点', name: '江晨', designators: [], overlay: false, desc: [], fields: {}, locks: [] },
+    ],
+  },
+  review: {
+    scope: '剧本、分镜',
+    verdict: '待补材料复核',
+    verdictTone: 'warn',
+    independent: true,
+    findings: [],
+    deleted_hooks: ['开场强冲突被删'],
+  },
+};
+const C = logic.context(E);
+const row = { id: 'EP001', has: { settings: true, review: true } };
+const settingsHtml = logic.viewSettings(row, E);
+const reviewHtml = logic.viewReview(row, E, '');
+process.stdout.write(JSON.stringify({
+  highlighted,
+  personShots: logic.presence(C, E.settings.items[0]),
+  placeShots: logic.presence(C, E.settings.items[1]),
+  hasPersonAnchor: settingsHtml.includes('id="a-人物·江晨"'),
+  hasPlaceAnchor: settingsHtml.includes('id="a-地点·江晨"'),
+  placeHitHref: logic.hitHref({ ep: 'EP001', view: 'settings', g: '设定', w: '地点', arg: '江晨' }),
+  hasWarnBadge: reviewHtml.includes('vv warn'),
+  hasDeletedHook: reviewHtml.includes('开场强冲突被删'),
+}));
+"""
+        )
+        self.assertEqual(
+            result["highlighted"],
+            "Use <mark>&lt;mark&gt;</mark> &amp; <mark>$1</mark> $&amp; <mark>Jiang Chen</mark> / <mark>Jiang</mark>",
+        )
+        self.assertEqual(result["personShots"], ["SHOT-EP001-001"])
+        self.assertEqual(result["placeShots"], ["SHOT-EP001-002"])
+        self.assertTrue(result["hasPersonAnchor"])
+        self.assertTrue(result["hasPlaceAnchor"])
+        self.assertEqual(result["placeHitHref"], "#/EP001/settings/%E5%9C%B0%E7%82%B9%C2%B7%E6%B1%9F%E6%99%A8")
+        self.assertTrue(result["hasWarnBadge"])
+        self.assertTrue(result["hasDeletedHook"])
+
+    def test_review_verdicts_deep_link_filter_markdown_and_heading_offset(self) -> None:
+        result = self.run_app(
+            """
+logic.S.series = {
+  title: '测试剧',
+  format: { episode_count: 4, target_seconds_per_episode: 60, aspect_ratio: '9:16' },
+  lifecycle: { status: 'draft' },
+  episodes: [],
+  cast: [],
+};
+const fullHas = { script: true, settings: true, board: true, imgp: true, vidp: true, cut: true, film: true, review: true };
+const mkRow = (id, tone, label) => ({
+  id,
+  title: id,
+  has: fullHas,
+  review: { must: 0, should: 0, could: 0 },
+  reviewTone: tone,
+  reviewLabel: label,
+  must: [],
+});
+const rows = [
+  mkRow('EP001', 'bad', '需要修改'),
+  mkRow('EP002', 'bad', '需要重做'),
+  mkRow('EP003', 'warn', '待补材料复核'),
+  mkRow('EP004', 'ok', '可以继续'),
+];
+logic.S.series.episodes = rows;
+const overviewHtml = logic.viewOverview();
+const reviseEpHtml = logic.viewEpisode(rows[0], {
+  docs: { review: '审查/EP001-审查.md' },
+  problems: [],
+  media: { clips: {}, frames: {}, film: '剧集/EP001/制作成果/成片/成片.mp4' },
+  review: { scope: '全集', verdict: '需要修改', verdictTone: 'bad', independent: true, findings: [], deleted_hooks: [] },
+});
+const filmHtml = logic.viewFilm(rows[3], {
+  docs: { '剪辑单.md': '剧集/EP004/剪辑单.md' },
+  problems: [],
+  media: { clips: {}, frames: {}, film: null },
+  cutlist: {
+    target: 9,
+    fps: 24,
+    lufs: -16,
+    burn: true,
+    grain: 3.0,
+    shot_match: true,
+    unused: [],
+    cuts: [
+      { id: 'CUT-001', n: '001', title: '合生', source_id: 'GROUP-EP001-01', shot: 'SHOT-EP001-011', group_shots: ['SHOT-EP001-011', 'SHOT-EP001-012'], sec: 5, in: 0, out: 5, subs: [{ text: '下周榜首', keys: [] }], texts: [], sfx: [], voices: [] },
+    ],
+  },
+});
+const groupCtx = logic.context({
+  media: { clips: { 'CUT-001': 'group1.mp4' }, frames: {} },
+  cutlist: {
+    cuts: [
+      { id: 'CUT-001', shot: 'SHOT-EP001-011', group_shots: ['SHOT-EP001-011', 'SHOT-EP001-012'], subs: [{ text: '下周榜首', keys: [] }], texts: [] },
+    ],
+  },
+  videoPrompts: [],
+  videoGroups: [],
+  imagePrompts: [],
+  review: { findings: [] },
+});
+
+// Deep-linking to REV-002 (should) while S.reviewFilter === 'must' resets filter to 'all'.
+logic.S.reviewFilter = 'must';
+const reviewDeepHtml = logic.viewReview(rows[0], {
+  docs: { review: '审查/EP001-审查.md' },
+  problems: [],
+  review: {
+    scope: '全集',
+    verdict: '需要修改',
+    verdictTone: 'bad',
+    independent: true,
+    deleted_hooks: [],
+    findings: [
+      { id: 'REV-001', sev: 'must', title: '阻塞项', targets: [], where: '', evidence: '', impact: '', fix: '改A' },
+      { id: 'REV-002', sev: 'should', title: '建议项可见', targets: [], where: '', evidence: '', impact: '', fix: '改B' },
+    ],
+  },
+}, 'REV-002');
+
+class N {
+  constructor(tag) { this.tagName = (tag || '').toUpperCase(); this.children = []; this.textContent = ''; this.className = ''; this.dataset = {}; }
+  set innerHTML(_value) { throw new Error('unsafe HTML sink'); }
+  append(...kids) { for (const kid of kids) this.children.push(kid); }
+  addEventListener() {}
+  get text() { return this.textContent || this.children.map((kid) => (kid.text !== undefined ? kid.text : String(kid.data ?? ''))).join(''); }
+}
+globalThis.document = {
+  createElement: (tag) => new N(tag),
+  createTextNode: (data) => ({ data, text: String(data) }),
+  createDocumentFragment: () => new N('#fragment'),
+  getElementById: () => null,
+};
+const mdFrag = logic.renderMarkdown(
+  '\\ufeff<!-- 顶部注释 -->\\r\\n## 镜头\\r\\n~~~text\\r\\nfenced <!-- keep -->\\r\\n~~~\\r\\n### 可复制提示词\\r\\n> prompt <!-- keep-in-prompt --> end\\r\\n'
+);
+const mdPre = mdFrag.children.find((node) => node.tagName === 'PRE');
+const mdCopyWrap = mdFrag.children.find((node) => node.className === 'copy-block');
+
+const docWithComments = [
+  '<!--',
+  '## SHOT-EP001-001 · 注释里的旧镜头',
+  '-->',
+  '```markdown',
+  '## SHOT-EP001-001 · 代码块里的镜头',
+  '```',
+  '## SHOT-EP001-0010 · 前缀碰撞镜头',
+  '## SHOT-EP001-001 · 真正的镜头',
+].join('\\n');
+const headingAt = logic.findHeadingOffset(docWithComments, 'SHOT-EP001-001');
+
+const epRowHtml = (id) => {
+  const start = overviewHtml.indexOf(`data-episode="${id}"`);
+  return start < 0 ? '' : overviewHtml.slice(start, overviewHtml.indexOf('</tr>', start));
+};
+process.stdout.write(JSON.stringify({
+  nextKinds: rows.map((r) => [logic.nextFor(r).kind, logic.nextFor(r).text]),
+  reviewStages: rows.map((r) => logic.stageState(r, 'review')),
+  reviewPipOn: rows.map((r) => logic.pips(r).endsWith('<i class="on"></i></span>')),
+  ep001OverviewReviewWarn: epRowHtml('EP001').includes('pip warn" title="审查'),
+  ep004OverviewReviewOn: epRowHtml('EP004').includes('pip on" title="审查'),
+  ep001OverviewHasExport: epRowHtml('EP001').includes('可以导出'),
+  ep004OverviewHasExport: epRowHtml('EP004').includes('可以导出'),
+  reviseEpHasExport: reviseEpHtml.includes('可以导出'),
+  filmHasGrain: filmHtml.includes('颗粒 3'),
+  filmHasShotMatch: filmHtml.includes('接镜匹配'),
+  groupSecondShotMapped: Boolean(groupCtx.clipByShot['SHOT-EP001-012']),
+  filterAfterDeepLink: logic.S.reviewFilter,
+  deepLinkShowsRev002: reviewDeepHtml.includes('建议项可见'),
+  mdStripsTopComment: !mdFrag.text.includes('顶部注释'),
+  mdKeepsTildeFence: Boolean(mdPre && mdPre.text.includes('fenced <!-- keep -->')),
+  mdKeepsPromptComment: Boolean(mdCopyWrap && mdCopyWrap.text.includes('prompt <!-- keep-in-prompt --> end')),
+  headingSlice: docWithComments.slice(headingAt),
+}));
+"""
+        )
+        self.assertEqual([item[0] for item in result["nextKinds"]], ["fix", "fix", "review", "done"])
+        for kind, text in result["nextKinds"][:3]:
+            self.assertNotEqual(text, "可以导出", (kind, text))
+        self.assertEqual(result["nextKinds"][3][1], "可以导出")
+        self.assertEqual(result["reviewStages"], ["warn", "warn", "warn", "on"])
+        self.assertEqual(result["reviewPipOn"], [False, False, False, True])
+        self.assertTrue(result["ep001OverviewReviewWarn"])
+        self.assertTrue(result["ep004OverviewReviewOn"])
+        self.assertFalse(result["ep001OverviewHasExport"])
+        self.assertTrue(result["ep004OverviewHasExport"])
+        self.assertFalse(result["reviseEpHasExport"])
+        self.assertTrue(result["filmHasGrain"])
+        self.assertTrue(result["filmHasShotMatch"])
+        self.assertTrue(result["groupSecondShotMapped"])
+        self.assertEqual(result["filterAfterDeepLink"], "all")
+        self.assertTrue(result["deepLinkShowsRev002"])
+        self.assertTrue(result["mdStripsTopComment"])
+        self.assertTrue(result["mdKeepsTildeFence"])
+        self.assertTrue(result["mdKeepsPromptComment"])
+        self.assertEqual(result["headingSlice"], "## SHOT-EP001-001 · 真正的镜头")
 
 
 if __name__ == "__main__":

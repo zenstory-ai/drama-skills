@@ -19,7 +19,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 
 ## 开始前
 
-本技能可独立运行；若在 `short-drama` 项目内且项目工具可用，可读取 `status` 并接入其发布流程。[开发阶段职责与规则](references/stage-contract.md) 说明本环节职责范围、画风/制作形态要求与 `STY-*` 规则表，无需读取其他技能的文件。
+本技能可独立运行；若在 `short-drama` 项目内且项目工具可用，可通过 `status` 读取全局配置、通过 `configure` 写入已确认的节奏或制作配置。[开发阶段职责与规则](references/stage-contract.md) 说明本环节职责范围、画风/制作形态要求与 `STY-*` 规则表，无需读取其他技能的文件。
 
 ## 按体量选入口，不设多余门禁
 
@@ -63,7 +63,6 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 - `项目开发/episode-map.jsonl`（多集连载按需分集状态账）
 - `项目开发/director-brief.md`（按需）
 - `项目开发/adaptation-map.jsonl`（百万字级长篇或大跨度重排按需使用，例见 [adaptation-map.example.jsonl](assets/adaptation-map.example.jsonl)）
-- `项目开发/series-arc.json`（按需）
 - `项目开发/episode-intake-index.json`（多集剧本导入时可随时重建的字节索引）
 
 不写具体场次动作与台词（归 `$short-drama-write`），不拆视觉设定，不写生图/视频提示词，不生成媒体文件，也不出具终审结论。

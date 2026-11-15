@@ -20,7 +20,7 @@ Remotion 先渲染出带透明通道的视频层（VP8 + alpha），再由 `ffmp
 
 ## 字体、性能与许可证
 
-- **内置字体包**：随 `npm install` 安装 `@fontsource/noto-sans-sc`（700/900 字重）与 `@fontsource/jetbrains-mono`（800 字重，SIL OFL 1.1），开渲前对常规汉字、拉丁字母与标点逐一核验所需内置字重已加载就绪（加载失败立即报错退出），Emoji 等超出 BMP 的补充平面符号则自然回退系统字体渲染，不再中断整片导出。
+- **内置字体包**：随 `npm install` 安装 `@fontsource/noto-sans-sc`（700/900 字重）与 `@fontsource/jetbrains-mono`（800 字重，SIL OFL 1.1），开渲前对常规汉字、拉丁字母与标点逐一核验所需内置字重已加载就绪（加载失败立即报错退出），Emoji 与特殊图形符号则自然回退系统字体渲染，不再中断整片导出。
 - **逐帧开销与并发**：无头浏览器按整片总帧数逐帧截屏并编码透明通道。`edit_tool.py` 默认传 `--concurrency=2` 防止撑爆内存；调高并发数前先运行 `cd ~/.cache/short-drama-edit/remotion && npx remotion benchmark` 实测本机负载。
 - **许可证**：正式使用前请对照 [官方许可证](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md) 核对 Remotion 商用与授权条款；本套件的 MIT 许可证不涵盖 Remotion 本身。
 

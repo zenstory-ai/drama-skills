@@ -48,7 +48,7 @@ export const assertFamilyResolves = (fontFamily: string, sample: string): void =
   };
   if (familyIsMissing(measure, fontFamily, sample)) {
     throw new Error(
-      `字体 ${fontFamily} 在渲染环境里一个都没有，画面会落到浏览器的兜底字体。` +
+      `字体 ${fontFamily} 在渲染环境里一个都没有，画面会落到浏览器的默认回退字体。` +
         "在 Remotion 工作区运行 npm install 装上字体包。",
     );
   }

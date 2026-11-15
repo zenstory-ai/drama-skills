@@ -24,6 +24,7 @@ Status: implemented
 - **收益**：审查依据与当前创作路径、脚本能力和规则约束力一致。
 - **代价**：语义质量与媒体观察仍依赖有界证据，语言精修不会替代实际观看、内容实跑或生产授权。
 - **验证**：本技能 8 项 self-test 与 diff 空白检查通过。11 份文档共 5 个代码块，除获准的 SHT-01 示例引用词外逐字保留；14 条 REV 规则本体逐字不变。
+- **后续调整**：问题单 `- 修订结果：` 重命名为 `- 修改要求：` 见 [全仓消除 AI 黑话与五份创作文档字段破坏性重命名](../simplification/2026-11-14-eliminate-ai-jargon-and-breaking-field-renames.md)；移除 `REV-11`、补入成片 `major` 严重度档、撤回对固定机位与日常旧化词的自动判死及审查参考文件归并见 [松绑过严脚本与流程门禁、重定级阶段规则并归并碎片化参考文档](../simplification/2026-11-14-relax-gates-consolidate-references-and-recalibrate-rules.md)。
 
 独立复核补充：按同镜一对一关系修正production-quality-gates/project-calibration/rubric-visual-motion补拍说明；阶段REV规则不改。
 

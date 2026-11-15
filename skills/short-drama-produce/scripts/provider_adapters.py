@@ -13,10 +13,12 @@ import argparse
 import base64
 import binascii
 import json
+import math
 import mimetypes
 import os
 import re
 import secrets
+import socket
 import stat
 import sys
 import time
@@ -88,7 +90,9 @@ INLINE_REFERENCE_MIME = {
     ".m4a": "audio/mp4",
     ".aac": "audio/aac",
     ".flac": "audio/flac",
+    ".opus": "audio/ogg",
 }
+PUBLIC_ERROR_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}")
 GPT_IMAGE_MIN_PIXELS = 655_360
 GPT_IMAGE_MAX_PIXELS = 8_294_400
 MINIMUM_PYTHON = (3, 9)
@@ -165,12 +169,16 @@ def _safe_detail(value: object) -> str | None:
     return collapsed
 
 
-def _safe_token(value: object) -> str | None:
-    if isinstance(value, str) and re.fullmatch(
-        r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", value
-    ):
+def _safe_public_id(value: object) -> str | None:
+    if isinstance(value, str) and PUBLIC_ERROR_TOKEN_RE.fullmatch(value) is not None:
         return value
-    if isinstance(value, int) and not isinstance(value, bool):
+    return None
+
+
+def _safe_token(value: object) -> str | None:
+    if isinstance(value, str) and PUBLIC_ERROR_TOKEN_RE.fullmatch(value) is not None:
+        return value
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return str(value)
     return None
 
@@ -272,6 +280,7 @@ ZH_ROLE_LABELS = {
     "scale": "尺度",
     "effect": "效果",
     "style": "风格",
+    "subject": "主体",
     "continuity_video": "前序接戏视频",
     "actual_tail_frame": "前镜实际尾帧",
 }
@@ -525,7 +534,7 @@ def compile_seedance_payload(
         expected = {
             "image_url": {".png", ".jpg", ".jpeg", ".webp"},
             "video_url": {".mp4", ".mov", ".webm"},
-            "audio_url": {".wav", ".mp3", ".m4a", ".aac", ".flac"},
+            "audio_url": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".opus"},
         }[field]
         if suffix not in expected:
             raise ValueError(f"Seedance {role} does not match the reference file type")
@@ -1063,6 +1072,13 @@ def _credential(name: str) -> str:
     return value
 
 
+def _is_timeout_error(exc: BaseException) -> bool:
+    return isinstance(exc, (TimeoutError, socket.timeout)) or (
+        isinstance(exc, urllib.error.URLError)
+        and isinstance(getattr(exc, "reason", None), (TimeoutError, socket.timeout))
+    )
+
+
 def _request_json(
     url: str,
     *,
@@ -1082,14 +1098,14 @@ def _request_json(
             headers = dict(response.headers.items())
     except urllib.error.HTTPError as exc:
         raise _http_failure(provider, exc) from exc
-    except TimeoutError as exc:
-        raise AdapterFailure(
-            f"{provider} HTTP request timed out",
-            category="timeout",
-            code="request_timeout",
-            retryable=True,
-        ) from exc
-    except (urllib.error.URLError, OSError) as exc:
+    except (TimeoutError, socket.timeout, urllib.error.URLError, OSError) as exc:
+        if _is_timeout_error(exc):
+            raise AdapterFailure(
+                f"{provider} HTTP request timed out",
+                category="timeout",
+                code="request_timeout",
+                retryable=True,
+            ) from exc
         raise AdapterFailure(
             f"{provider} HTTP request failed",
             category="network",
@@ -1114,32 +1130,41 @@ def _request_json(
 
 
 def _read_reference(path: Path) -> bytes:
-    before = path.lstat()
-    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
-        raise ValueError("reference is not a regular file")
-    if before.st_size > MAX_REFERENCE_BYTES:
-        raise ValueError("reference exceeds the provider input size limit")
-    # Windows opens files in text mode unless told otherwise, which stops the
-    # read at the first 0x1A byte -- the seventh byte of every PNG signature.
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
     try:
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
-        ):
-            raise ValueError("reference changed while opening")
-        chunks: list[bytes] = []
-        size = 0
-        while chunk := os.read(descriptor, 1024 * 1024):
-            size += len(chunk)
-            if size > MAX_REFERENCE_BYTES:
-                raise ValueError("reference exceeds the provider input size limit")
-            chunks.append(chunk)
-        return b"".join(chunks)
-    finally:
-        os.close(descriptor)
+        before = path.lstat()
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise ValueError("reference is not a regular file")
+        if before.st_size > MAX_REFERENCE_BYTES:
+            raise ValueError("reference exceeds the provider input size limit")
+        # Windows opens files in text mode unless told otherwise, which stops the
+        # read at the first 0x1A byte -- the seventh byte of every PNG signature.
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise ValueError("reference changed while opening")
+            chunks: list[bytes] = []
+            size = 0
+            while chunk := os.read(descriptor, 1024 * 1024):
+                size += len(chunk)
+                if size > MAX_REFERENCE_BYTES:
+                    raise ValueError("reference exceeds the provider input size limit")
+                chunks.append(chunk)
+            return b"".join(chunks)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise AdapterFailure(
+            "could not read reference file",
+            category="invalid_request",
+            code="unreadable_reference",
+            submitted=False,
+            detail="could not read reference file",
+        ) from exc
 
 
 def _multipart(fields: Mapping[str, Any], paths: Sequence[Path]) -> tuple[bytes, str]:
@@ -1154,13 +1179,45 @@ def _multipart(fields: Mapping[str, Any], paths: Sequence[Path]) -> tuple[bytes,
                 b"\r\n",
             ]
         )
+    image_limit = INLINE_REFERENCE_LIMITS["image_url"]
     for path in paths:
         content = _read_reference(path)
-        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if not content:
+            raise AdapterFailure(
+                "OpenAI reference image is empty",
+                category="invalid_request",
+                code="empty_reference",
+                submitted=False,
+                detail="reference image is empty",
+            )
+        if len(content) > image_limit:
+            raise AdapterFailure(
+                f"OpenAI reference image exceeds the {image_limit // (1024 * 1024)}MB limit",
+                category="invalid_request",
+                code="reference_too_large",
+                submitted=False,
+                detail=f"reference image exceeds the {image_limit // (1024 * 1024)}MB limit",
+            )
+        try:
+            _validate_media_content(path.name, content)
+        except AdapterFailure as exc:
+            raise AdapterFailure(
+                str(exc),
+                category="invalid_request",
+                code="invalid_reference_media",
+                submitted=False,
+                detail="reference file bytes do not match its file extension",
+            ) from exc
+        media_type = (
+            INLINE_REFERENCE_MIME.get(path.suffix.casefold())
+            or mimetypes.guess_type(path.name)[0]
+            or "application/octet-stream"
+        )
+        safe_filename = re.sub(r'[\x00-\x1f\x7f"\\]', "_", path.name) or "reference"
         chunks.extend(
             [
                 f"--{boundary}\r\n".encode(),
-                f'Content-Disposition: form-data; name="image[]"; filename="{path.name}"\r\n'.encode(),
+                f'Content-Disposition: form-data; name="image[]"; filename="{safe_filename}"\r\n'.encode(),
                 f"Content-Type: {media_type}\r\n\r\n".encode(),
                 content,
                 b"\r\n",
@@ -1169,7 +1226,13 @@ def _multipart(fields: Mapping[str, Any], paths: Sequence[Path]) -> tuple[bytes,
     chunks.append(f"--{boundary}--\r\n".encode())
     encoded = b"".join(chunks)
     if len(encoded) > MAX_MULTIPART_BYTES:
-        raise ValueError("multipart provider input exceeds the total size limit")
+        raise AdapterFailure(
+            "multipart provider input exceeds the total size limit",
+            category="invalid_request",
+            code="multipart_too_large",
+            submitted=False,
+            detail="multipart provider input exceeds the total size limit",
+        )
     return encoded, f"multipart/form-data; boundary={boundary}"
 
 
@@ -1276,7 +1339,11 @@ def _inline_reference_urls(
             raise AdapterFailure(
                 str(exc),
                 category="configuration",
-                code=exc.code,
+                code=(
+                    "invalid_reference_media"
+                    if exc.code == "adapter_failure"
+                    else exc.code
+                ),
                 submitted=False,
                 detail="reference file bytes do not match its file extension",
             ) from exc
@@ -1327,7 +1394,20 @@ def _validate_media_content(target: str, content: bytes) -> None:
         ".wav": len(content) >= 12
         and content.startswith(b"RIFF")
         and content[8:12] == b"WAVE",
+        ".flac": content.startswith(b"fLaC"),
+        ".m4a": len(content) >= 8 and content[4:8] == b"ftyp",
+        ".aac": content.startswith(b"ID3")
+        or (
+            len(content) >= 2
+            and content[0] == 0xFF
+            and (content[1] & 0xF6) == 0xF0
+        ),
+        ".opus": content.startswith(b"OggS") and b"OpusHead" in content[:64],
         ".mp4": len(content) >= 12 and content[4:8] == b"ftyp",
+        ".mov": len(content) >= 8
+        and content[4:8]
+        in {b"ftyp", b"moov", b"mdat", b"wide", b"free", b"skip", b"pnot"},
+        ".webm": content.startswith(b"\x1a\x45\xdf\xa3"),
     }
     if not signatures.get(suffix, False):
         raise AdapterFailure("provider output does not match the target media type")
@@ -1387,16 +1467,15 @@ def _download(
     except urllib.error.HTTPError as exc:
         path.unlink(missing_ok=True)
         raise _http_failure(provider, exc) from exc
-    except TimeoutError as exc:
+    except (TimeoutError, socket.timeout, urllib.error.URLError, OSError) as exc:
         path.unlink(missing_ok=True)
-        raise AdapterFailure(
-            "provider output download timed out",
-            category="timeout",
-            code="download_timeout",
-            retryable=True,
-        ) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        path.unlink(missing_ok=True)
+        if _is_timeout_error(exc):
+            raise AdapterFailure(
+                "provider output download timed out",
+                category="timeout",
+                code="download_timeout",
+                retryable=True,
+            ) from exc
         raise AdapterFailure(
             "provider output download failed",
             category="network",
@@ -1406,7 +1485,7 @@ def _download(
     if size == 0:
         raise AdapterFailure("provider output is empty")
     with path.open("rb") as handle:
-        _validate_media_content(target, handle.read(16))
+        _validate_media_content(target, handle.read(64))
     return path
 
 
@@ -1438,17 +1517,65 @@ def _record_handle(job: Mapping[str, Any], provider_job_id: str) -> None:
 
 def _collect_target(job: Mapping[str, Any]) -> str | None:
     value = job.get("collect_provider_job_id")
-    if isinstance(value, str) and value:
-        return value
-    return None
+    if value is None or value == "":
+        return None
+    token = _safe_public_id(value)
+    if token is None:
+        raise ValueError("collect_provider_job_id is invalid")
+    return token
+
+
+def _polling_config(
+    interval_env: str,
+    timeout_env: str,
+    *,
+    provider: str,
+) -> tuple[float, float]:
+    try:
+        interval = float(os.environ.get(interval_env, "5"))
+        timeout_seconds = float(os.environ.get(timeout_env, "1800"))
+    except ValueError as exc:
+        raise AdapterFailure(
+            f"{provider} polling configuration is invalid",
+            category="configuration",
+            code="invalid_polling_config",
+            submitted=False,
+            detail=f"{interval_env} and {timeout_env} must be positive numbers",
+        ) from exc
+    if (
+        not math.isfinite(interval)
+        or interval <= 0
+        or not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0
+    ):
+        raise AdapterFailure(
+            f"{provider} polling configuration is invalid",
+            category="configuration",
+            code="invalid_polling_config",
+            submitted=False,
+            detail=f"{interval_env} and {timeout_env} must be positive numbers",
+        )
+    return interval, timeout_seconds
 
 
 def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
     token = _credential("ARK_API_KEY")
     base = _base_url("SEEDANCE_BASE_URL", SEEDANCE_BASE_URL)
+    interval, timeout_seconds = _polling_config(
+        "SEEDANCE_POLL_INTERVAL",
+        "SEEDANCE_TIMEOUT_SECONDS",
+        provider="Seedance",
+    )
     collecting = _collect_target(job)
     if collecting is not None:
-        return _poll_seedance(job, base=base, token=token, task_id=collecting)
+        return _poll_seedance(
+            job,
+            base=base,
+            token=token,
+            task_id=collecting,
+            interval=interval,
+            timeout_seconds=timeout_seconds,
+        )
     model = os.environ.get("SEEDANCE_MODEL", "")
     references = _reference_paths(job)
     reference_roles = (
@@ -1474,26 +1601,39 @@ def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
         body=body,
         token=token,
     )
-    task_id = created.get("id")
-    if not isinstance(task_id, str) or not task_id:
+    task_id = _safe_public_id(created.get("id"))
+    if task_id is None:
         raise AdapterFailure(
             "Seedance did not return a task id", code="missing_task_id"
         )
     # Billed from here on. Record the id before the first poll.
     _record_handle(job, task_id)
-    return _poll_seedance(job, base=base, token=token, task_id=task_id)
+    return _poll_seedance(
+        job,
+        base=base,
+        token=token,
+        task_id=task_id,
+        interval=interval,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def _poll_seedance(
-    job: Mapping[str, Any], *, base: str, token: str, task_id: str
+    job: Mapping[str, Any],
+    *,
+    base: str,
+    token: str,
+    task_id: str,
+    interval: float | None = None,
+    timeout_seconds: float | None = None,
 ) -> tuple[Path, str]:
-    try:
-        interval = float(os.environ.get("SEEDANCE_POLL_INTERVAL", "5"))
-        deadline = time.monotonic() + float(os.environ.get("SEEDANCE_TIMEOUT_SECONDS", "1800"))
-    except ValueError as exc:
-        raise AdapterFailure("Seedance polling configuration is invalid") from exc
-    if interval <= 0 or deadline <= time.monotonic():
-        raise AdapterFailure("Seedance polling configuration is invalid")
+    if interval is None or timeout_seconds is None:
+        interval, timeout_seconds = _polling_config(
+            "SEEDANCE_POLL_INTERVAL",
+            "SEEDANCE_TIMEOUT_SECONDS",
+            provider="Seedance",
+        )
+    deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         status_doc, _ = _request_json(
             f"{base}/contents/generations/tasks/{urllib.parse.quote(task_id, safe='')}",
@@ -1540,6 +1680,14 @@ def _poll_seedance(
 
 
 def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
+    if _collect_target(job) is not None:
+        raise AdapterFailure(
+            "gpt-image-2 uses synchronous generation and cannot collect a prior task",
+            category="invalid_request",
+            code="collect_not_supported",
+            submitted=False,
+            detail="gpt-image-2 does not support collect",
+        )
     token = _credential("OPENAI_API_KEY")
     body = compile_gpt_image_2_payload(job)
     base = _base_url("OPENAI_BASE_URL", OPENAI_BASE_URL)
@@ -1552,17 +1700,17 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
         try:
             with urllib.request.urlopen(request, timeout=300) as response:
                 raw = response.read(MAX_JSON_RESPONSE + 1)
-                request_id = response.headers.get("x-request-id")
+                request_id = _request_id(dict(response.headers.items()))
         except urllib.error.HTTPError as exc:
             raise _http_failure("gpt-image-2", exc) from exc
-        except TimeoutError as exc:
-            raise AdapterFailure(
-                "OpenAI HTTP request timed out",
-                category="timeout",
-                code="request_timeout",
-                retryable=True,
-            ) from exc
-        except (urllib.error.URLError, OSError) as exc:
+        except (TimeoutError, socket.timeout, urllib.error.URLError, OSError) as exc:
+            if _is_timeout_error(exc):
+                raise AdapterFailure(
+                    "OpenAI HTTP request timed out",
+                    category="timeout",
+                    code="request_timeout",
+                    retryable=True,
+                ) from exc
             raise AdapterFailure(
                 "OpenAI HTTP request failed",
                 category="network",
@@ -1590,7 +1738,7 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
             body=body,
             token=token,
         )
-        request_id = headers.get("x-request-id")
+        request_id = _request_id(headers)
     targets = job["outputs"]
     expected_count = len(targets)
     data = result.get("data") if isinstance(result, Mapping) else None
@@ -1629,6 +1777,14 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
 
 
 def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
+    if _collect_target(job) is not None:
+        raise AdapterFailure(
+            "minimax-music uses synchronous generation and cannot collect a prior task",
+            category="invalid_request",
+            code="collect_not_supported",
+            submitted=False,
+            detail="minimax-music does not support collect",
+        )
     token = _credential("MINIMAX_API_KEY")
     body = compile_minimax_music_payload(job)
     base = _base_url("MINIMAX_BASE_URL", MINIMAX_BASE_URL)
@@ -1659,14 +1815,22 @@ def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
         raise AdapterFailure("MiniMax returned invalid audio data") from exc
     if not content:
         raise AdapterFailure("MiniMax returned empty audio data")
-    trace_id = result.get("trace_id")
+    trace_id = _safe_public_id(result.get("trace_id"))
     return (
         _temporary_output(job, job["outputs"][0], content),
-        trace_id if isinstance(trace_id, str) else None,
+        trace_id,
     )
 
 
 def _run_minimax_speech(job: Mapping[str, Any]) -> tuple[Path, str | None]:
+    if _collect_target(job) is not None:
+        raise AdapterFailure(
+            "minimax-speech uses synchronous generation and cannot collect a prior task",
+            category="invalid_request",
+            code="collect_not_supported",
+            submitted=False,
+            detail="minimax-speech does not support collect",
+        )
     token = _credential("MINIMAX_API_KEY")
     body = compile_minimax_speech_payload(job)
     base = _base_url("MINIMAX_BASE_URL", MINIMAX_BASE_URL)
@@ -1697,19 +1861,31 @@ def _run_minimax_speech(job: Mapping[str, Any]) -> tuple[Path, str | None]:
         raise AdapterFailure("MiniMax returned invalid audio data") from exc
     if not content:
         raise AdapterFailure("MiniMax returned empty audio data")
-    trace_id = result.get("trace_id")
+    trace_id = _safe_public_id(result.get("trace_id"))
     return (
         _temporary_output(job, job["outputs"][0], content),
-        trace_id if isinstance(trace_id, str) else None,
+        trace_id,
     )
 
 
 def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
     token = _credential("MINIMAX_API_KEY")
     base = _base_url("MINIMAX_VIDEO_BASE_URL", MINIMAX_VIDEO_BASE_URL)
+    interval, timeout_seconds = _polling_config(
+        "MINIMAX_VIDEO_POLL_INTERVAL",
+        "MINIMAX_VIDEO_TIMEOUT_SECONDS",
+        provider="MiniMax",
+    )
     collecting = _collect_target(job)
     if collecting is not None:
-        return _poll_minimax_video(job, base=base, token=token, task_id=collecting)
+        return _poll_minimax_video(
+            job,
+            base=base,
+            token=token,
+            task_id=collecting,
+            interval=interval,
+            timeout_seconds=timeout_seconds,
+        )
     model = os.environ.get("MINIMAX_VIDEO_MODEL", "")
     references = _reference_paths(job)
     reference_roles = (
@@ -1736,29 +1912,40 @@ def _run_minimax_video(job: Mapping[str, Any]) -> tuple[Path, str]:
         body=body,
         token=token,
     )
-    task_id = created.get("task_id")
-    if not isinstance(task_id, str) or not task_id:
+    task_id = _safe_public_id(created.get("task_id"))
+    if task_id is None:
         raise AdapterFailure(
             "MiniMax did not return a task id",
             code=_provider_code(created) or "missing_task_id",
         )
     # Billed from here on. Record the id before the first poll.
     _record_handle(job, task_id)
-    return _poll_minimax_video(job, base=base, token=token, task_id=task_id)
+    return _poll_minimax_video(
+        job,
+        base=base,
+        token=token,
+        task_id=task_id,
+        interval=interval,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def _poll_minimax_video(
-    job: Mapping[str, Any], *, base: str, token: str, task_id: str
+    job: Mapping[str, Any],
+    *,
+    base: str,
+    token: str,
+    task_id: str,
+    interval: float | None = None,
+    timeout_seconds: float | None = None,
 ) -> tuple[Path, str]:
-    try:
-        interval = float(os.environ.get("MINIMAX_VIDEO_POLL_INTERVAL", "5"))
-        deadline = time.monotonic() + float(
-            os.environ.get("MINIMAX_VIDEO_TIMEOUT_SECONDS", "1800")
+    if interval is None or timeout_seconds is None:
+        interval, timeout_seconds = _polling_config(
+            "MINIMAX_VIDEO_POLL_INTERVAL",
+            "MINIMAX_VIDEO_TIMEOUT_SECONDS",
+            provider="MiniMax",
         )
-    except ValueError as exc:
-        raise AdapterFailure("MiniMax polling configuration is invalid") from exc
-    if interval <= 0 or deadline <= time.monotonic():
-        raise AdapterFailure("MiniMax polling configuration is invalid")
+    deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         document, _ = _request_json(
             f"{base}/query/video_generation/"
@@ -1887,7 +2074,7 @@ def _selftest() -> None:
         raise AssertionError("mismatched Seedance reference role was accepted")
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "provider",
@@ -1898,16 +2085,25 @@ def main() -> int:
         ),
     )
     parser.add_argument("--selftest", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.selftest:
         _selftest()
         return 0
     if args.provider is None:
         parser.error("provider is required unless --selftest is used")
+    effective_provider: str = args.provider
     try:
-        job = json.load(sys.stdin.buffer)
+        raw_stdin: bytes | str = (
+            sys.stdin.buffer.read()
+            if hasattr(sys.stdin, "buffer")
+            else sys.stdin.read()
+        )
+        job = json.loads(raw_stdin)
         if not isinstance(job, Mapping):
             raise ValueError("adapter input must be an object")
+        adapter_name = _safe_public_id(job.get("adapter"))
+        if adapter_name is not None:
+            effective_provider = adapter_name
         runners = {
             "seedance": _run_seedance,
             "gpt-image-2": _run_openai,
@@ -1923,34 +2119,21 @@ def main() -> int:
                 for target, path in zip(job["outputs"], paths)
             ]
         }
-        if provider_job_id:
-            response["provider_job_id"] = provider_job_id
+        safe_job_id = _safe_public_id(provider_job_id)
+        if safe_job_id is not None:
+            response["provider_job_id"] = safe_job_id
         json.dump(response, sys.stdout, ensure_ascii=True)
         return 0
     except AdapterFailure as exc:
         # Provider bodies and credentials are intentionally never reflected.
-        json.dump({"error": exc.public(args.provider)}, sys.stdout, ensure_ascii=True)
+        json.dump({"error": exc.public(effective_provider)}, sys.stdout, ensure_ascii=True)
         print("provider adapter failed safely", file=sys.stderr)
         return 1
-    except ValueError as exc:
-        error_payload: dict[str, Any] = {
-            "provider": args.provider,
-            "category": "invalid_request",
-            "code": "invalid_job",
-            "retryable": False,
-            "submitted": False,
-        }
-        detail = _safe_detail(str(exc))
-        if detail is not None:
-            error_payload["detail"] = detail
-        json.dump({"error": error_payload}, sys.stdout, ensure_ascii=True)
-        print("provider adapter failed safely", file=sys.stderr)
-        return 1
-    except (KeyError, TypeError, json.JSONDecodeError):
+    except (KeyError, TypeError, UnicodeError, json.JSONDecodeError):
         json.dump(
             {
                 "error": {
-                    "provider": args.provider,
+                    "provider": effective_provider,
                     "category": "invalid_request",
                     "code": "invalid_job",
                     "retryable": False,
@@ -1960,6 +2143,20 @@ def main() -> int:
             sys.stdout,
             ensure_ascii=True,
         )
+        print("provider adapter failed safely", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        error_payload: dict[str, Any] = {
+            "provider": effective_provider,
+            "category": "invalid_request",
+            "code": "invalid_job",
+            "retryable": False,
+            "submitted": False,
+        }
+        detail = _safe_detail(str(exc))
+        if detail is not None:
+            error_payload["detail"] = detail
+        json.dump({"error": error_payload}, sys.stdout, ensure_ascii=True)
         print("provider adapter failed safely", file=sys.stderr)
         return 1
 

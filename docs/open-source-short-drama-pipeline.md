@@ -11,7 +11,7 @@ Each stage owns a creative decision and records it in the corresponding document
 ```text
 idea / novel / existing script
         │
-        ├─ novel analysis, story development (both optional)
+        ├─ novel analysis, benchmark breakdown, story development (all optional)
         ▼
       剧本.md            episode script
         ▼
@@ -58,7 +58,7 @@ Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
 
 - Media production calls external provider interfaces only after you explicitly confirm the previewed batch. A preview, a "continue", or a budget note does not grant that confirmation.
 - Review records findings and revision requests; the creator makes the final creative decisions.
-- Language: skills, file names and creator-facing notes are Chinese. Image and first-frame prompts follow the project's `format.prompt_language`; video prompts first follow the target model profile's `video_prompt_language`. Spoken lines retain the script language.
+- Language: skill files and canonical document filenames are Chinese; creator-facing notes and reviews follow `short-drama.json#/language` (or the user's current language). Image and first-frame prompts follow the project's `format.prompt_language`; video prompts first follow the target model profile's `video_prompt_language`. Spoken lines retain the script language.
 
 ## Install and first request
 
@@ -77,6 +77,6 @@ A complete public example of one episode, from script to prompts, is in [`exampl
 
 ## Related
 
-- Repository: https://github.com/zenstory-ai/drama-skills (formerly `worldwonderer/drama-skills`; old links redirect)
-- Site guides: https://zenstory.ai/drama-skills/novel-to-short-drama , https://zenstory.ai/drama-skills/character-consistency
+- Repository: [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills) (formerly `worldwonderer/drama-skills`; old links redirect)
+- Site guides: [Novel to short drama](https://zenstory.ai/drama-skills/novel-to-short-drama), [Character consistency](https://zenstory.ai/drama-skills/character-consistency)
 - Sibling packs: web-fiction writing (`oh-story-claudecode`), novel to game (`novel-to-game`), video recap (`video-recap-skills`)
