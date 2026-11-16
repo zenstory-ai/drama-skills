@@ -22,7 +22,7 @@ python3 {技能目录}/scripts/selftest.py
 |---|---|
 | 开发创意、核心看点、改编方案与分集大纲 | `$short-drama-develop` |
 | 拆解长篇原著、抽样快评与分集候选 | `$short-drama-novel-analyze` → `项目开发/source-analysis/` |
-| 拆解对标剧、同尺比对差距、成片还原 | `$short-drama-breakdown` → `项目开发/对标拆解.md` |
+| 拆解对标剧、同尺比对差距、视频反推剧本与成片还原 | `$short-drama-breakdown` → `项目开发/对标拆解.md` 或 `输入/对标/<REF-ID>/还原/` |
 | 写或改单集剧本 | `$short-drama-write` → `剧集/<EP>/剧本.md` |
 | 整理人物、造型、地点、道具与声线设定 | `$short-drama-assets` → `剧集/<EP>/视觉设定.md` |
 | 写静态设定图提示词 | `$short-drama-image-prompts` → `剧集/<EP>/图片提示词.md` |
