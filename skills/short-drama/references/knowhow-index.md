@@ -5,7 +5,7 @@
 | 创作问题 | 负责技能 |
 |---|---|
 | 长篇原著章节索引、抽样快评、逐章提取与分集候选 | `$short-drama-novel-analyze` |
-| 对标剧实测、手法提炼、同尺差距对照与成片还原 | `$short-drama-breakdown` |
+| 对标剧实测、手法提炼、同尺差距对照、视频反推剧本与成片还原 | `$short-drama-breakdown` |
 | 创意开发、改编方案、分集大纲、题材打法与节奏目标拟定 | `$short-drama-develop` |
 | 单集场次剧本、对白交锋、场内声音设计与剧本估时 | `$short-drama-write` |
 | 人物造型、地点视角、道具状态、角色声线与连戏锁 | `$short-drama-assets` |

@@ -1151,5 +1151,336 @@ class RoundThreePlanAndSpeakerTests(unittest.TestCase):
             self.assertNotIn("plan_problem", fenced_plan)
 
 
+class VideoReverseEngineeringEnhancementTests(unittest.TestCase):
+    def test_annotated_subtitles_json_attaches_as_transcript_and_raw_events_are_refused(self):
+        annotated = json.dumps(
+            {
+                "source": "E001.mp4",
+                "events": [
+                    {"id": "T001", "start": 1.2, "end": 2.6, "crop": "E001.subtitles/T001.png", "text": "是"},
+                    {"id": "T002", "start": 2.6, "end": 3.1, "crop": "E001.subtitles/T002.png", "text": "   "},
+                    {"id": "T003", "start": 4.0, "end": 5.5, "crop": "E001.subtitles/T003.png", "text": "把门关好"},
+                ],
+            },
+            ensure_ascii=False,
+        )
+        self.assertEqual(
+            breakdown.parse_transcript(annotated, ".json"),
+            [{"s": 1.2, "e": 2.6, "t": "是"}, {"s": 4.0, "e": 5.5, "t": "把门关好"}],
+        )
+
+        unannotated = json.dumps(
+            {
+                "source": "E001.mp4",
+                "events": [{"id": "T001", "start": 1.2, "end": 2.6, "crop": "E001.subtitles/T001.png"}],
+            },
+            ensure_ascii=False,
+        )
+        with self.assertRaisesRegex(breakdown.BreakdownError, "text"):
+            breakdown.parse_transcript(unannotated, ".json")
+
+        explicitly_empty = json.dumps(
+            {
+                "source": "E001.mp4",
+                "events": [{"id": "T001", "start": 1.2, "end": 2.6, "text": ""}],
+            },
+            ensure_ascii=False,
+        )
+        self.assertEqual(breakdown.parse_transcript(explicitly_empty, ".json"), [])
+
+        # Cue-map mode merges T002-T004 end-to-end without editing the JSON file.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            measure_file = root / "E001.measure.json"
+            subs_file = root / "E001.subtitles.json"
+            cues_file = root / "E001.cues.txt"
+            measure_file.write_text(
+                json.dumps({"source": "E001.mp4", "episode": 1, "duration": 10.0, "shot_seconds": [10.0]}),
+                encoding="utf-8",
+            )
+            subs_file.write_text(
+                json.dumps(
+                    {
+                        "events": [
+                            {"id": "T001", "start": 0.5, "end": 1.2},
+                            {"id": "T002", "start": 2.0, "end": 3.0},
+                            {"id": "T003", "start": 3.0, "end": 4.2},
+                            {"id": "T004", "start": 4.2, "end": 5.4},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cues_file.write_text(
+                "# 忽略注释与空映射行\nT001\nT002-T004：把门关严，谁也别放进来。\n",
+                encoding="utf-8",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = breakdown.main(
+                    ["transcript", str(measure_file), str(cues_file), "--subtitles", str(subs_file)]
+                )
+            self.assertEqual(rc, 0)
+            attached = json.loads(measure_file.read_text(encoding="utf-8"))
+            self.assertEqual(
+                attached["segments"],
+                [{"s": 2.0, "e": 5.4, "t": "把门关严，谁也别放进来。"}],
+            )
+            with self.assertRaises(breakdown.BreakdownError):
+                breakdown.parse_subtitle_cue_map("T004-T002 倒挂", json.loads(subs_file.read_text(encoding="utf-8")))
+            with self.assertRaises(breakdown.BreakdownError):
+                breakdown.parse_subtitle_cue_map("T099 缺号", json.loads(subs_file.read_text(encoding="utf-8")))
+
+    def test_seamless_same_scene_prop_or_posture_is_not_flagged_as_reprise(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_characters_per_second": 4.0,
+                                "seconds_per_action_paragraph": 2.5,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            episodes = {
+                "EP001": (
+                    "## EP001-SC001 内 · 静室 · 夜\n\n"
+                    "林舟：出去守着。\n\n"
+                    "案几上的黑铁密码工具箱亮起微弱绿光。\n"
+                ),
+                "EP002": (
+                    "## EP002-SC001 内 · 静室 · 夜\n\n"
+                    "窗边的黑铁密码工具箱仍在静静闪着光。\n\n"
+                    "顾远：门外没人了。\n"
+                ),
+                "EP003": (
+                    "## EP003-SC001 外 · 露台 · 夜\n\n"
+                    "顾远站在石栏边，左手举着银色折叠手机贴在左耳。\n\n"
+                    "顾远：明天九点见。\n"
+                ),
+                "EP004": (
+                    "## EP004-SC001 外 · 露台 · 夜\n\n"
+                    "夜风里，她左手举着银色折叠手机贴在左耳轻声应答。\n\n"
+                    "顾远：把资料带上。\n"
+                ),
+            }
+            for name, text in episodes.items():
+                ep = root / "剧集" / name
+                ep.mkdir(parents=True)
+                (ep / "剧本.md").write_text(text, encoding="utf-8")
+            records = [breakdown.plan_episode(root / "剧集" / name) for name in sorted(episodes)]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 3, "replayed": 0})
+
+    def test_replayed_english_action_clause_still_counts_as_reprise_while_short_noun_phrase_does_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_words_per_second": 2.5,
+                                "seconds_per_action_paragraph": 2.5,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            episodes = {
+                "EP001": (
+                    "## EP001-SC001 外 · 院门 · 夜\n\n"
+                    "Mara: Watch the gate.\n\n"
+                    "An armored van skids across the wet gravel courtyard and crashes through the iron gate.\n"
+                ),
+                "EP002": (
+                    "## EP002-SC001 外 · 院门 · 夜\n\n"
+                    "An armored van skids across the wet gravel courtyard and crashes through the iron gate.\n\n"
+                    "Mara: Run now.\n"
+                ),
+                "EP003": (
+                    "## EP003-SC001 外 · 院门 · 夜\n\n"
+                    "Smoke rises behind the iron gate.\n\n"
+                    "Mara: Stay low.\n"
+                ),
+            }
+            for name, text in episodes.items():
+                ep = root / "剧集" / name
+                ep.mkdir(parents=True)
+                (ep / "剧本.md").write_text(text, encoding="utf-8")
+            records = [breakdown.plan_episode(root / "剧集" / name) for name in sorted(episodes)]
+        self.assertEqual(breakdown.profile(records, opening=1)["reprise_pairs"], {"checked": 2, "replayed": 1})
+
+    def test_speech_rate_without_action_seconds_surfaces_in_plan_problem(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "short-drama.json").write_text(
+                json.dumps({"format": {"pacing": {"spoken_characters_per_second": 4.5}}}),
+                encoding="utf-8",
+            )
+            ep = root / "剧集" / "EP001"
+            ep.mkdir(parents=True)
+            (ep / "剧本.md").write_text(
+                "## EP001-SC001 内 · 走廊 · 夜\n\n他推门。\n\n许棠：谁在里面？\n",
+                encoding="utf-8",
+            )
+            record = breakdown.plan_episode(ep)
+            self.assertIsNone(record["duration"])
+            self.assertIn("seconds_per_action_paragraph", record["plan_problem"])
+
+            # Null placeholder values from a fresh init do not trigger a false warning.
+            (root / "short-drama.json").write_text(
+                json.dumps(
+                    {
+                        "format": {
+                            "pacing": {
+                                "spoken_characters_per_second": None,
+                                "spoken_words_per_second": None,
+                                "seconds_per_action_paragraph": None,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            clean_record = breakdown.plan_episode(ep)
+            self.assertNotIn("plan_problem", clean_record)
+
+    def test_require_discovers_user_local_bin_when_missing_from_path_and_respects_empty_path(self):
+        import os as _os
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as directory:
+            fake_home = Path(directory)
+            local_bin = fake_home / ".local" / "bin"
+            local_bin.mkdir(parents=True)
+            tool_name = "fake_breakdown_probe_bin"
+            exe = local_bin / (f"{tool_name}.exe" if _os.name == "nt" else tool_name)
+            exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            exe.chmod(0o755)
+
+            with mock.patch.object(Path, "home", return_value=fake_home):
+                with mock.patch.dict(_os.environ, {"PATH": "/nonexistent-bin"}, clear=False):
+                    found = breakdown._require(tool_name)
+                    self.assertEqual(Path(found).resolve(), exe.resolve())
+                with mock.patch.dict(_os.environ, {"PATH": ""}, clear=False):
+                    with self.assertRaises(breakdown.BreakdownError):
+                        breakdown._require(tool_name)
+
+    def test_suggest_subtitle_band_ignores_top_watermark_and_bounds_active_columns(self):
+        width, height = 100, 20
+        watermark = ((1 << 16) - 1) << 78
+        line_a = sum(1 << bit for bit in range(20, 80, 2))
+        line_b = sum(1 << bit for bit in range(21, 79, 2))
+        edge_spark = (1 << 99) | 1
+        rows = []
+        for frame_idx in range(8):
+            frame_rows = [0] * height
+            frame_rows[1] = watermark
+            active = line_a if frame_idx % 2 == 0 else line_b
+            if frame_idx == 0:
+                active |= edge_spark
+            frame_rows[16] = active
+            rows.extend(frame_rows)
+        prof, _ = breakdown.row_profile(rows, height, width, bands=20, min_share=0.05)
+        suggested = breakdown.suggest_subtitle_band(rows, height, width, prof)
+        self.assertIsNotNone(suggested)
+        left, top, right, bottom = suggested
+        self.assertEqual(left, breakdown.DEFAULT_SUBTITLE_BAND[0])
+        self.assertEqual(right, breakdown.DEFAULT_SUBTITLE_BAND[2])
+        self.assertGreaterEqual(top, 0.75)
+        self.assertLessEqual(bottom, 0.90)
+
+        static_only = []
+        for _ in range(4):
+            frame_rows = [0] * height
+            frame_rows[16] = line_a
+            static_only.extend(frame_rows)
+        static_prof, _ = breakdown.row_profile(static_only, height, width, bands=20, min_share=0.05)
+        self.assertIsNone(breakdown.suggest_subtitle_band(static_only, height, width, static_prof))
+
+
+@unittest.skipUnless(
+    (shutil.which("ffmpeg") or Path.home().joinpath(".local/bin/ffmpeg").is_file())
+    and (shutil.which("ffprobe") or Path.home().joinpath(".local/bin/ffprobe").is_file()),
+    "needs ffmpeg",
+)
+class SubtitleSheetAndTailCandidateMediaTests(unittest.TestCase):
+    def test_single_character_glyph_paginated_sheets_and_tail_cut_candidates(self):
+        from unittest import mock
+
+        ffmpeg = breakdown._require("ffmpeg")
+        quiet = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "E001.mp4"
+            # Two compact single-character glyph strokes (~0.0014 of the band, below old 0.002 floor)
+            # at 0.5-1.2s and 1.6-2.3s, plus a low-contrast brightness step inside the final shot at 3.0s.
+            subprocess.run(
+                quiet
+                + [
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=640x360:rate=20:d=3",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=640x360:rate=20:d=1.2",
+                    "-filter_complex",
+                    "[1]eq=brightness=-0.12[tail];[0][tail]concat=n=2:v=1[base];"
+                    "[base]drawbox=x=0:y=280:w=640:h=80:c=black:t=fill,"
+                    "drawbox=x=312:y=304:w=6:h=18:c=white:t=fill:enable='between(t,0.5,1.2)',"
+                    "drawbox=x=336:y=340:w=6:h=16:c=white:t=fill:enable='between(t,1.6,2.3)'[v]",
+                    "-map",
+                    "[v]",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(video),
+                ],
+                check=True,
+            )
+
+            measure_path = breakdown.measure_video(video, root / "measure", 0.28, True)
+            measure_record = json.loads(measure_path.read_text(encoding="utf-8"))
+            self.assertTrue((root / "measure" / "E001.sheet.jpg").is_file())
+            self.assertEqual(measure_record["cuts"], [])
+            self.assertTrue(
+                any(abs(cut - 3.0) <= 0.2 for cut in measure_record["tail_candidate_cuts"]),
+                measure_record["tail_candidate_cuts"],
+            )
+
+            # Default band (0.08, 0.78, 0.92, 0.99) + min_share (0.0007) catches both single-char cues,
+            # including the bottom-edge glyph at y=0.944..0.989; min_share=0.003 drops them.
+            with mock.patch.object(breakdown, "SUBTITLE_SHEET_PAGE_SIZE", 1):
+                sub_path = breakdown.scan_subtitles(video, root / "subs", breakdown.DEFAULT_SUBTITLE_BAND)
+            sub_record = json.loads(sub_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(sub_record["events"]), 2, sub_record["events"])
+            self.assertEqual(
+                sub_record["sheets"],
+                ["E001.subtitles.sheet-01.jpg", "E001.subtitles.sheet-02.jpg"],
+            )
+            for sheet_name in sub_record["sheets"]:
+                self.assertTrue((root / "subs" / sheet_name).is_file())
+
+            # Re-running with standard page size collapses to a single sheet and removes stale multi-page files.
+            sub_single_path = breakdown.scan_subtitles(video, root / "subs", breakdown.DEFAULT_SUBTITLE_BAND)
+            sub_single = json.loads(sub_single_path.read_text(encoding="utf-8"))
+            self.assertEqual(sub_single["sheets"], ["E001.subtitles.sheet.jpg"])
+            self.assertTrue((root / "subs" / "E001.subtitles.sheet.jpg").is_file())
+            self.assertFalse((root / "subs" / "E001.subtitles.sheet-01.jpg").exists())
+
+            strict_path = breakdown.scan_subtitles(
+                video, root / "subs_strict", breakdown.DEFAULT_SUBTITLE_BAND, min_share=0.003
+            )
+            strict_record = json.loads(strict_path.read_text(encoding="utf-8"))
+            self.assertEqual(strict_record["events"], [])
+            self.assertEqual(strict_record["sheets"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

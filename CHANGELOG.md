@@ -13,6 +13,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- 视频反推剧本流程与台词画面校对做法（`$short-drama-breakdown`、`$short-drama-review`）：
+  - `reconstruct.md` 区分「只反推《剧本.md》」（跑 `measure`、`subtitle-sheet`、`subtitles` 并通看原片音画即可写出剧本与 `还原/审查/还原核对.md`，不切单镜视频）与「还原全套五份文档」两种做法，明确 `输入/对标/<REF-ID>/对标登记.md` 落点，并在 `$short-drama` 路由表与 `$short-drama-review` 对标核查清单补齐对应入口与核对项。
+  - 新增四条 `craft_default` 反推规则（`BRK-13`–`BRK-16`）：涵盖硬字幕避敏字还原、消音打码词可播替换、硬字幕错字/同音异写与配音漏字互补校对、残留小说第三人称旁白改写为动作段、配乐人声采样与水印剔除、同场反应切镜与场次外 `[OS]`/`[VO]` 区分、画面文字与生成穿帮处理、以及闪回归拢和定长硬切跨集对话衔接。
+- 拉片与烧录字幕测量脚本（`breakdown_tool.py`）：
+  - `subtitles` 自动生成左侧带 `T001` 编号与起止秒数的分页字幕拼版图（`*.subtitles.sheet*.jpg`），新增 `--min-share` 与 `--change-share` 参数；`transcript` 新增 `--subtitles <*.subtitles.json>` 搭配 `T001` / `T005-T010` 文本映射（自动合并跨屏或跨镜拆条起止时间），并支持直接挂接填好 `text` 的 `*.subtitles.json` 参与 `profile` 同尺统计。
+  - `subtitle-sheet` 在 `subtitle-rows.json` 中输出下半屏活跃字幕的左右跨度与候选框 `suggested_band`；`measure` 代表帧拼图叠印镜号与起止秒数、补抽较长首尾镜的 `OPEN`/`END` 帧，并在 `*.measure.json` 输出末镜低阈值候选切点 `tail_candidate_cuts`；非空 `PATH` 未包含常见本机安装目录时自动回退查找 `ffmpeg` 与 `ffprobe`。
+
+### Fixed
+
+- 拆解还原文档与测量脚本边界修正（`$short-drama-breakdown`）：
+  - `reconstruct.md` 原先仍要求生成已退役的 `设定集/` 目录，且将「按真实发音写正确汉字」写得过于绝对（遇到合成配音漏字而硬字幕完整时会把残句写进剧本），同时 `subtitles` 的 `blind_spot` 误写为「同一句字幕跨镜头不断开」；现对齐单集五份文档结构，改为配音与字幕相互校对，并如实说明跨切镜明暗变化拆条与连句合并。
+  - `breakdown_tool.py` 原默认字幕框 `0.15,0.86,0.85,0.96` 与 `min_share=0.002` 会截断偏高、贴底或长句字幕并漏掉单字硬字幕，现调整为 `0.08,0.78,0.92,0.99` 与 `0.0007`；修复 `short-drama.json` 只填语速漏填 `seconds_per_action_paragraph` 时 `plan` 不报 `plan_problem` 却输出空时间轴的问题；修复 `profile` 在 `plan` 模式下把上下集同场景连戏共用的道具或姿态词误判为「开头重放上一集结尾」的问题。
+
 ## [0.12.0] - 2026-11-15
 
 本版将五份创作文档、参考图 `用途` 枚举与本地创作台字段统一改为自然中文，回调过严的脚本校验与阶段门禁，并打通 `GROUP-*` 多镜合生分组从生产批次到剪辑成片的全链路。**既有项目升级后须按下方对照表迁移 `视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md` 与 `审查/*.md` 的字段名、标题和参考图 `用途` 值，旧字段名不再被识别。**

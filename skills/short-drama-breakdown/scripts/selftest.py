@@ -8,8 +8,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from breakdown_tool import (MEASURE_SUFFIX, candidate_runs, load_records, parse_transcript, plan_episode, profile,
-                            subtitle_events, voiced_intervals)
+from breakdown_tool import (MEASURE_SUFFIX, candidate_runs, load_records, parse_subtitle_cue_map, parse_transcript,
+                            plan_episode, profile, row_profile, subtitle_events, suggest_subtitle_band,
+                            voiced_intervals)
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -72,7 +73,28 @@ def main() -> int:
     require([(event["start"], event["end"]) for event in events] == [(0.1, 0.3), (0.3, 0.5)], "subtitle events")
     require([run["frames"] for run in candidate_runs([1.0, 1.1, 4.0])] == [2, 1], "candidate cut runs")
 
-    print("11 self-tests passed")
+    annotated_subs = json.dumps(
+        {
+            "events": [
+                {"id": "T001", "start": 0.4, "end": 1.6, "text": "是"},
+                {"id": "T002", "start": 1.6, "end": 2.0, "text": ""},
+            ]
+        },
+        ensure_ascii=False,
+    )
+    require(parse_transcript(annotated_subs, ".json") == [{"s": 0.4, "e": 1.6, "t": "是"}], "subtitles json transcript")
+    cue_mapped = parse_subtitle_cue_map(
+        "# cue map\nT001-T002 合并整句\n",
+        {"events": [{"id": "T001", "start": 0.4, "end": 1.6}, {"id": "T002", "start": 1.6, "end": 2.5}]},
+    )
+    require(cue_mapped == [{"s": 0.4, "e": 2.5, "t": "合并整句"}], "subtitle cue map range merge")
+
+    row_masks = [0, 0, 0, ((1 << 20) - 1) << 30, 0, 0, 0, ((1 << 20) - 1) << 50]
+    prof_rows, _ = row_profile(row_masks, 4, 100, bands=4, min_share=0.05)
+    suggested = suggest_subtitle_band(row_masks, 4, 100, prof_rows)
+    require(suggested is not None and suggested[1] >= 0.7 and suggested[3] <= 1.0, "suggested subtitle band")
+
+    print("15 self-tests passed")
     return 0
 
 
