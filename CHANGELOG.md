@@ -13,6 +13,10 @@
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-16
+
+本版针对真实短剧与漫剧成片视频反推《剧本.md》的场景，补齐免切单镜的反推流程、带标号烧录字幕拼版与时间轴回挂能力，并新增台词画面校对规则与对应边界修复，无需迁移既有项目配置或文档字段。
+
 ### Added
 
 - 视频反推剧本流程与台词画面校对做法（`$short-drama-breakdown`、`$short-drama-review`）：
@@ -2047,7 +2051,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.0...v0.11.1
