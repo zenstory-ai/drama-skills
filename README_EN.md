@@ -1,4 +1,4 @@
-<!-- Last synced with README.md: 2026-11-14 -->
+<!-- Last synced with README.md: 2026-11-19 -->
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/zenstory-ai/zenstory/main/apps/web/public/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
@@ -35,9 +35,7 @@
 
 https://github.com/user-attachments/assets/640db65d-bd57-4924-83de-9c5852c1db26
 
-The 68-second portrait sample above is the opening of *Let You Run the Account*, EP001: adapted from a 20-chapter
-novel, storyboarded into 20 shots, generated shot by shot and cut into a film, with subtitles, system panels and sound
-effects added in the edit. Video generation cost about ¥40.
+The 68-second vertical sample above is the opening of *Let You Run the Account* EP001: adapted from a 20-chapter novel into 20 shots, generated shot by shot and cut into a finished episode with subtitles, system panels, and sound effects added in the edit. Video generation cost about ¥40.
 
 ### More samples: a fight, an ensemble scene, a 2D ink-wash comic
 
@@ -45,71 +43,33 @@ https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 ## What it is
 
-Drama Skills covers the whole AI short-drama / motion-comic pipeline from idea or novel to a finished cut:
-**source analysis → episode script → visual design → image prompts and storyboard → video prompts →
-confirmed production → editing → review**.
-It installs as 12 skills into the coding agent you already use (Claude Code, Codex, and any other runtime
-that supports the Agent Skill spec); the writing model is that agent's model.
+Drama Skills covers the AI short-drama and motion-comic pipeline from idea or source novel to finished cut: **source analysis → episode script → visual design → image prompts and storyboard → video prompts → confirmed production → editing → review**. It installs as 12 skills into the coding agent you already use (Claude Code, Codex, or any runtime supporting the Agent Skill spec) and writes with that agent's model.
 
-- **Five Markdown files record the creative decisions** — each episode maintains the documents for its requested stages: `剧本.md` (script),
-  `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts) and
-  `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when you cut a film. These files are
-  authoritative for their respective creative decisions.
-- **Written settings keep shots consistent** —
-  a costume or look that must hold across shots is given a continuity lock with a short locked phrase that can be pasted unchanged into image, first-frame, and unanchored video prompts;
-  every shot's first-frame prompt lists its on-screen settings. The checker verifies declared references and continuity locks;
-  real error output is shown below.
-- **Preview, confirm, then produce** — every image, video, voice or music job is shown in a file first, with the
-  exact count, content and parameters of this batch; an external API is called, and money spent, only after you explicitly
-  confirm.
-- **The cut is part of the suite** — the editing skill writes down why each in and out point sits where it does,
-  takes subtitles verbatim from the script, normalises loudness and renders; the check and measurement scripts
-  report check results and measured numbers only, without making creative calls for you.
+These skills grew out of our motion-comic studio's production line: after more than a thousand AI short-drama and motion-comic projects since 2025, a nearly 80,000-line all-in-one GUI could no longer keep up with model iteration, so we distilled our workflows and prompt craft into plain-file agent skills and kept only the generation queue in-house.
 
-## Where this came from
-
-These skills come out of our own motion-comic studio's production line: over a
-thousand AI short-drama and motion-comic projects since 2025, across several
-generations of in-house and open-source tooling. Front end and back end together
-reached nearly 80,000 lines, and stopped being maintainable at the pace models and
-requirements were moving.
-
-The answer turned out to be dropping the monolithic all-in-one GUI — distilling
-the historical project workspaces and image/video prompts into this skill suite, and letting
-producers maintain projects and write prompts directly through an agent CLI over
-plain files, confirming the prompts before anything goes to generation. It works
-noticeably better. What is left of the in-house tooling is the generation queue.
-
-**Confirmation deliberately comes before production:** prompts land in files first.
-The production skill shows the exact count, content, references, parameters, outputs,
-and provider interface; it executes only after the user sees and confirms that preview.
-Credentials stay outside the project, and project files and the other skills remain
-provider-neutral.
+- **Five Markdown files record creative decisions** — each episode maintains the files its stages need: `剧本.md` (script), `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts), and `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when editing.
+- **Written settings keep shots consistent** — any look that must hold across shots gets a continuity lock with a fixed phrase pasted verbatim into prompts, every first-frame prompt declares its on-screen settings, and a checker verifies cross-file references.
+- **Preview and confirm before spending money** — image, video, voice, and music jobs list their exact count, content, references, and parameters in a file first, calling external APIs only after explicit confirmation; API keys stay outside the project and upstream files stay provider-neutral.
+- **Editing is part of the suite** — the editing skill records the reason for every in and out point, pulls subtitles verbatim from the script, normalizes loudness, and renders the episode; check and measurement scripts report objective results without making creative calls for you.
 
 ## Install
 
-### Install from GitHub
-
-Prerequisite: you already use Claude Code, Codex or another coding agent that supports the Agent Skill spec; the
-command below needs `npx` (Node.js) in your terminal.
+Prerequisite: Claude Code, Codex, or another coding agent supporting the Agent Skill spec, with `npx` (Node.js) available in your terminal.
 
 ```bash
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-`-g` installs globally for every directory; drop it to install into the current directory only.
-**To update, run the same command again.** The scripts need **Python 3.9 or newer**; check your installed
-version first. Cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH.
+`-g` installs globally (omit it to install into the current directory only); **re-run the same command to update**. Local scripts require **Python 3.9 or newer**, and rendering an edited cut also needs `ffmpeg` / `ffprobe` on `PATH`.
 
-You can also just tell your agent (any platform that can import a GitHub repository or skill, such as WorkBuddy;
-see a [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384), in Chinese):
+On platforms that import skills directly from a GitHub URL (such as WorkBuddy; see the [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384) in Chinese), you can tell your agent:
 
 ```
 Install this skill suite: https://github.com/zenstory-ai/drama-skills
 ```
 
 <details>
-<summary>Manual linking (install all skills or only the ones you need)</summary>
+<summary>Manual symlink install (all skills, or only the ones you need)</summary>
 
 ```bash
 git clone https://github.com/zenstory-ai/drama-skills.git && cd drama-skills
@@ -127,32 +87,24 @@ for skill in skills/*; do
 done
 ```
 
-Each skill is an independent installation unit. For a single writing, review, or
-production capability, link only that directory. `short-drama` provides project
-initialization, stage routing, and the local creator workspace.
+Each skill directory is standalone; link only the directories you need. `short-drama` provides project setup, stage routing, and the local creator workspace.
 
 </details>
 
-ClawHub packages are managed by the [publish manifest](.clawhub/publish.json) and can be found through [ClawHub](https://clawhub.ai/).
+Skills are also listed on [ClawHub](https://clawhub.ai/) (manifest: [`.clawhub/publish.json`](.clawhub/publish.json)). Claude Code invokes skills as `/short-drama`, Codex uses `$short-drama`, and plain-language requests work in any runtime; examples below use `$`.
 
-Invocation differs by runtime: Claude Code uses `/short-drama`, Codex uses
-`$short-drama`, and you can always drop the prefix and just describe the task in
-plain language. The examples below use `$`; Claude Code users should use `/` for their runtime.
-
-> Changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases);
-> what to do when upgrading an existing project is in the FAQ entry [What do I do after upgrading?](#what-do-i-do-after-upgrading).
+> Release notes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases); for existing projects, see [What do I do after upgrading?](#what-do-i-do-after-upgrading).
 
 ## Quick start
 
-Copy any of these requests, tweak the details, and send:
+Adapt any of these prompts to your project and send it to your agent:
 
 ```
-# 0. With a source novel (optional): triage before committing to a full pass
+# 0. With a source novel (optional): sample triage before committing to a full pass
 Use $short-drama-novel-analyze to triage 输入/novel.txt and tell me whether it is worth adapting
 
-# With a complete multi-episode script (optional): detect episode boundaries,
-# read one episode at a time, and build the episode outline incrementally
-Use $short-drama-develop to build the episode outline from 输入/full-screenplay.txt without loading the whole season into context
+# With a complete multi-episode script (optional): detect episode boundaries and build the outline incrementally
+Use $short-drama-develop to build the episode outline from 输入/full-screenplay.txt; detect episode boundaries first without loading the whole script into context
 
 # 1. New project
 Use $short-drama to init a vertical 9:16 urban face-slapping short-drama project
@@ -160,41 +112,38 @@ Use $short-drama to init a vertical 9:16 urban face-slapping short-drama project
 # 2. Write episode 1
 Use $short-drama-write to write EP001: a delivery rider humiliated by the manager at a luxury restaurant reveals he is a director of the group
 
-# 3. Organize visual design, write prompts and storyboards (these can be one request)
+# 3. Organize visual design, write prompts and storyboards (can run in a single request)
 Use $short-drama-assets to organize character, location, and prop settings from EP001
 When the overall visual style needs alignment, optionally use $short-drama for Look Development
 Use $short-drama-image-prompts to write reference prompts for finalized characters, locations, and props
 Use $short-drama-storyboard to break EP001 into shots and write first-frame prompts
 Use $short-drama-video-prompts to turn each shot into a video prompt
-# When you name a target model and need people/places/props consistent across shots, say so about references too:
-Use $short-drama-video-prompts to write EP001's video prompts for MiniMax H3; first look through the project for existing character, location and prop images plus this shot's start frame and bind them as references, list whatever is still missing, and do not fall back to text-to-video
-# When you make the reference images yourself and they never enter the project, ask for the attach plan instead:
-Use $short-drama-video-prompts to write EP001's video prompts for MiniMax H3; I attach the reference images myself, so tell me per shot which pictures to attach, in what order, and what each one governs
+# When targeting a specific video model with cross-shot consistency, state how references are bound:
+Use $short-drama-video-prompts to write EP001's video prompts for MiniMax H3; bind existing character, location, prop, and start-frame images in the project, list any missing ones, and do not fall back to text-to-video
+# When reference images are generated externally and stay out of the project, ask for a per-shot attach plan:
+Use $short-drama-video-prompts to write EP001's video prompts for MiniMax H3; I attach the reference images myself, so list per shot which images to attach, in what order, and what each governs
 
 # 4. Produce after explicit confirmation
 Use $short-drama-produce to preview EP001's finalized image, video, voice, or music jobs; execute only after I confirm
 
-# 5. Cut the generated material into a film
-Use $short-drama-edit to cut EP001's produced shots into a film, stating the reason behind every in and out point
+# 5. Cut into a finished episode
+Use $short-drama-edit to cut EP001's produced shots into an episode, stating the reason behind every in and out point
 
-# 6. Review when needed
+# 6. Review on demand
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-Starting from a source novel, when the first pass should hand off text documents only:
+Starting from a source novel when the first pass only needs text drafts:
 
-> Use `输入/story.txt`, which I am authorized to adapt. First list the key facts from the novel that must stay intact, character motivations, and reveals that need to stay hidden for now, then propose an episode breakdown without treating chapter count as episode count. Write only EP001's script and detail three of its shots with opening and ending actions, both hands, held props, and eyelines. Keep prompt-only boards, reference images I will attach myself, and images already in the project clearly separated; deliver text drafts only for now without generating images, video, voices, or music.
+> Read `输入/story.txt`, list the core settings that must stay intact, character motivations, and reveals to hold back early on, then propose an episode breakdown rather than mapping one chapter per episode. For this pass, write EP001's script only and detail three key shots with start/end actions, hand poses, held props, and eyelines; deliver text drafts only without generating images, video, or audio.
 
 ## See what it produces
 
-The excerpts below come from files in this repository or from one real run; cuts are marked with "…". The full
-version (the source triage checked against its full pass, the source-setting checklist, the measured cut, and the model
-observations) is in [Excerpts of real output](docs/real-outputs_EN.md).
+The excerpts below come from files in this repository and real runs ("…" marks cuts). For the full set—source triage vs. full-pass comparison, setting payoff checklist, measured cut list, and model probes—see [Excerpts of real output](docs/real-outputs_EN.md).
 
 ### What an episode looks like
 
-In the public sample [*Let You Run the Account*, EP001](examples/creator-first/EP001/), the same shot is handled one layer at a
-time across four documents. The script only says what happens (translated):
+In the public sample [*Let You Run the Account*, EP001](examples/creator-first/EP001/), one shot is handled layer by layer across four documents. The script records only dramatic action and dialogue (translated):
 
 ```markdown
 [OS] Someone from another army unit: The Rocket Force? Four accounts, four followers between them, right?
@@ -203,16 +152,14 @@ Laughter pours out of the laptop's speaker. Behind the desk, Zhou Bosen sits bol
 In front of it, Jiang Chen, palms on the desk edge, snaps back to himself.
 ```
 
-`视觉设定.md` (visual design) gives a costume or look that must hold across shots a **continuity lock**, whose **locked phrase** can be
-pasted into a prompt unchanged (translated):
+`视觉设定.md` (visual design) gives any look that must hold across shots a **continuity lock**, whose **locked phrase** pastes into prompts unchanged (translated):
 
 ```markdown
 - Continuity lock: LOCK-JIANGCHEN-DRESS "Jiang Chen's pine-green service uniform" (shots: SHOT-EP001-002, SHOT-EP001-003, SHOT-EP001-007, …;
   image prompt entry: IMG-JIANGCHEN-SHEET) · locked phrase: pine-green lapel service jacket
 ```
 
-`分镜.md` (storyboard) writes this shot's start and end and why the camera moves the way it does; the **first-frame prompt** draws
-the opening frame alone, with the locked phrase inside it (translated; the prompt is quoted as written):
+`分镜.md` (storyboard) sets the shot's start, end, and camera motivation; the **first-frame prompt** draws the opening frame alone, carrying the locked phrase verbatim (translated; prompt quoted as written):
 
 ```markdown
 ## SHOT-EP001-002 · Four accounts, four followers
@@ -230,8 +177,7 @@ the opening frame alone, with the locked phrase inside it (translated; the promp
 > coaster; … no text, no logo.
 ```
 
-`视频提示词.md` (video prompts) writes only the actions the model performs between start and end, ready to paste into the
-generation tool as one block:
+`视频提示词.md` (video prompts) writes only the motion and camera move from start to end, ready to paste as one block:
 
 ```markdown
 ## MOTION-EP001-002 · Four accounts, four followers
@@ -242,28 +188,22 @@ generation tool as one block:
 > the young man remaining at the right edge. …
 ```
 
-The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) ·
-[`视觉设定.md`](examples/creator-first/EP001/视觉设定.md) ·
-[`分镜.md`](examples/creator-first/EP001/分镜.md) ·
-[`视频提示词.md`](examples/creator-first/EP001/视频提示词.md).
+The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) · [`视觉设定.md`](examples/creator-first/EP001/视觉设定.md) · [`分镜.md`](examples/creator-first/EP001/分镜.md) · [`视频提示词.md`](examples/creator-first/EP001/视频提示词.md).
 
 ### Omissions get pointed out
 
-`creator_markdown_check.py` checks the references between the five documents. Break the sample in two places on purpose,
-removing Zhou Bosen from SHOT-002's on-screen settings (`出场设定`) and changing MOTION-003's duration from 2s to 3s. The errors identify
-the affected shots and causes:
+`creator_markdown_check.py` checks cross-references across the five documents. Breaking the sample in two places—removing Zhou Bosen from SHOT-002's on-screen settings (`出场设定`) and changing MOTION-003's duration from 2s to 3s—produces targeted errors:
 
 ```text
 ERROR: SHOT-EP001-002: 首帧提示词写到人物「周薄森」，出场设定没有覆盖；本镜确实看不见时在出场设定末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「提示词名称：无」
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词时长必须与分镜一致
 ```
 
-The first line: the first-frame prompt names the character "Zhou Bosen" but the shot's on-screen settings do not include him; if he is
-genuinely unseen in this shot, list him as off-screen (`画外`), or set `提示词名称：无` (prompt name: none) in `视觉设定.md` if the name cannot be matched reliably. The second: the storyboard says 2 seconds and the video prompt says 3.
+Line 1 flags that the first-frame prompt names "Zhou Bosen" without listing him in `出场设定` or marking him off-screen (`画外`). Line 2 catches a duration mismatch between the 2-second storyboard shot and the 3-second video prompt.
 
 ## The twelve skills
 
-Use the stages your request needs: a text-only handoff can stop at its target stage, review can cover any existing document, and static motion comics move directly from first-frame images and voices to production and editing.
+Invoke only the stages you need: text-only handoffs can stop at any stage, any existing draft can be reviewed on its own, and static motion comics go straight from first-frame images and voice-over to production and editing.
 
 ```mermaid
 flowchart LR
@@ -296,22 +236,22 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Project setup, stage routing, visual direction / Look Development, and the local creator workspace |
-| `short-drama-novel-analyze` | Sampled adaptation triage, chapter indexing, per-chapter plot extraction, story units and pacing, adaptation value, and episode split proposals for long novels |
-| `short-drama-develop` | Source-grounded adaptation, episode slicing and incremental resume for multi-episode scripts, core conflict setup, episode outlines, director's brief, and genre & hook playbooks |
-| `short-drama-write` | Episode goals, cause-and-effect story beats, shootable screenplays, and the project's chosen script format |
-| `short-drama-assets` | Characters and wardrobe variants, locations and camera angles, props and state changes, character voice notes, and cross-shot continuity locks |
-| `short-drama-image-prompts` | Lookdev style frames, reusable character/location/prop reference prompts, and targeted image edits |
-| `short-drama-storyboard` | Optional scene staging plans and multi-angle camera comparisons, script-to-shot coverage, start/end frames, and first/end-frame prompts |
-| `short-drama-video-prompts` | Single-shot action progression, multi-character staging and eyeline/focus shifts, camera moves, sound, start/end states, pickup notes, and cross-shot music cues |
-| `short-drama-produce` | Preview a scoped image/video/voice/music job, wait for explicit confirmation, run the external provider interface, and record results; includes profiles for Seedance, GPT Image 2, MiniMax H3 video, MiniMax Speech, and MiniMax Music |
-| `short-drama-edit` | Usable trim ranges per generated clip, in/out rationale and shot order, dialogue completeness, subtitles, and loudness normalisation; written as a cut list and rendered into a film |
-| `short-drama-breakdown` | Measures and breaks down benchmark dramas (episode length, shot length, dialogue density, openings and endings), compares them on the same yardstick with your plan or footage, hands each gap to its responsible skill, and re-checks generated cuts; can also reverse-engineer episodes into scripts, visual settings, and prompts |
-| `short-drama-review` | Structural and story quality review; project-wide calibration and revision advice based on real generated outputs |
+| `short-drama` | Project setup, stage routing, visual direction / Lookdev, and the local creator workspace |
+| `short-drama-novel-analyze` | Sampled adaptation triage, chapter indexing, per-chapter extraction, pacing analysis, and episode split proposals |
+| `short-drama-develop` | Source adaptation, multi-episode script slicing and resume, core conflict setup, episode outlines, director's brief, and genre/hook playbooks |
+| `short-drama-write` | Episode goals, cause-and-effect beats, shootable screenplays, and studio script formatting |
+| `short-drama-assets` | Characters and wardrobe variants, locations and camera angles, prop state changes, voice notes, and continuity locks |
+| `short-drama-image-prompts` | Lookdev style frames, character/location/prop reference prompts, and targeted image edits |
+| `short-drama-storyboard` | Scene staging and multi-angle comparisons, script-to-shot breakdown, start/end frames, and first/end-frame prompts |
+| `short-drama-video-prompts` | Single-shot motion, multi-character staging and eyeline shifts, camera moves, sound, pickup notes, and cross-shot music cues |
+| `short-drama-produce` | Preview scoped image/video/voice/music batches, run provider APIs after explicit confirmation, and archive outputs; built-in profiles for Seedance, GPT Image 2, and MiniMax H3 / Speech / Music |
+| `short-drama-edit` | Select usable clip ranges, record in/out rationale, verify dialogue, burn subtitles, normalize loudness, and render finished episodes |
+| `short-drama-breakdown` | Measure benchmark dramas (episode/shot length, dialogue density, hooks/cliffhangers) against your project; reverse-engineer reference episodes into scripts, settings, and prompts |
+| `short-drama-review` | Structural and dramatic quality review; project-wide calibration and revision advice from real generated outputs |
 
 ## Local creator workspace
 
-One line inside your agent (Codex writes `$short-drama dashboard`):
+Launch with one line inside your agent (Codex writes `$short-drama dashboard`):
 
 ```
 /short-drama dashboard
@@ -319,123 +259,39 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 
 <img src="docs/assets/dashboard-zh.png" alt="Storyboard view of the creator workspace: stage bar, four metrics checked against the rhythm target, a rhythm strip sized by duration and coloured by shot size, and shot cards" width="680">
 
-Runs on macOS, Linux, WSL, and native Windows. It serves with `--detach`, in its own process, so
-the link stays valid for the whole session; `--status` reprints it and `--stop` shuts it down. It listens on the
-local machine only; project content is not uploaded.
+Runs natively on macOS, Linux, WSL, and Windows. The server runs in the background with `--detach` so its link stays live across your session; `--status` prints the active URL and `--stop` shuts it down. It listens on loopback only and never uploads project files.
 
-When everything is written, hand it over: `project_tool.py export <project> --out <dir outside the
-project>` copies each episode's existing five creator documents, `剪辑单.md`, and `制作成果/` into one delivery
-directory with a manifest and checksums. Add `--no-media` for a text-only handoff; the manifest lists missing creator documents.
+When ready to hand off, `project_tool.py export <project> --out <dir-outside-project>` packages each episode's existing five creator documents, `剪辑单.md`, and `制作成果/` into a delivery directory with a manifest and checksums; pass `--no-media` for a text-only handoff.
 
 ## FAQ
 
-### The MiniMax H3 prompt has six paragraphs. Paste all of them, or only the first?
+### Can I still get image-to-video prompts if I generate reference images in an external tool?
 
-All of them. The six paragraphs are **one prompt body, submitted once**: the `<Subject N>` that `retention_analysis`
-refers to are defined in `subject_definitions`, and `<Picture N>` is numbered by the order of this shot's input
-references, so the later paragraphs have nothing to point at if submitted separately. Paste everything from the first
-line under `### 可复制提示词` to the last into that one generation; the next shot gets its own complete body. See
-[the five creator documents](skills/short-drama/references/creator-documents.md) and the
-[MiniMax H3 prompt guide](skills/short-drama-video-prompts/references/minimax-h3.md) (Chinese).
+Yes—that is the default workflow. When reference images are not stored in the project directory, the storyboard writes a per-shot attachment plan and video prompts are still generated for image-to-video, listing which images to attach per shot, in what order, and what each governs; local image files are only needed when `$short-drama-produce` calls a provider API directly. See the [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
 
-### I make reference images in my own tool and don't want them in the project. Can I still get image-to-video prompts?
+### A video job was interrupted after submission. Should I resubmit it?
 
-Yes, and it is the default. When the project has no matching images on disk, the storyboard writes the pictures this shot needs as `PLAN-*` attachment entries (pointing to an `IMG-*` board or a
-`SHOT-*` first frame, allowing cross-shot keyframe reuse such as A-B-A reverse shots; `order` is the attach order and every picture states its purpose). Video prompts are
-produced as image-to-video as usual and list, per shot, which pictures to attach, in what order, and what each one
-governs; local image files are only needed when the suite itself calls a provider API. `REF-*` is reserved for images that really
-exist in the project and have been checked.
+Recover the existing job first to avoid paying twice. Bundled provider adapters write each job ID to disk as soon as it is accepted; have `$short-drama-produce` run `audit` to locate unfinished jobs and `collect` to fetch completed outputs. Only preview and confirm a retry after confirming the original job failed permanently on the provider side. See [Confirmed production](skills/short-drama-produce/SKILL.md) (Chinese).
 
-### I named a target video model, so why did I get text-to-video prompts?
+### Do I need a GPU? How is media generation billed?
 
-Naming a model is not choosing text-to-video. First the model goes into `production_profile` in `short-drama.json`;
-then the storyboard looks through the project for existing images of the on-screen characters, locations, props and
-start frame and binds them as `REF-*` with a purpose. Pictures that are still missing default to `PLAN-*` attachment entries, and image-to-video
-prompts are written as usual rather than switching to text-to-video. See
-[Comic-drama workflow guide · common snags](docs/comic-drama-workflow.md#常见卡点) (Chinese).
+No GPU is needed. Scripts, storyboards, and prompts use your coding agent's model, while local scripts handle indexing, checks, production handoffs, and edit rendering (`ffmpeg` / `ffprobe` on `PATH` for rendering cuts). Media generation calls external APIs with keys you configure outside the project and is billed by those providers, running only after you confirm each preview.
 
-### Dialogue in H3 clips is rushed or cut off. What do I do?
+### Do static motion comics (keyframe cuts + voice-over) need video prompts?
 
-Estimate dialogue time at the storyboard stage before fixing the shot length: on a small H3 Chinese sample the
-natural pace is about 4.1 spoken characters per second, and denser lines rush or cut off without warning. Storyboard
-authors check that the line and action fit before setting duration (keeping the shot's `声音` line clean of timing arithmetic) and lengthen or split the shot when the line does not fit; the video
-prompt's duration must match the storyboard. Method:
-[对白估时](skills/short-drama-storyboard/references/shot-craft.md#对白估时) (Chinese).
-
-### A is speaking, but the lips move on B's face
-
-Check speaker binding first: in a small sample, lip movement sometimes landed on the more prominent front-facing face. When a speaker first appears,
-state outside `<d>` whether they are on- or off-screen and their voice, and put the line right after their action
-sentence; when another face is still front-on during the line, write that person explicitly as mouth closed, not
-speaking, and where the storyboard allows, get them out of frame or turned away first. See
-[MiniMax H3 prompt guide · dialogue and speaker binding](skills/short-drama-video-prompts/references/minimax-h3.md#对白说话人绑定与参考音频);
-small sample, still check after generating.
-
-### The process died after a video job was submitted. Resubmit?
-
-Recover the existing job first. An asynchronous submission may already have incurred a charge; the bundled provider interfaces
-write the provider job ID to disk as soon as they receive it. Have the production skill run `audit`, which reports an
-unfinished attempt with an ID as `orphaned_provider_job`, then use `collect` to retrieve it without submitting a new
-generation. Preview and confirm a retry only after the original job is known to have failed permanently and no result
-remains to collect; a polling or download interruption first needs recovery. See
-[confirmed production](skills/short-drama-produce/SKILL.md) (Chinese).
-
-### Do I need a GPU or my own model? Who pays for generation?
-
-No GPU. Writing, storyboards and prompts are done by the model of the coding agent you already use; local scripts handle indexing, validation, production handoffs, and edit rendering. Media generation goes through `$short-drama-produce`'s external provider interfaces, using
-provider credentials you configure outside the project and billed by the provider; every job is previewed and only
-runs after you explicitly confirm. Cutting a film needs `ffmpeg` / `ffprobe` on this machine.
-
-### Does it work in Codex? On Windows?
-
-Yes. Claude Code uses `/short-drama`, Codex uses `$short-drama`, and other runtimes that support the Agent Skill spec
-use their own invocation. The workspace runs on macOS, Linux, WSL and native Windows; CI runs a separate Windows job
-for installation, episode intake and the workspace.
-
-### Do static motion comics (keyframe switching plus voice-over) need video prompts?
-
-No. Storyboard first-frame prompts and image prompts go straight to the production preview, skipping the video-prompt layer.
-See the [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
+No. Storyboard first-frame prompts and image prompts go straight to production preview, voice-over, and editing, skipping the video-prompt stage. See the [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
 
 ### What do I do after upgrading?
 
-Run the same install command again. **When upgrading an existing project from `<= v0.11.x`, first migrate the renamed Chinese headings and fields per the mapping table in [CHANGELOG.md](CHANGELOG.md)** (old field names are no longer accepted):
-`时代背景`, `外观特征`, `提示词名称`, and `连戏锁` (with `锁定词`) in `视觉设定.md`; `固定陈设`, `动作`, `出场设定`, `### 首帧提示词`, `### 尾帧提示词`, and `输入参考图：无（文生视频）` in `分镜.md`; `开场画面` and `动作过程` in `视频提示词.md`; `- 修改要求：` in `审查/*-审查.md`; and the 10 Chinese reference-purpose (`用途`) labels (`外貌`, `主体`, `造型状态`, `空间布局`, `构图`, `尺度`, `效果`, `起始帧`, `结束帧`, `风格`).
-Then run `creator_markdown_check.py` once per episode to surface any remaining issues (for example, a character, location, or prop named in `首帧提示词`, `尾帧提示词`, or a text-to-video `开场画面`
-but missing from `出场设定` and not declared off-screen, or a video prompt whose duration differs from its shot).
-For episodes you have cut, run `edit_tool.py check` too: since v0.7.1 every unused shot must be listed with its own
-ID and reason, and a range such as "001 to 009" is no longer accepted.
+Re-run the same install command to update the skills. When upgrading an older project across field or rule changes, follow the upgrade notes in [CHANGELOG.md](CHANGELOG.md), then run `creator_markdown_check.py` on each episode (plus `edit_tool.py check` on edited episodes) to verify everything passes.
 
-## Further reading
+## Acknowledgments
 
-- Samples: [examples/](examples/); the public full-episode sample is [*Let You Run the Account*, EP001](examples/creator-first/EP001/). The other example directories are internal test samples for the repository's checkers.
-- [Excerpts of real output](docs/real-outputs_EN.md): one shot through four documents, checker errors, the cut list and its measurements, the source triage backfill, the source-setting checklist, model observations.
-- [Evaluations](evaluations/README.md) (Chinese): the complete output of one run made by following the docs, pre-release acceptance checks, and how a main-workflow run is done.
-- [An open-source AI short-drama pipeline](docs/open-source-short-drama-pipeline.md): what the pack does, stage by stage.
-- [Comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese): the twelve skills as one production line, with per-step commands, outputs, and common pitfalls.
-- [Short-drama script format template](docs/short-drama-script-format-template.md) (Chinese): scene headings, action, dialogue and production tags, and what to check after AI reformats an old script.
-- [Cross-shot consistency](docs/character-consistency-across-shots.md) (Chinese): character consistency across shots and episodes, and the three layers of written records beyond a turnaround sheet.
-- [Novel-to-short-drama guide](https://zenstory.ai/drama-skills/novel-to-short-drama): from an authorized source to episode decisions, one script, and a first small set of shots.
-- [Character consistency guide](https://zenstory.ai/drama-skills/character-consistency): separate character appearance, this scene's wardrobe, and per-shot hands, props, and eyelines; keep prompt-only boards, planned attachments, and checked local images distinct.
-
-## Community
-
-- **Telegram**: <https://t.me/+CZmsmvWIhb4zZTNl> — chat, troubleshooting, sharing workflows, and feature discussion.
-- **GitHub Issues**: [bugs, output-quality cases, and feature requests](https://github.com/zenstory-ai/drama-skills/issues/new/choose). Please use the structured form and attach reproduction material or the concrete output.
-
-## Contributing
-
-Principles and the required test run are in [CONTRIBUTING.md](CONTRIBUTING.md) (Chinese).
-
-<a href="https://github.com/zenstory-ai/drama-skills/graphs/contributors"><img alt="Contributors" src="https://contrib.rocks/image?repo=zenstory-ai/drama-skills"></a>
-
-## Acknowledgements
-
-[LINUX DO - The New Ideal Community](https://linux.do) — community support
+<https://linux.do>
 
 ## Part of ZenStory AI
 
-This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source, agent-native tools for creating, adapting and producing stories (GitHub org: [zenstory-ai](https://github.com/zenstory-ai)). Sibling projects:
+This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source, agent-native tools for creating, adapting, and producing stories (GitHub org: [zenstory-ai](https://github.com/zenstory-ai)). Sibling projects:
 
 | Project | What it does |
 | --- | --- |
@@ -443,5 +299,5 @@ This project is maintained by [ZenStory AI](https://zenstory.ai) — open-source
 | [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI short-drama / motion-comic suite: scripts, visual settings, storyboards, image & video prompts, review (this repo) |
 | [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | Agent skills for source-grounded novel adaptation, target-runtime builds, and evidence-based QA |
 | [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | Create Chinese-narration recaps from supported video files, with optional editable JianYing/CapCut draft export |
-| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | Community DeepSeek Harness plugin with novel, short-drama, game and video-recap workbenches |
+| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | Community DeepSeek Harness plugin with novel, short-drama, game, and video-recap workbenches |
 | [zenstory](https://github.com/zenstory-ai/zenstory) | Chat-to-create AI novel-writing workbench ([app.zenstory.ai](https://app.zenstory.ai)) |
