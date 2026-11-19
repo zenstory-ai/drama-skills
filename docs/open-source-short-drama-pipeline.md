@@ -49,7 +49,7 @@ The five core Markdown documents hold each episode's creative decisions. Editing
 Three mechanisms, all in plain Markdown files:
 
 - **Continuity locks** (`连戏锁`). The visual design sheet locks only appearance details that do not change with the plot (a fixed earring, a coat colour and cut) and leaves changing state to per-shot notes. Each **locked phrase** (`锁定词`) is written as a short noun phrase that can be pasted into prompts unchanged.
-- **Prompts, plans and references**. `IMG-*` identifies a prompt entry. `PLAN-*` tells the creator what to attach in an external generation tool. `REF-*` binds a real image file in the project. Both plans and references can support video prompts; this pack's production tool requires readable `REF-*` files.
+- **Prompts, plans and references**. `IMG-*` identifies a prompt entry. `PLAN-*` tells the creator what to attach in an external generation tool. `REF-*` binds a real image file in the project. Both plans and references work when writing video prompts; running jobs through this pack's production tool requires readable `REF-*` files on disk.
 - **First-frame prompts plus on-screen settings**. Each shot writes its exact opening-frame image (`首帧提示词`), then lists every character, location and prop in that frame whose appearance, look state or spatial layout must stay consistent (`出场设定`). Anything named in the first-frame prompt must appear in `出场设定`.
 
 Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
@@ -58,7 +58,7 @@ Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
 
 - Media production calls external provider interfaces only after you explicitly confirm the previewed batch. A preview, a "continue", or a budget note does not grant that confirmation.
 - Review records findings and revision requests; the creator makes the final creative decisions.
-- Language: skill files and canonical document filenames are Chinese; creator-facing notes and reviews follow `short-drama.json#/language` (or the user's current language). Image and first-frame prompts follow the project's `format.prompt_language`; video prompts first follow the target model profile's `video_prompt_language`. Spoken lines retain the script language.
+- Language: skill files and canonical document filenames are Chinese; creator-facing notes and reviews follow `short-drama.json#/language` (or the user's current language). Image and first-frame prompts follow the project's `format.prompt_language`; video prompts use the target model profile's `video_prompt_language` when set, falling back to `format.prompt_language`. Spoken dialogue stays in the script's language.
 
 ## Install and first request
 

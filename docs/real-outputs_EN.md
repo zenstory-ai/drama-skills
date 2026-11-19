@@ -110,11 +110,12 @@ settings) does not cover him; if he is genuinely not visible, append `; off-scre
 (`Prompt name: none`) in `视觉设定.md`. The second: the storyboard says 2 seconds and the video prompt says 3; the
 video prompt's duration must match the storyboard.
 
-It also checks that every shot's "source" starts with a scene ID that really exists in `剧本.md` and that any character,
-location, prop or look named in `首帧提示词`, `尾帧提示词` or a text-to-video `开场画面` is covered by `出场设定` (on-screen settings) or declared
-off-screen (rather than scanning `来源` quotations); that every scene in the script has a corresponding shot or is listed as deliberately unfilmed; that explicit spoken dialogue
-quoted inside the copyable prompt body (introduced by speech verbs or `<d>`, rather than ordinary signage or idiom quotes) can be found, punctuation aside, in `剧本.md`, `视觉设定.md` or
-`分镜.md`; and that every `REF-*` points at an image that really is in the project with a stated purpose.
+It also checks that every shot's `来源` starts with a scene ID present in `剧本.md`, and that every character,
+location, prop or look named in `首帧提示词`, `尾帧提示词` or a text-to-video `开场画面` is covered by `出场设定` or marked
+off-screen (`来源` quotations are not scanned). Every scene in the script must have a shot or be listed as deliberately
+unfilmed; spoken lines quoted inside the copyable prompt (introduced by speech verbs or `<d>`, ignoring ordinary signage
+or idioms) must match `剧本.md`, `视觉设定.md` or `分镜.md` aside from punctuation; and every `REF-*` must point to a real
+image file in the project with a stated purpose.
 
 ## Estimate dialogue before fixing shot length; cut on measured timings
 
