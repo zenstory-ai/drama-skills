@@ -29,7 +29,7 @@ python3 {技能目录}/scripts/selftest.py
 | 做分镜与首尾帧提示词 | `$short-drama-storyboard` → `剧集/<EP>/分镜.md` |
 | 写视频动态提示词或配乐提示词 | `$short-drama-video-prompts` → `剧集/<EP>/视频提示词.md` |
 | 调用外部模型生成图、视频、配音或配乐 | `$short-drama-produce`（先看预览，确认后执行） |
-| 编排剪辑单并渲染成片 | `$short-drama-edit` → `剧集/<EP>/剪辑单.md` 与 `制作成果/成片/` |
+| 整理剪辑单并渲染成片 | `$short-drama-edit` → `剧集/<EP>/剪辑单.md` 与 `制作成果/成片/` |
 | 独立审稿或出片问题归因 | `$short-drama-review`（按需启用） |
 | 初始化与修改全局配置、打开创作台、导出或打包 | 本技能 |
 
@@ -48,7 +48,7 @@ python3 {技能目录}/scripts/selftest.py
 python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧" --aspect-ratio 9:16
 ```
 
-后续在对话中确定或修改画幅、集数、单集时长、语言、语速、视觉方向、目标视频模型配置（`production_profile`）或节奏目标（`rhythm_profile`）时，直接用 `configure` 增量写入 `short-drama.json` 并标记为已确认（无需手写中间台账文件）：
+后续在对话中确定或修改画幅、集数、单集时长、语言、语速、视觉方向、目标视频模型配置（`production_profile`）或节奏目标（`rhythm_profile`）时，直接用 `configure` 更新 `short-drama.json` 并记为已确认（不必手写中间记录文件）：
 
 ```bash
 python3 {技能目录}/scripts/project_tool.py configure <project> \
@@ -58,7 +58,7 @@ python3 {技能目录}/scripts/project_tool.py configure <project> \
   --rhythm-profile-json '{"form":"国漫二次元","first_hook_seconds":5}'
 ```
 
-- **模型配置（`--production-profile-json`）**：用户在对话中点名目标视频模型（如 Seedance 2.5、MiniMax H3）时，先用 `configure` 写入模型参数、提示词语言、是否启用多镜合生（`multi_shot_containers`）及接力路线（`continuation_route`），再开展下游提示词编写。
+- **模型配置（`--production-profile-json`）**：用户在对话中点名目标视频模型（如 Seedance 2.5、MiniMax H3）时，先用 `configure` 写入模型参数、提示词语言、是否启用多镜合生（`multi_shot_containers`）及接力路线（`continuation_route`），再开始写提示词。
 - **节奏目标（`--rhythm-profile-json`）**：支持实拍、二维动态漫、风格化三维、水墨笔触、Q 版表达、国漫二次元等全部制作形态名称，按需填写已敲定的部分指标即可，不必凑齐全部字段。可用 `status` 查看当前生效配置。
 
 ## 短剧创作台（Dashboard）

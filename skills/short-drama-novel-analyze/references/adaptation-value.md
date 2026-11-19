@@ -1,6 +1,6 @@
 # 改编价值与分集候选
 
-本文件覆盖 S3（`story-units.md`、`rhythm-and-emotion.md`）与 S5（`adaptation-value.md`、`episode-candidates.jsonl`）：先将目标拆解范围内的章节收拢为因果咬合的剧情单元与爽点排序，再结合目标制作形态完成改编取舍与分集候选切分。若本轮系按创作者指定的章节范围（如前 100 章或第一季）分批拆解，所有文件开头均显眼标明本批覆盖的起止 `sequence` 章号。
+本文件覆盖 S3（`story-units.md`、`rhythm-and-emotion.md`）与 S5（`adaptation-value.md`、`episode-candidates.jsonl`）：先把目标拆解范围内的章节归纳成因果相连的剧情单元并排出爽点先后，再结合目标制作形态给出改编取舍与分集候选。按创作者指定的章节范围（如前 100 章或第一季）分批拆解时，每份文件开头都要醒目标明本批覆盖的起止 `sequence` 章号。
 
 ## 故事框架与剧情单元
 
