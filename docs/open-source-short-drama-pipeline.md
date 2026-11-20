@@ -1,4 +1,4 @@
-# An open-source AI short-drama pipeline: script, assets, storyboard, prompts, then generation
+# An open-source AI short-drama pipeline: script, visual settings, storyboard, prompts, then production
 
 Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, GPT Image 2, MiniMax H3 video, MiniMax speech and MiniMax Music.
 
@@ -38,10 +38,10 @@ The five core Markdown documents hold each episode's creative decisions. Editing
 | `short-drama-assets` | Characters and looks, locations and views, props and states, continuity locks (locked look phrases) |
 | `short-drama-image-prompts` | Lookdev style frames, character/location/prop reference-board prompts |
 | `short-drama-storyboard` | Shot list with dramatic purpose, spatial continuity, first-frame prompts |
-| `short-drama-video-prompts` | Per-shot action progression, performance, camera, sound, opening and end frames; timeline music plan |
-| `short-drama-produce` | Runs confirmed image, video, TTS or music jobs through external provider interfaces and records results |
-| `short-drama-edit` | In and out points, shot order, dialogue completeness, subtitles, loudness, render |
-| `short-drama-breakdown` | Measures benchmark dramas and compares them with the project's own plan or footage on the same yardstick; hands each gap to the owning skill |
+| `short-drama-video-prompts` | Per-shot action progression, performance, camera, sound, `GROUP-*` multi-shot groups, opening and end frames; timeline music plan |
+| `short-drama-produce` | Previews and runs confirmed single or batched image, video (including `GROUP-*` groups), TTS or music jobs through external provider interfaces with resume support |
+| `short-drama-edit` | In and out points (single shots or `GROUP-*` clips), shot order, dialogue completeness, subtitles, loudness, render |
+| `short-drama-breakdown` | Measures benchmark dramas and compares them with the project's own plan or footage on the same yardstick; also reverse-engineers reference videos into standard scripts, visual settings, and prompts |
 | `short-drama-review` | Structural and continuity review; writes findings, does not edit source files |
 
 ## What makes it hold together across shots
@@ -79,4 +79,4 @@ A complete public example of one episode, from script to prompts, is in [`exampl
 
 - Repository: [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills) (formerly `worldwonderer/drama-skills`; old links redirect)
 - Site guides: [Novel to short drama](https://zenstory.ai/drama-skills/novel-to-short-drama), [Character consistency](https://zenstory.ai/drama-skills/character-consistency)
-- Sibling packs: web-fiction writing (`oh-story-claudecode`), novel to game (`novel-to-game`), video recap (`video-recap-skills`)
+- Sibling projects: web-fiction writing (`oh-story-claudecode`), novel to game (`novel-to-game`), video recap (`video-recap-skills`), DeepSeek Harness plugin (`oh-story-dsh`), web workbench (`zenstory`)
