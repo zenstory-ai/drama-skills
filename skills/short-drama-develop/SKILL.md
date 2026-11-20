@@ -33,7 +33,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 
 ### 1. 敲定创作底线与核心看点
 
-理清不能改的关键事实/主题/人物/结局走向、可发挥的留白、制作条件限制与核心看点兑现。新项目复制 [creative-brief.md](assets/creative-brief.md)；改动已确认设定时说明改动点及下游影响，不静默覆盖。
+理清不能改的关键事实/主题/人物/结局走向、可发挥的留白、制作条件限制与核心看点兑现。新项目复制 [creative-brief.md](assets/creative-brief.md)；改动已确认设定时说明改动点及下游影响，不未经说明直接覆盖。
 
 - 核心看点与主线矛盾推演（含系统/规则类的机制循环）：读 [story-craft.md](references/story-craft.md)。
 - 题材落位：从 [genre-cards.md](references/genre-cards.md) 按需查取 **1 张**主赛道题材卡找准阻力与细节（内部参考，不写入交付文档）。
@@ -45,7 +45,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 
 ### 3. 按需编制分集大纲 (`episode-map.jsonl`)
 
-`episode-map.jsonl` 定位为**多集连载长剧的按需分集状态账**。需要排多集连载时，读 [episode-design.md](references/episode-design.md) 并复制 [episode-map.jsonl](assets/episode-map.jsonl)，每集只记本集核心推进（钩子、目标、阻力、转折动作、阶段结果、信息揭晓）与单向交接给下一集的 `handoff_state`，不重复抄写上一集状态。
+`episode-map.jsonl` 定位为**多集连载长剧按需维护的分集大纲**。需要排多集连载时，读 [episode-design.md](references/episode-design.md) 并复制 [episode-map.jsonl](assets/episode-map.jsonl)，每集只记本集核心推进（钩子、目标、阻力、转折动作、阶段结果、信息揭晓）与单向交接给下一集的 `handoff_state`，不重复抄写上一集状态。
 
 - 常规连载集在抛出集尾悬念前宜先落定一个本集阶段结果；单元温情剧也可在情绪落点舒缓收束。
 - 按制作形态提出节奏参考起点，经创作者确认后由 `$short-drama` 写入 `creator_authority.rhythm_profile`。写单集剧本时若发现原分集切分或节奏排布存在结构卡点，路由回 `$short-drama-develop` 更新 `episode-map.jsonl` / `adaptation-map.jsonl`，不由下游技能直接改写。
@@ -60,7 +60,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 
 - `项目开发/creative-brief.md`（轻量项目可直接含合一简纲）
 - `项目开发/story-engine.md`（中长篇或复杂人物关系按需使用）
-- `项目开发/episode-map.jsonl`（多集连载按需分集状态账）
+- `项目开发/episode-map.jsonl`（多集连载按需维护的分集大纲）
 - `项目开发/director-brief.md`（按需）
 - `项目开发/adaptation-map.jsonl`（百万字级长篇或大跨度重排按需使用，例见 [adaptation-map.example.jsonl](assets/adaptation-map.example.jsonl)）
 - `项目开发/episode-intake-index.json`（多集剧本导入时可随时重建的字节索引）
@@ -70,7 +70,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集完整剧本> --ou
 ## 按需加载
 
 - **核心看点、主线矛盾框架、机制循环（系统/规则/博弈类）、人物推力与伏笔台账**：[story-craft.md](references/story-craft.md)
-- **分集状态账设计、前因后果节拍、单向交接、付费卡点与节奏参考标准**：[episode-design.md](references/episode-design.md)
+- **分集大纲设计、前因后果节拍、单向交接、付费卡点与节奏参考标准**：[episode-design.md](references/episode-design.md)
 - **已有多集完整剧本/选集稿，精确切片、分段续拆与批次覆盖合并**：[multi-episode-intake.md](references/multi-episode-intake.md)
 - **人物前史切入、弧光转变、信息差、张弛节奏与跨集连戏备忘**：[serial-character-and-memory.md](references/serial-character-and-memory.md)
 - **小说改编必保取舍、支线删并、文字外化与高光前移因果修补**：[adaptation-craft.md](references/adaptation-craft.md)

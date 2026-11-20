@@ -47,7 +47,7 @@ Drama Skills 覆盖 AI 短剧与漫剧从点子或原著到成片的全流程：
 
 - **五份 Markdown 记录创作决定** — 按阶段维护 `剧本.md`、`视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md`，剪辑时加一份 `剪辑单.md`；只做部分阶段就交付对应文档。
 - **白纸黑字防跨镜穿帮** — 跨镜不变的穿着造型写成可原样贴入提示词的固定短语（连戏锁与锁定词），每镜首帧写明出场设定，检查脚本自动核对跨文档引用。
-- **先看预览、确认后再花钱生成** — 图片、视频、配音和配乐任务先在文件里列清数量、内容、参考图与参数，明确确认后才调用外部接口；平台密钥留在项目外，文档与前置技能不绑定特定平台。
+- **先看预览、确认后再花钱生成** — 图片、视频（支持单镜与 `GROUP-*` 多镜合生）、配音和配乐任务均支持整批预览，在文件里列清数量、内容、参考图与参数，明确确认后再批量调用外部接口；平台密钥留在项目外，文档与前置技能不绑定特定平台。
 - **成片剪辑也在套件里** — 剪辑技能逐段写明入出点取舍，字幕逐字取自剧本，统一响度后导出成片；检查与测量脚本只列核对结果和实测数据，不替人做创作判断。
 
 ## 安装
@@ -101,6 +101,9 @@ done
 # 0. 有原著时（可选）：先抽样快评，再决定要不要整本拆
 用 $short-drama-novel-analyze 快评 输入/这本小说.txt，先告诉我值不值得拆
 
+# 有对标剧或参考视频时（可选）：拆解节奏差距，或把成片视频反推成剧本与制作文档
+用 $short-drama-breakdown 拆解 输入/对标/ 里的标杆剧并对照本项目节奏差距（也可直接把视频反推成标准《剧本.md》）
+
 # 已有多集完整剧本时（可选）：先识别分集边界，逐集读取并续做分集大纲
 用 $short-drama-develop 从 输入/剧本完整版.txt 生成分集大纲；先识别分集方式，不要整稿塞进上下文
 
@@ -115,14 +118,14 @@ done
 需要统一全剧画风时，可选用 $short-drama 做视觉定调（Lookdev）
 用 $short-drama-image-prompts 为已定稿的人物、场景和道具写参考图提示词
 用 $short-drama-storyboard 给第 1 集拆分镜并写首帧提示词
-用 $short-drama-video-prompts 把分镜逐镜写成视频提示词
+用 $short-drama-video-prompts 把分镜逐镜写成视频提示词（同场相邻短镜可按需合并为 GROUP-* 多镜合生分组）
 # 指定目标视频模型并要求跨镜一致时，一并说明参考图绑定方式：
 用 $short-drama-video-prompts 按 MiniMax H3 写第 1 集视频提示词；先在项目里找已有角色图、场景图、道具图和本镜起始帧绑成参考，缺哪张列出来，不要改成文生视频
 # 参考图在外部界面出、不进项目时，让技能写出逐镜挂图计划：
 用 $short-drama-video-prompts 按 MiniMax H3 写第 1 集视频提示词；参考图我自己挂，逐镜写清挂哪几张、什么顺序、每张管什么
 
-# 4. 明确确认后投产
-用 $short-drama-produce 预览第 1 集已定稿的图片、视频、配音或配乐任务；等我确认后再执行
+# 4. 明确确认后投产（支持单条或整批确认与断点续跑）
+用 $short-drama-produce 批量预览第 1 集已定稿的图片、视频（含 GROUP-* 合生分组）、配音或配乐任务；等我确认后再执行
 
 # 5. 剪成成片
 用 $short-drama-edit 把第 1 集已生成的镜头剪成成片，逐段写清入出点理由
@@ -185,7 +188,7 @@ done
 
 四份原文：[`剧本.md`](examples/creator-first/EP001/剧本.md) · [`视觉设定.md`](examples/creator-first/EP001/视觉设定.md) · [`分镜.md`](examples/creator-first/EP001/分镜.md) · [`视频提示词.md`](examples/creator-first/EP001/视频提示词.md)。
 
-### 写漏了会被指出来
+### 漏项和不一致会自动报错
 
 `creator_markdown_check.py` 核对五份文档间的交叉引用。把样例故意改坏两处——从 SHOT-002 的「出场设定」里删掉周薄森、把 MOTION-003 的时长从 2 秒改成 3 秒——报错会直接指出问题镜头与修法：
 
@@ -214,7 +217,7 @@ flowchart LR
     prod["确认后生产<br/>$short-drama-produce"]:::phase
     cut["剪辑成片<br/>$short-drama-edit"]:::phase
     rev["审查<br/>$short-drama-review"]:::final
-    pkg["文本交付包"]:::final
+    pkg["成片与交付包"]:::final
 
     nva -.有原著时.-> dev
     brk -.有对标剧时.-> dev
@@ -236,9 +239,9 @@ flowchart LR
 | `short-drama-assets` | 人物与换装造型、场景与机位朝向、道具状态变化、角色声线及跨镜连戏锁 |
 | `short-drama-image-prompts` | 视觉定调风格帧、角色/场景/道具参考图提示词与局部改图说明 |
 | `short-drama-storyboard` | 场次站位调度与多机位比选、剧本逐句落镜、起止画面与首尾帧提示词 |
-| `short-drama-video-prompts` | 单镜动作推进、多人调度与视线转移、运镜、声音、补拍说明及跨镜配乐表 |
-| `short-drama-produce` | 预览图片/视频/配音/配乐批次任务，明确确认后调用接口生成并归档；内置支持 Seedance、GPT Image 2、MiniMax H3 / Speech / Music |
-| `short-drama-edit` | 挑选可用素材区间、写明入出点取舍、核对台词、烧录字幕并统一响度，生成剪辑单与成片 |
+| `short-drama-video-prompts` | 单镜动作推进、多人调度与视线转移、运镜、声音、`GROUP-*` 多镜合生、补拍说明及跨镜配乐表 |
+| `short-drama-produce` | 单条或整批预览图片/视频（含 `GROUP-*` 合生分组）/配音/配乐任务，明确确认后批量调用接口生成并支持断点续跑；内置支持 Seedance、GPT Image 2、MiniMax H3 / Speech / Music |
+| `short-drama-edit` | 挑选单镜或 `GROUP-*` 合生素材可用区间、写明入出点取舍、核对台词、烧录字幕并统一响度，生成剪辑单与成片 |
 | `short-drama-breakdown` | 按集长、镜长、对白密度、开场与集尾拆解对标剧并比对本项目差距；支持将参考剧集反推为剧本、设定与提示词 |
 | `short-drama-review` | 结构与剧情审查；结合实拍出片效果排查设定与提示词偏差并给出修订建议 |
 
@@ -252,7 +255,7 @@ flowchart LR
 
 <img src="docs/assets/dashboard-zh.png" alt="短剧创作台的分镜视图：阶段栏、对照节奏目标的四个指标、按时长与景别着色的节奏条和镜头卡" width="680">
 
-原生支持 macOS、Linux、WSL 与 Windows。创作台以 `--detach` 后台独立运行，会话期间链接持续有效；`--status` 查看当前地址，`--stop` 关闭服务。服务仅监听本机，项目内容不上传。
+原生支持 macOS、Linux、WSL 与 Windows。创作台默认在后台独立运行（`--detach`），会话期间链接持续有效；可用 `--status` 查看当前地址，`--stop` 关闭服务。服务仅监听本机，项目内容不上传。
 
 完稿后可用 `project_tool.py export <project> --out <项目外目录>` 导出交付包，把每集现有的五份创作文档、`剪辑单.md` 与 `制作成果/` 汇总成带清单和校验和的目录；只交文本时加 `--no-media`。
 
@@ -264,7 +267,7 @@ flowchart LR
 
 ### 视频生成提交后中断了，需要重投吗？
 
-先找回原任务，避免重复扣费。内置生成接口拿到平台任务 ID 后会立即落盘；中断后先让 `$short-drama-produce` 运行 `audit` 定位未完结任务，再用 `collect` 取回已有结果。确认原任务已在平台侧失败且无结果可取后，再重新预览确认重投。详见[确认后生产](skills/short-drama-produce/SKILL.md)。
+先找回原任务，避免重复扣费。内置生成接口拿到平台任务 ID 后会立即保存到本地；中断后先让 `$short-drama-produce` 运行 `audit` 定位未完结任务，再用 `collect` 取回已有结果。确认原任务已在平台侧失败且无结果可取后，再重新预览确认重投。详见[确认后生产](skills/short-drama-produce/SKILL.md)。
 
 ### 需要本地 GPU 吗？生图和生视频怎么计费？
 
@@ -288,9 +291,9 @@ flowchart LR
 
 | 项目 | 用途 |
 | --- | --- |
-| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | 网文写作 skill 包：扫榜、拆文、写作、去AI味、封面图 |
-| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI 短剧 / 漫剧创作 skill 合集：剧本、视觉设定、分镜、图片/视频提示词、独立审查（本仓库） |
-| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 小说改编游戏 skill 合集：原著拆解、目标运行环境构建与实机运行验收 |
-| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | 将支持的视频文件制作成中文解说，可选导出可编辑的剪映/CapCut 草稿 |
-| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 社区插件，提供小说、短剧、游戏和视频解说工作台 |
-| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说写作工作台（[app.zenstory.ai](https://app.zenstory.ai)） |
+| [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode) | 网文写作技能包：扫榜、拆文、大纲细纲、长短篇写作、伏笔追踪、去 AI 味与封面生成 |
+| [drama-skills](https://github.com/zenstory-ai/drama-skills) | AI 短剧与漫剧制作技能包：原著与对标拆解、剧本、视觉设定、分镜、生图/生视频提示词、确认后生产与剪辑成片（本仓库） |
+| [novel-to-game](https://github.com/zenstory-ai/novel-to-game) | 小说改游戏技能包：通读拆书、玩法与美术设计、代码构建与盲玩验收，支持网页、互动影游与微信/抖音/TapTap 小游戏 |
+| [video-recap-skills](https://github.com/zenstory-ai/video-recap-skills) | AI 视频解说技能包：自动切镜、看画面写解说词、配音混音合成硬字幕成片，并可导出剪映 / CapCut 草稿 |
+| [oh-story-dsh](https://github.com/zenstory-ai/oh-story-dsh) | DeepSeek Harness 社区插件：集成网文写作、短剧漫剧、小说改游戏与视频解说四个可视化工作台 |
+| [zenstory](https://github.com/zenstory-ai/zenstory) | 对话即创作的 AI 小说与短剧网页工作台（[app.zenstory.ai](https://app.zenstory.ai)） |

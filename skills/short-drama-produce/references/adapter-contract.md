@@ -31,7 +31,7 @@
 - `parameters`：生成参数对象（凡疑似密钥、Token 的键名一律拦截）。图片与视频任务填入 `prompt_language`（该字段仅供请求拼装器使用，不转发给供应商接口）。
 - `overwrite`：目标路径已有同名文件时，仅明确设为 `true` 才允许覆盖。
 
-## 批次预览与确认（Batch Workflow）
+## 批次预览与确认
 
 - `prepare-batch <project> --jobs <job1.json> <job2.json> ... [--batch-id <batch_id>]`：逐条校验任务单并生成批次清单（写入 `.short-drama/production/batches/<hash>.json`），返回本批条数、目标 `adapter` / 模型汇总、时长与画幅/尺寸摘要、全部 `outputs` 预览以及整批一次性确认口令 `"CONFIRM BATCH <batch_id> <code>"`。
 - `confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"`（或 `confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"`）：核验整批任务单与各自输入摘要未变动后，一次性为批内全部任务写入确认回执。
