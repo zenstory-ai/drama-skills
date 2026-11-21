@@ -56,6 +56,8 @@ Drama Skills 覆盖 AI 短剧 / 漫剧从点子或原著到成片的全流程：
 - **成片剪辑也在套件里** — 剪辑技能逐段写下入点、出点为什么选在那里，字幕逐字取自剧本，统一响度后导出成片；
   检查和测量脚本只列核对结果和实测数据，不替人做创作判断。
 
+> **创作指导层与自动化脚本的边界**：各技能中的创作方法、剧本/分镜/提示词规范与审查视角不绑定语言、画幅或目录布局，可以直接用于任意语言或已有项目；本地自动化脚本（跨文档检查、创作台、生产交接与剪辑渲染）目前面向标准中文项目结构，要求使用上述五份中文文档与 `剪辑单.md` 的约定文件名及中文 Markdown 字段。
+
 ## 由来
 
 这套技能来自我们自己的漫剧工作室产线：2025 年至今累计上千个 AI 短剧 / 漫剧项目，
@@ -81,7 +83,7 @@ npx skills add zenstory-ai/drama-skills -y -g
 ```
 
 `-g` 全局安装，所有目录可用；去掉 `-g` 则只装到当前目录。**更新时重新执行同一条命令即可**。
-脚本需要 **Python 3.9 或更新版本**，请先检查本机版本；剪辑成片另需 `ffmpeg` / `ffprobe` 在 PATH 上。
+带脚本的 7 个技能需要 **Python 3.9 或更新版本**（其余 5 个纯知识文档技能零运行依赖），请先检查本机版本；剪辑成片另需 `ffmpeg` / `ffprobe` 在 PATH 上，启用可选 Remotion 画面文字或动态字幕叠层时另需 `Node.js` / `npm` / `npx`。
 
 支持导入 GitHub 仓库或技能的平台（例如 WorkBuddy，见社区写的[完整用法](https://zhuanlan.zhihu.com/p/2088046501696222384)），也可以直接对 Agent 说：
 
@@ -115,8 +117,7 @@ done
 
 ClawHub 分发条目由[发布清单](.clawhub/publish.json)管理，可在 [ClawHub](https://clawhub.ai/) 中查找。
 
-调用写法随运行环境而变：Claude Code 用 `/short-drama`，Codex 用 `$short-drama`，
-也可以直接用自然语言说明任务。下文以 `$` 为例，Claude Code 用户按环境改用 `/`。
+技能本身统一使用宿主中立的技能名（如 `short-drama`、`short-drama-write`），调用前缀随运行环境而变：Claude Code 用 `/short-drama`，Codex 用 `$short-drama`，其他支持 Agent Skill 规范的环境直接用技能名或自然语言说明任务。下文示例以 `$` 为例，Claude Code 用户按环境改用 `/`，其他环境按宿主写法替换或省略前缀即可。
 
 > 变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/zenstory-ai/drama-skills/releases)；
 > 升级既有项目要做什么，见常见问题[「升级到新版本后要做什么」](#升级到新版本后要做什么)。

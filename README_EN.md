@@ -1,4 +1,4 @@
-<!-- Last synced with README.md: 2026-11-14 -->
+<!-- Last synced with README.md: 2026-11-21 -->
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/zenstory-ai/zenstory/main/apps/web/public/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
@@ -66,6 +66,8 @@ that supports the Agent Skill spec); the writing model is that agent's model.
   takes subtitles verbatim from the script, normalises loudness and renders; the check and measurement scripts
   report check results and measured numbers only, without making creative calls for you.
 
+> **Language-agnostic creative guidance vs. automated scripts**: The creative workflows, craft guides, prompt-writing methods, and review rubrics are language- and layout-agnostic—you can use them in English or any other language, aspect ratio, or existing directory structure without running local scripts. The bundled automated scripts (cross-document checks, local creator workspace, production handoff, and edit rendering) currently expect the standard Chinese five-document filenames (`剧本.md`, `视觉设定.md`, `分镜.md`, `图片提示词.md`, `视频提示词.md`), `剪辑单.md`, and their Chinese Markdown field structure.
+
 ## Where this came from
 
 These skills come out of our own motion-comic studio's production line: over a
@@ -98,8 +100,8 @@ npx skills add zenstory-ai/drama-skills -y -g
 ```
 
 `-g` installs globally for every directory; drop it to install into the current directory only.
-**To update, run the same command again.** The scripts need **Python 3.9 or newer**; check your installed
-version first. Cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH.
+**To update, run the same command again.** The 7 script-backed skills need **Python 3.9 or newer** (the other 5 documentation-only skills have no runtime prerequisites); check your installed
+version first. Cutting a film additionally needs `ffmpeg` / `ffprobe` on PATH, and optional Remotion screen-text or dynamic-subtitle overlays additionally need `Node.js` / `npm` / `npx`.
 
 You can also just tell your agent (any platform that can import a GitHub repository or skill, such as WorkBuddy;
 see a [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384), in Chinese):
@@ -135,9 +137,7 @@ initialization, stage routing, and the local creator workspace.
 
 ClawHub packages are managed by the [publish manifest](.clawhub/publish.json) and can be found through [ClawHub](https://clawhub.ai/).
 
-Invocation differs by runtime: Claude Code uses `/short-drama`, Codex uses
-`$short-drama`, and you can always drop the prefix and just describe the task in
-plain language. The examples below use `$`; Claude Code users should use `/` for their runtime.
+The skills themselves use host-neutral skill names (such as `short-drama` and `short-drama-write`). Invocation prefixes differ by runtime: Claude Code uses `/short-drama`, Codex uses `$short-drama`, and other Agent Skill runtimes use the plain skill name or natural language. The examples below use `$`; Claude Code users should replace it with `/`, and users of other harnesses can drop or adapt the prefix for their runtime.
 
 > Changes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases);
 > what to do when upgrading an existing project is in the FAQ entry [What do I do after upgrading?](#what-do-i-do-after-upgrading).

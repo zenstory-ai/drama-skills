@@ -72,10 +72,7 @@
         "evidence": ".clawhub/README.md#rights",
         "status": "permission-recorded"
       },
-      "runtimeDependsOn": [
-        "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.38"
-      ],
+      "runtimeDependsOn": [],
       "slug": "short-drama-assets",
       "supportedRuntimes": [],
       "topics": [
@@ -144,8 +141,7 @@
         "status": "permission-recorded"
       },
       "runtimeDependsOn": [
-        "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.38"
+        "bin:python>=3.9"
       ],
       "slug": "short-drama-develop",
       "supportedRuntimes": [],
@@ -181,7 +177,10 @@
       "runtimeDependsOn": [
         "bin:python>=3.9",
         "bin:ffmpeg",
-        "bin:ffprobe"
+        "bin:ffprobe",
+        "bin:node",
+        "bin:npm",
+        "bin:npx"
       ],
       "slug": "short-drama-edit",
       "supportedRuntimes": [],
@@ -214,9 +213,7 @@
         "evidence": ".clawhub/README.md#rights",
         "status": "permission-recorded"
       },
-      "runtimeDependsOn": [
-        "bin:python>=3.9"
-      ],
+      "runtimeDependsOn": [],
       "slug": "short-drama-image-prompts",
       "supportedRuntimes": [],
       "topics": [
@@ -249,8 +246,7 @@
         "status": "permission-recorded"
       },
       "runtimeDependsOn": [
-        "bin:python>=3.9",
-        "skill:worldwonderer/short-drama@1.0.38"
+        "bin:python>=3.9"
       ],
       "slug": "short-drama-novel-analyze",
       "supportedRuntimes": [],
@@ -317,9 +313,7 @@
         "evidence": ".clawhub/README.md#rights",
         "status": "permission-recorded"
       },
-      "runtimeDependsOn": [
-        "bin:python>=3.9"
-      ],
+      "runtimeDependsOn": [],
       "slug": "short-drama-review",
       "supportedRuntimes": [],
       "topics": [
@@ -351,9 +345,7 @@
         "evidence": ".clawhub/README.md#rights",
         "status": "permission-recorded"
       },
-      "runtimeDependsOn": [
-        "bin:python>=3.9"
-      ],
+      "runtimeDependsOn": [],
       "slug": "short-drama-storyboard",
       "supportedRuntimes": [],
       "topics": [
@@ -385,9 +377,7 @@
         "evidence": ".clawhub/README.md#rights",
         "status": "permission-recorded"
       },
-      "runtimeDependsOn": [
-        "bin:python>=3.9"
-      ],
+      "runtimeDependsOn": [],
       "slug": "short-drama-video-prompts",
       "supportedRuntimes": [],
       "topics": [
