@@ -62,13 +62,12 @@ class PartialCheckTests(EpisodeCase):
         self.assertEqual(self.errors(), ["缺少创作文档: 视频提示词.md"])
 
     def test_storyboard_defects_surface_before_video_prompts_exist(self) -> None:
-        # The coverage rule (SHT-26) used to be reachable only once the last
-        # document was written; a storyboard-stage run now sees it.
+        # Storyboard cross-document structural checks run before video prompts exist.
         self.drop("视频提示词.md")
         self.assertEqual(self.errors(partial=True), [])
-        self.edit("分镜.md", "·人物「江晨」（控制：外貌、体态、本集造型）；人物「周薄森」", "·人物「周薄森」")
+        self.edit("分镜.md", "·人物「江晨」（控制：外貌、体态、本集造型）", "·人物「不存在角色」（控制：外貌）")
         errors = self.errors(partial=True)
-        self.assertTrue(any("SHOT-EP001-002" in error and "江晨" in error for error in errors), errors)
+        self.assertTrue(any("SHOT-EP001-002" in error and "不存在角色" in error for error in errors), errors)
         self.assertFalse(any("MOTION" in error for error in errors), errors)
 
     def test_asset_stage_checks_image_prompts_against_locks(self) -> None:
@@ -77,9 +76,9 @@ class PartialCheckTests(EpisodeCase):
         visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
         locked = re.search(r"连戏锁：LOCK-JIANGCHEN-DRESS[^\n]*图片提示词项：(IMG-[A-Z0-9-]+)", visual)
         assert locked
-        self.edit("图片提示词.md", SURFACE, "olive field jacket")
+        self.edit("视觉设定.md", locked.group(1), "IMG-MISSING-REF")
         errors = self.errors(partial=True)
-        self.assertIn(f"LOCK-JIANGCHEN-DRESS: {locked.group(1)} 可复制提示词缺少锁定词", errors)
+        self.assertIn("LOCK-JIANGCHEN-DRESS: 连戏锁指向不存在的 IMG 条目: IMG-MISSING-REF", errors)
 
     def test_missing_upstream_is_skipped_rather_than_reported(self) -> None:
         # Without 剧本.md the shots' scene ids and quotes cannot be resolved;
@@ -106,23 +105,6 @@ class PartialCheckTests(EpisodeCase):
                 errors = check.validate_episode(episode, self.project, partial=True)
                 self.assertFalse(any("参考音频" in error or "声音参考" in error for error in errors), errors)
 
-    def test_a_quote_from_a_missing_source_is_not_called_invented(self) -> None:
-        board = (self.episode / "分镜.md").read_text(encoding="utf-8")
-        line = re.search(r"^- 画面文字：([^\n]+)$", board, re.MULTILINE)
-        assert line
-        quote = re.search(r"[\u4e00-\u9fff]{4,}", line.group(1))
-        assert quote
-        self.edit("视频提示词.md", "No subtitles", f"屏幕上写着“{quote.group(0)}” No subtitles")
-        self.assertEqual(self.errors(), [])
-        self.drop("分镜.md")
-        self.assertFalse(any("引文" in error for error in self.errors(partial=True)))
-
-    def test_video_lock_checks_survive_a_missing_storyboard(self) -> None:
-        self.drop("分镜.md")
-        self.edit("视频提示词.md", SURFACE, "olive field jacket", count=-1)
-        errors = self.errors(partial=True)
-        self.assertTrue(any(error.startswith("LOCK-JIANGCHEN-DRESS: MOTION-") for error in errors), errors)
-
     def test_text_only_validation_does_not_guess_the_prompt_language(self) -> None:
         texts = {name: (self.episode / name).read_text(encoding="utf-8") for name in check.REQUIRED_DOCUMENTS}
         texts["视觉设定.md"] = re.sub(r"^- 提示词名称：[^\n]*\n", "", texts["视觉设定.md"], flags=re.MULTILINE)
@@ -141,26 +123,21 @@ class InFrameLockTests(EpisodeCase):
         visual = re.sub(r"（镜头：SHOT-EP001-002[^；]*；", "（镜头：入画；", visual, count=1)
         (self.episode / "视觉设定.md").write_text(visual, encoding="utf-8")
 
-    def test_scope_follows_the_shots_that_list_the_entry(self) -> None:
+    def test_lock_checks_validate_references_without_prose_substring_scanning(self) -> None:
+        # Paraphrased lock wording in free prompt prose is left to semantic review,
+        # while explicit nonexistent SHOT-/IMG- targets remain deterministic errors.
         self.use_in_frame_scope()
-        flagged = {
-            match.group(1)
-            for error in self.errors()
-            for match in [re.search(r"(SHOT-EP001-\d+) 首帧提示词缺少锁定词", error)]
-            if match
-        }
-        board = (self.episode / "分镜.md").read_text(encoding="utf-8")
-        listing = {
-            shot_id
-            for shot_id, body in check._sections(board, "SHOT").items()
-            if "人物「江晨」" in body
-        }
-        self.assertTrue(flagged)
-        self.assertLessEqual(flagged, listing)
-        for shot_id in flagged:
-            self.assertNotIn(SURFACE, self.shot_keyframe(shot_id))
-        for shot_id in listing - flagged:
-            self.assertIn(SURFACE, self.shot_keyframe(shot_id))
+        self.edit("分镜.md", SURFACE, "tailored dark-green service coat", count=-1)
+        self.edit("视频提示词.md", SURFACE, "tailored dark-green service coat", count=-1)
+        self.assertEqual(self.errors(), [])
+
+        visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
+        bad_shot = visual.replace("（镜头：入画；", "（镜头：SHOT-EP001-999；", 1)
+        (self.episode / "视觉设定.md").write_text(bad_shot, encoding="utf-8")
+        self.assertIn(
+            "LOCK-JIANGCHEN-DRESS: 连戏锁指向不存在的镜头: SHOT-EP001-999",
+            self.errors(),
+        )
 
     def test_a_misspelled_scope_is_caught_at_the_asset_stage(self) -> None:
         self.drop("分镜.md", "视频提示词.md")
@@ -233,15 +210,6 @@ class DeliveryGroupTests(EpisodeCase):
         self.add_group(members="MOTION-EP001-001、MOTION-EP001-003")
         self.assertTrue(any("按顺序相邻" in error for error in self.errors()))
 
-    def test_the_submitted_body_answers_to_the_quote_rule(self) -> None:
-        self.add_group(body="他说：“这句台词剧本里没有出现过”")
-        self.assertTrue(any(error.startswith("GROUP-EP001-01: 可复制提示词的引文") for error in self.errors()))
-
-    def test_the_submitted_body_carries_locks_of_its_members(self) -> None:
-        body = self.body_of("MOTION-EP001-002").replace(SURFACE, "olive jacket")
-        self.add_group(body=f"镜头1：{self.body_of('MOTION-EP001-001')} 镜头2：{body}")
-        self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁定词", self.errors())
-
     def test_a_scene_named_inside_a_source_quote_is_not_carried(self) -> None:
         """A quote may mention another scene; only the leading ids are carried.
 
@@ -277,126 +245,6 @@ class DeliveryGroupTests(EpisodeCase):
             path.read_text(encoding="utf-8") + "\n## 本集报告\n- 时长：62s\n", encoding="utf-8"
         )
         self.assertEqual(self.errors(), [])
-
-    def test_group_and_motion_with_bound_start_frame_are_exempt_from_static_lock_paste(self) -> None:
-        frame_dir = self.project / "制作成果/首帧"
-        frame_dir.mkdir(parents=True, exist_ok=True)
-        (frame_dir / "s001.png").write_bytes(b"png")
-        (frame_dir / "s002.png").write_bytes(b"png")
-        ref_001 = (
-            "REF-START-01（顺序：1）· 制作成果/首帧/s001.png《S001 Frame》"
-            "（用途：起始帧；控制：构图、人物外貌；不得控制：动作）"
-        )
-        ref_002 = (
-            "REF-START-02（顺序：1）· 制作成果/首帧/s002.png《江晨主体图》"
-            "（用途：主体；控制：人物外貌、服装；不得控制：动作）"
-        )
-        video_path = self.episode / "视频提示词.md"
-        video = video_path.read_text(encoding="utf-8")
-        sections = check._sections(video, "MOTION")
-        m1 = sections["MOTION-EP001-001"].replace(
-            "- 生成方式：文生视频\n- 输入参考图：无（文生视频）。",
-            f"- 生成方式：图生视频\n- 输入参考图：{ref_001}",
-        )
-        m2 = (
-            sections["MOTION-EP001-002"]
-            .replace(
-                "- 生成方式：文生视频\n- 输入参考图：无（文生视频）。",
-                f"- 生成方式：图生视频\n- 输入参考图：{ref_002}",
-            )
-            .replace(SURFACE, "jacket already anchored in ref")
-        )
-        video = video.replace(sections["MOTION-EP001-001"], m1).replace(
-            sections["MOTION-EP001-002"], m2
-        )
-        video_path.write_text(video, encoding="utf-8")
-        self.add_group(body="Shot 1: knuckles tighten. Shot 2: camera pushes in.")
-        self.assertEqual(self.errors(), [])
-
-    def test_precise_lock_exemption_boundaries(self) -> None:
-        frame_dir = self.project / "制作成果/首帧"
-        frame_dir.mkdir(parents=True, exist_ok=True)
-        (frame_dir / "ref.png").write_bytes(b"png")
-        video_path = self.episode / "视频提示词.md"
-        base_video = video_path.read_text(encoding="utf-8")
-        sections = check._sections(base_video, "MOTION")
-
-        def patch_m2(ref_line: str) -> list[str]:
-            m2 = (
-                sections["MOTION-EP001-002"]
-                .replace(
-                    "- 生成方式：文生视频\n- 输入参考图：无（文生视频）。",
-                    f"- 生成方式：图生视频\n- 输入参考图：{ref_line}",
-                )
-                .replace(SURFACE, "olive field jacket")
-            )
-            video_path.write_text(
-                base_video.replace(sections["MOTION-EP001-002"], m2, 1),
-                encoding="utf-8",
-            )
-            return self.errors()
-
-        # Non-anchor 外貌 ref still requires LOCK.
-        errors = patch_m2(
-            "REF-LOOK-02（顺序：1）· 制作成果/首帧/ref.png《江晨定妆》"
-            "（用途：外貌；控制：五官、发型；不得控制：动作）"
-        )
-        self.assertIn("LOCK-JIANGCHEN-DRESS: MOTION-EP001-002 可复制提示词缺少锁定词", errors)
-
-        # Character A (周薄森) 主体 ref does NOT exempt Character B (江晨) LOCK.
-        errors = patch_m2(
-            "REF-SUBJ-ZBS（顺序：1）· 制作成果/首帧/ref.png《周薄森主体图》"
-            "（用途：主体；控制：周薄森外貌、服装；不得控制：动作）"
-        )
-        self.assertIn("LOCK-JIANGCHEN-DRESS: MOTION-EP001-002 可复制提示词缺少锁定词", errors)
-
-        # Cross-shot PLAN 起始帧 whose 首帧提示词 lacks LOCK does NOT exempt MOTION-EP001-002,
-        # whereas SHOT-EP001-002 (its own shot) or SHOT-EP001-003 (carrying LOCK) does.
-        errors = patch_m2(
-            "PLAN-S001（顺序：1）· SHOT-EP001-001《攥紧的茶杯》"
-            "（用途：起始帧；控制：构图；不得控制：动作）"
-        )
-        self.assertIn("LOCK-JIANGCHEN-DRESS: MOTION-EP001-002 可复制提示词缺少锁定词", errors)
-        for covered_shot in ("SHOT-EP001-002", "SHOT-EP001-003"):
-            with self.subTest(covered_shot=covered_shot):
-                self.assertEqual(
-                    patch_m2(
-                        f"PLAN-OK（顺序：1）· {covered_shot}《已含锁关键帧》"
-                        "（用途：起始帧；控制：构图；不得控制：动作）"
-                    ),
-                    [],
-                )
-
-        # GROUP partial anchor: MOTION-001 anchored + MOTION-002 unanchored -> GROUP still needs LOCK.
-        m1_anchored = sections["MOTION-EP001-001"].replace(
-            "- 生成方式：文生视频\n- 输入参考图：无（文生视频）。",
-            "- 生成方式：图生视频\n- 输入参考图：REF-START-01（顺序：1）· 制作成果/首帧/ref.png《首帧》（用途：起始帧；控制：构图；不得控制：动作）",
-        )
-        video_path.write_text(
-            base_video.replace(sections["MOTION-EP001-001"], m1_anchored, 1),
-            encoding="utf-8",
-        )
-        self.add_group(body="Shot 1: knuckles tighten. Shot 2: olive field jacket turns.")
-        self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁定词", self.errors())
-
-        # Explicit GROUP 输入参考图 is evaluated on its own (does not inherit member MOTION PLANs).
-        patch_m2(
-            "PLAN-S002（顺序：1）· SHOT-EP001-002《本镜首帧》"
-            "（用途：起始帧；控制：构图；不得控制：动作）"
-        )
-        explicit_group = (
-            "\n## GROUP-EP001-01 · 茶杯到双人\n"
-            "- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
-            "- 时长：7s\n"
-            "- 输入参考图：PLAN-G01（顺序：1）· SHOT-EP001-001《仅第一镜首帧》（用途：起始帧；控制：构图；不得控制：动作）\n\n"
-            "### 可复制提示词\n"
-            "> Shot 1: knuckles tighten. Shot 2: olive field jacket turns.\n"
-        )
-        video_path.write_text(
-            video_path.read_text(encoding="utf-8") + explicit_group,
-            encoding="utf-8",
-        )
-        self.assertIn("LOCK-JIANGCHEN-DRESS: GROUP-EP001-01 可复制提示词缺少锁定词", self.errors())
 
 
 class RelaxedGateContractTests(EpisodeCase):
@@ -481,15 +329,20 @@ class RelaxedGateContractTests(EpisodeCase):
         errors = self.errors()
         self.assertTrue(any("提示词名称" in err for err in errors), errors)
 
-    def test_h3_spoken_tags_wrapped_speech_cues_multiword_speakers_and_chinese_opening_frame(
+    def test_multiword_speakers_and_duplicate_motion_fields_without_nlp_false_positives(
         self,
     ) -> None:
-        # Multi-word speaker with ASCII performance cue in 剧本.md is attributed cleanly.
+        # Multi-word speaker with ASCII performance cue in 剧本.md is parsed cleanly.
         screenplay_path = self.episode / "剧本.md"
         screenplay_path.write_text(
             screenplay_path.read_text(encoding="utf-8")
             + "\nDr. Lin (whispering)：先把名单收好。\n",
             encoding="utf-8",
+        )
+        dialogue = check._screenplay_dialogue(screenplay_path.read_text(encoding="utf-8"))
+        self.assertTrue(
+            any(line.speaker == "Dr. Lin" and line.key == "先把名单收好" for line in dialogue),
+            dialogue,
         )
         visual_path = self.episode / "视觉设定.md"
         visual_path.write_text(
@@ -497,54 +350,14 @@ class RelaxedGateContractTests(EpisodeCase):
             + "\n## 人物 · Dr. Lin\n- 提示词名称：Dr. Lin\n- 外观特征：戴细框眼镜的顾问。\n",
             encoding="utf-8",
         )
-        # Valid H3 <d> with inline <cutoff/> and <scenetrans/> tags passes when line is in screenplay.
+        # Quoted prose and signage in copyable body do not trigger brittle NLP heuristics.
         self.edit(
             "视频提示词.md",
             "The camera does not move.",
-            "<d>先把<cutoff/>名单收好<scenetrans/></d> The camera does not move.",
+            '墙上挂着“严谨求实团结奋进”的标语牌，他低声说：“即兴补充的一句环境人声。” The camera does not move.',
             count=1,
         )
         self.assertEqual(self.errors(), [])
-
-        # Invented H3 <d> with <cutoff/> tag is caught.
-        self.edit(
-            "视频提示词.md",
-            "<d>先把<cutoff/>名单收好<scenetrans/></d>",
-            "<d>这句台词在<cutoff/>原剧本里根本不存在</d>",
-            count=1,
-        )
-        self.assertTrue(any("可复制提示词的引文" in err for err in self.errors()))
-
-        # Wrapped English speech cue (`says\nin`) after `1.5s` decimal keeps word boundary and catches invented quote.
-        self.edit(
-            "视频提示词.md",
-            "<d>这句台词在<cutoff/>原剧本里根本不存在</d>",
-            'At 1.5s he says\n> in a low voice: "这句台词在原剧本里根本不存在。"',
-            count=1,
-        )
-        self.assertTrue(any("可复制提示词的引文" in err for err in self.errors()))
-        self.edit(
-            "视频提示词.md",
-            'At 1.5s he says\n> in a low voice: "这句台词在原剧本里根本不存在。" ',
-            "",
-            count=1,
-        )
-        self.assertEqual(self.errors(), [])
-
-        # Chinese `- 开场画面：` in an English-prompt text-to-video MOTION still checks 出场设定 coverage.
-        s1_body = check._sections((self.episode / "分镜.md").read_text(encoding="utf-8"), "SHOT")["SHOT-EP001-001"]
-        outsider = "江晨" if "江晨" not in s1_body else "周薄森"
-        self.edit(
-            "视频提示词.md",
-            "- 开场画面：A heavy middle-aged hand",
-            f"- 开场画面：{outsider}站在办公桌前，A heavy middle-aged hand",
-            count=1,
-        )
-        errors = self.errors()
-        self.assertTrue(
-            any(f"MOTION-EP001-001: 开场画面写到人物「{outsider}」，出场设定没有覆盖" in err for err in errors),
-            errors,
-        )
 
         # Duplicate field on MOTION is reported once, and missing 输入参考图 does not cascade into REF syntax error.
         video_text = (self.episode / "视频提示词.md").read_text(encoding="utf-8")
@@ -620,23 +433,6 @@ class RelaxedGateContractTests(EpisodeCase):
         )
         (self.episode / "分镜.md").write_text(board, encoding="utf-8")
         self.assertEqual(self.errors(), [])
-
-    def test_signage_and_idiom_quotes_pass_while_explicit_speech_hallucination_fails(self) -> None:
-        self.edit(
-            "视频提示词.md",
-            "The camera does not move.",
-            '墙上挂着“严谨求实团结奋进”的标语牌，眼神带着“破釜沉舟绝不回头”的决绝。The camera does not move.',
-            count=1,
-        )
-        self.assertEqual(self.errors(), [])
-        self.edit(
-            "视频提示词.md",
-            "The camera does not move.",
-            '他低声说：“这句台词在原剧本里根本不存在。” The camera does not move.',
-            count=1,
-        )
-        errors = self.errors()
-        self.assertTrue(any("可复制提示词的引文" in err for err in errors), errors)
 
     def test_audio_reference_allows_flexible_control_subset(self) -> None:
         from tests import test_voice_reference_binding as voice
@@ -874,62 +670,6 @@ class RelaxedGateContractTests(EpisodeCase):
         script_path.write_text(injected, encoding="utf-8")
         self.assertEqual(self.errors(), [])
 
-    def test_con07_subject_slot_exempts_lock_via_registered_setting_image_path(self) -> None:
-        ref_rel = "输入/参考图/江晨定妆.png"
-        (self.project / ref_rel).parent.mkdir(parents=True, exist_ok=True)
-        (self.project / ref_rel).write_bytes(b"PNG")
-        other_rel = "输入/参考图/路人定妆.png"
-        (self.project / other_rel).write_bytes(b"PNG")
-
-        visual_path = self.episode / "视觉设定.md"
-        visual_path.write_text(
-            visual_path.read_text(encoding="utf-8").replace(
-                "- 提示词名称：Jiangchen\n",
-                f"- 提示词名称：Jiangchen\n- 参考图：{ref_rel}\n",
-                1,
-            ),
-            encoding="utf-8",
-        )
-        slot_registered = (
-            f"REF-SUBJECT-01（顺序：1）· {ref_rel}《定妆实拍》"
-            "（用途：主体；控制：姿态；不得控制：构图、动作）"
-        )
-        board_path = self.episode / "分镜.md"
-        s2 = check._sections(board_path.read_text(encoding="utf-8"), "SHOT")["SHOT-EP001-002"]
-        board_path.write_text(
-            board_path.read_text(encoding="utf-8").replace(
-                s2,
-                s2.replace("- 输入参考图：无（文生视频）。", f"- 输入参考图：{slot_registered}", 1),
-                1,
-            ),
-            encoding="utf-8",
-        )
-        videos_path = self.episode / "视频提示词.md"
-        m2 = check._sections(videos_path.read_text(encoding="utf-8"), "MOTION")["MOTION-EP001-002"]
-        m2_exempt = (
-            m2.replace("- 生成方式：文生视频", "- 生成方式：图生视频", 1)
-            .replace("- 输入参考图：无（文生视频）。", f"- 输入参考图：{slot_registered}", 1)
-            .replace(SURFACE, "tailored uniform coat")
-        )
-        base_videos = videos_path.read_text(encoding="utf-8")
-        videos_path.write_text(base_videos.replace(m2, m2_exempt, 1), encoding="utf-8")
-        self.assertEqual(self.errors(), [])
-
-        # Unregistered image path without entry name in label/control does NOT exempt the lock.
-        videos_path.write_text(
-            videos_path.read_text(encoding="utf-8").replace(ref_rel, other_rel, 1),
-            encoding="utf-8",
-        )
-        board_path.write_text(
-            board_path.read_text(encoding="utf-8").replace(ref_rel, other_rel, 1),
-            encoding="utf-8",
-        )
-        unregistered_errors = self.errors()
-        self.assertTrue(
-            any("LOCK-JIANGCHEN-DRESS" in err and "MOTION-EP001-002" in err for err in unregistered_errors),
-            unregistered_errors,
-        )
-
     def test_scene_heading_spacing_unclosed_comments_inline_code_and_emphasized_fields(self) -> None:
         script_path = self.episode / "剧本.md"
         base_script = script_path.read_text(encoding="utf-8")
@@ -982,68 +722,6 @@ class RelaxedGateContractTests(EpisodeCase):
             any("视觉设定.md" in err and "未闭合的 HTML 注释" in err for err in unclosed_errors),
             unclosed_errors,
         )
-
-    def test_group_ref_start_frame_only_exempts_locks_carried_by_group_opening_shot(self) -> None:
-        start_rel = "剧集/EP001/制作成果/shot001_start.png"
-        (self.project / start_rel).parent.mkdir(parents=True, exist_ok=True)
-        (self.project / start_rel).write_bytes(b"PNG")
-        subj_rel = "输入/参考图/江晨军装.png"
-        (self.project / subj_rel).parent.mkdir(parents=True, exist_ok=True)
-        (self.project / subj_rel).write_bytes(b"PNG")
-
-        # Scope LOCK-JIANGCHEN-DRESS to SHOT-EP001-002 only, and strip SURFACE from SHOT-EP001-001's keyframe.
-        visual_path = self.episode / "视觉设定.md"
-        visual_path.write_text(
-            visual_path.read_text(encoding="utf-8")
-            .replace("（镜头：入画；", "（镜头：SHOT-EP001-002；", 1)
-            .replace(
-                "- 提示词名称：Jiangchen\n",
-                f"- 提示词名称：Jiangchen\n- 参考图：{subj_rel}\n",
-                1,
-            ),
-            encoding="utf-8",
-        )
-        board_path = self.episode / "分镜.md"
-        s1 = check._sections(board_path.read_text(encoding="utf-8"), "SHOT")["SHOT-EP001-001"]
-        board_path.write_text(
-            board_path.read_text(encoding="utf-8").replace(
-                s1, s1.replace(SURFACE, "plain dark coat"), 1
-            ),
-            encoding="utf-8",
-        )
-
-        videos_path = self.episode / "视频提示词.md"
-        base_videos = videos_path.read_text(encoding="utf-8")
-        group_only_start_ref = (
-            base_videos.rstrip()
-            + "\n\n## GROUP-EP001-01 · 前两镜合生\n"
-            + "- 成员：MOTION-EP001-001、MOTION-EP001-002\n"
-            + "- 时长：7s\n"
-            + f"- 输入参考图：REF-G01（顺序：1）· {start_rel}《首镜起始帧》"
-            "（用途：起始帧；控制：开场构图；不得控制：后续动作）\n\n"
-            + "### 可复制提示词\n"
-            + "> Empty office doorway at first, then Jiangchen steps in and pauses.\n"
-        )
-        videos_path.write_text(group_only_start_ref, encoding="utf-8")
-        missing_lock_errors = self.errors()
-        self.assertTrue(
-            any(
-                "LOCK-JIANGCHEN-DRESS" in err and "GROUP-EP001-01" in err
-                for err in missing_lock_errors
-            ),
-            missing_lock_errors,
-        )
-
-        # Adding a subject reference for Jiangchen on GROUP-EP001-01 exempts the lock cleanly.
-        group_with_subject_ref = group_only_start_ref.replace(
-            "（用途：起始帧；控制：开场构图；不得控制：后续动作）",
-            "（用途：起始帧；控制：开场构图；不得控制：后续动作）；"
-            f"REF-G02（顺序：2）· {subj_rel}《江晨定妆》"
-            "（用途：主体；控制：服装外貌；不得控制：构图、动作）",
-            1,
-        )
-        videos_path.write_text(group_with_subject_ref, encoding="utf-8")
-        self.assertEqual(self.errors(), [])
 
 
 if __name__ == "__main__":
