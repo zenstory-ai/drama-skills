@@ -57,7 +57,7 @@ license: MIT
 
 ## 产物与边界
 
-规则分级与 `STY-01`–`STY-30` 见 [stage-contract.md](references/stage-contract.md)。本技能按需维护：
+规则分级与阻断级 `STY` 不变量见 [stage-contract.md](references/stage-contract.md)。本技能按需维护：
 
 - `项目开发/creative-brief.md`（轻量项目可直接含合一简纲）
 - `项目开发/story-engine.md`（中长篇或复杂人物关系按需使用）

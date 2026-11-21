@@ -1,8 +1,8 @@
 # 去套路与反模板改法
 
-指认作品存在套路重复或模板化毛病（`REV-05 · craft_default`），必须在同一集或相邻集中抓出**至少两处具体位置**对证，并说明这种重复如何削弱戏剧张力或让观众审美疲劳；只用过一次的常见类型桥段不算套路病。`REV-05 · craft_default` 自身**仅可输出 `minor` 或 `note`，绝不升格为 `major`，也绝不单独触发 `REVISE`**。唯有对白或正文违背已立住的人物硬事实、剧情因果链或上游 `reviewed_invariant` 规则（如连戏事实吃书 `CON-02 · reviewed_invariant`、冲突原地车轱辘无实质处境变化 `STY-03 · reviewed_invariant`、反转无前文事实支撑 `STY-09 · reviewed_invariant`、关键心理转折未做可拍摄外化 `SCR-03 · reviewed_invariant`）时，才归入该条 `reviewed_invariant` 规则编号定为 `major`。
+指认作品存在套路重复或模板化毛病（属 `craft_default` 审查建议），必须在同一集或相邻集中抓出**至少两处具体位置**对证，并说明这种重复如何削弱戏剧张力或让观众审美疲劳，绝不空扣“有 AI 味”帽子；只用过一次的常见类型桥段不算套路病。此类建议**仅可输出 `minor` 或 `note`，绝不升格为 `major`，也绝不单独触发 `REVISE`**。唯有对白或正文违背已立住的人物硬事实、剧情因果链或上游 `reviewed_invariant` 规则（如连戏事实吃书 `CON-02 · reviewed_invariant`、冲突原地车轱辘无实质处境变化 `STY-03 · reviewed_invariant`、反转无前文事实支撑 `STY-09 · reviewed_invariant`、关键心理转折未做可拍摄外化 `SCR-03 · reviewed_invariant`）时，才归入该条 `reviewed_invariant` 规则编号定为 `major`。
 
-> **区分“套路重复”与“人物硬事实 / 剧情因果硬伤”**：前文立下的重伤、巨额欠债、身份暴露或不可逆代价在后文毫无交代就凭空清零，或揭秘反转与前文已演事实正面冲突，不属于攒够两处才提建议的 `REV-05 · craft_default` 套路问题，而是违反 `CON-02 · reviewed_invariant` 或 `STY-09 · reviewed_invariant` 的硬伤（区别于评估阶段结算余波写法的 `SCR-15 · craft_default`）——**出现 1 次即按对应 `reviewed_invariant` 编号定为 `major`（阻断主线时定 `blocker`）报错**。
+> **区分“套路重复”与“人物硬事实 / 剧情因果硬伤”**：前文立下的重伤、巨额欠债、身份暴露或不可逆代价在后文毫无交代就凭空清零，或揭秘反转与前文已演事实正面冲突，不属于攒够两处才提建议的套路重复问题，而是违反 `CON-02 · reviewed_invariant` 或 `STY-09 · reviewed_invariant` 的硬伤（区别于评估阶段结算余波写法的 `craft_default` 建议）——**出现 1 次即按对应 `reviewed_invariant` 编号定为 `major`（阻断主线时定 `blocker`）报错**。
 
 ## 1. 常见套路重复病灶（需抓 ≥2 处实据）
 
