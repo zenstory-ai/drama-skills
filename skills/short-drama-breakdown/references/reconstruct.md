@@ -4,34 +4,35 @@
 
 - **先登记权限、测出实参再建还原项目（`BRK-01`、`BRK-02`、`BRK-11` · `reviewed_invariant`）**：
   1. 开测前在 `输入/对标/<REF-ID>/对标登记.md`（外层已有主项目时可一并记入 `项目开发/对标拆解.md`）写明 `REF-ID`、素材路径、授权用途（`study`、`owned` 或附依据的 `licensed`）及是否允许上传外部模型服务；未确认允许外传时只跑本机离线测量脚本。
-  2. 先跑 `measure` 拿到画幅比例与片长，再在 `输入/对标/<REF-ID>/还原/` 下用 `$short-drama` 的 `project_tool.py init` 按实测 `--aspect-ratio` 初始化独立还原项目（标题写 `<REF-ID> 还原`；`owned` 或 `licensed` 作品确认后可按 `BRK-11` 整套迁出为根项目，不把单集还原文件混进外层主项目的 `剧集/` 目录）。
-- **落盘位置**：每集按需写入 `还原/剧集/EPxxx/` 下的《剧本.md》及后续《视觉设定.md》《分镜.md》《图片提示词.md》《视频提示词.md》（`init` 生成的空 `设定集/` 等默认目录留空即可，单集设定写进《视觉设定.md》）。跨集人物对照、相邻集接缝表、台词与画面校对记录、原片穿帮和抽检结果统一放在 `还原/审查/还原核对.md`，保持《剧本.md》正文干净可演。多集连拆按集序一口气做完，不在集与集之间停下等确认。
+  2. 先跑 `measure` 拿到画幅比例与片长，再在 `输入/对标/<REF-ID>/还原/` 下建立独立还原项目目录（标题写 `<REF-ID> 还原`；若已安装 `short-drama` 技能，交由它按实测画幅比例初始化项目；独立运行时直接按标准目录约定创建 `还原/剧集/EPxxx/` 与 `还原/审查/` 即可，不跨技能调用其他技能目录中的脚本。`owned` 或 `licensed` 作品确认后可按 `BRK-11` 整套迁出为根项目，不把单集还原文件混进外层主项目的 `剧集/` 目录）。
+- **落盘位置**：每集按需写入 `还原/剧集/EPxxx/` 下的《剧本.md》及后续《视觉设定.md》《分镜.md》《图片提示词.md》《视频提示词.md》（若已初始化独立项目，空的 `设定集/` 等默认目录留空即可，单集设定写进《视觉设定.md》）。跨集人物对照、相邻集接缝表、台词与画面校对记录、原片穿帮和抽检结果统一放在 `还原/审查/还原核对.md`，保持《剧本.md》正文干净可演。多集连拆按集序一口气做完，不在集与集之间停下等确认。
 
 ## 按目标选做法
 
 - **只反推《剧本.md》**：暂不写分镜和提示词时，只跑 `measure`、`subtitle-sheet`、`subtitles` 并通看原片音画，对照带镜号时间的 `*.sheet.jpg`、带 `Txxx` 时间戳的 `*.subtitles.sheet*.jpg` 与原片音轨写出各集《剧本.md》和 `还原/审查/还原核对.md`。不跑全集 `shots` 单镜切片；遇到闪白转场、超过 4 秒的长镜或 `tail_candidate_cuts` 提示集尾疑似漏切时，再按秒抽帧核实。
 - **还原全套五份文档**：需要继续还原《视觉设定.md》《分镜.md》《图片提示词.md》《视频提示词.md》用于细读调度或重制出片时，再对目标集加跑 `shots` 导出每镜切片与首中尾静帧，逐镜整理景别、机位、运镜、站位及起止画面。
 
-## 多模态看片注意事项
+## 多模态看片注意事项与无音视频降级路径
 
 调用同时读取画面与音轨的多模态模型看片时（仅限已获准上传外部服务，或使用本机离线模型）：
 
 - **看片按单集隔离，写稿跨集统名**：多集连拆时，**看片阶段**每集用独立子会话或单集目录分别读取，避免把后集才出现的名条、服装或剧情带进前集；**写《剧本.md》阶段**对已确认同人的角色全剧统一用片中亮明的真名（例如配角首集无名条露面、次集才出名条点明姓名，两集正文统一写该姓名，但 `[画面文字] 名条：…` 只写在原片实际出现的位置，并在 `还原核对.md` 记下首次出现该姓名的集数与秒数）。
 - **核实音轨可读，并用拼版和原图补齐抽样盲区**：首次使用未知看片接口时，裁一段去掉底部字幕的对白小片盲听确认能听见音轨；整集视频直传模型通常每秒只抽约 1 帧且压缩分辨率，容易漏掉不足 1 秒的闪切物证或看糊小字——切镜与硬字幕条数以 `*.sheet.jpg` 和 `10fps` 的 `*.subtitles.sheet*.jpg` 为准，遇到手机屏幕、纸质单据、大屏列表等小字画面，用 `ffmpeg -ss <秒数> -i <原片> -frames:v 1` 抽原分辨率静帧看字。
+- **无原生音视频多模态输入时的降级路径**：若当前智能体环境只能读图与文本、无法直接输入视频或音频，改用**外挂字幕（SRT/WebVTT）或本地 ASR 转写稿**配合 `breakdown_tool.py` 产出的 `*.sheet.jpg` 代表帧拼图、`*.subtitles.sheet*.jpg` 字幕拼版、`audio` 音轨响度/静音测量（及需要还原分镜时的 `shots` 首中尾静帧）完成还原；仅靠静帧与字幕无法确认的说话人归属、声线语气、`[VO]`/`[OS]` 区分、消音词或无字幕气声，须按 `BRK-12` 在 `还原/审查/还原核对.md` 中明确标为待确认盲区，不凭空补全。
 
 ## 实测与还原步骤
 
 ### 1. 跑测量脚本与字幕拼版
 
 ```bash
-python3 {技能目录}/scripts/breakdown_tool.py measure <各集.mp4> --out 输入/对标/<REF-ID>/measure
-python3 {技能目录}/scripts/breakdown_tool.py subtitle-sheet <代表集.mp4> --out 输入/对标/<REF-ID>/subtitles
-python3 {技能目录}/scripts/breakdown_tool.py subtitles <各集.mp4> --out 输入/对标/<REF-ID>/subtitles \
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py measure <各集.mp4> --out 输入/对标/<REF-ID>/measure
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py subtitle-sheet <代表集.mp4> --out 输入/对标/<REF-ID>/subtitles
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py subtitles <各集.mp4> --out 输入/对标/<REF-ID>/subtitles \
   --band <左,上,右,下> [--color <字色>] [--min-share <比例>]
 # 可选：没有全程铺满背景音乐时辅助看静音段
-python3 {技能目录}/scripts/breakdown_tool.py audio <各集.mp4> --out 输入/对标/<REF-ID>/audio
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py audio <各集.mp4> --out 输入/对标/<REF-ID>/audio
 # 需要还原分镜与提示词时再对目标集跑：
-python3 {技能目录}/scripts/breakdown_tool.py shots <重点集.mp4> <重点集.measure.json>
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py shots <重点集.mp4> <重点集.measure.json>
 ```
 
 - **校准字幕框与字色**：对照 `subtitle-rows.json` 的 `suggested_band` 与 `subtitle-sheet.jpg` 红色比例网格，确认上下左右包住双行折行与长句首尾字，同时收窄左右边界避开两侧竖排名条、左上地点字卡或居中系统面板；黄字或彩字加 `--color`（如 `FFD400`）。不同集版式变化时单独设 `--band`。
@@ -78,24 +79,24 @@ python3 {技能目录}/scripts/breakdown_tool.py shots <重点集.mp4> <重点�
 
 需要全套五份文档时，结合 `shots` 导出的单镜视频、首中尾静帧与 `candidate_cuts`（`frames > 1` 多为闪白或粒子闪烁，单帧突变常为漏检硬切；与模型判断吻合的记为镜内切，不吻合的单列交人工定夺，`BRK-12`），逐镜整理景别、机位、运镜、站位与起止画面，按对应负责技能规范写入《视觉设定.md》《分镜.md》《图片提示词.md》《视频提示词.md》。拿自有或已获授权（`owned` / `licensed`）的还原项目重新出片时：
 
-- 修掉原片穿帮空间与僵立背景人物，交 `$short-drama-assets` 与 `$short-drama-storyboard` 理顺空间动线并在 `审查/` 记下改动；
+- 修掉原片穿帮空间与僵立背景人物，交 `short-drama-assets` 与 `short-drama-storyboard` 技能理顺空间动线并在 `审查/` 记下改动；
 - 分镜说明里的镜内切点拆成独立单镜，一秒上下的眼、嘴、手或道具特写单独成镜，不并入相邻镜；
 - 强风格化画面的《视频提示词.md》优先挂首帧或主体参考图走图生视频，出片看戏剧节拍与台词完整度，不为凑原片秒数硬开倍速。
 
 ## 时间轴回挂与准确度抽检
 
-写完还原文档后运行脚本校验，并把抽检结果记入 `还原/审查/还原核对.md`：
+写完还原文档后运行本技能测量回挂并完成核对，把抽检结果记入 `还原/审查/还原核对.md`：
 
-1. **格式校验与时长估算**：运行 `$short-drama` 的 `creator_markdown_check.py <剧集目录> --partial`（五份文档齐备后去掉 `--partial`）以及 `$short-drama-write` 的 `duration_estimate.py --script <剧集目录>/剧本.md`（如需跑 `screenplay_index.py`，传 `--fail-on-review --output <剧集目录外的临时路径>`，不在 `剧集/EPxxx/` 下留下临时索引文件）。
+1. **格式校验与时长估算**：若已安装 `short-drama` 与 `short-drama-write` 技能，可分别移交它们做文档格式核对（五份文档未齐时仅作部分核对）与单集剧本时长估算（不在 `剧集/EPxxx/` 下留下临时索引文件）；独立运行时直接对照标准文档格式与本集实测时长逐项自检，不跨技能调用其他技能目录中的脚本。
 2. **字幕时间轴挂回 `measure`**：按 `T001 台词` 或 `T005-T010 合并的长句台词`（自动取首条起点至末条终点合并跨屏/跨镜拆条，非台词事件直接省略）写一份文本映射 `EPxxx.cues.txt`，挂回 `measure.json`（也可直接在 `*.subtitles.json` 的 `events` 里填 `text` 后挂接）：
    ```bash
-   python3 {技能目录}/scripts/breakdown_tool.py transcript \
+   <PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py transcript \
      输入/对标/<REF-ID>/measure/<某集>.measure.json \
      输入/对标/<REF-ID>/subtitles/<某集>.cues.txt \
      --subtitles 输入/对标/<REF-ID>/subtitles/<某集>.subtitles.json
-   python3 {技能目录}/scripts/breakdown_tool.py profile REF=输入/对标/<REF-ID>/measure --opening 3
+   <PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py profile REF=输入/对标/<REF-ID>/measure --opening 3
    ```
-   若继续跑 `breakdown_tool.py plan 输入/对标/<REF-ID>/还原 --out 输入/对标/<REF-ID>/plan` 对比纯剧本还原项目，先用 `$short-drama` 的 `project_tool.py configure` 在 `format.pacing` 中同时填好字/词速与 `seconds_per_action_paragraph`。未建《分镜.md》时，`plan` 与 `duration_estimate.py` 把动作段与台词串行相加——无对白打斗或静默定格偏多时纸面时长偏短，`[VO]` 叠在连续动作上偏多时纸面时长偏长，不必因此删改动作描写（首集加长而后续集定长时，单集跑 `duration_estimate.py` 可传 `--target-seconds <本集实测秒数>`）。
+   若继续跑 `breakdown_tool.py plan 输入/对标/<REF-ID>/还原 --out 输入/对标/<REF-ID>/plan` 对比纯剧本还原项目，需先确保还原项目配置的 `format.pacing` 中同时填好字/词速与 `seconds_per_action_paragraph`（已安装 `short-drama` 技能时交由它配置，独立运行时按需直接填写项目配置文件）。未建《分镜.md》时，`plan` 与单集时长估算均把动作段与台词串行相加——无对白打斗或静默定格偏多时纸面时长偏短，`[VO]` 叠在连续动作上偏多时纸面时长偏长，不必因此删改动作描写（首集加长而后续集定长时，交由 `short-drama-write` 技能做单集估时时可按本集实测秒数指定目标时长）。
 
 | 核对项 | 抽检做法 | 计法说明 |
 |---|---|---|

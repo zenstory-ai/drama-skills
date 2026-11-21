@@ -12,7 +12,7 @@
 ## 1. 建候选索引（支持非第 1 集起步与跳集选拆）
 
 ```text
-python3 <本技能目录>/scripts/episode_intake.py index \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py index \
   输入/<完整剧本> \
   --source-ref 输入/<完整剧本> \
   --out 项目开发/_work/episode-intake-index.next.json
@@ -28,7 +28,7 @@ python3 <本技能目录>/scripts/episode_intake.py index \
 ```
 
 ```text
-python3 <本技能目录>/scripts/episode_intake.py manual-index \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py manual-index \
   输入/<完整剧本> <临时边界.jsonl> \
   --source-ref 输入/<完整剧本> \
   --out 项目开发/_work/episode-intake-index.next.json
@@ -37,7 +37,7 @@ python3 <本技能目录>/scripts/episode_intake.py manual-index \
 候选索引跑通 `verify` 后存到正式路径 `项目开发/episode-intake-index.json`：
 
 ```text
-python3 <本技能目录>/scripts/episode_intake.py verify \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py verify \
   项目开发/_work/episode-intake-index.next.json 输入/<完整剧本>
 ```
 
@@ -46,14 +46,14 @@ python3 <本技能目录>/scripts/episode_intake.py verify \
 切单集文本前先跑 `verify`（原稿一旦改动必须重建索引，不拿旧位置硬切）：
 
 ```text
-python3 <本技能目录>/scripts/episode_intake.py verify \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py verify \
   项目开发/episode-intake-index.json 输入/<完整剧本>
 
-python3 <本技能目录>/scripts/episode_intake.py progress \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py progress \
   项目开发/episode-intake-index.json 输入/<完整剧本> \
   项目开发/episode-map.jsonl --batch-size <本轮由 Agent 决定>
 
-python3 <本技能目录>/scripts/episode_intake.py slice \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py slice \
   项目开发/episode-intake-index.json 输入/<完整剧本> EP001 \
   --out <临时单集文件>
 ```
@@ -65,7 +65,7 @@ python3 <本技能目录>/scripts/episode_intake.py slice \
 `merge` 把现有分集大纲与本轮 batch 按集号数值升序合并落盘：**允许用新批次中的同 `episode_id` 记录覆盖更新已有分集记录**（返回 `added` 与 `updated` 列表；完全一致的记录重放自动幂等跳过），并**保留既有 `episode-map.jsonl` 中属于其他分卷的合法集号**；同时严守核心护栏——**拒绝本轮 batch 写入不在当前索引 `episodes` 声明范围内的未知集号**、同批重复集号或超出 `--batch-size` 上限的批次：
 
 ```text
-python3 <本技能目录>/scripts/episode_intake.py merge \
+<PYTHON> <SKILL_DIR>/scripts/episode_intake.py merge \
   项目开发/episode-intake-index.json 输入/<完整剧本> \
   <本轮 batch.jsonl> 项目开发/episode-map.jsonl \
   --out 项目开发/episode-map.next.jsonl \

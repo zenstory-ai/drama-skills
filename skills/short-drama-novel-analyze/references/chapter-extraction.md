@@ -46,7 +46,7 @@ grep -cE '^P[0-9]+ .*\|.*\|.*\|[^|]*功能：' "$F"                     # == $P
 
 ## 人物合并与设定质变记录
 
-S4 基于已提取章节汇总 `characters.md` 与 `world.md`（仅作供 `$short-drama-develop` 取舍的候选名单，正式设定待剧本定稿后由 `$short-drama-assets` 建立）：
+S4 基于已提取章节汇总 `characters.md` 与 `world.md`（仅作供 `short-drama-develop` 技能取舍的候选名单，正式设定待剧本定稿后由 `short-drama-assets` 技能建立）：
 
 ### 同人异名合并（`NVA-08`）
 

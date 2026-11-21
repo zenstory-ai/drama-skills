@@ -1,6 +1,6 @@
 ---
 name: short-drama-write
-description: 编写或修订可拍摄的中文短剧、漫剧单集 Markdown 剧本，也负责保留作者原文并把现成剧本整理成标准格式。用户提出“写/改一集短剧”“把大纲写成剧本”“优化场景/对白”“去模板感”“去 AI 味润色”“续写下一集”或提供剧本要求进入后续制作时使用；不负责视觉设定、分镜、生图与视频提示词或终审。
+description: 编写、修订或格式化可拍摄的短剧与漫剧单集 Markdown 剧本（保留作者原文与口吻）。用户说“写/改一集剧本”“把大纲写成剧本”“优化场景对白”“去 AI 味润色”“续写下一集”或整理现成剧本格式时使用；不负责大纲、视觉设定、分镜、提示词或终审。
 license: MIT
 ---
 
@@ -51,10 +51,12 @@ license: MIT
 
 ## 时长估算（按需）
 
-用户问起时长、压稿核对篇幅，或需查看 `[VO]` 占比与漫剧 `speech_share` 时，直接对单集剧本运行内存解析估时（无需提前生成索引文件或备份旧稿；Windows 可用 `py -3`）：
+> 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
+
+用户问起时长、压稿核对篇幅，或需查看 `[VO]` 占比与漫剧 `speech_share` 时，直接对单集剧本运行内存解析估时（无需提前生成索引文件或备份旧稿）：
 
 ```text
-python3 {技能目录}/scripts/duration_estimate.py --script 剧集/<EP>/剧本.md
+<PYTHON> <SKILL_DIR>/scripts/duration_estimate.py --script 剧集/<EP>/剧本.md
 ```
 
 有 `short-drama.json` 时可追加 `--project short-drama.json` 读取项目语速与节奏设定；本集单独设了目标时长时可追加 `--target-seconds <秒数>`；若罕见单次角色名触发 `incomplete`，可追加 `--extra-speaker <角色名>`（可重复传入，在自动识别、篇首/场首 `人物：` 声明或已有索引说话人之上补充；`--speaker <角色名>` 则覆盖说话人白名单，`--script` 与 `--index` 模式均支持）。
@@ -66,8 +68,4 @@ python3 {技能目录}/scripts/duration_estimate.py --script 剧集/<EP>/剧本.
 
 ## 完成
 
-用户指定的集场范围已写进 `剧本.md`，前后因果顺畅，对白与动作演得出来，集尾落到预定位置即算完稿。视觉设定、分镜、审查与素材生产只在用户点名时才启动；写完后可交 `$short-drama` 做局部格式与引用核对。
-
-## 安装维护
-
-仅在安装、升级或排查故障时运行 `python3 {技能目录}/scripts/selftest.py`。
+用户指定的集场范围已写进 `剧本.md`，前后因果顺畅，对白与动作演得出来，集尾落到预定位置即算完稿。视觉设定、分镜、审查与素材生产只在用户点名时才启动；写完后可交 `short-drama` 技能做局部格式与引用核对。

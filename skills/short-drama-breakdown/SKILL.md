@@ -1,6 +1,6 @@
 ---
 name: short-drama-breakdown
-description: 拆解对标短剧或漫剧成片，或把成片视频反推成标准剧本与制作文档：测量集长、镜长、对白密度、开场与集尾、下一集怎么接，提炼可借鉴的叙事与视听手法，再和本项目的计划或自家成片放在同一把尺子下对照，把差距交给负责的技能补强；支持把单集或连续多集视频直接反推成跨集统一的逐字标准《剧本.md》，按需进一步还原人物场景道具设定、逐镜分镜和图片与视频提示词。用户提供视频或字幕，说“拆解这部剧”“对标一下”“和标杆差在哪”“学学这几部爆款”“把视频反推成剧本”“看视频扒剧本”“把这几集还原出来”“反推剧本和提示词”，或要拿自家成片和对标比时使用；还原结果只放在对标目录，自有或已授权的作品才能交给下游，不替创作者定节奏数值。
+description: 拆解对标短剧或漫剧成片，测量集长、镜长、对白密度与留钩节奏，提炼可借鉴手法并与本项目同尺比对；也支持将成片反推为标准剧本与制作文档。用户提供视频/字幕说“拆解/对标这部剧”“把视频反推成剧本”时使用；不直接修改原创项目文档。
 license: MIT
 ---
 
@@ -8,17 +8,15 @@ license: MIT
 
 ## 快速开始
 
-测量用 [breakdown_tool.py](scripts/breakdown_tool.py)，具体命令见[第 2 步](#2-测量)。安装、升级或排障时运行：
+> 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
 
-```bash
-python3 {技能目录}/scripts/selftest.py
-```
+测量、字幕挂接与对标汇总使用 [breakdown_tool.py](scripts/breakdown_tool.py)，具体命令见[第 2 步](#2-测量)。
 
 ## 使用边界与职责分工
 
 - 只读取当前对话提供或明确授权的素材。原片、转写稿、缩略图拼图与还原结果一律放在 `输入/对标/<REF-ID>/` 下，不进入正式交付或公开文件；学习用途（`study`）对标剧的真实剧名、专有角色名、逐字台词与独有桥段严禁进入原创项目文档或公开材料（本地记录与脱敏细则见 [阶段规范](references/stage-contract.md) `BRK-02`）。
-- 还原出来的全套文档只有在明确登记为自有（`owned`）或已获授权（`licensed`）并写明依据时，才能转出对标目录使用。
-- 本技能只负责测量、拆解、同尺比对与对标还原；本项目的正式创作文档由对应负责技能修改，实测节奏数值须经 `$short-drama-develop` 拟定方案并由创作者拍板确认后，才写入项目节奏目标。本环节完整规则见 [阶段规范](references/stage-contract.md)。
+- 还原出来的全套文档只有在明确登记为自有（`owned`）或已获授权（`licensed`）并写明依据时，才能转出对标目录交给下游使用。
+- 本技能只负责测量、拆解、同尺比对与对标还原，不替创作者定节奏数值；本项目的正式创作文档由对应负责技能修改，实测节奏数值须经 `short-drama-develop` 技能拟定方案并由创作者拍板确认后，才写入项目节奏目标。本环节完整规则见 [阶段规范](references/stage-contract.md)。
 
 ## 工作流
 
@@ -31,26 +29,28 @@ python3 {技能目录}/scripts/selftest.py
 按 [测量与观看](references/measure-and-read.md) 抽取样本集。默认先用 `measure` 生成代表帧缩略图拼版并挂接字幕转写拆解全局，仅对创作者指定的重点集或高光段落按需跑 `shots` 逐镜切片（运行环境 `PATH` 需有 `ffmpeg` 与 `ffprobe`）：
 
 ```bash
-python3 {技能目录}/scripts/breakdown_tool.py measure <视频...> --out 输入/对标/<REF-ID>/measure
-python3 {技能目录}/scripts/breakdown_tool.py transcript <某集.measure.json> <同集字幕.srt>
-python3 {技能目录}/scripts/breakdown_tool.py profile <REF-ID>=输入/对标/<REF-ID>/measure --opening 3
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py measure <视频...> --out 输入/对标/<REF-ID>/measure
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py transcript <某集.measure.json> <同集字幕.srt>
+<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py profile <REF-ID>=输入/对标/<REF-ID>/measure --opening 3
 ```
 
 ### 3. 看片细读
 
 对照代表帧拼图与带时间戳的转写稿，按 [拆解维度](references/breakdown-dimensions.md) 逐项梳理整剧集长编排、开场第一拍、信息交代方式、对白密度、镜头分切、集尾留钩与跨集衔接、画幅与制作形态；每一项都分开写明**实测与画面事实**、**作用分析**和**待确认盲区**。
 
+- **无原生音视频多模态输入时的降级路径**：若当前智能体环境不支持直接读取视频或音频文件，优先使用外挂字幕（SRT/WebVTT）或本地 ASR 转写稿，配合 `breakdown_tool.py` 生成的代表帧拼图（`*.sheet.jpg`）、字幕拼版（`*.subtitles.sheet*.jpg`）与音轨测量（`audio`）完成拆解与对照；无法从静帧与文字确认的语气、声线、配乐与非字幕人声须按 `BRK-03` 明确记为待确认盲区，不凭猜测补全。
+
 ### 3a. 视频反推剧本与整集还原（按需）
 
-要把单集或连续多集视频反推成《剧本.md》，或进一步还原设定、分镜与提示词（含拿自家老片续写或重制）时，按 [整集与多集还原](references/reconstruct.md) 在 `输入/对标/<REF-ID>/还原/` 下建独立还原项目：只需剧本时跑 `measure` 与 `subtitles` 并结合全片音画直接写出《剧本.md》，不切单镜视频；需要全套五份文档时再对目标集跑 `shots` 补齐，跨集人物、穿帮与核对记录统一放入 `还原/审查/还原核对.md`。
+要把单集或连续多集视频反推成跨集统一的逐字标准《剧本.md》，或按需进一步还原人物场景道具设定、逐镜分镜和图片与视频提示词（含拿自家老片续写或重制）时，按 [整集与多集还原](references/reconstruct.md) 在 `输入/对标/<REF-ID>/还原/` 下建独立还原项目：只需剧本时跑 `measure` 与 `subtitles` 并结合全片音画（无原生音视频输入时改用外挂字幕/ASR 转写稿配合拼图关键帧与 `audio` 测量）直接写出《剧本.md》，不切单镜视频；需要全套五份文档时再对目标集跑 `shots` 补齐，跨集人物、穿帮与核对记录统一放入 `还原/审查/还原核对.md`。
 
 ### 4. 提炼可借鉴手法
 
-在多部对标剧里反复出现、且能说清帮观众解决了什么观看痛点的做法，整理为可借鉴手法（写明适用场景、实际观看效果、什么情况下会失灵、哪些原片独有桥段不能照抄）；只在单部剧里见到的做法标为单部个例。提炼出的手法交 `$short-drama-develop` 汇总，供后续写剧本参考。
+在多部对标剧里反复出现、且能说清帮观众解决了什么观看痛点的做法，整理为可借鉴手法（写明适用场景、实际观看效果、什么情况下会失灵、哪些原片独有桥段不能照抄）；只在单部剧里见到的做法标为单部个例。提炼出的手法交 `short-drama-develop` 技能汇总，供后续写剧本参考。
 
 ### 5. 同尺对照与分工移交
 
-用 `plan` 子命令测算本项目的分镜与剧本计划（输出到 `项目开发/对标拆解/plan/`），或用 `measure` 实测自家成片，按 [差距对照与分工移交](references/gap-and-learning-loop.md) 与对标剧放在同一把尺子下并排拉出差距表。直接区分建议补强的差距与疑似有意取舍的设计，需要补强的项连同实测依据转交对应的负责技能（新项目刚起步时，把实测数据交 `$short-drama-develop` 作为拟定节奏目标的参考依据）。
+用 `plan` 子命令测算本项目的分镜与剧本计划（输出到 `项目开发/对标拆解/plan/`），或用 `measure` 实测自家成片，按 [差距对照与分工移交](references/gap-and-learning-loop.md) 与对标剧放在同一把尺子下并排拉出差距表。直接区分建议补强的差距与疑似有意取舍的设计，需要补强的项连同实测依据转交对应的负责技能（新项目刚起步时，把实测数据交 `short-drama-develop` 技能作为拟定节奏目标的参考依据）。
 
 ### 6. 归档拆解记录
 
