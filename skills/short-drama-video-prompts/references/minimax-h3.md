@@ -13,7 +13,7 @@
 }
 ```
 
-H3 的分段标签与画面描写使用英文；中文对白保留原文并写成 `<d>[Chinese] 逐字台词</d>`，前方用固定说话人编号 `(S1)`、`(S2)` 引出。
+H3 的分段标签与画面描写使用英文；中文对白保留原文并写成 `<d>[Chinese] 逐字台词</d>`（`<d>` 标签内只放台词正文，不塞入素材标签），前方用固定说话人编号 `(S1)`、`(S2)` 引出。
 
 ## 模式互斥与首帧锁图权衡
 
@@ -41,6 +41,7 @@ non_diegetic_music: ...
 - `overall_soundscape`：汇总环境底声、动作音效与叹气喘息等非语言人声，不重抄台词。
 - `non_diegetic_music`：无画外配乐时明确写 `non_diegetic_music: N/A`，防止模型自行混入背景音乐。
 - **漫剧与动画画风防实拍化（`craft_default`）**：H3 文生默认偏向真人摄影，非实拍项目走 Base 文生时需在首句与每个 `[Shot N]` 开头点明画风媒介并排除 `realistic` / `photorealistic`；三维 CG 建议挂定稿首帧走 `first_frame` 模式。首帧模式下人物转身方向偶有不听指令，要求严格接转身方向时优先在首帧摆好朝向或留给后期切点衔接。
+- **近景反应镜调校（`craft_default`）**：拍听闻消息后的近景反应时，按「**触发动静 → 用一个准确情绪词点名（如“他瞬间怔住”）→ 给两处在当前景别清晰可见的外露破绽（如眼神定死、拇指悬停半空；嘴角笑意凝固、小臂收紧）→ 1.5 秒内落定保持**」组织。光写抽象情绪词容易五官乱飞，只列零碎动作不点情绪词又容易力度发软。
 
 ## Full-reference（六段结构，整条一次提交）
 
@@ -55,7 +56,7 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-- **素材编号与保留度**：`<Picture N>`、`<Video N>`、`<Audio N>` 按同类素材在本镜的 `顺序` 各自从 1 编号，`<Subject N>` 定义跨句复用的角色或场景主体；`retention_analysis` 标明保留程度——视觉用 `fully_preserved` / `partially_preserved` / `attribute_transfer` / `weak_reference`；仓库内绑定角色固定 `- 声音参考：`（`VID-27`）配 `<d>` 台词时统一用 `reference`（即 `usage_type: reference`），而 `fully_copy` / `partially_copy` 仅在外部平台手动上传单句干音（`relay_external`）时使用（背景弱参考用 `weak_reference`）。
+- **素材编号与保留度**：`<Picture N>`、`<Video N>`、`<Audio N>` 按同类素材在本镜的 `顺序` 各自从 1 编号；在 `subject_definitions` 将 `<Picture N>` 绑定到角色或场景主体 `<Subject N>` 后，后续段落（含跨时段再次提及时）统一复用同一 `<Subject N>` 以防脱绑换脸。`retention_analysis` 标明保留程度——视觉用 `fully_preserved` / `partially_preserved` / `attribute_transfer` / `weak_reference`；仓库内绑定角色固定 `- 声音参考：`（`VID-27`）配 `<d>` 台词时统一用 `reference`（即 `usage_type: reference`），而 `fully_copy` / `partially_copy` 仅在外部平台手动上传单句干音（`relay_external`）时使用（背景弱参考用 `weak_reference`）。
 - **无首帧近景补面部板与取景说明**：未传起始帧时，在 `detailed_description` 明确写出景别切线与人物占比防被场景图拉成远景；人脸占大头的近景说话镜若只有全身设定图，可增挂同造型面部特写图并在 `retention_analysis` 区分五官与服装职责。超过 9 张 `reference_image` 上限时按本镜景别与视觉焦点取舍（见 [模型与交付配置](model-and-delivery-profiles.md)）。
 
 ### 六段示例
@@ -71,7 +72,7 @@ non_diegetic_music: N/A
 
 ### 多镜合生关键帧排布
 
-采用 `full-reference` 多镜合生（4–15 秒内，每切均备有首帧实图排在 `<Picture N>` 最前）时，`GROUP-...` 的 `输入参考图` 须将各切首帧图的 `用途` 由 `起始帧` 改标为 `构图`，以满足单条目最多一张 `起始帧` 的文档校验（`SHT-25`）及 H3 参考槽位语义（单条 `MOTION-...` 改标 `构图` 同时避免 `production_tool.py` 将其映射为 `first_frame` 触发互斥报错；未同挂对应条目 `主体` / `造型状态` 图时，两者均须按 `CON-07` 在正文保留生效的 `LOCK-...` 锁定词），并在 `subject_definitions` 首句写明切点帧对应关系、在 `detailed_description` 同步标 `[Shot 2] At 00:03.000, ...`：
+采用 `full-reference` 多镜合生（4–15 秒内，每切均备有首帧实图排在 `<Picture N>` 最前）时，`GROUP-...` 的 `输入参考图` 须将各切首帧图的 `用途` 由 `起始帧` 改标为 `构图`，以满足单条目最多一张 `起始帧` 的参考槽位校验及 H3 参考槽位语义（单条 `MOTION-...` 改标 `构图` 同时避免 `production_tool.py` 将其映射为 `first_frame` 触发互斥报错；未同挂对应条目 `主体` / `造型状态` 图时，两者均须按 `CON-07` 在正文保留生效的 `LOCK-...` 锁定词），并在 `subject_definitions` 首句写明切点帧对应关系、在 `detailed_description` 同步标 `[Shot 2] At 00:03.000, ...`：
 
 ```text
 <Picture 1> aligns with the 0.00-second mark as the opening frame of [Shot 1]; <Picture 2> aligns with the 3.00-second mark as the frame of [Shot 2].

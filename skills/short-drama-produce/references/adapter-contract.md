@@ -40,13 +40,13 @@
 
 ## 生成接口配置
 
-将接口配置文件存放在项目目录之外：
+将接口配置文件存放在项目目录之外（将 `<ADAPTER_SCRIPT>` 替换为项目外的自定义适配器脚本路径或 `<SKILL_DIR>/scripts/provider_adapters.py`；Windows 下可将 `"python3"` 替换为 `"py", "-3"` 或 `"python"`）：
 
 ```json
 {
   "adapters": {
     "studio-image": {
-      "command": ["python3", "/opt/studio/image_adapter.py"],
+      "command": ["python3", "<ADAPTER_SCRIPT>"],
       "timeout_seconds": 600
     }
   }
@@ -54,7 +54,7 @@
 ```
 
 - `command`：参数数组（直接进程调用，严禁拼成 shell 字符串）；`timeout_seconds`：允许范围 `1–3600` 秒。API 密钥只从环境变量或系统凭据库读取，严禁写进配置文件。
-- `reference_roles`（可选列表）：声明当前接口支持的参考 `role`，未列出的 `role` 会在核销确认码前拦截。当 `command` 调用内置 `provider_adapters.py` 的 `seedance` 或 `minimax-h3` 且未显式填写 `reference_roles` 时，默认放行 `first_frame`、`last_frame`、`reference_image`、`reference_video` 与 `reference_audio`；自定义外部接口若需接收 `reference_audio`，仍须在 `reference_roles` 中显式列出。
+- `reference_roles`（可选列表）：声明当前接口支持的参考 `role`，未列出的 `role` 会在核销确认码前拦截。内置视频接口的默认放行列表见 [内置生成接口说明](builtin-providers.md)；自定义外部接口若需接收 `reference_audio`，须在 `reference_roles` 中显式列出。
 
 ## 标准输入协议（stdin）
 
@@ -66,7 +66,7 @@
 - `handle_path`：异步接口拿到远端任务号后，必须在**开始轮询之前**先原子写入 `{"provider_job_id": "<id>"}`，以便断连后通过 `collect` 找回结果。
 - `collect_provider_job_id`：仅在 `collect` 时传入；只查询下载该既有远端任务结果，严禁重新提交生成请求。
 
-内置请求拼装器会在核验文件头签名与体积上限（单图 30MB、单视频 50MB、单音频 15MB、Base64 合计 64MB）后编码本地参考素材；当提示词正文尚未完整声明原生参考槽位（且不含 H3 `retention_analysis:` 原生结构）时，按 `parameters.prompt_language` 自动追加参考素材用途说明，已完整写出槽位时不再重复追加。
+内置请求拼装器会在核验文件头签名与体积上限（单图 30MB、单视频 50MB、单音频 15MB、Base64 合计 64MB）后编码本地参考素材；当提示词正文尚未完整声明目标接口的原生参考槽位（或原生多段参考结构，各内置接口判定细则见 [内置生成接口说明](builtin-providers.md)）时，按 `parameters.prompt_language` 自动追加参考素材用途说明，已完整声明时不再重复追加。
 
 ## 标准输出协议（stdout）
 
@@ -77,7 +77,7 @@
   "outputs": [
     {
       "target": "剧集/EP001/制作成果/images/SHOT001.png",
-      "source": "/opt/studio/staging/result.png"
+      "source": "<OUTPUT_ROOT>/result.png"
     }
   ],
   "provider_job_id": "optional-public-id"
@@ -98,7 +98,7 @@
     "request_id": null,
     "retryable": false,
     "submitted": false,
-    "detail": "SEEDANCE_MODEL is required"
+    "detail": "PROVIDER_MODEL is required"
   }
 }
 ```
