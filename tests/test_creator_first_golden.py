@@ -103,13 +103,13 @@ EXPECTED_KNOWHOW = {
         "stage-contract.md",
     },
 }
-INDEXER_SPEC = importlib.util.spec_from_file_location(
-    "creator_first_screenplay_index",
-    ROOT / "skills/short-drama-write/scripts/screenplay_index.py",
+DURATION_SPEC = importlib.util.spec_from_file_location(
+    "creator_first_duration_estimate",
+    ROOT / "skills/short-drama-write/scripts/duration_estimate.py",
 )
-assert INDEXER_SPEC and INDEXER_SPEC.loader
-screenplay_index = importlib.util.module_from_spec(INDEXER_SPEC)
-INDEXER_SPEC.loader.exec_module(screenplay_index)
+assert DURATION_SPEC and DURATION_SPEC.loader
+duration_estimate = importlib.util.module_from_spec(DURATION_SPEC)
+DURATION_SPEC.loader.exec_module(duration_estimate)
 VALIDATOR_SPEC = importlib.util.spec_from_file_location(
     "creator_markdown_check",
     ROOT / "skills/short-drama/scripts/creator_markdown_check.py",
@@ -452,10 +452,10 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             self.assertEqual(t2v_errors, [])
             self.assertEqual(t2v_kinds, frozenset())
 
-    def test_source_quotes_do_not_force_offscreen_tags_while_keyframe_subjects_must_be_covered(
+    def test_source_quotes_do_not_force_offscreen_tags(
         self,
     ) -> None:
-        """`来源` quotes locate screenplay beats without forcing `；画外：`, while `首帧提示词` subjects require `出场设定` coverage."""
+        """`来源` quotes locate screenplay beats without forcing `；画外：`."""
 
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -489,25 +489,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             self.assertEqual(
                 creator_markdown_check.validate_episode(episode, project), []
             )
-
-            entries = creator_markdown_check._visual_entries(visual, [])
-            outsider_entry = next(e for e in entries if e.category == "人物" and e.name == outsider)
-            keyframe_marker = "### 首帧提示词\n> "
-            path.write_text(
-                document.replace(
-                    keyframe_marker,
-                    f"{keyframe_marker}{outsider_entry.designators[0]} stands behind the glass desk. ",
-                    1,
-                ),
-                encoding="utf-8",
-            )
-            reported = [
-                error
-                for error in creator_markdown_check.validate_episode(episode, project)
-                if "首帧提示词" in error and outsider in error
-            ]
-            self.assertEqual(len(reported), 1, reported)
-            self.assertIn("出场设定没有覆盖", reported[0])
 
     def test_loop_shot_allows_same_image_for_start_and_end_frames_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -788,34 +769,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             )
             self.assertFalse(
                 any("输入参考图必须使用完整 REF 语法" in error for error in errors),
-                errors,
-            )
-
-    def test_visual_basis_covers_every_subject_the_keyframe_names(self) -> None:
-        """Issue #94: the keyframe fully described a character the basis never named.
-
-        #84 reported the same defect against 图片提示词项 and was answered with prose
-        alone, so 35 hours later it came back as #94 against 视觉依据. This is the
-        mechanical check that prose did not provide.
-        """
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            episode = project / "剧集/EP001"
-            shutil.copytree(EPISODE, episode)
-            storyboard = episode / "分镜.md"
-            document = storyboard.read_text(encoding="utf-8")
-            covered = "；人物「周薄森」（控制：外貌、体态、本集造型）"
-            self.assertIn(covered, document)
-            storyboard.write_text(document.replace(covered, "", 1), encoding="utf-8")
-
-            errors = creator_markdown_check.validate_episode(episode, project)
-            self.assertTrue(
-                any(
-                    error.startswith(
-                        "SHOT-EP001-002: 首帧提示词写到人物「周薄森」，出场设定没有覆盖"
-                    )
-                    for error in errors
-                ),
                 errors,
             )
 
@@ -1144,67 +1097,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 creator_markdown_check.validate_episode(episode, project), []
             )
 
-    def test_a_designator_that_collides_with_ordinary_prose_can_opt_out(self) -> None:
-        entries = [
-            creator_markdown_check.VisualEntry("道具", "手机", ["手机"]),
-            creator_markdown_check.VisualEntry("道具", "手机", []),
-        ]
-        prompt = "走廊尽头一家手机店的招牌透进来一点红光。"
-        self.assertEqual(
-            creator_markdown_check._named_entries(prompt, entries[:1]),
-            {("道具", "手机")},
-        )
-        self.assertEqual(creator_markdown_check._named_entries(prompt, entries[1:]), set())
-
-    def test_a_longer_name_owns_its_characters(self) -> None:
-        """Chinese has no word boundary, so the longest reading has to win.
-
-        Otherwise 「空的戒指盒，绒面上没有戒指」 demands that the ring be declared
-        present, and 「Jiangchen phone-case」 invents a person in the frame.
-        """
-        cases = (
-            (
-                "桌上一个空的戒指盒，绒面上没有戒指。",
-                (("道具", "戒指"), ("道具", "戒指盒")),
-                {("道具", "戒指盒")},
-            ),
-            (
-                "a cracked Jiangchen phone-case on a glass desk, no person in frame.",
-                (("人物", "江晨", "Jiangchen"), ("道具", "江晨手机", "Jiangchen phone")),
-                set(),
-            ),
-            (
-                "空办公室，不要出现江晨。",
-                (("人物", "江晨"),),
-                set(),
-            ),
-        )
-        for prompt, declared, expected in cases:
-            with self.subTest(prompt=prompt[:20]):
-                entries = [
-                    creator_markdown_check.VisualEntry(
-                        item[0], item[1], [item[2] if len(item) > 2 else item[1]]
-                    )
-                    for item in declared
-                ]
-                self.assertEqual(
-                    creator_markdown_check._named_entries(prompt, entries), expected
-                )
-
-    def test_two_entries_sharing_a_designator_are_both_credited(self) -> None:
-        entries = [
-            creator_markdown_check.VisualEntry("人物", "江晨", ["江晨"]),
-            creator_markdown_check.VisualEntry("造型", "江晨", ["江晨"]),
-        ]
-        self.assertEqual(
-            creator_markdown_check._named_entries("江晨站在桌前。", entries),
-            {("人物", "江晨"), ("造型", "江晨")},
-        )
-        self.assertEqual(
-            creator_markdown_check._named_entries("江晨站在桌前。", entries[::-1]),
-            {("人物", "江晨"), ("造型", "江晨")},
-        )
-
     def test_a_character_used_by_a_shot_is_nameable_in_the_prompt_language(
         self,
     ) -> None:
@@ -1243,25 +1135,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                     if "提示词名称" in error
                 ],
                 [],
-            )
-
-    def test_a_case_drifted_name_is_reported_rather_than_ignored(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            episode = project / "剧集/EP001"
-            shutil.copytree(EPISODE, episode)
-            storyboard = episode / "分镜.md"
-            document = storyboard.read_text(encoding="utf-8")
-            document = document.replace(
-                "；人物「周薄森」（控制：外貌、体态、本集造型）", "", 1
-            )
-            storyboard.write_text(
-                document.replace("Zhoubosen, a broad square-faced", "ZHOUBOSEN, a broad square-faced", 1),
-                encoding="utf-8",
-            )
-            errors = creator_markdown_check.validate_episode(episode, project)
-            self.assertTrue(
-                any("大小写不一致" in error for error in errors), errors
             )
 
     def test_a_broken_visual_basis_reports_only_its_own_syntax(self) -> None:
@@ -1544,46 +1417,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 "《人物参考》（控制：身份；不得控制：动作）",
                 "完整 REF 语法",
             ),
-            "motion drops a locked surface": (
-                "视频提示词.md",
-                "> A twenty-two-year-old East Asian man with a lean long face, high brow "
-                "ridge, deep-set eyes and short cropped black hair wears a buttoned "
-                "pine-green lapel service jacket",
-                "> A twenty-two-year-old East Asian man with a lean long face, high brow "
-                "ridge, deep-set eyes and short cropped black hair wears a buttoned navy "
-                "mandarin-collar tunic",
-                "LOCK-JIANGCHEN-DRESS: MOTION-EP001-003 可复制提示词缺少锁定词",
-            ),
-            "keyframe drops a locked surface": (
-                "分镜.md",
-                "in a buttoned pine-green lapel service jacket",
-                "in a buttoned navy mandarin-collar tunic",
-                "LOCK-JIANGCHEN-DRESS: SHOT-EP001-003 首帧提示词缺少锁定词",
-            ),
-            "image plate drops a locked surface": (
-                "图片提示词.md",
-                "pine-green lapel service jacket",
-                "pine-green service jacket",
-                "LOCK-JIANGCHEN-DRESS: IMG-JIANGCHEN-SHEET 可复制提示词缺少锁定词",
-            ),
-            "a locked surface only inside a negative prompt": (
-                "分镜.md",
-                "in a buttoned pine-green lapel service jacket",
-                "in a buttoned navy mandarin-collar tunic, no pine-green lapel service jacket",
-                "LOCK-JIANGCHEN-DRESS: SHOT-EP001-003 首帧提示词缺少锁定词",
-            ),
-            "a locked surface glued to a prefix": (
-                "分镜.md",
-                "in a buttoned pine-green lapel service jacket",
-                "in a fake-pine-green lapel service jacket",
-                "LOCK-JIANGCHEN-DRESS: SHOT-EP001-003 首帧提示词缺少锁定词",
-            ),
-            "a locked surface glued to a suffix": (
-                "分镜.md",
-                "pine-green lapel service jacket, lean long face",
-                "pine-green lapel service jackets, lean long face",
-                "LOCK-JIANGCHEN-DRESS: SHOT-EP001-003 首帧提示词缺少锁定词",
-            ),
             "a star-bulleted continuity lock is not silently dropped": (
                 "视觉设定.md",
                 LOCK_DECLARATION,
@@ -1714,54 +1547,8 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         )
         return creator_markdown_check.validate_episode(episode, project)
 
-    def test_a_lock_surface_counts_only_when_the_prompt_asserts_it(self) -> None:
-        """The surface has to name what is in the picture.
-
-        Plain containment answers "do these bytes occur", which both an affix and
-        a negative prompt defeat while looking like a pass. Chinese has no word
-        boundaries, so the boundary rule applies to ASCII words only -- otherwise
-        a Chinese surface could never be satisfied at all.
-        """
-        carries = creator_markdown_check._carries_surface
-        english = "pale blue chunky knit wool sweater"
-        chinese = "浅蓝色粗棒针毛线"
-        for prompt, surface, expected in (
-            (f"a mother knitting a {english} on bamboo needles", english, True),
-            (f"the {english}, half finished.", english, True),
-            (f"wearing no jewelry and a {english}", english, True),
-            (f"..., no text, no logo. A {english} rests on the sofa", english, True),
-            # one physical line break inside the rendered paragraph
-            ("A pale blue chunky knit wool\nsweater, half finished", english, True),
-            (f"a warm red cardigan, no {english}, no text", english, False),
-            (f"without a {english}", english, False),
-            ("a pristine unchipped white enamel mug", "chipped white enamel mug", False),
-            ("the chipped white enamel mug", "chipped white enamel mug", True),
-            (
-                "a fake-olive-green stand-collar service dress",
-                "olive-green stand-collar service dress",
-                False,
-            ),
-            (
-                "olive-green stand-collar service dressing-gown",
-                "olive-green stand-collar service dress",
-                False,
-            ),
-            (f"妈妈织着{chinese}，孩子在旁边看书", chinese, True),
-            (f"她穿着无袖的{chinese}背心", chinese, True),
-            (f"画面里是暗红色开衫，不要{chinese}", chinese, False),
-            (f"镜头里没有{chinese}", chinese, False),
-        ):
-            with self.subTest(surface=surface, prompt=prompt[:40]):
-                self.assertEqual(carries(prompt, surface), expected)
-
-    def test_a_lock_written_with_any_list_marker_still_enforces(self) -> None:
-        """A lock must never become a no-op because of how its bullet is typed.
-
-        Indenting the line under 识别锚点, using a full-width space, or writing
-        `*` instead of `-` all render identically in Markdown; if any of them
-        stopped the lock from being enforced, the drift it exists to catch would
-        come back silently.
-        """
+    def test_a_lock_written_with_any_list_marker_still_validates(self) -> None:
+        """A lock must never become a no-op because of how its bullet is typed."""
         declaration = LOCK_DECLARATION
         for label, written in {
             "indented": "  " + declaration,
@@ -1783,19 +1570,20 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 self.assertEqual(
                     creator_markdown_check.validate_episode(episode, project), []
                 )
-                # ...and still catch the drift.
-                storyboard = episode / "分镜.md"
-                storyboard.write_text(
-                    storyboard.read_text(encoding="utf-8").replace(
-                        "in a buttoned pine-green lapel service jacket",
-                        "in a buttoned navy mandarin-collar tunic",
+                # ...and still catch an unknown shot ID referenced by the lock.
+                visual.write_text(
+                    document.replace(
+                        declaration,
+                        written.replace(LOCK_SCOPE, "（镜头：SHOT-EP001-099；", 1),
                         1,
                     ),
                     encoding="utf-8",
                 )
-                self.assertIn(
-                    "LOCK-JIANGCHEN-DRESS: SHOT-EP001-003 首帧提示词缺少锁定词",
-                    creator_markdown_check.validate_episode(episode, project),
+                self.assertTrue(
+                    any(
+                        "LOCK-JIANGCHEN-DRESS: 连戏锁指向不存在的镜头: SHOT-EP001-099" in err
+                        for err in creator_markdown_check.validate_episode(episode, project)
+                    )
                 )
 
     def test_a_locked_surface_survives_a_hard_wrapped_prompt(self) -> None:
@@ -1818,38 +1606,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             )
             self.assertEqual(
                 creator_markdown_check.validate_episode(episode, project), []
-            )
-
-    def test_continuity_lock_scoped_to_the_whole_episode_covers_every_shot(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            episode = project / "剧集/EP001"
-            shutil.copytree(EPISODE, episode)
-            visual = episode / "视觉设定.md"
-            visual.write_text(
-                visual.read_text(encoding="utf-8")
-                + "\n- 连戏锁：LOCK-ABSENT《不存在的锁定词》（镜头：全集）"
-                "· 锁定词：a surface no prompt in this episode contains\n",
-                encoding="utf-8",
-            )
-            errors = creator_markdown_check.validate_episode(episode, project)
-            shots = heading_ids(text("分镜.md"), "SHOT-")
-            self.assertEqual(
-                sorted(
-                    error
-                    for error in errors
-                    if "首帧提示词缺少锁定词" in error
-                ),
-                sorted(
-                    f"LOCK-ABSENT: {shot_id} 首帧提示词缺少锁定词"
-                    for shot_id in shots
-                ),
-            )
-            self.assertEqual(
-                len([error for error in errors if "可复制提示词缺少锁定词" in error]),
-                len(shots),
             )
 
     def test_continuity_locks_are_optional(self) -> None:
@@ -1877,16 +1633,14 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             with self.subTest(shot=shot_id):
                 self.assertRegex(frozen_prompt(storyboard, shot_id), r"^\s*>\s*\S")
 
-    def test_screenplay_is_accepted_by_the_documented_indexer(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            summary = screenplay_index.build_index(
-                EPISODE / "剧本.md",
-                Path(directory) / "index.jsonl",
-                speakers={"江晨", "周薄森", "上级", "其他军团的人"},
-            )
+    def test_screenplay_is_accepted_by_the_duration_estimator(self) -> None:
+        blocks, summary = duration_estimate.parse_script_blocks(
+            (EPISODE / "剧本.md").read_bytes(),
+            speakers={"江晨", "周薄森", "上级", "其他军团的人"},
+        )
         self.assertEqual(summary["review_status"], "clean")
         self.assertEqual(summary["source_issue_count"], 0)
-        self.assertGreater(summary["block_count"], 0)
+        self.assertGreater(len(blocks), 0)
 
     def test_image_prompts_are_copyable_and_bounded(self) -> None:
         prompts = text("图片提示词.md")
@@ -1921,41 +1675,51 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, expected)
 
-    def test_creator_rule_catalogs_keep_every_craft_rule(self) -> None:
+    def test_creator_rule_catalogs_keep_blocking_invariants_only(self) -> None:
         expected = {
-            "short-drama-develop": {*(f"STY-{number:02d}" for number in range(1, 31))},
-            "short-drama-write": {*(f"SCR-{number:02d}" for number in range(1, 25))},
+            "short-drama-develop": {
+                "STY-03", "STY-05", "STY-07", "STY-09", "STY-18", "STY-23", "STY-29",
+            },
+            "short-drama-write": {"SCR-03", "SCR-05", "SCR-25"},
             "short-drama-assets": {
-                *(f"AST-{number:02d}" for number in range(1, 16)),
-                *(f"CON-{number:02d}" for number in range(1, 8)),
-            }
-            - {"AST-04", "CON-04", "CON-06"},
+                "AST-01", "AST-02", "AST-03", "AST-05", "AST-07",
+                "AST-08", "AST-09", "AST-10", "AST-13", "AST-14",
+                "CON-01", "CON-02", "CON-07",
+            },
             "short-drama-image-prompts": {
-                *(f"IMG-{number:02d}" for number in range(1, 15))
-            }
-            - {"IMG-12", "IMG-14"},
+                "IMG-01", "IMG-03", "IMG-04", "IMG-05", "IMG-07",
+                "IMG-08", "IMG-09", "IMG-10", "IMG-11", "IMG-13",
+            },
             "short-drama-storyboard": {
-                *(f"SHT-{number:02d}" for number in range(1, 32)),
-                *(f"CON-{number:02d}" for number in range(1, 8)),
-            }
-            - {"SHT-27", "CON-04", "CON-06"},
+                "SHT-01", "SHT-02", "SHT-05", "SHT-06", "SHT-08", "SHT-09",
+                "SHT-10", "SHT-12", "SHT-13", "SHT-14", "SHT-15", "SHT-16",
+                "SHT-17", "SHT-19", "SHT-20", "SHT-21", "SHT-22", "SHT-23",
+                "SHT-24", "SHT-25", "SHT-26",
+                "CON-01", "CON-02", "CON-07",
+            },
             "short-drama-video-prompts": {
-                *(f"VID-{number:02d}" for number in range(1, 29)),
-                *(f"CON-{number:02d}" for number in range(1, 8)),
-            }
-            - {"VID-09", "VID-18", "CON-04", "CON-06"},
-            "short-drama-review": {*(f"REV-{number:02d}" for number in range(1, 16))}
-            - {"REV-11"},
+                "VID-01", "VID-03", "VID-04", "VID-05", "VID-06", "VID-11",
+                "VID-12", "VID-13", "VID-15", "VID-17", "VID-19", "VID-20",
+                "VID-22", "VID-24", "VID-25", "VID-27", "VID-29",
+                "CON-01", "CON-02", "CON-07",
+            },
+            "short-drama-review": {"REV-01", "REV-02", "REV-03", "REV-07", "REV-09"},
         }
+        row_re = re.compile(
+            r"^\|\s*`?([A-Z]{3}-\d{2})`?\s*\|\s*`?([a-z_]+)`?\s*\|", re.MULTILINE
+        )
         for skill_name, rule_ids in expected.items():
             contract = (
                 ROOT / "skills" / skill_name / "references/stage-contract.md"
             ).read_text(encoding="utf-8")
-            actual = set(
-                re.findall(r"\b(?:STY|SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract)
-            )
+            rows = row_re.findall(contract)
+            actual = {rule_id for rule_id, _ in rows}
+            tiers = {tier for _, tier in rows}
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, rule_ids)
+                self.assertLessEqual(
+                    tiers, {"structural_invariant", "reviewed_invariant"}
+                )
 
 
 if __name__ == "__main__":

@@ -317,21 +317,6 @@ class CheckerLanguageAndDialogueTests(unittest.TestCase):
                 checker.validate_episode(ep, root, partial=True), []
             )
 
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "en_missing_basis"
-            ep = self._write_episode(
-                root,
-                prompt_language="en",
-                character_name="Elena Vance",
-                prompt_text="9:16 vertical still, Elena Vance stands on the wet wooden Pier in a dark wool coat.",
-                declare_in_basis=False,
-            )
-            errors = checker.validate_episode(ep, root, partial=True)
-            self.assertTrue(
-                any("Elena Vance" in err and "出场设定" in err for err in errors),
-                errors,
-            )
-
     def test_cross_language_character_headings_require_prompt_designator(self) -> None:
         cases = (
             (

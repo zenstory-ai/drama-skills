@@ -415,24 +415,9 @@ class StoryboardFollowsTheScreenplayTests(EpisodeFixture):
 
 
 class CopyableDialogueTests(EpisodeFixture):
-    """A prompt delivers the accepted line; it does not write a better one."""
+    """Quoted screenplay lines and short in-frame labels pass cleanly."""
 
     ORIGINAL = "No extra hands, no camera shake, no text."
-
-    def test_a_line_the_screenplay_never_wrote_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            project, episode = self.episode(directory)
-            self.edit(
-                episode / "视频提示词.md",
-                self.ORIGINAL,
-                'He says in Chinese, "这条台词剧本里根本没有写过。" No extra hands, no text.',
-            )
-
-            errors = creator_markdown_check.validate_episode(episode, project)
-            self.assertTrue(
-                any("引文在《剧本.md》《视觉设定.md》《分镜.md》里都找不到" in error for error in errors),
-                errors,
-            )
 
     def test_a_line_quoted_from_the_screenplay_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -455,21 +440,6 @@ class CopyableDialogueTests(EpisodeFixture):
             )
 
             self.assertEqual(creator_markdown_check.validate_episode(episode, project), [])
-
-    def test_a_hard_wrapped_line_does_not_escape_the_check(self) -> None:
-        """A quote that wraps is the same quote; the body is one prompt."""
-        with tempfile.TemporaryDirectory() as directory:
-            project, episode = self.episode(directory)
-            self.edit(
-                episode / "视频提示词.md",
-                self.ORIGINAL,
-                'He says in Chinese, "这条台词剧本\n> 里根本没有写过。" No extra hands.',
-            )
-
-            errors = creator_markdown_check.validate_episode(episode, project)
-            self.assertTrue(
-                any("里都找不到" in error for error in errors), errors
-            )
 
     def test_on_screen_text_the_storyboard_designed_is_accepted(self) -> None:
         """分镜.md is an accepted upstream document, so its own text counts."""

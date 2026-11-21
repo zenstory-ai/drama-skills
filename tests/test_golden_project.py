@@ -31,7 +31,7 @@ def load_module(name: str, relative: str) -> ModuleType:
 
 project_tool = load_module("golden_project_tool", "skills/short-drama/scripts/project_tool.py")
 screenplay_index = load_module(
-    "golden_screenplay_index", "skills/short-drama-write/scripts/screenplay_index.py"
+    "golden_screenplay_index", "tests/legacy/short-drama-write/scripts/screenplay_index.py"
 )
 asset_check = load_module(
     "golden_asset_check", "tests/legacy/short-drama-assets/scripts/asset_check.py"
@@ -839,33 +839,33 @@ class GoldenProjectTests(unittest.TestCase):
             for name in ("输入", "项目开发", "设定集", "剧集", "创作者决策", "审查"):
                 shutil.copytree(GOLDEN / name, root / name, dirs_exist_ok=True)
 
-            outputs = {
-                "剧集/EP001/screenplay.md": (GOLDEN / "剧集/EP001/screenplay.md").read_bytes(),
-                "剧集/EP001/screenplay-index.jsonl": (GOLDEN / "剧集/EP001/screenplay-index.jsonl").read_bytes(),
-            }
-            result = project_tool.publish_candidate(
+            configured = project_tool.configure_project(
                 root,
-                owner="short-drama-write",
-                artifact_id="EP001:script",
-                outputs=outputs,
-                inputs=["项目开发/episode-map.jsonl"],
+                target_seconds_per_episode=90,
             )
-            self.assertEqual(result["state"], "needs_confirmation")
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
+            self.assertEqual(
+                configured["status"]["format"]["target_seconds_per_episode"], 90
             )
-            reviewed = project_tool.record_review(
-                root,
-                artifact_id="EP001:script",
-                verdict="approve_with_notes",
-                reviewer="golden fixture lifecycle",
-                note="Exact readable text remains a postproduction task.",
+            status = project_tool.project_status(root)
+            self.assertEqual(status["title"], "善意不结账")
+            self.assertEqual(status["format"]["aspect_ratio"], "9:16")
+
+            export_dir = Path(directory) / "exported"
+            exported = project_tool.build_creator_export(
+                root, out=export_dir, episodes=["EP001"]
             )
-            self.assertEqual(reviewed["state"], "approved")
+            self.assertTrue(export_dir.is_dir())
+            self.assertEqual(exported["episodes"], ["EP001"])
+            self.assertTrue((export_dir / "manifest.json").is_file())
+
+            includes = [
+                "剧集/EP001/screenplay.md",
+                "剧集/EP001/screenplay-index.jsonl",
+            ]
             package = project_tool.build_delivery_package(
                 root,
                 episode="EP001",
-                includes=list(outputs),
+                includes=includes,
             )
             self.assertEqual(len(package["files"]), 2)
             self.assertEqual(

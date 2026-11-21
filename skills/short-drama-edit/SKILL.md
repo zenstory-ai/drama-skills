@@ -44,18 +44,19 @@ license: MIT
 
 ```text
 python3 <SKILL_DIR>/scripts/edit_tool.py check <剧集/EP001> --project-root <project> [--partial]
-python3 <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
+python3 <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
 python3 <SKILL_DIR>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
 - `check`：核对入出点算术自洽、来源编号与全集镜头下落（`--partial` 下未入片镜头转提醒）、媒体可读与时长边界、同源视频区间重叠、画幅宽高比一致、字幕与画面文字匹配剧本原文及音轨时间范围。
-- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**）；仅在显式传 `--subtitles remotion` 或剪辑单包含 `画面文字` 时调用可选的 [Remotion 图文叠加层](assets/remotion/README.md)（默认并发数为 2）。
+- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**）；`--screen-text-mode` 控制 `画面文字` 渲染方式（默认 `auto`）：复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 Remotion 时走可选的 [Remotion 图文叠加层](assets/remotion/README.md)（默认并发数为 2）；未装 Node/Remotion 且全片仅含普通 `字卡` 时自动降级到 `ffmpeg` ASS 烧录并在报告中给出提醒；显式传 `ffmpeg` 强制用 `ffmpeg` 烧录普通 `字卡`（遇复杂面板样式报错），传 `remotion` 强制走 Remotion，传 `off` 跳过全部 `画面文字` 叠层。
 - `verify`：实测成片总时长、综合响度与真峰值，列出图文与音轨起止秒数，并标出切点亮度跳变、切点音量跳变与疑似坏帧位置供人工复核。
 
 **无 Node / Remotion 环境时的降级方案**：
 
-1. **纯 `ffmpeg` 出片**：不在剪辑单中写 `画面文字`，直接走默认 `--subtitles ffmpeg`（或 `--no-subtitles`）完成裁切、接镜、混音与字幕烧录。
-2. **交外部剪辑软件精修**：需要复杂画面文字、花字特效或转场但未装 Node/Remotion 时，先用 `--no-subtitles`（或移除 `画面文字` 行）渲染干净成片并保留分段中间文件，连同 `剧集/<EP>/剪辑单.md`（及 SRT/ASS 字幕）导入剪映、Premiere 或 DaVinci Resolve 叠加图文与精修混音。
+1. **纯 `ffmpeg` 出片（含普通 `字卡`）**：使用默认 `--screen-text-mode auto`（或显式 `--screen-text-mode ffmpeg`）搭配默认 `--subtitles ffmpeg`，无需 Node/Remotion 即可完成裁切、接镜、混音、字幕及普通 `字卡` 烧录。
+2. **跳过画面文字直接出片**：剪辑单里带有复杂面板但当前环境未装 Node/Remotion 时，可传 `--screen-text-mode off` 跳过全部 `画面文字` 叠层并保留字幕烧录出片。
+3. **交外部剪辑软件精修**：需要复杂画面文字、花字特效或转场但未装 Node/Remotion 时，先用 `--screen-text-mode off`（可按需加 `--no-subtitles`）渲染干净成片并保留分段中间文件，连同 `剧集/<EP>/剪辑单.md`（及 SRT/ASS 字幕）导入剪映、Premiere 或 DaVinci Resolve 叠加图文与精修混音。
 
 ## 按需参考
 

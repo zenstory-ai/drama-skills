@@ -593,15 +593,19 @@ class ProjectStoreTests(unittest.TestCase):
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             state_path = project / ".short-drama/state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["schema_version"] = "2.0"
             state["artifacts"]["EP001:script"] = {
                 "owner": "short-drama-write",
-                "candidate_targets": {"剧集/EP001/screenplay.md": digest},
-                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
-                "build_state": "materialized",
-                "validation_state": "pass",
-                "creator_acceptance": "accepted",
-                "independent_review": "approve",
-                "delivery_gate": "ready",
+                "outputs": ["剧集/EP001/screenplay.md"],
+                "inputs": {},
+                "acceptance": {
+                    "decision": "accepted",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
+                "review": {
+                    "verdict": "approve",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
             }
             tool.atomic_json(state_path, state)
             store = ProjectStore(workspace, tool)
@@ -621,8 +625,8 @@ class ProjectStoreTests(unittest.TestCase):
             )
             persisted = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(
-                persisted["artifacts"]["EP001:script"]["build_state"],
-                "materialized",
+                persisted["artifacts"]["EP001:script"]["outputs"],
+                ["剧集/EP001/screenplay.md"],
             )
 
     def test_status_overlays_live_hash_drift_after_an_external_edit(self) -> None:
@@ -643,13 +647,19 @@ class ProjectStoreTests(unittest.TestCase):
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             state_path = project / ".short-drama/state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["schema_version"] = "2.0"
             state["artifacts"]["EP001:script"] = {
-                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
-                "build_state": "materialized",
-                "validation_state": "pass",
-                "creator_acceptance": "accepted",
-                "independent_review": "approve",
-                "delivery_gate": "ready",
+                "owner": "short-drama-write",
+                "outputs": ["剧集/EP001/screenplay.md"],
+                "inputs": {},
+                "acceptance": {
+                    "decision": "accepted",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
+                "review": {
+                    "verdict": "approve",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
             }
             tool.atomic_json(state_path, state)
             target.write_text("磁盘外部改动\n", encoding="utf-8")
@@ -680,13 +690,19 @@ class ProjectStoreTests(unittest.TestCase):
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             state_path = project / ".short-drama/state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["schema_version"] = "2.0"
             state["artifacts"]["EP001:script"] = {
-                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
-                "build_state": "materialized",
-                "validation_state": "pass",
-                "creator_acceptance": "accepted",
-                "independent_review": "approve",
-                "delivery_gate": "ready",
+                "owner": "short-drama-write",
+                "outputs": ["剧集/EP001/screenplay.md"],
+                "inputs": {},
+                "acceptance": {
+                    "decision": "accepted",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
+                "review": {
+                    "verdict": "approve",
+                    "outputs": {"剧集/EP001/screenplay.md": digest},
+                },
             }
             tool.atomic_json(state_path, state)
             outside = workspace / "outside.md"
@@ -1047,12 +1063,18 @@ class ArtifactOwnershipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "project"
             canonical = self.start_project(root)
-            canonical.publish_candidate(
-                root,
-                owner="short-drama-write",
-                artifact_id="EP001:script",
-                outputs={"剧集/EP001/screenplay.md": "# 一句正文\n"},
-            )
+            target = root / "剧集/EP001/screenplay.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("# 一句正文\n", encoding="utf-8")
+            state_path = root / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["schema_version"] = "2.0"
+            state["artifacts"]["EP001:script"] = {
+                "owner": "short-drama-write",
+                "outputs": ["剧集/EP001/screenplay.md"],
+                "inputs": {},
+            }
+            canonical.atomic_json(state_path, state)
             status = self.status_for(root)
 
         self.assertEqual(
@@ -2450,18 +2472,16 @@ class CreatorViewsTests(unittest.TestCase):
                 self.assertEqual(episode["videoGroups"], [])
                 self.assertTrue(any("GROUP-EP001-01" in problem for problem in episode["problems"]))
 
-    def test_a_group_that_drops_a_lock_hides_nothing(self) -> None:
+    def test_a_group_with_mismatched_duration_hides_nothing(self) -> None:
         bodies = {prompt["id"]: prompt["prompt"] for prompt in self.episode()["videoPrompts"]}
-        body = (bodies["MOTION-EP001-001"] + " " + bodies["MOTION-EP001-002"]).replace(
-            "pine-green lapel service jacket", "olive jacket"
-        )
+        body = bodies["MOTION-EP001-001"] + " " + bodies["MOTION-EP001-002"]
         seconds = sum(p["sec"] for p in self.episode()["videoPrompts"] if p["id"] in ("MOTION-EP001-001", "MOTION-EP001-002"))
         video = example("视频提示词.md") + (
-            f"\n## GROUP-EP001-01 · 掉锁\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：{seconds:g}s\n\n### 可复制提示词\n> {body}\n"
+            f"\n## GROUP-EP001-01 · 时长不对\n- 成员：MOTION-EP001-001、MOTION-EP001-002\n- 时长：{seconds + 3:g}s\n\n### 可复制提示词\n> {body}\n"
         )
         episode = self.episode(**{"视频提示词.md": video})
         self.assertEqual(episode["videoGroups"], [])
-        self.assertTrue(any("LOCK-JIANGCHEN-DRESS" in problem for problem in episode["problems"]))
+        self.assertTrue(any("GROUP-EP001-01" in problem and "时长" in problem for problem in episode["problems"]))
 
     def test_an_unpaired_storyboard_keeps_groups_unfolded(self) -> None:
         board = example("分镜.md")
@@ -2543,29 +2563,26 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertNotIn("中近景", views.CLOSE_SCALES)
 
     def test_season_prefixed_scenes_read_like_the_write_stage_index(self) -> None:
-        index = load_script(
-            "season_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
+        estimate = load_script(
+            "season_duration_estimate", SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
         )
         text = example("剧本.md")
         mixed = text.replace("## EP001-SC002", "## S01-EP001-SC002", 1)
         for screenplay in (text.replace("## EP001-SC", "## S01-EP001-SC"), mixed):
             with self.subTest(prefixed=screenplay.count("## S01-")):
                 ours = views.parse_screenplay(screenplay)
-                blocks, issues = index._parse_screenplay(screenplay.encode("utf-8"), frozenset())
+                blocks, issues = estimate.parse_screenplay(screenplay.encode("utf-8"), frozenset())
                 headings = [block["scene_id"] for block in blocks if block["kind"] == "scene_heading"]
                 self.assertEqual([scene["id"] for scene in ours["scenes"]], headings)
                 self.assertEqual(len(headings), 2)
 
     def test_a_voiced_tag_with_a_cue_reads_like_the_write_stage_index(self) -> None:
-        index = load_script(
-            "cue_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
-        )
         estimate = load_script(
             "cue_duration_estimate", SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
         )
         text = "# EP001\n\n## EP001-SC001 内 · 船舱 · 夜\n\n[OS] 船员（隔着门喊）：关窗，水进来了！\n"
         ours = views.parse_screenplay(text)
-        blocks, issues = index._parse_screenplay(text.encode("utf-8"), frozenset({"船员"}))
+        blocks, issues = estimate.parse_screenplay(text.encode("utf-8"), frozenset({"船员"}))
         self.assertEqual(issues, [])
         shown = ours["scenes"][0]["blocks"]
         self.assertEqual(
@@ -2576,9 +2593,6 @@ class CreatorViewsTests(unittest.TestCase):
         self.assertEqual(views.voice_share(ours)["spoken"], counts["dialogue_characters"])
 
     def test_screenplay_blocks_match_the_write_stage_index(self) -> None:
-        index = load_script(
-            "parity_screenplay_index", SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
-        )
         estimate = load_script(
             "parity_duration_estimate", SUITE / "skills/short-drama-write/scripts/duration_estimate.py"
         )
@@ -2587,7 +2601,7 @@ class CreatorViewsTests(unittest.TestCase):
         speakers = frozenset(
             block["who"] for scene in ours["scenes"] for block in scene["blocks"] if block["k"] == "line"
         )
-        blocks, issues = index._parse_screenplay(text.encode("utf-8"), speakers)
+        blocks, issues = estimate.parse_screenplay(text.encode("utf-8"), speakers)
         self.assertEqual(issues, [])
 
         def canonical(block: dict) -> tuple:

@@ -78,7 +78,7 @@ jobs:
           tests.test_standalone_skill_tooling
           tests.test_golden_project
           tests.test_dashboard_server
-          tests.test_simple_lifecycle.SimpleLifecycleTests.test_publish_rejects_path_aliases_and_unsafe_episode_ids
+          tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_rejects_path_aliases_and_unsafe_episode_ids
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_approved_text
           -v
 
@@ -108,12 +108,10 @@ jobs:
             skills/short-drama-novel-analyze/scripts/novel_index.py \
             skills/short-drama-develop/scripts/episode_intake.py \
             skills/short-drama-write/scripts/duration_estimate.py \
-            skills/short-drama-write/scripts/screenplay_index.py \
             tests/legacy/short-drama-assets/scripts/asset_check.py \
             tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py \
             skills/short-drama-produce/scripts/production_tool.py \
             skills/short-drama-produce/scripts/provider_adapters.py \
-            skills/short-drama-produce/scripts/fixture_adapter.py \
             skills/short-drama-edit/scripts/edit_tool.py \
             skills/short-drama-breakdown/scripts/breakdown_tool.py \
             tests/legacy/short-drama-review/scripts/review_check.py \
@@ -121,9 +119,6 @@ jobs:
             evaluations/content_quality_gate.py \
             tools/compact_refs.py \
             --ignore-missing-imports
-          for selftest in skills/*/scripts/selftest.py; do
-            mypy --python-version 3.10 --ignore-missing-imports "$selftest"
-          done
       - name: mypy (Python 3.9 stdlib floor)
         # mypy 2.x requires --python-version >= 3.10; keep a pinned 1.19.1 venv
         # so typeshed still rejects Python 3.10+ stdlib additions against the 3.9 floor.
@@ -139,12 +134,10 @@ jobs:
             skills/short-drama-novel-analyze/scripts/novel_index.py \
             skills/short-drama-develop/scripts/episode_intake.py \
             skills/short-drama-write/scripts/duration_estimate.py \
-            skills/short-drama-write/scripts/screenplay_index.py \
             tests/legacy/short-drama-assets/scripts/asset_check.py \
             tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py \
             skills/short-drama-produce/scripts/production_tool.py \
             skills/short-drama-produce/scripts/provider_adapters.py \
-            skills/short-drama-produce/scripts/fixture_adapter.py \
             skills/short-drama-edit/scripts/edit_tool.py \
             skills/short-drama-breakdown/scripts/breakdown_tool.py \
             tests/legacy/short-drama-review/scripts/review_check.py \
@@ -152,9 +145,6 @@ jobs:
             evaluations/content_quality_gate.py \
             tools/compact_refs.py \
             --ignore-missing-imports
-          for selftest in skills/*/scripts/selftest.py; do
-            /tmp/mypy39/bin/mypy --python-version 3.9 --ignore-missing-imports "$selftest"
-          done
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"

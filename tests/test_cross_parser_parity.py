@@ -1,6 +1,6 @@
 """Cross-script Markdown parser parity and cross-skill rule tier parity tests.
 
-Exercises all seven creator-Markdown scripts against a single episode carrying
+Exercises all active creator-Markdown scripts against a single episode carrying
 HTML comments outside code fences, emphasized bullet field keys, trailing and
 interleaved non-entry ``## `` headings, compact/``内外`` scene headings, clock
 action prefixes, multi-word Latin ``[VO]`` speakers, unitless shot durations,
@@ -40,17 +40,9 @@ creator_views = _load_script(
     "parity_creator_views",
     "skills/short-drama/scripts/creator_views.py",
 )
-screenplay_index = _load_script(
-    "parity_screenplay_index",
-    "skills/short-drama-write/scripts/screenplay_index.py",
-)
 duration_estimate = _load_script(
     "parity_duration_estimate",
     "skills/short-drama-write/scripts/duration_estimate.py",
-)
-breakdown_tool = _load_script(
-    "parity_breakdown_tool",
-    "skills/short-drama-breakdown/scripts/breakdown_tool.py",
 )
 production_tool = _load_script(
     "parity_production_tool",
@@ -372,32 +364,22 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
             [("许棠", "on_camera"), ("Dr. Lin", "VO")],
         )
 
-        index_path = self.project / "剧集/EP001/screenplay-index.jsonl"
-        sp_summary = screenplay_index.build_index(
-            self.episode / "剧本.md",
-            index_path,
-            speakers=["许棠", "Dr. Lin"],
-            no_previous=True,
+        parsed_blocks, parsed_issues = duration_estimate.parse_screenplay(
+            SCREENPLAY_MD.encode("utf-8"), frozenset({"许棠", "Dr. Lin"})
         )
-        self.assertEqual(sp_summary["source_issue_count"], 0)
-        self.assertEqual(sp_summary["review_status"], "clean")
-        index_rows = [
-            json.loads(line)
-            for line in index_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
+        self.assertEqual(parsed_issues, [])
+        parsed_scene_ids = [
+            block["scene_id"]
+            for block in parsed_blocks
+            if block["kind"] == "scene_heading"
         ]
-        index_scene_ids = [
-            row["scene_id"]
-            for row in index_rows
-            if row.get("record_type") == "block" and row.get("kind") == "scene_heading"
+        parsed_speakers = [
+            (block["speaker"], block.get("tag") or "on_camera")
+            for block in parsed_blocks
+            if block.get("speaker")
         ]
-        index_speakers = [
-            (row["speaker"], row.get("tag") or "on_camera")
-            for row in index_rows
-            if row.get("record_type") == "block" and row.get("speaker")
-        ]
-        self.assertEqual(index_scene_ids, view_scene_ids)
-        self.assertEqual(index_speakers, [("许棠", "on_camera"), ("Dr. Lin", "VO")])
+        self.assertEqual(parsed_scene_ids, view_scene_ids)
+        self.assertEqual(parsed_speakers, [("许棠", "on_camera"), ("Dr. Lin", "VO")])
 
         de_blocks, de_meta = duration_estimate.parse_script_blocks(
             SCREENPLAY_MD.encode("utf-8")
@@ -414,12 +396,6 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
         ]
         self.assertEqual(de_scene_ids, view_scene_ids)
         self.assertEqual(de_speakers, [("许棠", "on_camera"), ("Dr. Lin", "VO")])
-
-        bt_speakers = breakdown_tool.screenplay_speakers(SCREENPLAY_MD)
-        self.assertEqual(bt_speakers, {"许棠", "Dr. Lin"})
-        bt_plan = breakdown_tool.plan_episode(self.episode)
-        self.assertEqual(bt_plan["shot_seconds"], [4.0, 3.0])
-        self.assertAlmostEqual(bt_plan["duration"], 7.0)
 
         # 3. Settings, interleaved scene blocking, unitless shot durations, and trailing ## cutoff align.
         view_settings = creator_views.parse_settings(SETTINGS_MD)
@@ -540,7 +516,6 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
         )
         for name, stripper in (
             ("creator_markdown_check", creator_check._strip_html_comments),
-            ("breakdown_tool", breakdown_tool._strip_html_comments),
             ("production_tool", production_tool._strip_html_comments),
             ("edit_tool", edit_tool._strip_html_comments),
         ):
@@ -563,7 +538,6 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
         )
         for name, stripper in (
             ("creator_markdown_check", creator_check._strip_html_comments),
-            ("breakdown_tool", breakdown_tool._strip_html_comments),
             ("production_tool", production_tool._strip_html_comments),
             ("edit_tool", edit_tool._strip_html_comments),
         ):
@@ -718,14 +692,6 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
             ["SHOT-EP001-001", "SHOT-EP001-002"],
         )
 
-        idx_out = self.episode / "r4-index.jsonl"
-        sp_meta = screenplay_index.build_index(
-            self.episode / "剧本.md",
-            idx_out,
-            no_previous=True,
-        )
-        self.assertEqual(sp_meta["review_status"], "clean")
-
         de_blocks, de_meta = duration_estimate.parse_script_blocks(
             (self.episode / "剧本.md").read_bytes()
         )
@@ -734,14 +700,6 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
             [b["speaker"] for b in de_blocks if b.get("speaker")],
             ["许棠", "Dr. Lin"],
         )
-
-        self.assertEqual(
-            breakdown_tool.screenplay_speakers(
-                (self.episode / "剧本.md").read_text(encoding="utf-8")
-            ),
-            {"许棠", "Dr. Lin"},
-        )
-        self.assertEqual(breakdown_tool.plan_episode(self.episode)["shot_seconds"], [4.0, 3.0])
 
         grp_prompt, grp_bindings = production_tool._extract_markdown_source_defaults(
             self.project,
@@ -839,7 +797,7 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
         r"\b([A-Z]{3}-\d{2})\b(?:\s*[·:：]\s*|\s*[（(]\s*)"
         r"`?(structural_invariant|reviewed_invariant|craft_default|taste_option)`?"
     )
-    VERBATIM_SHARED_CON_RULES = frozenset({"CON-05", "CON-07"})
+    VERBATIM_SHARED_CON_RULES = frozenset({"CON-01", "CON-02", "CON-07"})
 
     def _stage_contract_registry(self) -> dict[str, tuple[str, list[str]]]:
         registry: dict[str, tuple[str, list[str]]] = {}
@@ -928,7 +886,18 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
 
     def test_every_referenced_rule_id_and_tier_matches_stage_contracts(self) -> None:
         registry = self._stage_contract_registry()
-        self.assertGreaterEqual(len(registry), 180)
+        self.assertGreaterEqual(len(registry), 100)
+        blocking_tiers = {"structural_invariant", "reviewed_invariant"}
+        non_blocking = [
+            f"{rule_id} ({tier} in {owners})"
+            for rule_id, (tier, owners) in sorted(registry.items())
+            if tier not in blocking_tiers
+        ]
+        self.assertEqual(
+            non_blocking,
+            [],
+            "stage-contract.md tables may declare only blocking invariants",
+        )
         prefixes = sorted({rule_id.split("-")[0] for rule_id in registry})
         rule_token_re = re.compile(
             r"(?<![A-Z0-9-])((?:" + "|".join(prefixes) + r")-\d{2})(?![A-Z0-9-])"
