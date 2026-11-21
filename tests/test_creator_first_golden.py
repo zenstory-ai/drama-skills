@@ -75,6 +75,7 @@ EXPECTED_KNOWHOW = {
     "short-drama-storyboard": {
         "blocking-playbooks.md",
         "fight-craft.md",
+        "format-spec.md",
         "keyframe-craft.md",
         "screenplay-to-keyframe-example.md",
         "shot-craft.md",
@@ -82,6 +83,7 @@ EXPECTED_KNOWHOW = {
     },
     "short-drama-video-prompts": {
         "camera-audio-continuity.md",
+        "format-spec.md",
         "minimax-h3.md",
         "model-and-delivery-profiles.md",
         "performance-action-timing.md",
@@ -1345,6 +1347,7 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             creator_markdown_check.VisualEntry(category, name, [name])
             for category, name in (
                 ("人物", "许棠"),
+                ("造型", "许棠—深灰旧西装"),
                 ("地点", "旧走廊"),
                 ("地点", "教室"),
                 ("道具", "旧书包"),

@@ -831,10 +831,15 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
         r"^\|\s*`?([A-Z]{3}-\d{2})`?\s*\|\s*`?([a-z_]+)`?\s*\|",
         re.MULTILINE,
     )
+    RULE_DETAIL_ROW_RE = re.compile(
+        r"^\|\s*`?([A-Z]{3}-\d{2})`?\s*\|\s*`?([a-z_]+)`?\s*\|\s*(.+?)\s*\|$",
+        re.MULTILINE,
+    )
     INLINE_TIER_RE = re.compile(
         r"\b([A-Z]{3}-\d{2})\b(?:\s*[·:：]\s*|\s*[（(]\s*)"
         r"`?(structural_invariant|reviewed_invariant|craft_default|taste_option)`?"
     )
+    VERBATIM_SHARED_CON_RULES = frozenset({"CON-05", "CON-07"})
 
     def _stage_contract_registry(self) -> dict[str, tuple[str, list[str]]]:
         registry: dict[str, tuple[str, list[str]]] = {}
@@ -864,6 +869,63 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
                     registry[rule_id] = (tier, [rel])
         return registry
 
+    def _stage_contract_descriptions(
+        self,
+    ) -> dict[str, dict[str, tuple[str, str]]]:
+        contracts: dict[str, dict[str, tuple[str, str]]] = {}
+        for path in sorted((SUITE / "skills").glob("*/references/stage-contract.md")):
+            skill = path.relative_to(SUITE / "skills").parts[0]
+            rows: dict[str, tuple[str, str]] = {}
+            for rule_id, tier, desc in self.RULE_DETAIL_ROW_RE.findall(
+                path.read_text(encoding="utf-8")
+            ):
+                rows[rule_id] = (tier, " ".join(desc.split()))
+            contracts[skill] = rows
+        return contracts
+
+    def test_shared_continuity_rules_keep_canonical_text_across_stage_contracts(
+        self,
+    ) -> None:
+        contracts = self._stage_contract_descriptions()
+        shared_skills = (
+            "short-drama-assets",
+            "short-drama-storyboard",
+            "short-drama-video-prompts",
+        )
+        for skill in shared_skills:
+            self.assertIn(skill, contracts)
+
+        con_sets = {
+            skill: {rid for rid in contracts[skill] if rid.startswith("CON-")}
+            for skill in shared_skills
+        }
+        canonical_ids = con_sets[shared_skills[0]]
+        self.assertTrue(canonical_ids)
+        for skill in shared_skills[1:]:
+            self.assertEqual(
+                con_sets[skill],
+                canonical_ids,
+                f"{skill} CON-* rule ID set differs from {shared_skills[0]}",
+            )
+
+        for rule_id in sorted(canonical_ids):
+            tier_map = {skill: contracts[skill][rule_id][0] for skill in shared_skills}
+            self.assertEqual(
+                len(set(tier_map.values())),
+                1,
+                f"{rule_id} tier mismatch across shared contracts: {tier_map}",
+            )
+            tier = next(iter(tier_map.values()))
+            if rule_id in self.VERBATIM_SHARED_CON_RULES or tier == "structural_invariant":
+                desc_map = {
+                    skill: contracts[skill][rule_id][1] for skill in shared_skills
+                }
+                self.assertEqual(
+                    len(set(desc_map.values())),
+                    1,
+                    f"{rule_id} description text drifted across stage contracts: {desc_map}",
+                )
+
     def test_every_referenced_rule_id_and_tier_matches_stage_contracts(self) -> None:
         registry = self._stage_contract_registry()
         self.assertGreaterEqual(len(registry), 180)
@@ -871,18 +933,30 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
         rule_token_re = re.compile(
             r"(?<![A-Z0-9-])((?:" + "|".join(prefixes) + r")-\d{2})(?![A-Z0-9-])"
         )
+        skill_owned_rules: dict[str, set[str]] = {}
+        for rule_id, (_, owners) in registry.items():
+            for owner in owners:
+                skill_name = Path(owner).parts[1]
+                skill_owned_rules.setdefault(skill_name, set()).add(rule_id)
 
         undefined_mentions: list[str] = []
+        foreign_mentions: list[str] = []
         tier_mismatches: list[str] = []
 
         for path in sorted((SUITE / "skills").rglob("*.md")):
             rel = str(path.relative_to(SUITE))
+            skill_name = path.relative_to(SUITE / "skills").parts[0]
             text = path.read_text(encoding="utf-8")
 
             for match in rule_token_re.finditer(text):
                 rule_id = match.group(1)
                 if rule_id not in registry:
                     undefined_mentions.append(f"{rel}: {rule_id}")
+                elif (
+                    skill_name != "short-drama-review"
+                    and rule_id not in skill_owned_rules.get(skill_name, set())
+                ):
+                    foreign_mentions.append(f"{rel}: {rule_id}")
 
             for rule_id, tier in self.RULE_ROW_RE.findall(text):
                 if tier in self.TIERS and rule_id in registry:
@@ -902,6 +976,7 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
                         )
 
         self.assertEqual(undefined_mentions, [])
+        self.assertEqual(foreign_mentions, [])
         self.assertEqual(tier_mismatches, [])
 
 
