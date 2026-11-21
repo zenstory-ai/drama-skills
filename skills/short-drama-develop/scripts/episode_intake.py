@@ -48,6 +48,8 @@ CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 CHINESE_NUMBER = "零〇一二三四五六七八九十百千两"
 _HEADING_SEP = r"(?:——|[·：:–—-])"
 _HEADING_TAIL = rf"(?:[ \t　]*{_HEADING_SEP}(?:[ \t　]*\S.*)?|[ \t　]+\S.*)?"
+_EN_HEADING_SEP = r"(?:——|[·：:–—-]|\.(?=[ \t　]|$))"
+_EN_HEADING_TAIL = rf"(?:[ \t　]*{_EN_HEADING_SEP}(?:[ \t　]*\S.*)?|[ \t　]+\S.*)?"
 CHINESE_HEADING_RE = re.compile(
     r"^[ \t　]*(?:#{1,6}[ \t　]+)?第\s*([0-9]+|["
     + CHINESE_NUMBER
@@ -56,11 +58,11 @@ CHINESE_HEADING_RE = re.compile(
     + r"[ \t　]*$"
 )
 EP_HEADING_RE = re.compile(
-    r"^[ \t　]*(?:#{1,6}[ \t　]+)?EP[ \t　]*([0-9]+)"
+    r"^[ \t　]*(?:#{1,6}[ \t　]+)?(?:EPISODE|EP)[ \t　]*([0-9]+)"
     r"(?![0-9])"
     rf"(?![ \t　]*{_HEADING_SEP}?[ \t　]*SC[0-9])"
-    r"(?![ \t　]*[-–—][ \t　]*EP[ \t　]*[0-9]+)"
-    + _HEADING_TAIL
+    r"(?![ \t　]*[-–—][ \t　]*(?:EPISODE|EP)[ \t　]*[0-9]+)"
+    + _EN_HEADING_TAIL
     + r"[ \t　]*$",
     re.IGNORECASE,
 )
