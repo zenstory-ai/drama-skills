@@ -13,7 +13,7 @@ from pathlib import Path
 
 SUITE = Path(__file__).resolve().parents[1]
 EXAMPLE = SUITE / "examples/creator-first/EP001"
-FIXTURE_ADAPTER = SUITE / "skills/short-drama-produce/scripts/fixture_adapter.py"
+FIXTURE_ADAPTER = SUITE / "tests/fixtures/fixture_adapter.py"
 
 
 def load_module(name: str, relative: str):

@@ -886,5 +886,323 @@ console.log(JSON.stringify({ twoItem, threeItem, withReward }));
             self.assertEqual(len(project.findings()), 1)
 
 
+class ScreenTextFallbackAndAssTests(unittest.TestCase):
+    def test_auto_mode_falls_back_to_ffmpeg_ass_for_caption_when_remotion_is_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 字幕：十几个号，粉丝加起来，没号多。",
+                "- 字幕时间：0.20-1.40",
+                "- 画面文字：0.00-1.20 字卡 办公室 · 日",
+            ]])
+            cuts = project.parse()
+            commands = []
+
+            def fail_if_remotion_called(*args, **kwargs):
+                raise AssertionError("Remotion should not be invoked when auto falls back to ffmpeg")
+
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    patch.object(edit, "_remotion_available", return_value=False), \
+                    patch.object(edit, "_has_ffmpeg_filter", return_value=True), \
+                    patch.object(edit, "_run", side_effect=commands.append), \
+                    patch.object(edit, "probe_duration", return_value=3.0), \
+                    patch.object(edit, "probe_audio", return_value=(48000, "stereo")), \
+                    patch.object(
+                        edit, "probe_stream",
+                        return_value={"width": 720, "height": 1280, "fps": 30},
+                    ), \
+                    patch.object(edit, "_render_remotion_overlay", side_effect=fail_if_remotion_called):
+                report = edit.render(
+                    project.episode,
+                    project.root,
+                    cuts,
+                    edit.Delivery(None, None, True, None, None, None),
+                    burn_subtitles=True,
+                    renderer="ffmpeg",
+                    screen_text_mode="auto",
+                )
+                screen_ass = (
+                    project.episode / edit.OUTPUT_DIRECTORY / "画面文字.ass"
+                ).read_text(encoding="utf-8")
+                sub_ass = (
+                    project.episode / edit.OUTPUT_DIRECTORY / "字幕.ass"
+                ).read_text(encoding="utf-8")
+
+        self.assertEqual(report["画面文字"], 1)
+        self.assertEqual(report["画面文字渲染"], "ffmpeg")
+        self.assertIsNone(report["叠层"])
+        self.assertIsNotNone(report["压制画面文字"])
+        self.assertTrue(any("兜底" in note for note in report.get("提醒", [])), report)
+        self.assertIn("PlayResX: 720", screen_ass)
+        self.assertIn("PlayResY: 1280", screen_ass)
+        self.assertIn("办公室 · 日", screen_ass)
+        self.assertIn("十几个号　粉丝加起来　没号多", sub_ass)
+        final = commands[-1]
+        vf = final[final.index("-vf") + 1]
+        self.assertLess(vf.index("screen_text.ass"), vf.index("subtitles.ass"))
+
+    def test_ffmpeg_mode_renders_caption_without_remotion_and_rejects_complex_panels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 画面文字：0.00-1.50 字卡 办公室｜日",
+            ]])
+            cuts = project.parse()
+            commands = []
+
+            def fail_if_remotion_called(*args, **kwargs):
+                raise AssertionError("Remotion must not run under --screen-text-mode ffmpeg")
+
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    patch.object(edit, "_remotion_available", return_value=True), \
+                    patch.object(edit, "_has_ffmpeg_filter", return_value=True), \
+                    patch.object(edit, "_run", side_effect=commands.append), \
+                    patch.object(edit, "probe_duration", return_value=3.0), \
+                    patch.object(edit, "probe_audio", return_value=(48000, "stereo")), \
+                    patch.object(
+                        edit, "probe_stream",
+                        return_value={"width": 1080, "height": 1920, "fps": 24},
+                    ), \
+                    patch.object(edit, "_render_remotion_overlay", side_effect=fail_if_remotion_called):
+                report = edit.render(
+                    project.episode,
+                    project.root,
+                    cuts,
+                    edit.Delivery(None, None, False, None, None, None),
+                    burn_subtitles=False,
+                    screen_text_mode="ffmpeg",
+                )
+                screen_ass = (
+                    project.episode / edit.OUTPUT_DIRECTORY / "画面文字.ass"
+                ).read_text(encoding="utf-8")
+
+            self.assertEqual(report["画面文字渲染"], "ffmpeg")
+            self.assertIn("办公室\\N{", screen_ass)
+            self.assertIn("日", screen_ass)
+
+            # Complex panels are refused in explicit ffmpeg mode with a clear error.
+            project.write([["- 画面文字：0.00-2.00 系统面板 军宣新星"]])
+            complex_cuts = project.parse()
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    self.assertRaises(edit.EditError) as raised:
+                edit.render(
+                    project.episode,
+                    project.root,
+                    complex_cuts,
+                    edit.Delivery(None, None, False, None, None, None),
+                    burn_subtitles=False,
+                    screen_text_mode="ffmpeg",
+                )
+            self.assertIn("仅支持无框「字卡」", str(raised.exception))
+            self.assertIn("系统面板", str(raised.exception))
+
+        # Escaping braces/backslashes in screen text ASS prevents libass override injection.
+        escaped_ass = edit._build_screen_text_ass(
+            [
+                {
+                    "start": 0.0,
+                    "end": 1.0,
+                    "style": "caption",
+                    "items": [
+                        {"text": "{地点}\\N教室", "rarity": None},
+                        {"text": "次行{备注}", "rarity": None},
+                    ],
+                    "countdown": None,
+                }
+            ],
+            720,
+            1280,
+        )
+        dialogue = next(line for line in escaped_ass.splitlines() if line.startswith("Dialogue:"))
+        self.assertIn("\\{地点\\}\\\\N教室", dialogue)
+        self.assertIn("次行\\{备注\\}", dialogue)
+
+    def test_off_mode_skips_screen_text_overlays_while_still_burning_subtitles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [[
+                "- 字幕：五天，一百万？",
+                "- 字幕时间：0.20-1.40",
+                "- 画面文字 1：0.00-2.00 任务面板 军宣新星（倒计时：60）",
+                "- 画面文字 2：0.50-2.50 角标 剩余（倒计时：接续）",
+            ]])
+            cuts = project.parse()
+            commands = []
+
+            def fail_if_remotion_called(*args, **kwargs):
+                raise AssertionError("Remotion must not run under --screen-text-mode off")
+
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    patch.object(edit, "_has_ffmpeg_filter", return_value=True), \
+                    patch.object(edit, "_run", side_effect=commands.append), \
+                    patch.object(edit, "probe_duration", return_value=3.0), \
+                    patch.object(edit, "probe_audio", return_value=(48000, "stereo")), \
+                    patch.object(
+                        edit, "probe_stream",
+                        return_value={"width": 720, "height": 1280, "fps": 30},
+                    ), \
+                    patch.object(edit, "_render_remotion_overlay", side_effect=fail_if_remotion_called):
+                report = edit.render(
+                    project.episode,
+                    project.root,
+                    cuts,
+                    edit.Delivery(None, None, True, None, None, None),
+                    burn_subtitles=True,
+                    renderer="ffmpeg",
+                    screen_text_mode="off",
+                )
+                self.assertTrue((project.episode / edit.OUTPUT_DIRECTORY / "字幕.srt").is_file())
+                self.assertTrue((project.episode / edit.OUTPUT_DIRECTORY / "字幕.ass").is_file())
+                self.assertFalse((project.episode / edit.OUTPUT_DIRECTORY / "画面文字.ass").exists())
+
+        self.assertEqual(report["画面文字"], 0)
+        self.assertEqual(report["画面文字渲染"], "off")
+        self.assertIsNone(report["叠层"])
+        self.assertIsNone(report["压制画面文字"])
+        self.assertTrue(any("--screen-text-mode off" in note for note in report.get("提醒", [])), report)
+        final = commands[-1]
+        self.assertIn("-vf", final)
+        self.assertIn("subtitles.ass", final[final.index("-vf") + 1])
+
+    @unittest.skipUnless(
+        shutil.which("ffmpeg")
+        and shutil.which("ffprobe")
+        and edit._has_ffmpeg_filter(shutil.which("ffmpeg"), "ass"),
+        "needs ffmpeg with libass",
+    )
+    def test_cli_renders_plain_caption_without_node_or_remotion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = Project(root, [[
+                "- 字幕：五天，一百万？",
+                "- 字幕时间：0.10-0.90",
+                "- 画面文字：0.00-0.80 字卡 办公室 · 日",
+            ]])
+            cut_list = (project.episode / "剪辑单.md").read_text(encoding="utf-8")
+            (project.episode / "剪辑单.md").write_text(
+                cut_list.replace("- 出点：3.00\n- 时长：3.00", "- 出点：1.00\n- 时长：1.00"),
+                encoding="utf-8",
+            )
+            media = project.episode / "media" / "1.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "color=c=0x223344:size=320x568:rate=24:duration=1.5",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1.5",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+                    str(media),
+                ],
+                check=True,
+            )
+
+            real_which = shutil.which
+
+            def which_without_npx(name):
+                return None if name == "npx" else real_which(name)
+
+            with patch.object(edit, "_which", side_effect=which_without_npx):
+                exit_code = edit.main([
+                    "render", str(project.episode),
+                    "--project-root", str(root),
+                    "--screen-text-mode", "auto",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            out = project.episode / edit.OUTPUT_DIRECTORY
+            self.assertTrue((out / "成片.mp4").is_file())
+            self.assertTrue((out / "画面文字.ass").is_file())
+            self.assertTrue((out / "字幕.srt").is_file())
+            self.assertTrue((out / "字幕.ass").is_file())
+            self.assertFalse((out / "叠层.webm").exists())
+
+    def test_subtitle_ass_geometry_escaping_and_measured_timing(self):
+        width, height = 768, 1344
+        line = "他念出来：{姓名}，请签字。"
+        escaped = edit._ass_text(line)
+        self.assertIn("\\{", escaped)
+        self.assertIn("\\}", escaped)
+        self.assertIn("姓名", escaped)
+        self.assertEqual(edit._ass_text("反斜杠 \\N 不是换行").count("\\\\"), 1)
+
+        ass = edit._build_ass([edit.DisplayCue(1.0, 2.0, line)], width, height)
+        self.assertIn(f"PlayResX: {width}", ass)
+        self.assertIn(f"PlayResY: {height}", ass)
+        style = next(row for row in ass.splitlines() if row.startswith("Style:"))
+        fields = style.split(":", 1)[1].split(",")
+        font_size = float(fields[2])
+        margin_h = float(fields[19])
+        margin_v = float(fields[21])
+        self.assertGreaterEqual(font_size, height * 0.02)
+        self.assertLessEqual(font_size, height * 0.06)
+        self.assertGreater(margin_v, height * 0.15)
+        self.assertLess(margin_v, height * 0.30)
+        self.assertGreater(margin_h, 0)
+        dialogue = next(row for row in ass.splitlines() if row.startswith("Dialogue:"))
+        self.assertTrue(dialogue.endswith(escaped), dialogue)
+
+        # Cues shift by exact measured segment overrun, and numbered subtitles validate cleanly.
+        with tempfile.TemporaryDirectory() as directory:
+            project = Project(Path(directory), [
+                ["- 字幕：无"],
+                ["- 字幕：五天，一百万？"],
+            ])
+            cuts = project.parse()
+            declared = [cut.end - cut.start for cut in cuts]
+            measured = [span + 0.04 for span in declared]
+            drifting = edit._subtitle_cues(cuts, declared)
+            shifted = edit._subtitle_cues(cuts, measured)
+            self.assertEqual(len(shifted), 1)
+            self.assertAlmostEqual(shifted[0][0], drifting[0][0] + 0.04, places=6)
+
+            for label, bad_lines in (
+                (
+                    "numbering gap",
+                    ["- 字幕 1：0.10-0.60 五天，一百万？", "- 字幕 3：1.00-1.50 五天，一百万？"],
+                ),
+                (
+                    "overlapping cues",
+                    ["- 字幕 1：0.10-1.00 五天，一百万？", "- 字幕 2：0.80-1.40 五天，一百万？"],
+                ),
+                (
+                    "untimed multi-subtitle",
+                    ["- 字幕 1：五天，一百万？", "- 字幕 2：0.80-1.40 五天，一百万？"],
+                ),
+            ):
+                with self.subTest(label):
+                    project.write([bad_lines])
+                    with self.assertRaises(edit.EditError):
+                        project.parse()
+
+    def test_remotion_source_manifest_matches_shipped_files_and_passes_concurrency_flag(self):
+        on_disk = {
+            path.relative_to(edit.REMOTION_SOURCE).as_posix()
+            for path in edit.REMOTION_SOURCE.rglob("*")
+            if path.is_file()
+            and path.suffix in {".ts", ".tsx", ".mjs", ".json"}
+            and "node_modules" not in path.parts
+        }
+        listed = set(edit.REMOTION_SOURCE_FILES)
+        self.assertEqual(on_disk, listed)
+        self.assertGreaterEqual(edit.DEFAULT_REMOTION_CONCURRENCY, 1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "workspace"
+            manifest = json.loads((edit.REMOTION_SOURCE / "package.json").read_text(encoding="utf-8"))
+            for name in manifest["dependencies"]:
+                (workspace / "node_modules" / name).mkdir(parents=True)
+                (workspace / "node_modules" / name / "package.json").write_text("{}")
+            invoked = []
+
+            def fake_run(command, **_):
+                invoked.append(command)
+                Path(command[4]).write_bytes(b"webm")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.object(edit, "_which", return_value="npx"), \
+                    patch.object(edit.subprocess, "run", side_effect=fake_run):
+                edit._render_remotion_overlay(
+                    Path(directory), [], [], {"width": 720, "height": 1280, "fps": 24},
+                    1.0, workspace, concurrency=3, needed_for="字幕",
+                )
+        self.assertIn("--concurrency=3", invoked[0])
+
+
 if __name__ == "__main__":
     unittest.main()

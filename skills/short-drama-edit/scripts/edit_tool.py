@@ -79,6 +79,8 @@ REMOTION_COMPOSITION = "Overlay"
 # machine down mid-render. Raise this only after measuring the host.
 DEFAULT_REMOTION_CONCURRENCY = 2
 SUBTITLE_RENDERERS = ("ffmpeg", "remotion")
+SCREEN_TEXT_MODES = ("auto", "remotion", "ffmpeg", "off")
+FFMPEG_SCREEN_TEXT_STYLES = frozenset({"caption"})
 
 CUT_HEADING = re.compile(r"^##\s+(CUT-[^\s·]+)\s*(?:·\s*(.*))?$")
 MOTION_HEADING = re.compile(r"^##\s+(MOTION-[^\s·]+)")
@@ -2166,27 +2168,44 @@ def render(
     *,
     burn_subtitles: bool,
     renderer: str = "ffmpeg",
+    screen_text_mode: str = "auto",
     remotion_workspace: Path = DEFAULT_REMOTION_WORKSPACE,
     remotion_concurrency: int = DEFAULT_REMOTION_CONCURRENCY,
 ) -> dict[str, Any]:
     ffmpeg = _require("ffmpeg")
     _require("ffprobe")
+    screen_text_route, auto_fallback = _resolve_screen_text_route(
+        cuts,
+        screen_text_mode=screen_text_mode,
+        renderer=renderer,
+        remotion_workspace=remotion_workspace,
+    )
+    needs_remotion_subtitles = (
+        burn_subtitles and renderer == "remotion" and any(cut.subtitles for cut in cuts)
+    )
     if (
         remotion_workspace != DEFAULT_REMOTION_WORKSPACE
-        or (burn_subtitles and renderer == "remotion" and any(cut.subtitles for cut in cuts))
-        or any(cut.screen_texts for cut in cuts)
+        or needs_remotion_subtitles
+        or screen_text_route == "remotion"
     ):
         _validate_remotion_workspace(remotion_workspace, project_root=project_root)
-    if (
-        burn_subtitles
-        and renderer != "remotion"
-        and any(cut.subtitles for cut in cuts)
-        and not _has_ffmpeg_filter(ffmpeg, "ass")
+    needs_ffmpeg_subtitles = (
+        burn_subtitles and renderer != "remotion" and any(cut.subtitles for cut in cuts)
+    )
+    needs_ffmpeg_screen_text = screen_text_route == "ffmpeg"
+    if (needs_ffmpeg_subtitles or needs_ffmpeg_screen_text) and not _has_ffmpeg_filter(
+        ffmpeg, "ass"
     ):
+        if needs_ffmpeg_subtitles:
+            raise EditError(
+                "当前 ffmpeg 未编译 libass（缺少 ass 字幕滤镜），无法用默认路线压制字幕；"
+                "请安装带 libass 的 ffmpeg（如 macOS 上安装 ffmpeg-full），"
+                "或改传 --subtitles remotion / --no-subtitles。"
+            )
         raise EditError(
-            "当前 ffmpeg 未编译 libass（缺少 ass 字幕滤镜），无法用默认路线压制字幕；"
+            "当前 ffmpeg 未编译 libass（缺少 ass 滤镜），无法用 ffmpeg 路线压制字卡；"
             "请安装带 libass 的 ffmpeg（如 macOS 上安装 ffmpeg-full），"
-            "或改传 --subtitles remotion / --no-subtitles。"
+            "或改传 --screen-text-mode remotion / --screen-text-mode off。"
         )
     output_root = episode / OUTPUT_DIRECTORY
     segments_root = output_root / SEGMENT_DIRECTORY
@@ -2366,8 +2385,10 @@ def render(
             joined = mixed
 
         filters: list[str] = []
+        render_notices: list[str] = []
         subtitle_path = None
         styled_path = None
+        screen_text_ass_path = None
         overlay_path = None
         cues = (
             _display_cues(_subtitle_cues(cuts, spans), _screenplay_text(episode))
@@ -2375,21 +2396,40 @@ def render(
             else []
         )
         layers = _screen_text_layers(cuts, spans)
-        canvas = probe_stream(segments[0]) if cues or layers else {}
+        active_layers = [] if screen_text_route == "off" else layers
+        canvas = probe_stream(segments[0]) if cues or active_layers else {}
         if cues:
             subtitle_path = output_root / "字幕.srt"
             subtitle_path.write_text(_build_srt(cues), encoding="utf-8")
-        # Screen text has no ffmpeg route: panels, glow and a live countdown are
-        # layout, not subtitle styling. So it always goes through the Remotion
-        # pass, and on the ffmpeg subtitle route that pass carries no cues.
+        if screen_text_route == "off" and layers:
+            render_notices.append(
+                f"已按 --screen-text-mode off 跳过 {len(layers)} 条画面文字叠层"
+            )
+        elif auto_fallback and active_layers:
+            render_notices.append(
+                "未检测到可用的 Remotion 运行环境，已自动改用 ffmpeg ASS 兜底渲染字卡"
+                "（复杂面板需安装 Remotion，跳过叠层可传 --screen-text-mode off）"
+            )
+        # Complex screen-text styles (panels, countdowns, badges) go through
+        # Remotion; plain 字卡 can also render via ffmpeg ASS without Node.js.
         remotion_cues = cues if renderer == "remotion" else []
-        if remotion_cues or layers:
+        remotion_layers = active_layers if screen_text_route == "remotion" else []
+        if remotion_cues or remotion_layers:
             overlay_path = _render_remotion_overlay(
-                output_root, remotion_cues, layers, canvas, sum(spans), remotion_workspace,
+                output_root, remotion_cues, remotion_layers, canvas, sum(spans), remotion_workspace,
                 concurrency=remotion_concurrency,
-                needed_for="画面文字" if layers else "字幕",
+                needed_for="画面文字" if remotion_layers else "字幕",
                 project_root=project_root,
             )
+        if active_layers and screen_text_route == "ffmpeg":
+            screen_text_ass = _build_screen_text_ass(
+                active_layers, canvas.get("width") or 1080, canvas.get("height") or 1920
+            )
+            screen_text_ass_path = output_root / "画面文字.ass"
+            screen_text_ass_path.write_text(screen_text_ass, encoding="utf-8")
+            staged_screen_text = Path(scratch) / "screen_text.ass"
+            staged_screen_text.write_text(screen_text_ass, encoding="utf-8")
+            filters.append(f"ass=filename={_ffmpeg_filter_path(staged_screen_text)}")
         if cues and renderer != "remotion":
             ass_text = _build_ass(cues, canvas["width"] or 1080, canvas["height"] or 1920)
             styled = styled_path = output_root / "字幕.ass"
@@ -2410,7 +2450,6 @@ def render(
             filters.append(grain)
 
         final = output_root / "成片.mp4"
-        render_notices: list[str] = []
         command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
         if overlay_path is not None:
             # VP8 carries its alpha as WebM block additions, so the decoder has
@@ -2452,9 +2491,11 @@ def render(
         "分段": [str(segment) for segment in segments],
         "字幕": str(subtitle_path) if subtitle_path else None,
         "压制字幕": str(styled_path) if styled_path else None,
+        "压制画面文字": str(screen_text_ass_path) if screen_text_ass_path else None,
         "叠层": str(overlay_path) if overlay_path else None,
         "字幕渲染": renderer if subtitle_path else None,
-        "画面文字": len(layers),
+        "画面文字": len(active_layers),
+        "画面文字渲染": screen_text_route,
         "音效": sum(len(cut.sound_effects) for cut in cuts),
         "配音": sum(len(cut.voices) for cut in cuts),
         "环境声": len(_placed_beds(cuts, spans)),
@@ -3086,6 +3127,83 @@ def _missing_remotion_packages(workspace: Path) -> list[str]:
     )
 
 
+def _remotion_available(workspace: Path) -> bool:
+    """True when `npx` is on PATH and every shipped Remotion dependency is installed."""
+
+    if _which("npx") is None:
+        return False
+    source_manifest = REMOTION_SOURCE / "package.json"
+    if not source_manifest.is_file():
+        return False
+    try:
+        manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    dependencies = manifest.get("dependencies", {})
+    if not isinstance(dependencies, dict):
+        return False
+    resolved = workspace.expanduser()
+    return all(
+        (resolved / "node_modules" / name / "package.json").is_file()
+        for name in dependencies
+    )
+
+
+def _resolve_screen_text_route(
+    cuts: Sequence[Cut],
+    *,
+    screen_text_mode: str,
+    renderer: str,
+    remotion_workspace: Path,
+) -> tuple[Optional[str], bool]:
+    """Choose how screen text is rendered: (route, fell_back_from_auto).
+
+    Plain ``字卡`` can fall back to ffmpeg ASS when Remotion/Node is absent or
+    when ``--screen-text-mode ffmpeg`` is passed. Complex styles (``卡片``,
+    ``系统面板``, ``任务面板``, ``角标``) still require Remotion unless skipped
+    explicitly via ``--screen-text-mode off``.
+    """
+
+    if screen_text_mode not in SCREEN_TEXT_MODES:
+        raise EditError(
+            f"不支持的画面文字渲染模式: {screen_text_mode!r}；"
+            f"可选值：{' / '.join(SCREEN_TEXT_MODES)}"
+        )
+    styles = {
+        SCREEN_TEXT_STYLES[text.style]
+        for cut in cuts
+        for text in cut.screen_texts
+    }
+    if not styles:
+        return None, False
+    if screen_text_mode == "off":
+        return "off", False
+    if screen_text_mode == "remotion":
+        return "remotion", False
+    unsupported = sorted(
+        label
+        for label, key in SCREEN_TEXT_STYLES.items()
+        if key in styles - FFMPEG_SCREEN_TEXT_STYLES
+    )
+    if screen_text_mode == "ffmpeg":
+        if unsupported:
+            raise EditError(
+                "--screen-text-mode ffmpeg 仅支持无框「字卡」；"
+                f"当前剪辑单包含 {'、'.join(unsupported)}，"
+                "需改用 Remotion（--screen-text-mode remotion / auto）"
+                "或传 --screen-text-mode off 跳过画面文字叠层。"
+            )
+        return "ffmpeg", False
+    if (
+        not unsupported
+        and renderer != "remotion"
+        and remotion_workspace == DEFAULT_REMOTION_WORKSPACE
+        and not _remotion_available(remotion_workspace)
+    ):
+        return "ffmpeg", True
+    return "remotion", False
+
+
 def _render_remotion_overlay(
     output_root: Path,
     cues: Sequence[DisplayCue],
@@ -3113,10 +3231,9 @@ def _render_remotion_overlay(
     if isinstance(concurrency, bool) or not isinstance(concurrency, int) or concurrency < 1:
         raise EditError(f"Remotion 并发数必须是正整数，当前是 {concurrency!r}")
     workspace = _sync_remotion_workspace(workspace_root, project_root=project_root)
-    # Screen text has no other route, so the way out named here depends on why
-    # the pass is running: dropping a flag cannot draw a system panel.
     alternative = (
-        "剪辑单里有画面文字，它只能由这条路线绘制；不装就把画面文字行删掉或写「无」。"
+        "若仅需无框「字卡」可改用 --screen-text-mode ffmpeg（无需 Node/Remotion），"
+        "或传 --screen-text-mode off 跳过画面文字叠层。"
         if needed_for == "画面文字"
         else "或改用默认的 ffmpeg 字幕（去掉 --subtitles remotion）。"
     )
@@ -3619,6 +3736,58 @@ def _build_ass(cues: Sequence[DisplayCue], width: int, height: int) -> str:
     return header + "\n".join(lines) + "\n"
 
 
+def _build_screen_text_ass(
+    layers: Sequence[dict[str, Any]], width: int, height: int
+) -> str:
+    """Author a top-centered opaque-box ASS track for plain ``字卡`` overlays.
+
+    Geometry mirrors ``Caption.tsx`` (2.8% / 2.1% of frame height, 14% top
+    margin, 8% horizontal margin) in PlayRes frame pixels so it renders without
+    Node.js or Remotion.
+    """
+
+    main_size = max(16, round(height * 0.028))
+    sub_size = max(14, round(height * 0.021))
+    padding = max(6, round(height * 0.01))
+    margin_v = max(20, round(height * 0.14))
+    margin_h = max(24, round(width * 0.08))
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "WrapStyle: 2\n"
+        "ScaledBorderAndShadow: yes\n"
+        f"PlayResX: {width}\n"
+        f"PlayResY: {height}\n"
+        "\n[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
+        "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
+        "MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: 字卡,{SUBTITLE_FONT},{main_size},&H00FCFAF7,&H00FCFAF7,"
+        f"&H471A100C,&H80000000,-1,0,0,0,100,100,0,0,3,{padding},0,8,"
+        f"{margin_h},{margin_h},{margin_v},1\n"
+        "\n[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
+        "Effect, Text\n"
+    )
+    lines: list[str] = []
+    for layer in layers:
+        items = [str(item["text"]) for item in layer.get("items", ())]
+        if not items:
+            continue
+        rendered = [_ass_text(items[0])]
+        for secondary in items[1:]:
+            rendered.append(
+                f"{{\\fs{sub_size}\\b0\\alpha&H33&}}{_ass_text(secondary)}"
+            )
+        joined_text = "\\N".join(rendered)
+        lines.append(
+            f"Dialogue: 0,{_ass_time(layer['start'])},{_ass_time(layer['end'])},"
+            f"字卡,,0,0,0,,{joined_text}"
+        )
+    return header + "\n".join(lines) + "\n"
+
+
 def _ass_text(text: str) -> str:
     """Escape a line so ASS renders its characters instead of reading them.
 
@@ -4091,6 +4260,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="字幕渲染方式：ffmpeg（默认，无外部依赖）或 remotion（需先安装，排版更好）",
     )
     parser.add_argument(
+        "--screen-text-mode", choices=SCREEN_TEXT_MODES, default="auto",
+        help=(
+            "画面文字渲染方式：auto（默认，复杂面板走 Remotion，无 Remotion 时纯字卡自动回退 ffmpeg ASS）、"
+            "remotion（强制走 Remotion）、ffmpeg（纯字卡直出，无需 Node/Remotion）、"
+            "off（跳过画面文字叠层，仍正常烧录字幕与导出成片）"
+        ),
+    )
+    parser.add_argument(
         "--remotion-workspace", type=Path, default=DEFAULT_REMOTION_WORKSPACE,
         help=f"Remotion 运行工作区（默认 {DEFAULT_REMOTION_WORKSPACE}），必须在项目之外",
     )
@@ -4148,6 +4325,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 episode, project_root, cuts, delivery,
                 burn_subtitles=delivery.burn_subtitles and not arguments.no_subtitles,
                 renderer=arguments.subtitles,
+                screen_text_mode=arguments.screen_text_mode,
                 remotion_workspace=arguments.remotion_workspace,
                 remotion_concurrency=arguments.remotion_concurrency,
             )

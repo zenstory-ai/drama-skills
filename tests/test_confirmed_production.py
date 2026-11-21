@@ -16,7 +16,7 @@ from unittest import mock
 SUITE = Path(__file__).resolve().parents[1]
 CORE_SCRIPT = SUITE / "skills/short-drama/scripts/project_tool.py"
 PRODUCTION_SCRIPT = SUITE / "skills/short-drama-produce/scripts/production_tool.py"
-FIXTURE_ADAPTER = SUITE / "skills/short-drama-produce/scripts/fixture_adapter.py"
+FIXTURE_ADAPTER = SUITE / "tests/fixtures/fixture_adapter.py"
 CREATOR_VALIDATOR = SUITE / "skills/short-drama/scripts/creator_markdown_check.py"
 CREATOR_EXAMPLE = SUITE / "examples/creator-first/EP001"
 

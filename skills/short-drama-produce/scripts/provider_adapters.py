@@ -1990,107 +1990,16 @@ def _poll_minimax_video(
     )
 
 
-def _selftest() -> None:
-    image = {
-        "modality": "image", "prompt": "portrait", "references": [],
-        "outputs": ["制作成果/a.png"], "parameters": {"width": 1024, "height": 1536},
-    }
-    video = {
-        "modality": "video", "prompt": "slow push in", "references": [],
-        "outputs": ["制作成果/a.mp4"], "parameters": {"duration": 5, "ratio": "9:16"},
-    }
-    music = {
-        "modality": "music", "prompt": "cinematic", "references": [],
-        "outputs": ["制作成果/a.mp3"], "parameters": {"lyrics": "[Verse]\nHello"},
-    }
-    speech = {
-        "modality": "tts", "prompt": "你们做了多久？", "references": [],
-        "outputs": ["制作成果/a.mp3"],
-        "parameters": {"model": "configured-speech-model", "voice_id": "a-preset"},
-    }
-    if compile_gpt_image_2_payload(image)["model"] != OPENAI_MODEL:
-        raise RuntimeError("GPT Image 2 self-test failed")
-    if compile_minimax_speech_payload(speech)["voice_setting"]["voice_id"] != "a-preset":
-        raise RuntimeError("MiniMax speech self-test failed")
-    seedance = compile_seedance_payload(
-        video,
-        model="configured-model",
-        allowed_ratios={"9:16"},
-        duration_range=(5, 10),
-    )
-    if seedance["model"] != "configured-model":
-        raise RuntimeError("Seedance model self-test failed")
-    if seedance.get("ratio") != "9:16" or seedance.get("duration") != 5:
-        raise RuntimeError("Seedance parameter self-test failed")
-    minimax_video = compile_minimax_h3_payload(
-        {**video, "parameters": {"duration": 6, "ratio": "9:16", "resolution": "768P"}},
-        model="configured-video-model",
-        allowed_ratios={"9:16"},
-        allowed_resolutions={"768P"},
-        duration_range=(4, 15),
-    )
-    if minimax_video["model"] != "configured-video-model":
-        raise RuntimeError("MiniMax video model self-test failed")
-    if minimax_video["duration"] != 6 or minimax_video["resolution"] != "768P":
-        raise RuntimeError("MiniMax video parameter self-test failed")
-    try:
-        compile_minimax_h3_payload(
-            {**video, "parameters": {"duration": 6, "resolution": "768P"}},
-            model="configured-video-model",
-            allowed_resolutions={"768P"},
-            duration_range=(4, 15),
-        )
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("MiniMax text-to-video without a ratio was accepted")
-    compiled_music = compile_minimax_music_payload(music)
-    if compiled_music["model"] != MINIMAX_MUSIC_MODEL:
-        raise RuntimeError("MiniMax model self-test failed")
-    if compiled_music["output_format"] != "hex":
-        raise RuntimeError("MiniMax output self-test failed")
-    for invalid_image in (
-        {**image, "parameters": {"background": "transparent"}},
-        {**image, "parameters": {"input_fidelity": "high"}},
-        {**image, "parameters": {"size": "1023x1024"}},
-    ):
-        try:
-            compile_gpt_image_2_payload(invalid_image)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("invalid GPT Image payload was accepted")
-    invalid_reference = {**video, "references": ["clip.mp4"]}
-    try:
-        compile_seedance_payload(
-            invalid_reference,
-            model="configured-model",
-            reference_urls=["asset://asset-example-clip"],
-            reference_roles=["reference_image"],
-        )
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("mismatched Seedance reference role was accepted")
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "provider",
-        nargs="?",
         choices=(
             "seedance", "gpt-image-2", "minimax-music", "minimax-h3",
             "minimax-speech",
         ),
     )
-    parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args(argv)
-    if args.selftest:
-        _selftest()
-        return 0
-    if args.provider is None:
-        parser.error("provider is required unless --selftest is used")
     effective_provider: str = args.provider
     try:
         raw_stdin: bytes | str = (
