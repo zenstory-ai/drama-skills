@@ -1,28 +1,28 @@
 # 原著与对标拆解核查清单
 
-用于审查 `项目开发/source-analysis/` 下由 `$short-drama-novel-analyze` 产出的原著拆解文档（`_index.json`、`triage.md`、`chapters/*.md`、`story-units.md`、`rhythm-and-emotion.md`、`characters.md`、`world.md`、`adaptation-value.md`、`episode-candidates.jsonl`），以及由 `$short-drama-breakdown` 产出的 `项目开发/对标拆解.md`。
+用于审查 `项目开发/source-analysis/` 下由 `short-drama-novel-analyze` 技能产出的原著拆解文档（`_index.json`、`triage.md`、`chapters/*.md`、`story-units.md`、`rhythm-and-emotion.md`、`characters.md`、`world.md`、`adaptation-value.md`、`episode-candidates.jsonl`），以及由 `short-drama-breakdown` 技能产出的 `项目开发/对标拆解.md`。
 
 ## 1. 章节索引与授权拆解范围核对（`NVA-01`、`NVA-03`）
 
-通过 `$short-drama-novel-analyze` 的索引覆盖核查（或直接对照 `_index.json`、`chapters/` 与原文行号）核验章节切分与拆解覆盖边界：
+通过 `short-drama-novel-analyze` 技能的索引覆盖核查（或直接对照 `_index.json`、`chapters/` 与原文行号）核验章节切分与拆解覆盖边界：
 
-- **索引结构核验（`NVA-01 · structural_invariant`）**：`$short-drama-novel-analyze` 的索引覆盖核查报错（如未识别到章节、索引序号断号或行区间未能连续覆盖原文）时判结构阻断，退回 `$short-drama-novel-analyze` 重建索引；网文原文常见的作者跳章号、重章号或过短过渡章仅归入提醒，**不因原文跳号提醒直接判阻断**。抽查 `_index.json` 的章节切分尺寸，防止把章内小节误切成独立章。
+- **索引结构核验（`NVA-01 · structural_invariant`）**：`short-drama-novel-analyze` 技能的索引覆盖核查报错（如未识别到章节、索引序号断号或行区间未能连续覆盖原文）时判结构阻断，退回 `short-drama-novel-analyze` 技能重建索引；网文原文常见的作者跳章号、重章号或过短过渡章仅归入提醒，**不因原文跳号提醒直接判阻断**。抽查 `_index.json` 的章节切分尺寸，防止把章内小节误切成独立章。
 - **支持按创作者授权章节范围拆解（`NVA-03 · structural_invariant`）**：创作者指定只拆解授权章节区间（如前 50 章、第一卷或选定篇章）时，只要 `chapters/` 完整覆盖了**创作者本次划定的目标章节范围**，且汇总文档显眼注明了所覆盖的起止章号范围，即视为合规通过，**绝不拿“未拆完全书所有章节”一刀切判不过**。只有既未声明局部拆解范围、又无故漏拆目标区间内章节或混入无关凑数文件时，才报覆盖缺漏。
 
 ## 2. 抽样快评守界、概括提炼与原文对账（`NVA-02`、`NVA-04`、`NVA-05`、`NVA-07`）
 
 - **`triage.md` 抽样范围守界（`NVA-05 · reviewed_invariant`）**：开头须写明抽读比例与实际抽读章号，评估统计仅基于已读抽样章节，不凭空推断未读章节，快评阶段也不提前越界产出 `episode-candidates.jsonl`。
 - **提炼概括与引文克制（`NVA-04 · reviewed_invariant`）**：核查拆解文档是否以提炼后的剧情作用概括为主，必要佐证仅摘取最短关键短语，不整段照搬抄录原著句子。
-- **回查原文防脑补与串行（`NVA-02 · reviewed_invariant`、`NVA-07 · reviewed_invariant`）**：抽查 `characters.md`、`world.md`、`adaptation-value.md` 中的等级体系、数额距离、关键台词归属与首次出场章号是否附有原文位置与起止行号（`NVA-02 · reviewed_invariant`）并能回查印证（`NVA-07 · reviewed_invariant`）。原著未写明却被脑补成确定事实的，退回 `$short-drama-novel-analyze` 改为「原文未明确」或删去；重点排查把甲的台词安到乙头上或抄串相邻章节数字。
+- **回查原文防脑补与串行（`NVA-02 · reviewed_invariant`、`NVA-07 · reviewed_invariant`）**：抽查 `characters.md`、`world.md`、`adaptation-value.md` 中的等级体系、数额距离、关键台词归属与首次出场章号是否附有原文位置与起止行号（`NVA-02 · reviewed_invariant`）并能回查印证（`NVA-07 · reviewed_invariant`）。原著未写明却被脑补成确定事实的，退回 `short-drama-novel-analyze` 技能改为「原文未明确」或删去；重点排查把甲的台词安到乙头上或抄串相邻章节数字。
 
 ## 3. 逐章提炼、人物归并与影视化切集（`NVA-06`、`NVA-08`–`NVA-13`）
 
 - **逐章提炼与同人合并（`NVA-06 · reviewed_invariant`、`NVA-08 · craft_default`）**：逐章情节点须写出具体动作或交锋如何改变了人物抉择、信息差、强弱势地位或人物关系（`NVA-06 · reviewed_invariant`），不拿“展现了惊人实力”“心中愤怒”充数；`characters.md` 不得单凭泛称（“红衣女子”“护卫统领”）草率合并人物，合并绰号与本名须有原文证据（`NVA-08 · craft_default`）。
-- **影视化改法与切集依据（`NVA-09 · reviewed_invariant`、`NVA-10 · reviewed_invariant`、`NVA-12 · taste_option`、`NVA-13 · craft_default`）**：原著纯心理或背景说明若保留入戏，须写明改用什么可见动作、物证或场面表现，不能换汤不换药全推给大段旁白（`NVA-09 · reviewed_invariant`）；分集候选先按爽感与看点强度标注看点（`NVA-13 · craft_default`），再按单集阶段进展与集尾悬念切分而非按固定章数字数机械平分（`NVA-10 · reviewed_invariant`）。正式从哪章开篇、留哪条支线与总集数由创作者与 `$short-drama-develop` 拍板，拆书审查不拿创作取舍卡死流程（`NVA-12 · taste_option`）。
+- **影视化改法与切集依据（`NVA-09 · reviewed_invariant`、`NVA-10 · reviewed_invariant`、`NVA-12 · taste_option`、`NVA-13 · craft_default`）**：原著纯心理或背景说明若保留入戏，须写明改用什么可见动作、物证或场面表现，不能换汤不换药全推给大段旁白（`NVA-09 · reviewed_invariant`）；分集候选先按爽感与看点强度标注看点（`NVA-13 · craft_default`），再按单集阶段进展与集尾悬念切分而非按固定章数字数机械平分（`NVA-10 · reviewed_invariant`）。正式从哪章开篇、留哪条支线与总集数由创作者与 `short-drama-develop` 技能拍板，拆书审查不拿创作取舍卡死流程（`NVA-12 · taste_option`）。
 
 ## 4. 本地对标拆解审查边界（`项目开发/对标拆解.md`）
 
-审查 `$short-drama-breakdown` 产出的本地对标学习报告、差距表与还原项目时，严守以下边界：
+审查 `short-drama-breakdown` 技能产出的本地对标学习报告、差距表与还原项目时，严守以下边界：
 
 - **对标登记、授权用途与外传边界（`BRK-01 · reviewed_invariant`）**：核查每部对标作品开测前是否登记了 `REF-ID`、素材位置、授权用途（`study`、`owned` 或附有依据的 `licensed`）及是否允许上传外部模型服务；未获准外传的作品只允许运行本机离线测量脚本。
 - **本地私有拆解允许写真实参考剧片名但禁抄逐字台词（`BRK-02 · reviewed_invariant`）**：`项目开发/对标拆解.md` 属于创作者本地私有的研究与学习记录，**允许直接写明真实参考剧片名、集数与平台出处**以便创作者直观核对，不因本地拆解报告写了真实剧名判违规（仅在对外公开发布或入库公开示例时才要求脱敏）；**但本地 `对标拆解.md` 自身仍不得照抄受版权保护的逐字台词**。

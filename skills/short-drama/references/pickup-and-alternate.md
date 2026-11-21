@@ -9,5 +9,5 @@
 ## 返工与增补路由
 
 - 每个 `SHOT-...` 只对应一条同编号 `MOTION-...`；对比不同提示词写法时记在原 `MOTION-...` 说明中，不另建重复编号。
-- **新增局部补拍**：回 `$short-drama-storyboard` 在 `分镜.md` 新增 `SHOT-...`，切清母版与补拍各自承担的动作和反应（两边都未拍到的戏份须在分镜补齐），再交 `$short-drama-video-prompts` 补配对 `MOTION-...`。
-- **问题返工归属**：改人物外观或服装状态回 `$short-drama-assets`；改机位、拆镜或镜长回 `$short-drama-storyboard`；改动态描述、参考图挂接或模型参数交 `$short-drama-video-prompts`。
+- **新增局部补拍**：移交 `short-drama-storyboard` 技能在 `分镜.md` 新增 `SHOT-...`，切清母版与补拍各自承担的动作和反应（两边都未拍到的戏份须在分镜补齐），再交 `short-drama-video-prompts` 技能补配对 `MOTION-...`。
+- **问题返工归属**：改人物外观或服装状态移交 `short-drama-assets` 技能；改机位、拆镜或镜长移交 `short-drama-storyboard` 技能；改动态描述、参考图挂接或模型参数移交 `short-drama-video-prompts` 技能。
