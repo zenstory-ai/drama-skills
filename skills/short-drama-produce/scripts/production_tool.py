@@ -1127,9 +1127,10 @@ def _unwrap_field_key_value(raw_key: str, raw_value: str) -> tuple[str, str]:
     inner = inner.strip()
     if markers and inner:
         closing = "".join(reversed(markers))
-        if value.startswith(closing) and not any(marker in inner for marker in markers):
+        stripped_value = value.lstrip(" \t\u3000")
+        if stripped_value.startswith(closing) and not any(marker in inner for marker in markers):
             key = inner
-            value = value[len(closing) :]
+            value = stripped_value[len(closing) :]
     return _strip_field_emphasis(key), value.strip()
 
 

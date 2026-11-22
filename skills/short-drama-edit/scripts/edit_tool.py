@@ -91,24 +91,28 @@ FIELD = re.compile(r"^[ \t　]*[-*+][ \t　]+([^：:\n]+?)[ \t]*[：:][ \t]*(.*)
 _EMPHASIZED_COLON_FIELD = re.compile(
     r"^[ \t　]*[-*+][ \t　]+"
     r"(?:"
-    r"\*\*([^：:\n*]+?)[ \t]*[：:][ \t]*\*\*"
-    r"|__([^：:\n_]+?)[ \t]*[：:][ \t]*__"
-    r"|(?<!\*)\*([^：:\n*]+?)[ \t]*[：:][ \t]*\*(?!\*)"
-    r"|(?<!_)_([^：:\n_]+?)[ \t]*[：:][ \t]*_(?!_)"
+    r"\*\*\*([^：:\n*]+?)[ \t　]*[：:][ \t　]*\*\*\*"
+    r"|___([^：:\n_]+?)[ \t　]*[：:][ \t　]*___"
+    r"|\*\*([^：:\n*]+?)[ \t　]*[：:][ \t　]*\*\*"
+    r"|__([^：:\n_]+?)[ \t　]*[：:][ \t　]*__"
+    r"|(?<!\*)\*([^：:\n*]+?)[ \t　]*[：:][ \t　]*\*(?!\*)"
+    r"|(?<!_)_([^：:\n_]+?)[ \t　]*[：:][ \t　]*_(?!_)"
     r")"
-    r"[ \t]*(.*)$"
+    r"[ \t　]*(.*)$"
 )
 UNUSED_LINE = re.compile(
     r"^[ \t　]*[-*+][ \t　]+"
     r"(?:"
-    r"\*\*未采用镜头[ \t]*[：:][ \t]*\*\*"
-    r"|__未采用镜头[ \t]*[：:][ \t]*__"
-    r"|(?<!\*)\*未采用镜头[ \t]*[：:][ \t]*\*(?!\*)"
-    r"|(?<!_)_未采用镜头[ \t]*[：:][ \t]*_(?!_)"
-    r"|(?:\*\*未采用镜头\*\*|__未采用镜头__|(?<!\*)\*未采用镜头\*(?!\*)|(?<!_)_未采用镜头_(?!_)|未采用镜头)"
-    r"[ \t]*[：:]"
+    r"\*\*\*未采用镜头[ \t　]*[：:][ \t　]*\*\*\*"
+    r"|___未采用镜头[ \t　]*[：:][ \t　]*___"
+    r"|\*\*未采用镜头[ \t　]*[：:][ \t　]*\*\*"
+    r"|__未采用镜头[ \t　]*[：:][ \t　]*__"
+    r"|(?<!\*)\*未采用镜头[ \t　]*[：:][ \t　]*\*(?!\*)"
+    r"|(?<!_)_未采用镜头[ \t　]*[：:][ \t　]*_(?!_)"
+    r"|(?:\*\*\*未采用镜头\*\*\*|___未采用镜头___|\*\*未采用镜头\*\*|__未采用镜头__|(?<!\*)\*未采用镜头\*(?!\*)|(?<!_)_未采用镜头_(?!_)|未采用镜头)"
+    r"[ \t　]*[：:]"
     r")"
-    r"[ \t]*(.*)$"
+    r"[ \t　]*(.*)$"
 )
 _FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$", re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^\r\n]*?)(?<!`)\1(?!`)")
@@ -488,8 +492,8 @@ def _match_field(raw: str) -> Optional[tuple[str, str]]:
 
     emph = _EMPHASIZED_COLON_FIELD.match(raw)
     if emph:
-        key = next(group for group in emph.groups()[:4] if group is not None)
-        return key.strip(), emph.group(5).strip()
+        key = next(group for group in emph.groups()[:-1] if group is not None)
+        return key.strip(), emph.groups()[-1].strip()
     plain = FIELD.match(raw)
     if plain:
         return _strip_field_emphasis(plain.group(1)), plain.group(2).strip()
@@ -3360,13 +3364,26 @@ def _render_external_overlay(
         raise EditError(f"--overlay-renderer 命令语法无效: {error}") from error
     if not argv:
         raise EditError("--overlay-renderer 不能为空")
+    has_props = any("{props}" in token for token in argv)
+    has_output = any("{output}" in token for token in argv)
+    if has_props != has_output:
+        raise EditError("--overlay-renderer 使用占位符时必须同时包含 {props} 和 {output}")
     props = output_root / "叠层.props.json"
+    if props.is_symlink():
+        raise EditError(f"叠层参数路径不得为符号链接: {props}")
+    if props.exists() and not props.is_file():
+        raise EditError(f"叠层参数路径不是普通文件: {props}")
+    overlay = output_root / "叠层.webm"
+    if overlay.is_symlink():
+        raise EditError(f"叠层输出路径不得为符号链接: {overlay}")
+    if overlay.exists():
+        if not overlay.is_file():
+            raise EditError(f"叠层输出路径不是普通文件: {overlay}")
+        overlay.unlink()
     payload = _overlay_props(cues, layers, canvas, duration)
     payload["layers"] = payload["screenTexts"]
     props.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    overlay = output_root / "叠层.webm"
-    has_placeholder = any("{props}" in token or "{output}" in token for token in argv)
-    if has_placeholder:
+    if has_props:
         cmd = [
             token.replace("{props}", str(props)).replace("{output}", str(overlay))
             for token in argv
@@ -3377,6 +3394,8 @@ def _render_external_overlay(
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except OSError as error:
         raise EditError(f"无法启动外部叠层渲染命令 {cmd[0]!r}: {error}") from error
+    if overlay.is_symlink():
+        raise EditError(f"外部叠层渲染器不得输出符号链接: {overlay}")
     if result.returncode != 0 or not overlay.is_file() or overlay.stat().st_size == 0:
         detail = (result.stderr or result.stdout or "").strip()[-2000:]
         reason = (

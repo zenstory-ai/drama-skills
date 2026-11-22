@@ -1974,6 +1974,7 @@ def _manifest_problems(
     *,
     episode: str,
     checksum_paths: set[str],
+    actual: set[str],
 ) -> list[str]:
     problems: list[str] = []
     if not isinstance(manifest, Mapping):
@@ -2025,6 +2026,8 @@ def _manifest_problems(
         sources.add(source)
         if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             problems.append(f"manifest file {number} has an invalid hash")
+            continue
+        if relative not in actual:
             continue
         member = delivery / relative
         try:
@@ -2689,6 +2692,8 @@ def _verify_checksums_file(
     for missing in sorted(expected_members - actual):
         problems.append(f"missing {member_label} file: {missing}")
     for relative, digest in expected.items():
+        if relative not in actual:
+            continue
         path = directory / relative
         try:
             path_details = os.lstat(path)
@@ -2706,6 +2711,7 @@ def _export_manifest_problems(
     manifest: object,
     *,
     checksum_paths: set[str],
+    actual: set[str],
 ) -> tuple[list[str], list[str]]:
     problems: list[str] = []
     episode_ids: list[str] = []
@@ -2775,6 +2781,8 @@ def _export_manifest_problems(
             if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
                 problems.append(f"manifest episode {ep_id} file {file_num} has an invalid hash")
                 continue
+            if relative not in actual:
+                continue
             member = directory / relative
             try:
                 member_details = os.lstat(member)
@@ -2838,6 +2846,7 @@ def verify_export_directory(directory: Path) -> dict[str, Any]:
                     manifest,
                     episode=ep_name,
                     checksum_paths=set(expected),
+                    actual=actual,
                 )
             )
         else:
@@ -2845,6 +2854,7 @@ def verify_export_directory(directory: Path) -> dict[str, Any]:
                 resolved,
                 manifest,
                 checksum_paths=set(expected),
+                actual=actual,
             )
             problems.extend(manifest_issues)
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -2881,6 +2891,7 @@ def verify_delivery_package(root: Path, *, episode: str) -> dict[str, Any]:
                 manifest,
                 episode=episode,
                 checksum_paths=set(expected),
+                actual=actual,
             )
         )
     except (OSError, UnicodeError, json.JSONDecodeError):

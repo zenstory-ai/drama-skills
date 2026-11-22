@@ -1412,6 +1412,73 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
                     root, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
                 )
 
+            # Partial placeholder ({props} without {output} or vice versa) raises EditError.
+            for bad_tpl in (
+                f'"{edit.sys.executable}" "{mock_script}" --props {{props}}',
+                f'"{edit.sys.executable}" "{mock_script}" --output {{output}}',
+            ):
+                with self.assertRaisesRegex(edit.EditError, "必须同时包含"):
+                    edit._render_external_overlay(
+                        bad_tpl, root, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                    )
+
+            # Pre-existing stale 叠层.webm is unlinked before running so a no-op exit-0
+            # renderer cannot silently reuse an old overlay from a previous render.
+            stale_dir = root / "stale_case"
+            stale_dir.mkdir()
+            (stale_dir / "叠层.webm").write_bytes(b"STALE_OLD_WEBM")
+            noop_script = root / "noop_renderer.py"
+            noop_script.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+            with self.assertRaisesRegex(edit.EditError, "未生成有效叠层文件"):
+                edit._render_external_overlay(
+                    f'"{edit.sys.executable}" "{noop_script}"',
+                    stale_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                )
+            self.assertFalse((stale_dir / "叠层.webm").exists())
+
+            # Symlinks on props (pre-existing), overlay (pre-existing), and overlay
+            # (created by renderer) are all rejected.
+            if hasattr(edit.os, "symlink"):
+                outside = root / "outside_target.bin"
+                outside.write_bytes(b"OUTSIDE")
+                sym_props_dir = root / "sym_props"
+                sym_props_dir.mkdir()
+                sym_overlay_dir = root / "sym_overlay"
+                sym_overlay_dir.mkdir()
+                post_sym_dir = root / "post_sym"
+                post_sym_dir.mkdir()
+                try:
+                    (sym_props_dir / "叠层.props.json").symlink_to(outside)
+                    (sym_overlay_dir / "叠层.webm").symlink_to(outside)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(edit.EditError, "不得为符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{mock_script}"',
+                            sym_props_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+                    with self.assertRaisesRegex(edit.EditError, "不得为符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{mock_script}"',
+                            sym_overlay_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+                    symlink_creator = root / "symlink_renderer.py"
+                    symlink_creator.write_text(
+                        "import argparse, os\n"
+                        "p = argparse.ArgumentParser()\n"
+                        "p.add_argument('--props', required=True)\n"
+                        "p.add_argument('--output', required=True)\n"
+                        "args = p.parse_args()\n"
+                        f"os.symlink({str(outside)!r}, args.output)\n",
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(edit.EditError, "不得输出符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{symlink_creator}"',
+                            post_sym_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_remotion_rules_landscape_geometry_multilingual_fallback_and_english_card_rows(self):
         program = (

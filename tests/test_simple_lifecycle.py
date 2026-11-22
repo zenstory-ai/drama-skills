@@ -1465,6 +1465,36 @@ class ActiveConfigureAndDashboardContractTests(unittest.TestCase):
                     with self.assertRaises(project_tool.ProjectConflictError):
                         project_tool.verify_export_directory(linked_root)
 
+                    # Intermediate symlink directory must NOT be traversed as an external hash oracle.
+                    (out / "leak.md").unlink()
+                    outside_dir = Path(directory) / "outside_dir"
+                    outside_dir.mkdir()
+                    (outside_dir / "secret.txt").write_text("top-secret\n", encoding="utf-8")
+                    (out / "sub").symlink_to(outside_dir, target_is_directory=True)
+                    checksums_file = out / "checksums.sha256"
+                    orig_checksums = checksums_file.read_text(encoding="utf-8")
+                    bogus_hash = "0" * 64
+                    checksums_file.write_text(
+                        orig_checksums + f"{bogus_hash}  sub/secret.txt\n",
+                        encoding="utf-8",
+                    )
+                    traversal_report = project_tool.verify_export_directory(out)
+                    self.assertEqual(traversal_report["status"], "tampered")
+                    self.assertTrue(
+                        any("symlink is not allowed: sub" in p for p in traversal_report["problems"]),
+                        traversal_report["problems"],
+                    )
+                    self.assertFalse(
+                        any("checksum mismatch: sub/secret.txt" in p for p in traversal_report["problems"]),
+                        traversal_report["problems"],
+                    )
+                    self.assertFalse(
+                        any("manifest hash mismatch" in p for p in traversal_report["problems"]),
+                        traversal_report["problems"],
+                    )
+                    checksums_file.write_text(orig_checksums, encoding="utf-8")
+                    (out / "sub").unlink()
+
             # Package CLI stays functional and prints a gentle deprecation notice to stderr.
             pkg = subprocess.run(
                 [sys.executable, str(SCRIPT), "package", str(root), "--episode", "EP001"],

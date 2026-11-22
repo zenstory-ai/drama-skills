@@ -347,10 +347,9 @@ class ProductionTests(unittest.TestCase):
         ):
             with self.subTest(name), tempfile.TemporaryDirectory() as directory:
                 root = self.project(directory, audio_line=line)
-                if name != "bold colon inside":
-                    self.assertEqual(
-                        checker.validate_episode(root / "剧集/EP001", root), []
-                    )
+                self.assertEqual(
+                    checker.validate_episode(root / "剧集/EP001", root), []
+                )
                 with self.assertRaisesRegex(
                     ValueError, "do not match the selected source entry"
                 ):
