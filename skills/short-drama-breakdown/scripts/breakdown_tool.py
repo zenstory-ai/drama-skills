@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure reference episodes and a project's own plan on one yardstick.
+"""Measure reference and own video episodes on one deterministic yardstick.
 
 Subcommands, each printing or writing measurements and never verdicts:
 
@@ -8,12 +8,9 @@ Subcommands, each printing or writing measurements and never verdicts:
                 frame per detected shot.
 ``transcript``  attach a timed transcript (SRT, WebVTT or JSON segments) to a
                 measured episode, so speech numbers come from real timings.
-``plan``        read a project's ``剧集/<EP>/分镜.md`` and ``剧本.md`` and record the
-                planned durations, shot count and spoken characters in the same
-                shape, so a plan can sit next to a reference in one table.
 ``profile``     aggregate measured episodes per series into one table: the
-                opening episodes apart from the rest, medians, the length regime
-                and whether an episode opens by replaying the previous ending.
+                opening episodes apart from the rest, medians and the length
+                regime.
 ``audio``       voiced intervals (silence detection) and loudness of an
                 episode's sound track, so dialogue rhythm can be looked at
                 before any transcript exists.
@@ -47,10 +44,8 @@ import statistics
 import subprocess
 import sys
 import tempfile
-import unicodedata
-from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -66,24 +61,11 @@ DEFAULT_SCENE_THRESHOLD = 0.28
 # tail, not a shot.
 EDGE_IGNORE_SECONDS = 0.3
 LONG_SHOT_SECONDS = 4.0
-# A one-off "名字：" opener longer than this, or opening with a pronoun, reads
-# as action with a colon in it rather than a speaker.
-NAME_MAX_CHARACTERS = 6
-PRONOUNS = ("他", "她", "它", "我", "你", "这", "那")
 # Cue ends this far past the picture are rounding, not a recognition error.
 OVERRUN_TOLERANCE_SECONDS = 0.5
-# Opening this many seconds of the next episode is compared with the closing
-# seconds of the previous one.
-REPRISE_WINDOW_SECONDS = 12.0
-REPRISE_MIN_SHARED_UNITS = 6
-REPRISE_MIN_ACTION_WEIGHT = 14
 # Episodes after the opening ones count as fixed length when the 10th and
 # 90th percentiles sit this close.
 FIXED_LENGTH_SPREAD_SECONDS = 3.0
-# Scripts written with spaces between words are timed and compared by the
-# word; every other pronounced character is one unit, as in the write stage.
-WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
-WORD_JOINERS = frozenset("'’-")
 # Strongest first: 第N集, then an EP/E marker that does not sit inside a word
 # (``Love2026_EP001``), then a 第N that is not a season or a part.
 EPISODE_MARKERS = (
@@ -92,42 +74,6 @@ EPISODE_MARKERS = (
     re.compile(r"第\s*0*(\d{1,4})(?![\d季部])"),
 )
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
-def _emph_field_head(label: str) -> str:
-    esc = re.escape(label)
-    parts = [rf"{esc}[ \t\u3000]*[：:]"]
-    for marker in (r"\*\*\*", "___", r"\*\*", "__", r"\*", "_"):
-        parts.append(rf"{marker}{esc}{marker}[ \t\u3000]*[：:]")
-        parts.append(rf"{marker}{esc}[ \t\u3000]*[：:]{marker}")
-    return "(?:" + "|".join(parts) + ")"
-
-
-_FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$", re.MULTILINE)
-_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
-ANY_SECTION = re.compile(r"^##[ \t\u3000]+", re.MULTILINE)
-SCENE_SECTION = re.compile(r"^##[ \t\u3000]+", re.MULTILINE)
-SHOT_DURATION = re.compile(
-    rf"^[ \t\u3000]*[-*+][ \t\u3000]+{_emph_field_head('时长')}[ \t\u3000]*(\d+(?:\.\d+)?)[ \t\u3000]*(?:s|秒)?(?:[ \t\u3000]*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))*[ \t\u3000。]*\r?$",
-    re.MULTILINE | re.IGNORECASE,
-)
-SHOT_HEADING = re.compile(r"^##[ \t\u3000]+SHOT-[^\s]+", re.MULTILINE)
-ON_SCREEN_TEXT_TAG = "[画面文字]"
-# A performance note inside a line, ``走。（压低声音）``, is not spoken.
-DIRECTION = re.compile(r"（[^（）]*）|\([^()]*\)")
-CAST_LINE_RE = re.compile(
-    rf"^[ \t\u3000]*(?:[-*+][ \t\u3000]+)?{_emph_field_head('人物')}[ \t\u3000]*(.*?)[ \t\u3000]*\r?$",
-    re.MULTILINE,
-)
-_CAST_PLACEHOLDERS = frozenset({"待定", "暂无", "无", "tbd", "待补", "人物"})
-_NOT_CLOCK_PREFIX = r"(?!\d{1,2}[:：]\d{2}(?:\D|$))"
-_SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
-_SPEAKER_LABEL = rf"(?=.{{1,40}}(?:[ \t\u3000]*[（(]|[ \t\u3000]*[：:]))({_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}})"
-CUE_LINE = re.compile(
-    rf"^(?:\[(VO|OS)\][ \t\u3000]*)?{_NOT_CLOCK_PREFIX}{_SPEAKER_LABEL}(?:[ \t\u3000]*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))?[ \t\u3000]*[：:][ \t\u3000]*(.+)$"
-)
-_ACTION_OPENER_RE = re.compile(
-    r"(?:写下|写着|写道|写有|印着|刻着|贴着|标着|显示|弹出|浮现|亮起|映出|注明|内容是|内容为|如下所示)"
-)
-_UNIT_LABEL_RE = re.compile(r"^第[一二三四五六七八九十百千万零〇两\d]+[格幕场镜回章集节拍]$")
 SRT_TIME = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{1,3})"
 )
@@ -1404,7 +1350,7 @@ def attach_transcript(measure: Path, transcript: Path, subtitles: Optional[Path]
     measure.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-# ------------------------------------------------------------------ plan
+# --------------------------------------------------------------- profile
 
 
 def spoken_characters(text: str) -> int:
@@ -1413,628 +1359,10 @@ def spoken_characters(text: str) -> int:
     return sum(1 for character in text if character.isalnum())
 
 
-def dialogue_characters(text: str) -> int:
-    """The VO share's own count: punctuation included, as the rhythm profile
-    defines it in the write stage."""
-
-    return len(re.sub(r"\s", "", text))
-
-
-def readable_characters(text: str) -> int:
-    """Characters a viewer reads in an on-screen text block, carrier included."""
-
-    return sum(1 for character in re.sub(r"\s", "", text) if not unicodedata.category(character).startswith("P"))
-
-
 def _normalize_text(text: str) -> str:
     if text.startswith("\ufeff"):
         text = text[1:]
     return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-_INLINE_BACKTICK_RE = re.compile(r"`+")
-_COMMENT_OPEN_RE = re.compile(r"<!--")
-
-
-def _strip_html_comments(text: str) -> str:
-    """Strip HTML comments outside Markdown fences and inline code spans while keeping line numbers."""
-
-    text = _normalize_text(text)
-    if "<!--" not in text:
-        return text
-    out: List[str] = []
-    pos = 0
-    length = len(text)
-    while pos < length:
-        comment_open = _COMMENT_OPEN_RE.search(text, pos)
-        if comment_open is None:
-            out.append(text[pos:])
-            break
-        fence = _FENCE_OPEN_RE.search(text, pos)
-        while (
-            fence is not None
-            and fence.start() < comment_open.start()
-            and fence.group(1)[0] == "`"
-            and "`" in fence.group(2)
-        ):
-            fence = _FENCE_OPEN_RE.search(text, fence.end())
-        code_tick = _INLINE_BACKTICK_RE.search(text, pos)
-        candidates: List[Tuple[int, str, Any]] = [(comment_open.start(), "comment", comment_open)]
-        if fence is not None and fence.start() < comment_open.start():
-            candidates.append((fence.start(), "fence", fence))
-        if code_tick is not None and code_tick.start() < comment_open.start():
-            candidates.append((code_tick.start(), "tick", code_tick))
-        candidates.sort(key=lambda item: (item[0], 0 if item[1] == "fence" else 1))
-        _, kind, token = candidates[0]
-        if kind == "fence":
-            marker = token.group(1)
-            after_open = text.find("\n", token.end())
-            if after_open == -1:
-                out.append(text[pos:])
-                break
-            close_re = re.compile(
-                rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*\r?$",
-                re.MULTILINE,
-            )
-            close = close_re.search(text, after_open + 1)
-            protected_end = length if close is None else close.end()
-            out.append(text[pos:protected_end])
-            pos = protected_end
-            continue
-        if kind == "tick":
-            ticks = token.group(0)
-            line_end = text.find("\n", token.end())
-            if line_end == -1:
-                line_end = length
-            closer = re.search(rf"(?<!`){re.escape(ticks)}(?!`)", text[token.end() : line_end])
-            if closer is not None:
-                span_end = token.end() + closer.end()
-                out.append(text[pos:span_end])
-                pos = span_end
-            else:
-                out.append(text[pos : token.end()])
-                pos = token.end()
-            continue
-        out.append(text[pos : token.start()])
-        close_idx = text.find("-->", token.end())
-        if close_idx == -1:
-            out.append("\n" * text[token.start() :].count("\n"))
-            break
-        end_idx = close_idx + 3
-        out.append("\n" * text[token.start() : end_idx].count("\n"))
-        pos = end_idx
-    return "".join(out)
-
-
-def _strip_fenced_code(text: str) -> str:
-    """Blank fenced Markdown code blocks while keeping line numbers."""
-
-    text = _normalize_text(text)
-    out: List[str] = []
-    pos = 0
-    length = len(text)
-    while pos < length:
-        fence = _FENCE_OPEN_RE.search(text, pos)
-        while (
-            fence is not None
-            and fence.group(1)[0] == "`"
-            and "`" in fence.group(2)
-        ):
-            fence = _FENCE_OPEN_RE.search(text, fence.end())
-        if fence is None:
-            out.append(text[pos:])
-            break
-        out.append(text[pos : fence.start()])
-        marker = fence.group(1)
-        after_open = text.find("\n", fence.end())
-        if after_open == -1:
-            break
-        close_re = re.compile(
-            rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*\r?$",
-            re.MULTILINE,
-        )
-        close = close_re.search(text, after_open + 1)
-        end_idx = length if close is None else close.end()
-        out.append("\n" * text[fence.start() : end_idx].count("\n"))
-        pos = end_idx
-    return "".join(out)
-
-
-def project_pacing(episode_dir: Path) -> Optional[Dict[str, Optional[float]]]:
-    """The project's declared speaking and action rates, when it has them."""
-
-    episode_dir = episode_dir.resolve()
-    for folder in (episode_dir, *list(episode_dir.parents)[:3]):
-        config = folder / "short-drama.json"
-        if not config.is_file():
-            continue
-        try:
-            raw_pacing = (json.loads(config.read_text(encoding="utf-8")).get("format") or {}).get("pacing")
-        except (OSError, ValueError):
-            return None
-        if not isinstance(raw_pacing, dict):
-            return None
-        if any(
-            isinstance(value, (int, float)) and not isinstance(value, bool) and not math.isfinite(value)
-            for value in raw_pacing.values()
-        ):
-            return None
-
-        def rate(name: str) -> Optional[float]:
-            value = raw_pacing.get(name)
-            if (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-                and value > 0
-            ):
-                return float(value)
-            return None
-
-        action = raw_pacing.get("seconds_per_action_paragraph")
-        if (
-            not isinstance(action, (int, float))
-            or isinstance(action, bool)
-            or not math.isfinite(action)
-            or action < 0
-        ):
-            return None
-        rates = {
-            "characters": rate("spoken_characters_per_second"),
-            "words": rate("spoken_words_per_second"),
-            "action": float(action),
-            "reading": rate("on_screen_text_characters_per_second"),
-        }
-        return rates if rates["characters"] or rates["words"] else None
-    return None
-
-
-def _scan_cast_lines(cleaned_text: str) -> Tuple[List[str], str]:
-    """Extract cast declaration values (before first scene or at scene head) and blank those lines."""
-
-    has_scenes = SCENE_SECTION.search(cleaned_text) is not None
-    seen_first_scene = False
-    at_head = True
-    cast_values: List[str] = []
-    kept_lines: List[str] = []
-    for raw_line in cleaned_text.split("\n"):
-        stripped = raw_line.strip()
-        if not stripped:
-            kept_lines.append(raw_line)
-            continue
-        if SCENE_SECTION.match(raw_line):
-            seen_first_scene = True
-            at_head = True
-            kept_lines.append(raw_line)
-            continue
-        if stripped.startswith("#"):
-            if seen_first_scene:
-                at_head = False
-            kept_lines.append(raw_line)
-            continue
-        in_cast_zone = (has_scenes and not seen_first_scene) or at_head
-        if in_cast_zone:
-            cast_match = CAST_LINE_RE.match(raw_line)
-            if cast_match is not None:
-                cast_values.append(cast_match.group(1))
-                kept_lines.append("")
-                continue
-        at_head = False
-        kept_lines.append(raw_line)
-    return cast_values, "\n".join(kept_lines)
-
-
-def blocks(text: str) -> List[str]:
-    """Screenplay blocks: blank-line separated, preamble, cast, comments and headings dropped.
-
-    A heading line ends a block, so a scene written straight under its heading
-    keeps its content.
-    """
-
-    text = _strip_fenced_code(_strip_html_comments(text))
-    _, text = _scan_cast_lines(text)
-    first_scene = SCENE_SECTION.search(text)
-    if first_scene is not None:
-        text = text[first_scene.start() :]
-    text = re.sub(r"(?m)^[ \t\u3000]*#.*$", "", text)
-    return [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
-
-
-def _is_word_letter(character: str) -> bool:
-    if not character.isalpha():
-        return False
-    name = unicodedata.name(character, "")
-    return any(script in name for script in WORD_SCRIPTS)
-
-
-def units(text: str) -> List[Tuple[str, bool]]:
-    """Pronounced units in order: a word-script word is one unit, any other
-    pronounced character is one, punctuation and marks are none.
-
-    A run of bare digits is one word in a line that is all words and one unit
-    per digit wherever characters are spoken, as the write stage reads it.
-    """
-
-    text = unicodedata.normalize("NFC", text)
-    found: List[Tuple[str, bool]] = []
-    digit_runs: List[Tuple[int, str]] = []
-    position, length = 0, len(text)
-    while position < length:
-        character = text[position]
-        if _is_word_letter(character) or character.isdigit():
-            end, has_letter = position, False
-            while end < length:
-                current = text[end]
-                if _is_word_letter(current):
-                    has_letter = True
-                elif not (unicodedata.category(current).startswith("M") or current.isdigit() or (
-                        current in WORD_JOINERS and end + 1 < length
-                        and (_is_word_letter(text[end + 1]) or text[end + 1].isdigit()))):
-                    break
-                end += 1
-            if has_letter:
-                found.append((text[position:end].casefold(), True))
-            else:
-                digit_runs.append((len(found), text[position:end]))
-                found.append(("", False))
-            position = end
-            continue
-        if not character.isspace() and unicodedata.category(character)[0] not in "PMZ":
-            found.append((character, False))
-        position += 1
-    has_words = any(word for _, word in found)
-    has_characters = any(unit and not word for unit, word in found)
-    for index, digits in reversed(digit_runs):
-        found[index:index + 1] = ([(digits, True)] if has_words and not has_characters
-                                  else [(digit, False) for digit in digits])
-    return found
-
-
-def voiced_units(text: str) -> Tuple[int, int]:
-    """(characters, words) a speaker pronounces."""
-
-    found = units(text)
-    words = sum(1 for _, word in found if word)
-    return len(found) - words, words
-
-
-def speech_seconds(words: str, pacing: Dict[str, Optional[float]]) -> Optional[float]:
-    """Seconds for one line in the project's own units; None when a unit has no rate."""
-
-    characters, latin = voiced_units(words)
-    by_character, by_word = pacing["characters"], pacing["words"]
-    if (characters and not by_character) or (latin and not by_word):
-        return None
-    return (characters / by_character if characters and by_character else 0.0) + (
-        latin / by_word if latin and by_word else 0.0)
-
-
-def spoken_lines(text: str, speakers: Set[str]) -> List[Tuple[Optional[str], str]]:
-    """Each spoken block as (VO/OS tag, words said), notes and comments removed."""
-
-    text = _normalize_text(text)
-    lines = []
-    for block in blocks(text):
-        found = cue(block.split("\n", 1)[0], speakers)
-        if found:
-            words = DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]])).strip()
-            lines.append((found.group(1), words))
-    return lines
-
-
-def beat_text(block: str, speakers: Set[str]) -> str:
-    """What a block puts on screen or in the ear: the words of a line, without
-    its speaker and notes, or the action itself."""
-
-    found = cue(block.split("\n", 1)[0], speakers)
-    if found:
-        return DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]]))
-    return block
-
-
-def cue(line: str, speakers: Set[str]) -> Optional[Any]:
-    """A dialogue cue whose speaker is known; anything else is action."""
-
-    found = CUE_LINE.match(line.strip())
-    if found and (found.group(1) or found.group(2) in speakers):
-        return found
-    return None
-
-
-def _is_capitalized_latin_speaker(name: str) -> bool:
-    tokens = name.split()
-    if not (1 <= len(tokens) <= 2):
-        return False
-    for token in tokens:
-        if not (1 <= len(token) <= 20):
-            return False
-        first = token[0]
-        if not (unicodedata.category(first) == "Lu" and "LATIN" in unicodedata.name(first, "")):
-            return False
-        for ch in token:
-            if ch in ".-'’" or (ch.isascii() and ch.isdigit()):
-                continue
-            if ch.isalpha() and "LATIN" in unicodedata.name(ch, ""):
-                continue
-            return False
-    return True
-
-
-def _is_single_utterance_speaker(name: str) -> bool:
-    normalized = " ".join(name.split())
-    if (
-        not normalized
-        or normalized == "人物"
-        or normalized.isdigit()
-        or _UNIT_LABEL_RE.fullmatch(normalized) is not None
-        or _ACTION_OPENER_RE.search(normalized) is not None
-    ):
-        return False
-    if _is_capitalized_latin_speaker(normalized):
-        return True
-    if " " in normalized:
-        return False
-    if any("LATIN" in unicodedata.name(ch, "") for ch in normalized if ch.isalpha()):
-        return False
-    clean = re.sub(r"[·・.-]", "", normalized)
-    return 1 <= len(clean) <= NAME_MAX_CHARACTERS and not normalized.startswith(PRONOUNS)
-
-
-def _clean_cast_token(raw_item: str) -> str:
-    cleaned = raw_item.strip().rstrip("。").strip()
-    normalized = " ".join(cleaned.split())
-    if not normalized:
-        return ""
-    if normalized.casefold() in _CAST_PLACEHOLDERS:
-        return ""
-    if normalized.startswith("【") and normalized.endswith("】"):
-        return ""
-    return normalized
-
-
-def screenplay_speakers(text: str, named: Iterable[str] = ()) -> Set[str]:
-    """Names that are surely speakers, so a colon inside action is not a line.
-
-    A name counts when the creator names it (or lists it on a ``人物：`` line),
-    when it carries a VO/OS tag or a performance note, when it opens two or
-    more blocks, or when it is a plausible single-utterance speaker (up to six
-    non-Latin characters not opening with a pronoun, or up to two capitalized
-    Latin words). ``他写下两个字：军宣。`` stays action; ``检验员：合格。`` is a line.
-    """
-
-    counts: Dict[str, int] = {}
-    speakers = {item for item in named if item and item != "人物"}
-    cleaned_text = _strip_fenced_code(_strip_html_comments(_normalize_text(text)))
-    cast_values, _ = _scan_cast_lines(cleaned_text)
-    for raw_value in cast_values:
-        stripped_value = raw_value
-        while True:
-            next_value = DIRECTION.sub("", stripped_value)
-            if next_value == stripped_value:
-                break
-            stripped_value = next_value
-        stripped_value = stripped_value.strip().rstrip("。").strip()
-        for raw_item in re.split(
-            r"[、，,；;｜|/]+|(?<![A-Za-z.\-])\s+(?![A-Za-z])",
-            stripped_value,
-        ):
-            normalized = _clean_cast_token(raw_item)
-            if normalized:
-                speakers.add(normalized)
-    for block in blocks(cleaned_text):
-        found = CUE_LINE.match(block.split("\n", 1)[0])
-        if not found:
-            continue
-        name = found.group(2)
-        if name == "人物":
-            continue
-        counts[name] = counts.get(name, 0) + 1
-        head = block.split("：", 1)[0].split(":", 1)[0]
-        if found.group(1) or "（" in head or "(" in head:
-            speakers.add(name)
-    return speakers | {
-        name for name, count in counts.items() if count >= 2 or _is_single_utterance_speaker(name)
-    }
-
-
-def script_timeline(text: str, pacing: Dict[str, Optional[float]],
-                    length: Optional[float] = None, speakers: Optional[Set[str]] = None) -> Optional[Dict[str, Any]]:
-    """Lay the screenplay out in time with the project's own rates.
-
-    Each action paragraph takes the declared seconds; a line takes its speech
-    at the declared rate for its unit (characters or words). On-screen text
-    takes its reading time when the project declares a reading rate; headings
-    and other production tags take no time, as in the write stage's own
-    estimate. Given the storyboard's ``length``, the silent time
-    stretches to fill it and the speaking rate stays as declared. Speech in a
-    unit the project has no rate for leaves the timeline unknown.
-    """
-
-    known = screenplay_speakers(text) if speakers is None else speakers
-    items: List[Any] = []
-    for block in blocks(text):
-        found = cue(block.split("\n", 1)[0], known)
-        if found:
-            words = DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]])).strip()
-            seconds = speech_seconds(words, pacing)
-            if seconds is None:
-                return None
-            items.append((seconds, words))
-        elif block.startswith(ON_SCREEN_TEXT_TAG):
-            if pacing.get("reading"):
-                body = block[len(ON_SCREEN_TEXT_TAG):]
-                items.append((readable_characters(body) / float(pacing["reading"] or 1.0), None))
-        elif not block.startswith("["):
-            items.append((float(pacing["action"] or 0.0), None))
-    speech = sum(seconds for seconds, words in items if words is not None)
-    silent = sum(seconds for seconds, words in items if words is None)
-    if length and speech > length:
-        # More speech than the storyboard has time for is a plan conflict to
-        # report, not something to squeeze.
-        return {"duration": round(speech + silent, 2), "segments": [], "overflow": round(speech - length, 2)}
-    # Speech that exactly fills the storyboard leaves no time for silence.
-    stretch = (length - speech) / silent if length and silent else 1.0
-    clock = 0.0
-    segments = []
-    for seconds, words in items:
-        if words is None:
-            clock += seconds * stretch
-        else:
-            segments.append({"s": round(clock, 2), "e": round(clock + seconds, 2), "t": words})
-            clock += seconds
-    return {"duration": round(clock, 2), "segments": segments}
-
-
-def _pacing_missing_action_problem(episode_dir: Path) -> Optional[str]:
-    episode_dir = episode_dir.resolve()
-    for folder in (episode_dir, *list(episode_dir.parents)[:3]):
-        config = folder / "short-drama.json"
-        if not config.is_file():
-            continue
-        try:
-            raw_pacing = (json.loads(config.read_text(encoding="utf-8")).get("format") or {}).get("pacing")
-        except (OSError, ValueError):
-            return None
-        if not isinstance(raw_pacing, dict):
-            return None
-        has_speech_rate = any(
-            isinstance(raw_pacing.get(name), (int, float))
-            and not isinstance(raw_pacing.get(name), bool)
-            and math.isfinite(float(raw_pacing[name]))
-            and float(raw_pacing[name]) > 0
-            for name in ("spoken_characters_per_second", "spoken_words_per_second")
-        )
-        action = raw_pacing.get("seconds_per_action_paragraph")
-        action_ok = (
-            isinstance(action, (int, float))
-            and not isinstance(action, bool)
-            and math.isfinite(action)
-            and action >= 0
-        )
-        if has_speech_rate and not action_ok:
-            return "short-drama.json 的 format.pacing 已填语速但缺少 seconds_per_action_paragraph，剧本时间轴不估算"
-        return None
-    return None
-
-
-def _beat_slices(text: str, speakers: Set[str]) -> Tuple[List[str], List[str], List[str]]:
-    """All beats, spoken-only beats, and action-only beats in order."""
-
-    all_beats: List[str] = []
-    speech_beats: List[str] = []
-    action_beats: List[str] = []
-    for block in blocks(text):
-        if block.startswith("[") and not block.startswith(("[VO]", "[OS]")):
-            continue
-        found = cue(block.split("\n", 1)[0], speakers)
-        if found:
-            words = DIRECTION.sub("", " ".join([found.group(3), *block.split("\n")[1:]])).strip()
-            all_beats.append(words)
-            speech_beats.append(words)
-        else:
-            all_beats.append(block)
-            action_beats.append(block)
-    return all_beats, speech_beats, action_beats
-
-
-def paragraphs(text: str, speakers: Set[str]) -> List[str]:
-    """Action and spoken beats; production tags other than VO/OS are not beats."""
-
-    return _beat_slices(text, speakers)[0]
-
-
-def plan_episode(episode_dir: Path, named_speakers: Iterable[str] = ()) -> Dict[str, Any]:
-    episode_dir = episode_dir.resolve()
-    storyboard = episode_dir / "分镜.md"
-    screenplay = episode_dir / "剧本.md"
-    record: Dict[str, Any] = {
-        "source": episode_dir.name,
-        "episode": episode_number(episode_dir.name),
-        "kind": "plan",
-        "width": None,
-        "height": None,
-        "cuts": None,
-        "shot_seconds": None,
-        "duration": None,
-        "segments": None,
-    }
-    problems: List[str] = []
-    if storyboard.is_file():
-        text = _strip_fenced_code(
-            _strip_html_comments(_normalize_text(storyboard.read_text(encoding="utf-8")))
-        )
-        section_starts = [match.start() for match in ANY_SECTION.finditer(text)]
-        shot_sections = [
-            re.split(r"(?m)^###[ \t\u3000]+", text[start : (section_starts[idx + 1] if idx + 1 < len(section_starts) else len(text))], maxsplit=1)[0]
-            for idx, start in enumerate(section_starts)
-            if SHOT_HEADING.match(text, start)
-        ]
-        per_shot = [SHOT_DURATION.findall(section) for section in shot_sections]
-        shots = len(shot_sections)
-        if shot_sections and all(len(matches) == 1 for matches in per_shot):
-            lengths = [float(matches[0]) for matches in per_shot]
-            record["shot_seconds"] = lengths
-            record["duration"] = round(sum(lengths), 3)
-            record["duration_source"] = "storyboard"
-        else:
-            declared = sum(len(matches) for matches in per_shot)
-            if declared != shots or shots == 0:
-                problems.append(
-                    f"分镜.md 有 {shots} 个镜头标题、{declared} 条时长；对不上就不算镜长"
-                )
-            else:
-                problems.append(
-                    f"分镜.md 有镜头缺少或重复声明时长（共 {shots} 个镜头标题）；对不上就不算镜长"
-                )
-    if screenplay.is_file():
-        text = _normalize_text(screenplay.read_text(encoding="utf-8"))
-        speakers = screenplay_speakers(text, named_speakers)
-        spoken = dialogue = vo = 0
-        for tag, words in spoken_lines(text, speakers):
-            spoken += spoken_characters(words)
-            dialogue += dialogue_characters(words)
-            if tag == "VO":
-                vo += dialogue_characters(words)
-        record["spoken_characters"] = spoken
-        record["dialogue_characters"] = dialogue
-        record["vo_characters"] = vo
-        # A plan's opening and closing beats include action, so a replayed
-        # gesture is caught as well as a replayed line; speech and action are
-        # stored apart too so a shared prop name across a seamless cut is not
-        # mistaken for a replayed ending.
-        body, speech_body, action_body = _beat_slices(text, speakers)
-        record["opening_text"] = "".join(body[:3])
-        record["closing_text"] = "".join(body[-3:])
-        record["opening_speech"] = " ".join(speech_body[:3])
-        record["closing_speech"] = " ".join(speech_body[-3:])
-        record["opening_action"] = action_body[:2]
-        record["closing_action"] = action_body[-2:]
-        pacing = project_pacing(episode_dir)
-        if pacing is not None:
-            timeline = script_timeline(text, pacing, record["duration"], speakers)
-            if timeline is None:
-                problems.append("剧本里有项目没声明语速单位的台词（字或词），台词时间不估算")
-            elif timeline.get("overflow"):
-                problems.append(
-                    f"按项目语速，台词比分镜总长多 {timeline['overflow']} 秒；"
-                    "先在写作或分镜里解决，台词时间不估算"
-                )
-            else:
-                if not record["duration"] and timeline["duration"]:
-                    record["duration"] = timeline["duration"]
-                    record["duration_source"] = "script_estimate"
-                record["segments"] = timeline["segments"]
-                record["timing"] = "script_estimate"
-        else:
-            missing_action = _pacing_missing_action_problem(episode_dir)
-            if missing_action is not None:
-                problems.append(missing_action)
-    if problems:
-        record["plan_problem"] = "；".join(problems)
-    return record
-
-
-# --------------------------------------------------------------- profile
 
 
 def _median(values: Iterable[Optional[float]]) -> Optional[float]:
@@ -2045,7 +1373,6 @@ def _median(values: Iterable[Optional[float]]) -> Optional[float]:
 def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
     duration = record.get("duration")
     lengths = record.get("shot_seconds") or []
-    segments = record.get("segments") or []
     numbers: Dict[str, Optional[float]] = {
         "duration": duration,
         "shots": len(lengths) or None,
@@ -2074,15 +1401,10 @@ def episode_numbers(record: Dict[str, Any]) -> Dict[str, Optional[float]]:
             tail_after_last_line=round(max(0.0, duration - merged[-1][1]), 2),
             longest_silence=round(max(gaps), 2) if gaps else None,
         )
-    elif duration and record.get("segments") == [] and (record.get("timing") or record.get("transcript_source")):
-        # A timed plan with no lines, or footage whose transcript has no
-        # speech, is known to be silent, not unmeasured, and has to pull the
-        # series medians down rather than drop out.
+    elif duration and record.get("segments") == [] and record.get("transcript_source"):
+        # Footage whose transcript has no speech is known to be silent, not
+        # unmeasured, and pulls the series medians down rather than dropping out.
         numbers.update(speech_share=0.0, chars_per_second=0.0, longest_silence=round(duration, 2))
-    elif record.get("spoken_characters") is not None and duration:
-        numbers.update(chars_per_second=round(record["spoken_characters"] / duration, 2))
-    if record.get("dialogue_characters"):
-        numbers.update(vo_share=round(record["vo_characters"] / record["dialogue_characters"], 2))
     return numbers
 
 
@@ -2095,7 +1417,7 @@ def verified_segments(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     duration = record.get("duration")
     segments = record.get("segments") or []
-    if not segments or not duration or record.get("kind") == "plan":
+    if not segments or not duration:
         return list(segments)
     return [{**segment, "e": min(segment["e"], duration)} for segment in segments
             if segment["s"] < duration and segment["e"] <= duration + OVERRUN_TOLERANCE_SECONDS]
@@ -2106,78 +1428,6 @@ def transcript_overrun(record: Dict[str, Any]) -> bool:
     segments = record.get("segments") or []
     return bool(duration and segments
                 and max(segment["e"] for segment in segments) > duration + OVERRUN_TOLERANCE_SECONDS)
-
-
-def _shared_run(tail: List[str], head: List[str]) -> int:
-    return SequenceMatcher(None, tail, head, autojunk=False).find_longest_match(0, len(tail), 0, len(head)).size
-
-
-def _as_beat_list(raw: Any) -> List[str]:
-    if isinstance(raw, list):
-        return [str(item) for item in raw if str(item).strip()]
-    if isinstance(raw, str) and raw.strip():
-        return [part for part in raw.split("\n") if part.strip()]
-    return []
-
-
-def _shared_action_reprise(tail_raw: Any, head_raw: Any) -> int:
-    best = 0
-    for tail_beat in _as_beat_list(tail_raw):
-        tail_units = units(tail_beat)
-        if not tail_units:
-            continue
-        for head_beat in _as_beat_list(head_raw):
-            head_units = units(head_beat)
-            if not head_units:
-                continue
-            match = SequenceMatcher(
-                None,
-                [unit for unit, _ in tail_units],
-                [unit for unit, _ in head_units],
-                autojunk=False,
-            ).find_longest_match(0, len(tail_units), 0, len(head_units))
-            weight = sum(2 if is_word else 1 for _, is_word in tail_units[match.a : match.a + match.size])
-            shorter = min(len(tail_units), len(head_units))
-            if weight >= REPRISE_MIN_ACTION_WEIGHT and match.size >= 0.75 * shorter:
-                best = max(best, match.size, REPRISE_MIN_SHARED_UNITS)
-    return best
-
-
-def reprise(previous: Dict[str, Any], following: Dict[str, Any]) -> Optional[int]:
-    """Longest run of units (characters, or words for word scripts) the next
-    opening shares with the previous ending."""
-
-    has_split = any(
-        key in previous or key in following
-        for key in ("closing_speech", "opening_speech", "closing_action", "opening_action")
-    )
-    if has_split:
-        speech_shared = _shared_run(
-            [unit for unit, _ in units(str(previous.get("closing_speech") or ""))],
-            [unit for unit, _ in units(str(following.get("opening_speech") or ""))],
-        )
-        action_shared = _shared_action_reprise(
-            previous.get("closing_action"),
-            following.get("opening_action"),
-        )
-        return max(speech_shared, action_shared)
-    if previous.get("closing_text") and following.get("opening_text"):
-        return _shared_run([unit for unit, _ in units(previous["closing_text"])],
-                           [unit for unit, _ in units(following["opening_text"])])
-    tail_segments = verified_segments(previous)
-    head_segments = verified_segments(following)
-    if not tail_segments or not head_segments or not previous.get("duration"):
-        return None
-    tail = [unit for unit, _ in units(" ".join(
-        segment["t"] for segment in tail_segments
-        if segment["e"] > previous["duration"] - REPRISE_WINDOW_SECONDS
-    ))]
-    head = [unit for unit, _ in units(" ".join(
-        segment["t"] for segment in head_segments if segment["s"] < REPRISE_WINDOW_SECONDS
-    ))]
-    if not tail or not head:
-        return 0
-    return _shared_run(tail, head)
 
 
 def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
@@ -2201,33 +1451,14 @@ def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
         low, high = ranked[len(ranked) // 10], ranked[(9 * len(ranked)) // 10]
         regime.update(later_p10=round(low, 1), later_p90=round(high, 1),
                       later_fixed_length=high - low <= FIXED_LENGTH_SPREAD_SECONDS)
-    pairs = []
-    by_episode = {record["episode"]: record for record in ordered}
-    for episode, record in by_episode.items():
-        following = by_episode.get(episode + 1)
-        if following is None:
-            continue
-        shared = reprise(record, following)
-        if shared is not None:
-            pairs.append(shared >= REPRISE_MIN_SHARED_UNITS)
     sources = sorted({record.get("kind", "footage") for record in ordered})
-    plan_problems: Dict[str, str] = {}
-    for record in ordered:
-        if record.get("plan_problem"):
-            plan_problems[str(record["episode"])] = str(record["plan_problem"])
-    for record in records:
-        if record.get("episode") is None and record.get("plan_problem"):
-            key = str(record.get("source") or "?")
-            plan_problems[key] = str(record["plan_problem"])
     return {
         "sources": sources,
         "transcript_overruns": [record["episode"] for record in ordered if transcript_overrun(record)],
-        "plan_problems": plan_problems,
         "opening": group(lambda episode: episode <= opening),
         "later": group(lambda episode: episode > opening),
         "all": group(lambda episode: True),
         "length_regime": regime,
-        "reprise_pairs": {"checked": len(pairs), "replayed": sum(pairs)},
         "per_episode": {str(episode): row for episode, row in rows.items()},
     }
 
@@ -2239,7 +1470,7 @@ def load_records(paths: Sequence[Path]) -> List[Dict[str, Any]]:
         for file in files:
             records.append(json.loads(file.read_text(encoding="utf-8")))
     if not records:
-        raise BreakdownError("没有找到 *.measure.json；先运行 measure 或 plan")
+        raise BreakdownError("没有找到 *.measure.json；先运行 measure")
     return records
 
 
@@ -2248,7 +1479,7 @@ def render_table(profiles: Dict[str, Dict[str, Any]]) -> str:
         ("duration", "集长s"), ("avg_shot", "平均镜长"), ("median_shot", "中位镜长"),
         ("long_shot_share", ">4s镜占比"), ("speech_share", "有声占比"),
         ("chars_per_speech_second", "字/发声秒"), ("chars_per_second", "字/秒"),
-        ("vo_share", "VO占比"), ("first_line_at", "首句s"), ("tail_after_last_line", "末句后s"),
+        ("first_line_at", "首句s"), ("tail_after_last_line", "末句后s"),
         ("longest_silence", "最长静默s"),
     ]
     lines = ["| 系列 | 分组 | 集数 | " + " | ".join(label for _, label in columns) + " |",
@@ -2263,27 +1494,12 @@ def render_table(profiles: Dict[str, Dict[str, Any]]) -> str:
     lines.append("")
     for name, result in profiles.items():
         regime = result["length_regime"]
-        pairs = result["reprise_pairs"]
         fixed = regime.get("later_fixed_length")
-        plan_problems = result.get("plan_problems") or {}
         lines.append(
-            f"- {name}：开头几集时长 {regime['opening_durations']}；"
-            + (f"之后 p10–p90 为 {regime['later_p10']}–{regime['later_p90']} 秒"
-               + ("（近似定长）" if fixed else "") + "；" if "later_p10" in regime else "")
-            + (f"相邻集开头重放上一集结尾 {pairs['replayed']}/{pairs['checked']}" if pairs["checked"]
-               else "相邻集开头是否重放上一集结尾：无数据（缺相邻集或缺台词时间）")
-            + ("；计划值，台词时间按项目语速估算" if "plan" in result["sources"] else "")
+            f"- {name}：开头几集时长 {regime['opening_durations']}"
+            + (f"；之后 p10–p90 为 {regime['later_p10']}–{regime['later_p90']} 秒"
+               + ("（近似定长）" if fixed else "") if "later_p10" in regime else "")
             + (f"；转写超出片长的集：{result['transcript_overruns']}，超出部分未计入" if result["transcript_overruns"] else "")
-            + (
-                "；计划缺口（"
-                + "；".join(
-                    f"第{ep}集：{msg}" if ep.isdigit() else f"{ep}：{msg}"
-                    for ep, msg in plan_problems.items()
-                )
-                + "）"
-                if plan_problems
-                else ""
-            )
         )
     return "\n".join(lines) + "\n"
 
@@ -2306,12 +1522,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     transcript.add_argument("transcript", type=Path)
     transcript.add_argument("--subtitles", type=Path,
                             help="配 T001/T005-T010 文本映射文件时传入同集 *.subtitles.json，自动合并区间起止时间")
-
-    plan = sub.add_parser("plan", help="读项目自己的分镜与剧本，按同一把尺子记录计划值")
-    plan.add_argument("project", type=Path)
-    plan.add_argument("--out", type=Path, required=True)
-    plan.add_argument("--speaker", action="append", default=[],
-                      help="只出场一次、没有表演注的说话人，可重复；否则「名字：」开头的一次性段落按动作计")
 
     prof = sub.add_parser("profile", help="按系列汇总已测量的集")
     prof.add_argument("series", nargs="+", help="名称=目录，例如 REF-A=输入/对标/REF-A/measure")
@@ -2370,22 +1580,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif args.command == "transcript":
             attach_transcript(args.measure, args.transcript, args.subtitles)
             print(args.measure)
-        elif args.command == "plan":
-            project = args.project.resolve()
-            if (project / "分镜.md").is_file() or (project / "剧本.md").is_file():
-                episodes = [project]
-            else:
-                episodes = sorted(path.resolve() for path in (project / "剧集").glob("*") if path.is_dir())
-            if not episodes:
-                raise BreakdownError(f"{args.project} 既不是一集的目录，{args.project / '剧集'} 下也没有分集目录")
-            args.out.mkdir(parents=True, exist_ok=True)
-            for episode in episodes:
-                episode = episode.resolve()
-                target = args.out / f"{episode.name}{MEASURE_SUFFIX}"
-                target.write_text(
-                    json.dumps(plan_episode(episode, args.speaker), ensure_ascii=False, indent=1), encoding="utf-8"
-                )
-                print(target)
         elif args.command == "audio":
             if args.measure is not None and len(args.videos) > 1:
                 raise BreakdownError("--measure 只能配一个视频；多个视频用 --out 指定目录")

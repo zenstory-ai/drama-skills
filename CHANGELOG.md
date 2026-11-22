@@ -13,6 +13,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- 剪辑工具无 Node/Remotion 降级路径（`short-drama-edit`）：`edit_tool.py render` 新增 `--screen-text-mode auto|remotion|ffmpeg|off`（默认 `auto`），在未安装 Node/Remotion 且全片仅含普通 `字卡` 时自动回退到 `ffmpeg` ASS 烧录并给出提醒，支持 `ffmpeg` 强制纯字卡直出与 `off` 跳过画面文字叠层继续烧录字幕成片。
+- 英文原著与分集标题识别（`short-drama-novel-analyze`、`short-drama-develop`）：`novel_index.py` 支持英文 `Chapter`、英文数词及罗马数字章节标题；`episode_intake.py` 支持 `Episode N` 等英文分集标题。
+
+### Changed
+
+- 全套技能跨宿主可移植性与文档去漂移（全部 12 个公开技能与维护者技能）：
+  - 清理技能 `SKILL.md`（含 YAML `description`）与 `references/*.md` 中的宿主专属 `$short-drama-*` 语法，统一改用宿主中立技能名、`<SKILL_DIR>/scripts/...` 路径占位符与跨平台 Python 3.9+ 说明；重写 13 份互斥且精炼的技能触发描述；修复 `creator-documents.md` 旧字段与连戏锁挂点、`CON-*` 跨文档漂移及悬空规则引用；修正 `.clawhub/publish.json` 循环依赖、纯文档技能冗余 Python 依赖并补齐 `short-drama-edit` 可选 Remotion 依赖；在 `README.md` 与 `README_EN.md` 如实说明语言无关创作指导层与标准中文自动化脚本层边界。
+- 阶段规则表减负与审查清单瘦身（10 份 `stage-contract.md` 与 `short-drama-review`）：
+  - `stage-contract.md` 规则表仅保留阻断级不变量（`structural_invariant` 与 `reviewed_invariant`），唯一规则 ID 从 205 条精简至 105 条；全部 `craft_default` 与 `taste_option` 下沉回各阶段参考文档的自然语言指导；校正 `SCR-05`/`SCR-25`、`AST-10`、`SHT-05`/`SHT-10`、`VID-01`/`VID-29`、`VID-13`/`VID-20`、`VID-24`/`VID-03` 六组规则边界并同步瘦身审查 rubric。
+- 确定性脚本瘦身与职责回归（`short-drama`、`short-drama-write`、`short-drama-breakdown`）：
+  - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器（不再依赖落盘索引文件）并移除启发式动词黑名单。
+
+### Removed
+
+- 随包测试脚本与退役旧命令（7 个带脚本技能）：
+  - 从 `skills/*/scripts/` 移除全部 7 个随包 `selftest.py`，将 `fixture_adapter.py` 迁入 `tests/fixtures/`、将 `screenplay_index.py` 迁入 `tests/legacy/` 并改为在测试中对隔离拷贝的业务脚本直接做冒烟校验。
+  - 从 `project_tool.py` 移除零引用的 v0.5 台账子命令（`publish`/`accept`/`review`/`set-authority`/`--strict-ledger`）；从 `breakdown_tool.py` 移除基于剧本估时与文本相似度的 `plan`/`reprise` 启发式子命令，保留全部 `ffmpeg` 确定性媒体测量能力。
+
 ## [0.12.1] - 2026-11-16
 
 本版针对真实短剧与漫剧成片视频反推《剧本.md》的场景，补齐免切单镜的反推流程、带标号烧录字幕拼版与时间轴回挂能力，并新增台词画面校对规则与对应边界修复，无需迁移既有项目配置或文档字段。

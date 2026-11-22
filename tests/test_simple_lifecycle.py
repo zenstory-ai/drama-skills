@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,27 +40,13 @@ class SimpleLifecycleTests(unittest.TestCase):
             project_tool.atomic_json(state_path, state)
         return root
 
-    def publish_script(
-        self, root: Path, *, input_path: str | None = None, text: str = "# 第一集\n"
-    ) -> None:
-        project_tool.publish_candidate(
-            root,
-            owner="short-drama-write",
-            artifact_id="EP001:script",
-            outputs={"剧集/EP001/screenplay.md": text},
-            inputs=[input_path] if input_path else [],
-        )
-
-    def approve_script(self, root: Path) -> None:
-        project_tool.record_creator_acceptance(
-            root, artifact_id="EP001:script", decision="accepted"
-        )
-        project_tool.record_review(
-            root,
-            artifact_id="EP001:script",
-            verdict="approve",
-            reviewer="review pass",
-        )
+    def write_episode_file(
+        self, root: Path, relative: str = "剧集/EP001/剧本.md", text: str = "# 第一集\n"
+    ) -> Path:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        return target
 
     def test_init_creates_small_state_and_creator_directories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -93,7 +80,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                 result["project"]["format"]["target_seconds_per_episode"], 60
             )
 
-    def test_cli_exposes_no_recovery_command(self) -> None:
+    def test_cli_exposes_only_active_creator_first_commands(self) -> None:
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--help"],
             check=False,
@@ -102,10 +89,21 @@ class SimpleLifecycleTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0)
-        for command in ("publish", "accept", "review", "package", "verify"):
-            self.assertIn(command, result.stdout)
-        self.assertNotIn("recover", result.stdout)
-        self.assertFalse(hasattr(project_tool, "record_independent_review"))
+        choices_match = re.search(r"\{([^}]+)\}", result.stdout)
+        self.assertIsNotNone(choices_match, result.stdout)
+        assert choices_match is not None
+        commands = set(choices_match.group(1).split(","))
+        self.assertEqual(commands, {"init", "configure", "status", "package", "verify", "export"})
+        for retired in ("publish", "accept", "review", "set-authority", "recover"):
+            self.assertNotIn(retired, commands)
+        for removed_api in (
+            "publish_candidate",
+            "record_creator_acceptance",
+            "record_review",
+            "set_creator_authority",
+            "record_independent_review",
+        ):
+            self.assertFalse(hasattr(project_tool, removed_api), removed_api)
 
     def test_cli_prints_readable_chinese_and_survives_a_non_utf8_stdout(self) -> None:
         # 创作者在终端里直接读 init/status 的输出；控制台编码不了中文时退成转义，JSON 仍可解析。
@@ -126,167 +124,7 @@ class SimpleLifecycleTests(unittest.TestCase):
                     self.assertEqual(title, "镖箱错账")
                     self.assertEqual("镖箱错账" in result.stdout, readable)
 
-    def test_publish_accept_review_use_one_creator_facing_state(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "needs_confirmation",
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
-            )
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "accepted",
-            )
-            project_tool.record_review(
-                root, artifact_id="EP001:script", verdict="approve"
-            )
-            status = project_tool.project_status(root)
-            self.assertEqual(status["artifacts"]["EP001:script"], "approved")
-            self.assertEqual(status["lifecycle"], {"artifact_state": {"approved": 1}})
-
-    def test_rejection_and_revision_are_plain_states(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="rejected", note="重写开场"
-            )
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "revise",
-            )
-            self.publish_script(root, text="# 第一集\n新版\n")
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
-            )
-            project_tool.record_review(
-                root, artifact_id="EP001:script", verdict="revise", note="动机不足"
-            )
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "revise",
-            )
-
-    def test_direct_input_change_is_detected_without_propagation_state(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "项目开发/episode-map.jsonl"
-            source.write_text('{"episode_id":"EP001"}\n', encoding="utf-8")
-            self.publish_script(root, input_path="项目开发/episode-map.jsonl")
-            self.approve_script(root)
-            source.write_text('{"episode_id":"EP001","changed":true}\n', encoding="utf-8")
-            status = project_tool.project_status(root)
-            self.assertEqual(status["artifacts"]["EP001:script"], "update_needed")
-            persisted = json.loads((root / ".short-drama/state.json").read_text(encoding="utf-8"))
-            self.assertNotIn("stale", json.dumps(persisted))
-
-    def test_output_edit_invalidates_acceptance_on_read_without_rewriting_state(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
-            state_before = (root / ".short-drama/state.json").read_bytes()
-            (root / "剧集/EP001/screenplay.md").write_text("外部修改\n", encoding="utf-8")
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "update_needed",
-            )
-            self.assertEqual((root / ".short-drama/state.json").read_bytes(), state_before)
-
-    def test_republish_replaces_current_acceptance_and_review(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
-            self.publish_script(root, text="# 第一集\n第二版\n")
-            state = json.loads((root / ".short-drama/state.json").read_text(encoding="utf-8"))
-            record = state["artifacts"]["EP001:script"]
-            self.assertIsNone(record["acceptance"])
-            self.assertIsNone(record["review"])
-
-    def test_review_requires_current_acceptance(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            with self.assertRaisesRegex(project_tool.ProjectConflictError, "acceptance"):
-                project_tool.record_review(
-                    root, artifact_id="EP001:script", verdict="approve"
-                )
-
-    def test_review_accepts_a_plain_reviewer_label_without_provenance_schema(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
-            )
-            result = project_tool.record_review(
-                root,
-                artifact_id="EP001:script",
-                verdict="approve_with_notes",
-                reviewer="同事复核",
-                note="可以投产",
-            )
-            self.assertEqual(result["state"], "approved")
-
-    def test_acceptance_refuses_a_changed_direct_input(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "项目开发/episode-map.jsonl"
-            source.write_text("{}\n", encoding="utf-8")
-            self.publish_script(root, input_path="项目开发/episode-map.jsonl")
-            source.write_text('{"changed":true}\n', encoding="utf-8")
-            with self.assertRaisesRegex(project_tool.ProjectConflictError, "input changed"):
-                project_tool.record_creator_acceptance(
-                    root, artifact_id="EP001:script", decision="accepted"
-                )
-
-    def test_publish_rejects_invalid_json_and_jsonl_before_writing(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            for relative, content in (
-                ("剧集/EP001/episode-card.json", "{"),
-                ("剧集/EP001/beats.jsonl", '{}\n{"bad"\n'),
-            ):
-                with self.subTest(relative=relative), self.assertRaises(ValueError):
-                    project_tool.publish_candidate(
-                        root,
-                        owner="short-drama-write",
-                        artifact_id=f"bad:{relative}",
-                        outputs={relative: content},
-                    )
-                self.assertFalse((root / relative).exists())
-
-    def test_publish_allows_first_writer_and_protects_non_stage_roots(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            published = project_tool.publish_candidate(
-                root,
-                owner="independent-script-skill",
-                artifact_id="independent-script",
-                outputs={"剧集/EP001/screenplay.md": "x"},
-            )
-            self.assertEqual(published["owner"], "independent-script-skill")
-            with self.assertRaisesRegex(ValueError, "immutable"):
-                project_tool.publish_candidate(
-                    root,
-                    owner="short-drama-write",
-                    artifact_id="input",
-                    outputs={"输入/source.md": "x"},
-                )
-            with self.assertRaisesRegex(ValueError, "packaging gate"):
-                project_tool.publish_candidate(
-                    root,
-                    owner="short-drama-write",
-                    artifact_id="delivery",
-                    outputs={"交付/EP001/manifest.json": "{}"},
-                )
-
-    def test_publish_rejects_path_aliases_and_unsafe_episode_ids(self) -> None:
+    def test_package_rejects_path_aliases_and_unsafe_episode_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             for relative in (
@@ -298,211 +136,74 @@ class SimpleLifecycleTests(unittest.TestCase):
             ):
                 with self.subTest(relative=relative):
                     with self.assertRaisesRegex(ValueError, "unsafe project-relative path"):
-                        project_tool.publish_candidate(
+                        project_tool.build_delivery_package(
                             root,
-                            owner="short-drama-write",
-                            artifact_id="nonportable",
-                            outputs={relative: "x"},
+                            episode="EP001",
+                            includes=[relative],
                         )
 
             with self.assertRaises(project_tool.NonPortablePathError):
-                project_tool.publish_candidate(
+                project_tool.build_delivery_package(
                     root,
-                    owner="short-drama-write",
-                    artifact_id="aliases",
-                    outputs={
-                        "剧集/EP001/notes.md": "a",
-                        "剧集/EP001/NOTES.md": "b",
-                    },
+                    episode="EP001",
+                    includes=[
+                        "剧集/EP001/notes.md",
+                        "剧集/EP001/NOTES.md",
+                    ],
                 )
 
-            composed = "项目开发/caf\N{LATIN SMALL LETTER E WITH ACUTE}.md"
-            decomposed = "项目开发/cafe\N{COMBINING ACUTE ACCENT}.md"
+            composed = "剧集/EP001/caf\N{LATIN SMALL LETTER E WITH ACUTE}.md"
+            decomposed = "剧集/EP001/cafe\N{COMBINING ACUTE ACCENT}.md"
             with self.assertRaisesRegex(
                 project_tool.NonPortablePathError, "portable aliases"
             ):
-                project_tool.publish_candidate(
-                    root,
-                    owner="independent-development-skill",
-                    artifact_id="unicode-aliases",
-                    outputs={composed: "a", decomposed: "b"},
-                )
-
-            with self.assertRaisesRegex(ValueError, "EP001-style"):
-                project_tool.publish_candidate(
-                    root,
-                    owner="short-drama-write",
-                    artifact_id="episode",
-                    outputs={"剧集/1/screenplay.md": "x"},
-                )
-
-    def test_one_output_path_has_one_artifact_owner(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            with self.assertRaisesRegex(ValueError, "already belongs"):
-                project_tool.publish_candidate(
-                    root,
-                    owner="short-drama-write",
-                    artifact_id="another",
-                    outputs={"剧集/EP001/screenplay.md": "other"},
-                )
-
-    def test_legacy_state_is_read_without_rewrite(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            target = root / "剧集/EP001/screenplay.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("legacy", encoding="utf-8")
-            digest = hashlib.sha256(target.read_bytes()).hexdigest()
-            state_path = root / ".short-drama/state.json"
-            legacy = json.loads(state_path.read_text(encoding="utf-8"))
-            legacy["schema_version"] = "1.0.0-draft"
-            legacy["artifacts"] = {
-                "EP001:script": {
-                    "owner": "short-drama-write",
-                    "candidate_targets": {"剧集/EP001/screenplay.md": digest},
-                    "accepted_targets": {"剧集/EP001/screenplay.md": digest},
-                    "creator_acceptance": "accepted",
-                    "independent_review": "approve",
-                }
-            }
-            project_tool.atomic_json(state_path, legacy)
-            before = state_path.read_bytes()
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "approved",
-            )
-            self.assertEqual(state_path.read_bytes(), before)
-
-    def test_publish_migrates_legacy_state_on_the_next_write(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            state_path = root / ".short-drama/state.json"
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            state["schema_version"] = "1.0.0-draft"
-            project_tool.atomic_json(state_path, state)
-            self.publish_script(root)
-            migrated = json.loads(state_path.read_text(encoding="utf-8"))
-            self.assertEqual(migrated["schema_version"], "2.0")
-            self.assertNotIn("active_transaction", migrated)
-
-    def test_legacy_migration_keeps_the_current_candidate_inputs(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            target = root / "剧集/EP001/screenplay.md"
-            target.parent.mkdir(parents=True)
-            target.write_text("new candidate", encoding="utf-8")
-            direct_input = root / "输入/current.md"
-            direct_input.write_text("current input", encoding="utf-8")
-            old_input = root / "输入/old.md"
-            old_input.write_text("old input", encoding="utf-8")
-            def digest(path: Path) -> str:
-                return hashlib.sha256(path.read_bytes()).hexdigest()
-            state_path = root / ".short-drama/state.json"
-            legacy = json.loads(state_path.read_text(encoding="utf-8"))
-            legacy["schema_version"] = "1.0.0-draft"
-            legacy["artifacts"] = {
-                "EP001:script": {
-                    "owner": "short-drama-write",
-                    "candidate_targets": {str(target.relative_to(root)): digest(target)},
-                    "accepted_targets": {str(target.relative_to(root)): "0" * 64},
-                    "candidate_inputs": {
-                        str(direct_input.relative_to(root)): digest(direct_input)
-                    },
-                    "accepted_inputs": {str(old_input.relative_to(root)): digest(old_input)},
-                    "creator_acceptance": "accepted",
-                }
-            }
-            project_tool.atomic_json(state_path, legacy)
-
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
-            )
-            direct_input.write_text("changed after accepting candidate", encoding="utf-8")
-            self.assertEqual(
-                project_tool.project_status(root)["artifacts"]["EP001:script"],
-                "update_needed",
-            )
-
-    def test_package_allows_direct_delivery_by_default_and_blocks_under_strict_ledger(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            with self.assertRaisesRegex(project_tool.PackageBlockedError, "approved"):
                 project_tool.build_delivery_package(
                     root,
                     episode="EP001",
-                    includes=["剧集/EP001/screenplay.md"],
-                    strict_ledger=True,
+                    includes=[composed, decomposed],
                 )
-            direct = project_tool.build_delivery_package(
-                root,
-                episode="EP001",
-                includes=["剧集/EP001/screenplay.md"],
-            )
-            self.assertEqual(len(direct["files"]), 1)
-            self.assertEqual(
-                project_tool.verify_delivery_package(root, episode="EP001")["status"],
-                "verified",
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="rejected"
-            )
-            with self.assertRaisesRegex(project_tool.PackageBlockedError, "rejected"):
-                project_tool.build_delivery_package(
-                    root,
-                    episode="EP001",
-                    includes=["剧集/EP001/screenplay.md"],
-                )
+
+            for bad_episode in ("1", "EP1", "../EP001", "第一集"):
+                with self.subTest(bad_episode=bad_episode):
+                    with self.assertRaisesRegex(ValueError, "EP001-style"):
+                        project_tool.build_delivery_package(
+                            root,
+                            episode=bad_episode,
+                            includes=["剧集/EP001/剧本.md"],
+                        )
+                    with self.assertRaisesRegex(ValueError, "EP001-style"):
+                        project_tool.verify_delivery_package(root, episode=bad_episode)
 
     def test_package_rejects_cross_episode_includes_and_omissions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama-write",
-                artifact_id="EP002:script",
-                outputs={"剧集/EP002/screenplay.md": "# 第二集\n"},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP002:script", decision="accepted"
-            )
-            project_tool.record_review(
-                root,
-                artifact_id="EP002:script",
-                verdict="approve",
-                reviewer="reviewer",
-            )
+            self.write_episode_file(root, "剧集/EP002/剧本.md", "# 第二集\n")
             with self.assertRaisesRegex(ValueError, "belong to EP001"):
                 project_tool.build_delivery_package(
                     root,
                     episode="EP001",
-                    includes=["剧集/EP002/screenplay.md"],
+                    includes=["剧集/EP002/剧本.md"],
                 )
 
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md", "# 第一集\n")
             with self.assertRaisesRegex(ValueError, "belong to EP001"):
                 project_tool.build_delivery_package(
                     root,
                     episode="EP001",
-                    includes=["剧集/EP001/screenplay.md"],
+                    includes=["剧集/EP001/剧本.md"],
                     omissions={"剧集/EP002/notes.md": "not requested"},
                 )
 
-    def test_package_writes_the_same_approved_bytes_it_hashed(self) -> None:
+    def test_package_writes_the_same_bytes_it_hashed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            approved = b"# first approved version\n"
-            self.publish_script(root, text=approved.decode())
-            self.approve_script(root)
-            source = root / "剧集/EP001/screenplay.md"
+            initial = b"# first version\n"
+            source = self.write_episode_file(root, "剧集/EP001/剧本.md", initial.decode())
             real_sha256_bytes = project_tool.sha256_bytes
 
             def mutate_after_hash(content: bytes) -> str:
                 digest = real_sha256_bytes(content)
-                source.write_bytes(b"unapproved race bytes\n")
+                source.write_bytes(b"race bytes\n")
                 return digest
 
             with mock.patch.object(
@@ -511,64 +212,36 @@ class SimpleLifecycleTests(unittest.TestCase):
                 result = project_tool.build_delivery_package(
                     root,
                     episode="EP001",
-                    includes=["剧集/EP001/screenplay.md"],
+                    includes=["剧集/EP001/剧本.md"],
                 )
-            delivered = root / result["delivery_root"] / "artifacts/剧集/EP001/screenplay.md"
-            self.assertEqual(delivered.read_bytes(), approved)
+            delivered = root / result["delivery_root"] / "artifacts/剧集/EP001/剧本.md"
+            self.assertEqual(delivered.read_bytes(), initial)
 
-    def test_package_rejects_bytes_changed_after_approval_check(self) -> None:
+    def test_package_and_verify_selected_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root, text="# approved\n")
-            self.approve_script(root)
-            source = root / "剧集/EP001/screenplay.md"
-            real_artifact_state = project_tool._artifact_state
-
-            def mutate_after_check(project_root, record):
-                state = real_artifact_state(project_root, record)
-                source.write_text("unapproved before snapshot", encoding="utf-8")
-                return state
-
-            with mock.patch.object(
-                project_tool, "_artifact_state", side_effect=mutate_after_check
-            ), self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "changed after approval"
-            ):
-                project_tool.build_delivery_package(
-                    root,
-                    episode="EP001",
-                    includes=["剧集/EP001/screenplay.md"],
-                    strict_ledger=True,
-                )
-            self.assertFalse((root / "交付/EP001").exists())
-
-    def test_package_and_verify_selected_approved_text(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md")
             result = project_tool.build_delivery_package(
                 root,
                 episode="EP001",
-                includes=["剧集/EP001/screenplay.md"],
+                includes=["剧集/EP001/剧本.md"],
             )
             delivery = root / result["delivery_root"]
             self.assertTrue((delivery / "manifest.json").is_file())
             self.assertTrue((delivery / "checksums.sha256").is_file())
-            self.assertTrue((delivery / "artifacts/剧集/EP001/screenplay.md").is_file())
+            self.assertTrue((delivery / "artifacts/剧集/EP001/剧本.md").is_file())
             verified = project_tool.verify_delivery_package(root, episode="EP001")
             self.assertEqual(verified, {"episode": "EP001", "status": "verified", "problems": []})
 
     def test_verify_detects_tamper_and_unlisted_addition(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md")
             result = project_tool.build_delivery_package(
-                root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
+                root, episode="EP001", includes=["剧集/EP001/剧本.md"]
             )
             delivery = root / result["delivery_root"]
-            (delivery / "artifacts/剧集/EP001/screenplay.md").write_text(
+            (delivery / "artifacts/剧集/EP001/剧本.md").write_text(
                 "tampered", encoding="utf-8"
             )
             (delivery / "extra.md").write_text("extra", encoding="utf-8")
@@ -580,13 +253,12 @@ class SimpleLifecycleTests(unittest.TestCase):
     def test_verify_checks_manifest_file_hashes_even_if_checksums_are_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md")
             result = project_tool.build_delivery_package(
-                root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
+                root, episode="EP001", includes=["剧集/EP001/剧本.md"]
             )
             delivery = root / result["delivery_root"]
-            artifact = delivery / "artifacts/剧集/EP001/screenplay.md"
+            artifact = delivery / "artifacts/剧集/EP001/剧本.md"
             artifact.write_text("laundered bytes", encoding="utf-8")
             members = [delivery / "manifest.json", artifact]
             checksums = "".join(
@@ -624,29 +296,26 @@ class SimpleLifecycleTests(unittest.TestCase):
     def test_package_replaces_a_previous_package_as_one_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md", "# 第一集\n")
             project_tool.build_delivery_package(
-                root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
+                root, episode="EP001", includes=["剧集/EP001/剧本.md"]
             )
-            self.publish_script(root, text="# 第一集\n第二版\n")
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md", "# 第一集\n第二版\n")
             project_tool.build_delivery_package(
-                root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
+                root, episode="EP001", includes=["剧集/EP001/剧本.md"]
             )
-            delivered = root / "交付/EP001/artifacts/剧集/EP001/screenplay.md"
+            delivered = root / "交付/EP001/artifacts/剧集/EP001/剧本.md"
             self.assertIn("第二版", delivered.read_text(encoding="utf-8"))
             self.assertFalse(any((root / "交付").glob(".EP001.*.old")))
 
     def test_package_records_explicit_omissions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root)
-            self.approve_script(root)
+            self.write_episode_file(root, "剧集/EP001/剧本.md")
             project_tool.build_delivery_package(
                 root,
                 episode="EP001",
-                includes=["剧集/EP001/screenplay.md"],
+                includes=["剧集/EP001/剧本.md"],
                 omissions={"剧集/EP001/notes.md": "not requested"},
             )
             manifest = json.loads((root / "交付/EP001/manifest.json").read_text(encoding="utf-8"))
@@ -658,84 +327,95 @@ class SimpleLifecycleTests(unittest.TestCase):
     def test_status_never_exposes_hashes_or_creative_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self.publish_script(root, text="秘密台词")
+            self.write_episode_file(root, "剧集/EP001/剧本.md", "秘密台词")
             serialized = json.dumps(project_tool.project_status(root), ensure_ascii=False)
             self.assertNotIn("秘密台词", serialized)
-            self.assertIsNone(__import__("re").search(r"[0-9a-f]{64}", serialized))
+            self.assertIsNone(re.search(r"[0-9a-f]{64}", serialized))
 
     def test_coordinated_edit_rejects_an_old_version(self) -> None:
-        if os.name == "nt":
-            self.skipTest("dashboard descriptor contract is POSIX-only")
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             target = root / "notes.md"
             target.write_text("one", encoding="utf-8")
-            descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                with self.assertRaisesRegex(project_tool.ProjectConflictError, "changed"):
-                    with project_tool.coordinated_project_text_edit_at(
-                        descriptor, "notes.md", hashlib.sha256(b"old").hexdigest()
-                    ):
-                        pass
-            finally:
-                os.close(descriptor)
+            with self.assertRaisesRegex(project_tool.ProjectConflictError, "changed"):
+                with project_tool.coordinated_project_text_edit(
+                    root, "notes.md", hashlib.sha256(b"old").hexdigest()
+                ):
+                    pass
+            if os.name != "nt":
+                descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    with self.assertRaisesRegex(project_tool.ProjectConflictError, "changed"):
+                        with project_tool.coordinated_project_text_edit_at(
+                            descriptor, "notes.md", hashlib.sha256(b"old").hexdigest()
+                        ):
+                            pass
+                finally:
+                    os.close(descriptor)
 
-    def test_cli_runs_publish_accept_review_package_verify(self) -> None:
+    def test_cli_runs_init_configure_status_export_package_verify(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "draft.md"
-            source.write_text("# 第一集\n", encoding="utf-8")
+            root = Path(directory) / "cli-show"
+            out = Path(directory) / "handover"
+            init_cmd = [
+                "init",
+                str(root),
+                "--title",
+                "CLI 全链路",
+                "--aspect-ratio",
+                "9:16",
+            ]
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), *init_cmd],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.write_episode_file(root, "剧集/EP001/剧本.md", "# 第一集\n")
             commands = [
-                ["publish", str(root), "--owner", "short-drama-write", "--artifact-id", "EP001:script", "--output", "剧集/EP001/screenplay.md=draft.md"],
-                ["accept", str(root), "--artifact-id", "EP001:script", "--decision", "accepted"],
-                ["review", str(root), "--artifact-id", "EP001:script", "--verdict", "approve"],
-                ["package", str(root), "--episode", "EP001", "--include", "剧集/EP001/screenplay.md"],
+                [
+                    "configure",
+                    str(root),
+                    "--episode-count",
+                    "12",
+                    "--target-seconds",
+                    "90",
+                    "--pacing-json",
+                    json.dumps(
+                        {
+                            "spoken_characters_per_second": 4.5,
+                            "seconds_per_action_paragraph": 2.5,
+                        }
+                    ),
+                ],
+                ["status", str(root)],
+                ["export", str(root), "--out", str(out)],
+                ["package", str(root), "--episode", "EP001", "--include", "剧集/EP001/剧本.md"],
                 ["verify", str(root), "--episode", "EP001"],
             ]
             for command in commands:
-                result = subprocess.run(
+                res = subprocess.run(
                     [sys.executable, str(SCRIPT), *command],
                     check=False,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
                 )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIsInstance(json.loads(result.stdout), dict)
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertIsInstance(json.loads(res.stdout), dict)
 
-    def test_pacing_rates_have_a_write_path_and_a_hand_edit_is_reported(self) -> None:
-        # A/B Round 2: `duration_estimate.py` requires `format.pacing`, publish
-        # refuses `short-drama.json`, and set-authority accepted only
-        # `target_seconds_per_episode` — so the rates could reach the manifest
-        # only by hand, and no command anywhere reported that it had happened.
-        relative = "创作者决策/decisions.jsonl"
-        decision = {
-            "decision_id": "CD-PACING-001",
-            "status": "accepted",
-            "accepted_value": {
-                "spoken_characters_per_second": 5.0,
-                "seconds_per_action_paragraph": 2.5,
-            },
-            "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
-        }
+    def test_configure_pacing_and_hand_edit_reporting(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            project_tool.publish_candidate(
+            project_tool.configure_project(
                 root,
-                owner="short-drama",
-                artifact_id="project:decisions",
-                outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
+                pacing={
+                    "spoken_characters_per_second": 5.0,
+                    "seconds_per_action_paragraph": 2.5,
+                },
             )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-            project_tool.set_creator_authority(
-                root,
-                field="/format/pacing",
-                decision_path=relative,
-                decision_id="CD-PACING-001",
-            )
-
             manifest = root / "short-drama.json"
             written = json.loads(manifest.read_text(encoding="utf-8"))
             self.assertEqual(written["format"]["pacing"]["spoken_characters_per_second"], 5.0)
@@ -751,47 +431,14 @@ class SimpleLifecycleTests(unittest.TestCase):
                 {"/format/pacing": "hand_edited"},
             )
 
-    def test_pacing_rejects_rates_that_are_not_positive_numbers(self) -> None:
-        # The object slot is merged, not replaced, so a decision that sets only
-        # one rate leaves the other at null: the write would report `bound` while
-        # `duration_estimate.py` still refuses to produce seconds.
-        relative = "创作者决策/decisions.jsonl"
-        decision = {
-            "decision_id": "CD-PACING-BAD",
-            "status": "accepted",
-            "accepted_value": {"spoken_characters_per_second": 5.0},
-            "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama",
-                artifact_id="project:decisions",
-                outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-            with self.assertRaisesRegex(ValueError, "positive number"):
-                project_tool.set_creator_authority(
-                    root,
-                    field="/format/pacing",
-                    decision_path=relative,
-                    decision_id="CD-PACING-BAD",
-                )
-
     def test_an_english_project_declares_only_a_word_rate(self) -> None:
-        # The template carries the character rate as null; a project whose
-        # dialogue is English has no character rate to give, and its word rate
-        # alone makes the estimate usable.
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self._bind(root, "/format/target_seconds_per_episode", "CD-LENGTH", 90)
+            project_tool.configure_project(root, target_seconds_per_episode=90)
             self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
-            self._bind(
-                root, "/format/pacing", "CD-PACING-EN",
-                {
+            project_tool.configure_project(
+                root,
+                pacing={
                     "spoken_words_per_second": 3.0,
                     "seconds_per_action_paragraph": 2.5,
                     "on_screen_text_characters_per_second": 5.0,
@@ -799,128 +446,107 @@ class SimpleLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(project_tool.project_status(root)["profile_notes"], [])
             with self.assertRaisesRegex(ValueError, "positive number"):
-                self._bind(
-                    root, "/format/pacing", "CD-PACING-BAD-OST",
-                    {
-                        "spoken_words_per_second": 3.0,
-                        "seconds_per_action_paragraph": 2.5,
-                        "on_screen_text_characters_per_second": 0,
-                    },
+                project_tool.configure_project(
+                    root,
+                    pacing={"on_screen_text_characters_per_second": 0},
                 )
             with self.assertRaisesRegex(ValueError, "positive number"):
-                self._bind(
-                    root, "/format/pacing", "CD-PACING-BAD",
-                    {"spoken_words_per_second": 0, "seconds_per_action_paragraph": 2.5},
+                project_tool.configure_project(
+                    root,
+                    pacing={"spoken_words_per_second": 0},
                 )
 
-    def _bind(self, root: Path, field: str, decision_id: str, value: object) -> None:
-        relative = f"创作者决策/{decision_id}.jsonl"
-        decision = {
-            "decision_id": decision_id,
-            "status": "accepted",
-            "accepted_value": value,
-            "target_locators": [{"src": "short-drama", "field": field}],
-        }
-        project_tool.publish_candidate(
-            root,
-            owner="short-drama",
-            artifact_id=f"project:{decision_id}",
-            outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
-        )
-        project_tool.record_creator_acceptance(
-            root, artifact_id=f"project:{decision_id}", decision="accepted"
-        )
-        project_tool.set_creator_authority(
-            root, field=field, decision_path=relative, decision_id=decision_id
-        )
-
-    def test_episode_count_settled_after_init_has_a_write_path(self) -> None:
-        # The count is usually known only once the episode map exists, after
-        # init; the manifest kept null with no command able to fill it.
+    def test_episode_count_and_aspect_ratio_validation_via_configure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self._bind(root, "/format/episode_count", "CD-COUNT", 16)
-            self.assertEqual(project_tool.project_status(root)["format"]["episode_count"], 16)
+            project_tool.configure_project(root, episode_count=16, aspect_ratio="16:9")
+            fmt = project_tool.project_status(root)["format"]
+            self.assertEqual(fmt["episode_count"], 16)
+            self.assertEqual(fmt["aspect_ratio"], "16:9")
             with self.assertRaisesRegex(ValueError, "positive integer"):
-                self._bind(root, "/format/episode_count", "CD-COUNT-BAD", 2.5)
-
-    def test_aspect_ratio_chosen_after_init_has_a_write_path(self) -> None:
-        # init writes a placeholder ratio; the creator's answer to the router's
-        # one question usually comes later and had nowhere to go but hand edits.
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            self._bind(root, "/format/aspect_ratio", "CD-ASPECT", "16:9")
-            self.assertEqual(project_tool.project_status(root)["format"]["aspect_ratio"], "16:9")
+                project_tool.configure_project(root, episode_count=0)
             for bad in ("16/9", "0:9", "横屏"):
                 with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "width:height"):
-                    self._bind(root, "/format/aspect_ratio", f"CD-ASPECT-{len(bad)}", bad)
+                    project_tool.configure_project(root, aspect_ratio=bad)
             self.assertEqual(project_tool.project_status(root)["format"]["aspect_ratio"], "16:9")
 
     def test_status_names_settings_that_cannot_hold_together(self) -> None:
-        # Each value is valid alone; together they promise what a later stage
-        # cannot deliver, and that stage is the first to notice.
         profile = {
-            "form": "ai_live_action", "first_hook_seconds": 5, "beat_interval_seconds_max": 30,
-            "opposed_reversals_per_episode_min": 1, "end_on_peak": True,
-            "reprise_previous_last_beat": True, "vo_share_max": 0.3,
-            "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45,
+            "form": "ai_live_action",
+            "first_hook_seconds": 5,
+            "beat_interval_seconds_max": 30,
+            "opposed_reversals_per_episode_min": 1,
+            "end_on_peak": True,
+            "reprise_previous_last_beat": True,
+            "vo_share_max": 0.3,
+            "target_avg_shot_seconds": 2.5,
+            "close_shot_share_min": 0.45,
             "first_major_payoff_by_episode": 1,
         }
         model = {
-            "target_video_model": "seedance-2.0", "video_prompt_dialect": "seedance-2.0",
-            "video_prompt_language": "zh-CN", "native_duration_seconds": {"min": 4, "max": 15},
-            "supported_generation_modes": ["text"], "audio_generation": "same_pass",
+            "target_video_model": "seedance-2.0",
+            "video_prompt_dialect": "seedance-2.0",
+            "video_prompt_language": "zh-CN",
+            "native_duration_seconds": {"min": 4, "max": 15},
+            "supported_generation_modes": ["text"],
+            "audio_generation": "same_pass",
         }
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             self.assertEqual(project_tool.project_status(root)["profile_notes"], [])
-            self._bind(root, "/creator_authority/rhythm_profile", "CD-RHYTHM", profile)
-            self._bind(root, "/creator_authority/production_profile/choices", "CD-MODEL", model)
-            self._bind(root, "/format/target_seconds_per_episode", "CD-LENGTH", 90)
+            project_tool.configure_project(
+                root,
+                rhythm_profile=profile,
+                production_profile=model,
+                target_seconds_per_episode=90,
+            )
             notes = project_tool.project_status(root)["profile_notes"]
             self.assertEqual(len(notes), 2, notes)
             self.assertIn("2.5", notes[0])
             self.assertIn("format.pacing", notes[1])
-            self._bind(
-                root, "/format/pacing", "CD-PACING",
-                {"spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 3},
+            project_tool.configure_project(
+                root,
+                pacing={"spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 3},
             )
             self.assertEqual(len(project_tool.project_status(root)["profile_notes"]), 1)
 
     def test_choosing_multi_shot_containers_answers_the_shot_length_note(self) -> None:
-        # The creator's decision has to be recordable, or the note repeats on
-        # every status after the conflict was already settled.
         def manifest(containers: object) -> dict:
-            choices = {"native_duration_seconds": {"min": 4, "max": 15}}
+            choices: dict[str, object] = {"native_duration_seconds": {"min": 4, "max": 15}}
             if containers is not None:
                 choices["multi_shot_containers"] = containers
-            return {"creator_authority": {
-                "production_profile": {"status": "accepted", "choices": choices},
-                "rhythm_profile": {
-                    "status": "accepted", "form": "ai_live_action", "first_hook_seconds": 5,
-                    "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1,
-                    "end_on_peak": True, "reprise_previous_last_beat": True, "vo_share_max": 0.3,
-                    "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45,
-                    "first_major_payoff_by_episode": 1,
-                },
-            }}
+            return {
+                "creator_authority": {
+                    "production_profile": {"status": "accepted", "choices": choices},
+                    "rhythm_profile": {
+                        "status": "accepted",
+                        "form": "ai_live_action",
+                        "first_hook_seconds": 5,
+                        "beat_interval_seconds_max": 30,
+                        "opposed_reversals_per_episode_min": 1,
+                        "end_on_peak": True,
+                        "reprise_previous_last_beat": True,
+                        "vo_share_max": 0.3,
+                        "target_avg_shot_seconds": 2.5,
+                        "close_shot_share_min": 0.45,
+                        "first_major_payoff_by_episode": 1,
+                    },
+                }
+            }
+
         self.assertEqual(len(project_tool.profile_notes(manifest(None))), 1)
         self.assertEqual(project_tool.profile_notes(manifest(True)), [])
 
     def test_continuation_route_choice_is_recorded_and_read_back(self) -> None:
-        # The creator is asked once how continuation segments run; the answer
-        # has to land beside the model choices and come back through status,
-        # or every later stage would ask again.
         model = {"target_video_model": "studio-video", "video_prompt_language": "en"}
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            self._bind(root, "/creator_authority/production_profile/choices", "CD-MODEL", model)
+            project_tool.configure_project(root, production_profile=model)
             self.assertNotIn(
                 "continuation_route", project_tool.project_status(root)["video_model_profile"]
             )
-            self._bind(
-                root, "/creator_authority/production_profile/choices", "CD-RELAY",
-                {"continuation_route": "independent_starts"},
+            project_tool.configure_project(
+                root, production_profile={"continuation_route": "independent_starts"}
             )
             self.assertEqual(
                 project_tool.project_status(root)["video_model_profile"],
@@ -928,13 +554,18 @@ class SimpleLifecycleTests(unittest.TestCase):
             )
 
     def test_pacing_with_zero_action_seconds_still_counts_as_declared(self) -> None:
-        # The write stage's estimator accepts a zero action-paragraph duration;
-        # status must not ask the creator to change a setting that works.
-        manifest = {"format": {"target_seconds_per_episode": 90, "pacing": {
-            "spoken_characters_per_second": 4.5, "seconds_per_action_paragraph": 0}}}
+        manifest = {
+            "format": {
+                "target_seconds_per_episode": 90,
+                "pacing": {
+                    "spoken_characters_per_second": 4.5,
+                    "seconds_per_action_paragraph": 0,
+                },
+            }
+        }
         self.assertEqual(project_tool.profile_notes(manifest), [])
 
-    def test_rhythm_profile_accepts_partial_fields_and_all_forms_while_rejecting_bad_values(self) -> None:
+    def test_rhythm_profile_accepts_partial_fields_and_rejects_bad_values(self) -> None:
         profile = {
             "form": "motion_comic",
             "first_hook_seconds": 5,
@@ -947,122 +578,41 @@ class SimpleLifecycleTests(unittest.TestCase):
             "close_shot_share_min": 0.45,
             "first_major_payoff_by_episode": 1,
         }
-        pointer = "/creator_authority/rhythm_profile"
-        decisions = [
-            {"decision_id": "CD-RHYTHM", "accepted_value": profile},
-            {
-                "decision_id": "CD-RHYTHM-PARTIAL",
-                "accepted_value": {"form": "国漫二次元", "first_hook_seconds": 5},
-            },
-            {"decision_id": "CD-RHYTHM-ANIME", "accepted_value": {"form": "anime"}},
-            {"decision_id": "CD-RHYTHM-SHARE", "accepted_value": {**profile, "vo_share_max": 1.5}},
-            {
-                "decision_id": "CD-RHYTHM-NAN",
-                "accepted_value": {**profile, "close_shot_share_min": float("nan")},
-            },
-            {
-                "decision_id": "CD-RHYTHM-INF",
-                "accepted_value": {**profile, "target_avg_shot_seconds": float("inf")},
-            },
-            {
-                "decision_id": "CD-RHYTHM-BOOL",
-                "accepted_value": {**profile, "first_hook_seconds": True},
-            },
-            {
-                "decision_id": "CD-RHYTHM-FLOAT-COUNT",
-                "accepted_value": {**profile, "opposed_reversals_per_episode_min": 1.5},
-            },
-            {"decision_id": "CD-RHYTHM-FORM", "accepted_value": {**profile, "form": "spreadsheet"}},
-            {"decision_id": "CD-RHYTHM-EXTRA", "accepted_value": {**profile, "hooks_per_minute": 4}},
-            {"decision_id": "CD-VO", "accepted_value": 0.6, "field": f"{pointer}/vo_share_max"},
-        ]
-        relative = "创作者决策/decisions.jsonl"
-        lines = "".join(
-            json.dumps(
-                {
-                    "decision_id": record["decision_id"],
-                    "status": "accepted",
-                    "accepted_value": record["accepted_value"],
-                    "target_locators": [
-                        {"src": "short-drama", "field": record.get("field", pointer)}
-                    ],
-                },
-                ensure_ascii=False,
-            )
-            + "\n"
-            for record in decisions
-        )
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             manifest = root / "short-drama.json"
             self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama",
-                artifact_id="project:decisions",
-                outputs={relative: lines.encode()},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-
-            def bind(decision_id: str, field: str = pointer) -> None:
-                project_tool.set_creator_authority(
-                    root, field=field, decision_path=relative, decision_id=decision_id
-                )
-
             before = manifest.read_bytes()
-            for decision_id, reason in (
-                ("CD-RHYTHM-SHARE", "vo_share_max must be a share"),
-                ("CD-RHYTHM-NAN", "close_shot_share_min must be a share"),
-                ("CD-RHYTHM-INF", "target_avg_shot_seconds must be a positive"),
-                ("CD-RHYTHM-BOOL", "first_hook_seconds must be a positive"),
-                ("CD-RHYTHM-FLOAT-COUNT", "opposed_reversals_per_episode_min must be a whole"),
-                ("CD-RHYTHM-FORM", "form must be"),
-                ("CD-RHYTHM-EXTRA", "no field hooks_per_minute"),
+            for bad, reason in (
+                ({**profile, "vo_share_max": 1.5}, "vo_share_max must be a share"),
+                ({**profile, "close_shot_share_min": float("nan")}, "close_shot_share_min must be a share"),
+                ({**profile, "target_avg_shot_seconds": float("inf")}, "target_avg_shot_seconds must be a positive"),
+                ({**profile, "first_hook_seconds": True}, "first_hook_seconds must be a positive"),
+                ({**profile, "opposed_reversals_per_episode_min": 1.5}, "opposed_reversals_per_episode_min must be a whole"),
+                ({**profile, "form": "spreadsheet"}, "form must be"),
+                ({**profile, "hooks_per_minute": 4}, "no field hooks_per_minute"),
             ):
-                with self.subTest(decision_id=decision_id):
+                with self.subTest(reason=reason):
                     with self.assertRaisesRegex(ValueError, reason):
-                        bind(decision_id)
+                        project_tool.configure_project(root, rhythm_profile=bad)
                     self.assertEqual(manifest.read_bytes(), before)
-            # One field cannot be written into a profile nobody accepted yet.
-            with self.assertRaisesRegex(ValueError, "not accepted"):
-                bind("CD-VO", f"{pointer}/vo_share_max")
-            self.assertEqual(manifest.read_bytes(), before)
 
-            bind("CD-RHYTHM-PARTIAL")
+            project_tool.configure_project(
+                root, rhythm_profile={"form": "国漫二次元", "first_hook_seconds": 5}
+            )
             self.assertEqual(
                 project_tool.project_status(root)["rhythm_profile"],
                 {"form": "国漫二次元", "first_hook_seconds": 5},
             )
-            bind("CD-RHYTHM-ANIME")
+            project_tool.configure_project(root, rhythm_profile={"form": "anime"})
             self.assertEqual(
                 project_tool.project_status(root)["rhythm_profile"],
                 {"form": "anime", "first_hook_seconds": 5},
             )
-
-            bind("CD-RHYTHM")
+            project_tool.configure_project(root, rhythm_profile=profile)
             self.assertEqual(project_tool.project_status(root)["rhythm_profile"], profile)
-            bind("CD-VO", f"{pointer}/vo_share_max")
-            self.assertEqual(
-                project_tool.project_status(root)["rhythm_profile"],
-                {**profile, "vo_share_max": 0.6},
-            )
-
-            proposed = json.loads(manifest.read_text(encoding="utf-8"))
-            proposed["creator_authority"]["rhythm_profile"]["status"] = "proposed"
-            project_tool.atomic_json(manifest, proposed)
-            self.assertEqual(project_tool.project_status(root)["rhythm_profile"], {})
-            # A leaf write would accept the block it lands in: a complete but
-            # proposed profile must not become accepted through one field.
-            proposed_bytes = manifest.read_bytes()
-            with self.assertRaisesRegex(ValueError, "not accepted"):
-                bind("CD-VO", f"{pointer}/vo_share_max")
-            self.assertEqual(manifest.read_bytes(), proposed_bytes)
 
     def test_status_declares_no_rhythm_profile_when_an_accepted_one_is_invalid(self) -> None:
-        # A hand edit can leave an accepted profile holding values downstream
-        # arithmetic cannot use; status must not hand them on as declared.
         profile = {
             "status": "accepted",
             "form": "ai_live_action",
@@ -1103,313 +653,16 @@ class SimpleLifecycleTests(unittest.TestCase):
                         self.assertEqual(len(status["rhythm_profile_problems"]), 1)
                         self.assertIn(field, status["rhythm_profile_problems"][0])
 
-    def test_set_authority_writes_only_through_an_accepted_decision(self) -> None:
-        decisions = [
-            {
-                "decision_id": "CD-PROFILE-001",
-                "status": "accepted",
-                "accepted_value": {"form": "live_action"},
-                "target_locators": [
-                    {"src": "short-drama", "field": "/creator_authority/production_profile"}
-                ],
-            },
-            {
-                "decision_id": "CD-LENGTH-001",
-                "status": "proposed",
-                "accepted_value": 95,
-                "target_locators": [
-                    {"src": "short-drama", "field": "/format/target_seconds_per_episode"}
-                ],
-            },
-        ]
-        relative = "创作者决策/decisions.jsonl"
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "decisions.draft.jsonl"
-            source.write_text(
-                "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in decisions),
-                encoding="utf-8",
-            )
-            set_profile = dict(
-                field="/creator_authority/production_profile",
-                decision_path=relative,
-                decision_id="CD-PROFILE-001",
-            )
-            with self.assertRaisesRegex(ValueError, "published"):
-                project_tool.set_creator_authority(root, **set_profile)
-
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama",
-                artifact_id="project:decisions",
-                outputs={relative: source.read_bytes()},
-            )
-            with self.assertRaisesRegex(ValueError, "accepted and current"):
-                project_tool.set_creator_authority(root, **set_profile)
-
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-            project_tool.set_creator_authority(root, **set_profile)
-            authority = json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
-            self.assertEqual(
-                authority["creator_authority"]["production_profile"],
-                {"status": "accepted", "choices": {"form": "live_action"}},
-            )
-
-            with self.assertRaisesRegex(ValueError, "not an accepted creator decision"):
-                project_tool.set_creator_authority(
-                    root,
-                    field="/format/target_seconds_per_episode",
-                    decision_path=relative,
-                    decision_id="CD-LENGTH-001",
-                )
-            with self.assertRaisesRegex(ValueError, "creator_authority"):
-                project_tool.set_creator_authority(
-                    root, field="/title", decision_path=relative, decision_id="CD-PROFILE-001"
-                )
-            self.assertIsNone(
-                json.loads((root / "short-drama.json").read_text(encoding="utf-8"))["format"][
-                    "target_seconds_per_episode"
-                ]
-            )
-
-    def test_set_authority_defects_found_by_review(self) -> None:
-        """One case per defect an independent review reproduced.
-
-        Each of these wrote a value the creator never approved, or a manifest
-        another reader rejects, while the whole suite stayed green.
-        """
-        relative = "创作者决策/decisions.jsonl"
-        records = [
-            # A retracted decision, and the revision that retracted it.
-            {"decision_id": "CD-S1", "status": "accepted", "accepted_value": 180,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            {"decision_id": "CD-S2", "status": "accepted", "supersedes_decision_id": "CD-S1",
-             "accepted_value": 90,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            # Append-only revision reusing one id: the later line is the decision.
-            {"decision_id": "CD-R", "status": "accepted", "accepted_value": 60,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            {"decision_id": "CD-R", "status": "accepted", "accepted_value": 45,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            # A choice written deeper than the block that gates it.
-            {"decision_id": "CD-LOOK", "status": "accepted", "accepted_value": "水墨",
-             "target_locators": [{"src": "short-drama",
-                                  "field": "/creator_authority/visual_direction/choices/look_development"}]},
-            # Infinity parses in Python and serialises back out, but is not JSON.
-            {"decision_id": "CD-INF", "status": "accepted", "accepted_value": float("inf"),
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            {"decision_id": "CD-NEW", "status": "accepted", "accepted_value": "x",
-             "target_locators": [{"src": "short-drama", "field": "/creator_authority/新造字段"}]},
-            {"decision_id": "CD-TYPE", "status": "accepted", "accepted_value": "一句话",
-             "target_locators": [{"src": "short-drama", "field": "/creator_authority/constraints"}]},
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "decisions.draft.jsonl"
-            source.write_text(
-                "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
-                encoding="utf-8",
-            )
-            project_tool.publish_candidate(
-                root, owner="short-drama", artifact_id="project:decisions",
-                outputs={relative: source.read_bytes()},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-
-            def apply(field: str, decision_id: str) -> None:
-                project_tool.set_creator_authority(
-                    root, field=field, decision_path=relative, decision_id=decision_id
-                )
-
-            def manifest() -> dict:
-                return json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
-
-            with self.assertRaisesRegex(ValueError, "superseded"):
-                apply("/format/target_seconds_per_episode", "CD-S1")
-            with self.assertRaisesRegex(ValueError, "not JSON compliant"):
-                apply("/format/target_seconds_per_episode", "CD-INF")
-            with self.assertRaisesRegex(ValueError, "declares no"):
-                apply("/creator_authority/新造字段", "CD-NEW")
-            with self.assertRaisesRegex(ValueError, "accepted_value is str"):
-                apply("/creator_authority/constraints", "CD-TYPE")
-
-            apply("/format/target_seconds_per_episode", "CD-R")
-            self.assertEqual(manifest()["format"]["target_seconds_per_episode"], 45)
-
-            apply("/creator_authority/visual_direction/choices/look_development", "CD-LOOK")
-            direction = manifest()["creator_authority"]["visual_direction"]
-            self.assertEqual(direction["choices"]["look_development"], "水墨")
-            self.assertEqual(direction["status"], "accepted")
-
-            state = json.loads(
-                (root / ".short-drama/state.json").read_text(encoding="utf-8")
-            )
-            binding = state["authority"]["/format/target_seconds_per_episode"]
-            self.assertEqual(binding["decision"], f"{relative}#CD-R")
-            self.assertIn("value_sha256", binding)
-
-    def test_set_authority_second_round_defects(self) -> None:
-        """A second review round; the first two were introduced by the first round's fixes."""
-        relative = "创作者决策/decisions.jsonl"
-        records = [
-            # 45 is an int, 92.5 a float: comparing Python types made the field one-way.
-            {"decision_id": "CD-INT", "status": "accepted", "accepted_value": 90,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            {"decision_id": "CD-FLOAT", "status": "accepted", "accepted_value": 92.5,
-             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
-            # Writing the choices map replaced it, dropping choices already recorded.
-            {"decision_id": "CD-LOOK", "status": "accepted", "accepted_value": "水墨",
-             "target_locators": [{"src": "short-drama",
-                                  "field": "/creator_authority/visual_direction/choices/look_development"}]},
-            {"decision_id": "CD-CH", "status": "accepted",
-             "accepted_value": {"direction": "克制现实主义"},
-             "target_locators": [{"src": "short-drama",
-                                  "field": "/creator_authority/visual_direction/choices"}]},
-            # Where decisions live is layout: a decision must not move it.
-            {"decision_id": "CD-DA", "status": "accepted", "accepted_value": "../../外部目录/",
-             "target_locators": [{"src": "short-drama",
-                                  "field": "/creator_authority/decisions_artifact"}]},
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "decisions.draft.jsonl"
-            source.write_text(
-                "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
-                encoding="utf-8",
-            )
-            project_tool.publish_candidate(
-                root, owner="short-drama", artifact_id="project:decisions",
-                outputs={relative: source.read_bytes()},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-
-            def apply(field: str, decision_id: str) -> None:
-                project_tool.set_creator_authority(
-                    root, field=field, decision_path=relative, decision_id=decision_id
-                )
-
-            def manifest() -> dict:
-                return json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
-
-            apply("/format/target_seconds_per_episode", "CD-INT")
-            apply("/format/target_seconds_per_episode", "CD-FLOAT")
-            self.assertEqual(manifest()["format"]["target_seconds_per_episode"], 92.5)
-
-            apply("/creator_authority/visual_direction/choices/look_development", "CD-LOOK")
-            apply("/creator_authority/visual_direction/choices", "CD-CH")
-            self.assertEqual(
-                manifest()["creator_authority"]["visual_direction"]["choices"],
-                {"look_development": "水墨", "direction": "克制现实主义"},
-            )
-
-            with self.assertRaisesRegex(ValueError, "decisions_artifact"):
-                apply("/creator_authority/decisions_artifact", "CD-DA")
-            self.assertEqual(
-                manifest()["creator_authority"]["decisions_artifact"], "创作者决策/"
-            )
-
-    def test_project_discovery_and_languages_remain_stable(self) -> None:
+    def test_project_discovery_languages_and_windows_portability_guards(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             self.assertEqual(project_tool.find_project(root / "剧集"), root.resolve())
             status = project_tool.project_status(root)
             self.assertEqual(status["language"], "zh-CN")
             self.assertEqual(status["prompt_language"], "en")
-
-    def test_set_authority_pacing_and_windows_portability_guards(self) -> None:
-        relative = "创作者决策/decisions.jsonl"
-        records = [
-            {
-                "decision_id": "CD-PACE-ZERO",
-                "status": "accepted",
-                "accepted_value": {
-                    "spoken_characters_per_second": 4.2,
-                    "seconds_per_action_paragraph": 0,
-                },
-                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
-            },
-            {
-                "decision_id": "CD-PACE-EXTRA",
-                "status": "accepted",
-                "accepted_value": {
-                    "spoken_characters_per_second": 4.2,
-                    "seconds_per_action_paragraph": 2,
-                    "unexpected_rate": 1,
-                },
-                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
-            },
-            {
-                "decision_id": "CD-PACE-NAN",
-                "status": "accepted",
-                "accepted_value": {
-                    "spoken_characters_per_second": float("nan"),
-                    "seconds_per_action_paragraph": 2,
-                },
-                "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
-            },
-            {
-                "decision_id": "CD-LEN-NAN",
-                "status": "accepted",
-                "accepted_value": float("nan"),
-                "target_locators": [
-                    {"src": "short-drama", "field": "/format/target_seconds_per_episode"}
-                ],
-            },
-        ]
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            source = root / "decisions.draft.jsonl"
-            source.write_text(
-                "".join(json.dumps(record, ensure_ascii=False, allow_nan=True) + "\n" for record in records),
-                encoding="utf-8",
-            )
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama",
-                artifact_id="project:decisions",
-                outputs={relative: source.read_bytes()},
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="project:decisions", decision="accepted"
-            )
-
-            project_tool.set_creator_authority(
-                root,
-                field="/format/pacing",
-                decision_path=relative,
-                decision_id="CD-PACE-ZERO",
-            )
-            manifest = json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
-            self.assertEqual(
-                manifest["format"]["pacing"],
-                {
-                    "spoken_characters_per_second": 4.2,
-                    "seconds_per_action_paragraph": 0,
-                },
-            )
-
-            for field, decision_id in (
-                ("/format/pacing", "CD-PACE-EXTRA"),
-                ("/format/pacing", "CD-PACE-NAN"),
-                ("/format/target_seconds_per_episode", "CD-LEN-NAN"),
-            ):
-                with self.subTest(decision_id=decision_id), self.assertRaises(ValueError):
-                    project_tool.set_creator_authority(
-                        root,
-                        field=field,
-                        decision_path=relative,
-                        decision_id=decision_id,
-                    )
-
-        for bad_path in ("剧集/EP001/\x1fname.md", "剧集/EP001/\x7fname.md", "剧集/EP001/a\nb.md"):
-            with self.subTest(bad_path=repr(bad_path)):
-                self.assertFalse(project_tool._is_portable_windows_path(bad_path))
+            for bad_path in ("剧集/EP001/\x1fname.md", "剧集/EP001/\x7fname.md", "剧集/EP001/a\nb.md"):
+                with self.subTest(bad_path=repr(bad_path)):
+                    self.assertFalse(project_tool._is_portable_windows_path(bad_path))
 
 
 class CreatorExportTests(unittest.TestCase):
@@ -1530,8 +783,6 @@ class CreatorExportTests(unittest.TestCase):
                         project_tool.build_creator_export(root, out=candidate)
 
     def test_export_refuses_a_destination_that_contains_the_project(self) -> None:
-        """The export replaces its destination wholesale, so a destination that
-        contains the project would delete the project it is exporting."""
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             keepsake = root.parent / "irreplaceable.txt"
@@ -1547,9 +798,6 @@ class CreatorExportTests(unittest.TestCase):
             self.assertTrue((root / "剧集/EP001/剧本.md").is_file())
 
     def test_export_refuses_a_destination_spelled_as_the_same_directory(self) -> None:
-        """A case-insensitive volume and a differently normalised Unicode name
-        both spell one directory two ways; a resolved-string comparison alone
-        would let either slip past and delete the project."""
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             alias = Path(directory) / "alias"
@@ -1568,7 +816,6 @@ class CreatorExportTests(unittest.TestCase):
                 project_tool.build_creator_export(root, out=documents, overwrite=True)
             self.assertTrue((documents / "报税.pdf").is_file())
             self.assertTrue((documents / "照片").is_dir())
-            # A real previous export may still be replaced.
             handover = Path(directory) / "handover"
             project_tool.build_creator_export(root, out=handover)
             project_tool.build_creator_export(root, out=handover, overwrite=True)
@@ -1707,17 +954,10 @@ class CreatorExportTests(unittest.TestCase):
             self.assertEqual(payload["episodes"], ["EP001"])
 
 
-class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
-    """Editing an accepted artifact behind the tool's back must un-accept it.
+class ActiveConfigureAndDashboardContractTests(unittest.TestCase):
+    """Active configure/package behavior and Dashboard read-only state parity."""
 
-    This is the promise the whole publish/accept lifecycle rests on, and it had
-    no test in either implementation. Both `_artifact_state` comparisons against
-    the live hashes could be deleted and all 321 tests stayed green, which is
-    also how the two transcriptions of these rules were free to drift -- the
-    dashboard renders the directory-fd one.
-    """
-
-    def make_accepted_project(self, directory: str) -> Path:
+    def make_tracked_project(self, directory: str, *, decision: str = "accepted", review: dict | None = None) -> Path:
         root = Path(directory) / "project"
         project_tool.initialize_project(
             root,
@@ -1726,42 +966,28 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
             aspect_ratio="9:16",
             suite_root=SKILL,
         )
-        project_tool.publish_candidate(
-            root,
-            owner="short-drama-write",
-            artifact_id="EP001:script",
-            outputs={"剧集/EP001/screenplay.md": "# 第一集\n"},
-            inputs=[],
-        )
-        project_tool.record_creator_acceptance(
-            root, artifact_id="EP001:script", decision="accepted"
-        )
+        screenplay = root / "剧集/EP001/screenplay.md"
+        screenplay.parent.mkdir(parents=True, exist_ok=True)
+        screenplay.write_text("# 第一集\n", encoding="utf-8")
+        digest = hashlib.sha256(screenplay.read_bytes()).hexdigest()
+        state_path = root / ".short-drama/state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["artifacts"]["EP001:script"] = {
+            "owner": "short-drama-write",
+            "outputs": ["剧集/EP001/screenplay.md"],
+            "inputs": {},
+            "acceptance": {
+                "decision": decision,
+                "outputs": {"剧集/EP001/screenplay.md": digest},
+            },
+            "review": review,
+        }
+        project_tool.atomic_json(state_path, state)
         return root
 
-    def states(self, root: Path) -> dict[str, str]:
-        return dict(project_tool.project_status(root)["artifacts"])
-
-    def test_editing_an_accepted_output_returns_it_to_update_needed(self) -> None:
+    def test_dashboard_path_and_fd_readers_agree_on_live_hash_drift(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = self.make_accepted_project(directory)
-            self.assertEqual(self.states(root), {"EP001:script": "accepted"})
-
-            (root / "剧集/EP001/screenplay.md").write_text(
-                "# 第一集\n\n有人在工具之外改了这一行。\n", encoding="utf-8"
-            )
-            self.assertEqual(self.states(root), {"EP001:script": "update_needed"})
-
-    def test_deleting_an_accepted_output_returns_it_to_update_needed(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_accepted_project(directory)
-            (root / "剧集/EP001/screenplay.md").unlink()
-            self.assertEqual(self.states(root), {"EP001:script": "update_needed"})
-
-    def test_both_implementations_agree_on_every_state(self) -> None:
-        """The path reader and the fd reader are one state machine, not two."""
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_accepted_project(directory)
+            root = self.make_tracked_project(directory)
             screenplay = root / "剧集/EP001/screenplay.md"
             state_path = root / ".short-drama/state.json"
 
@@ -1769,6 +995,9 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 record = json.loads(state_path.read_text(encoding="utf-8"))[
                     "artifacts"
                 ]["EP001:script"]
+                if os.name == "nt":
+                    state = project_tool._artifact_state(root, record)
+                    return state, state
                 directory_fd = os.open(root, os.O_RDONLY)
                 try:
                     return (
@@ -1778,31 +1007,11 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 finally:
                     os.close(directory_fd)
 
-            by_path, by_fd = both()
-            self.assertEqual((by_path, by_fd), ("accepted", "accepted"))
-
+            self.assertEqual(both(), ("accepted", "accepted"))
             screenplay.write_text("# 第一集\n\n改过了。\n", encoding="utf-8")
-            by_path, by_fd = both()
-            self.assertEqual((by_path, by_fd), ("update_needed", "update_needed"))
-
+            self.assertEqual(both(), ("update_needed", "update_needed"))
             screenplay.unlink()
-            by_path, by_fd = both()
-            self.assertEqual((by_path, by_fd), ("update_needed", "update_needed"))
-
-    def test_only_the_two_documented_decisions_are_recorded(self) -> None:
-        """A decision outside the whitelist would strand the artifact forever.
-
-        It is written into state, matches neither `accepted` nor `rejected`, and
-        leaves the artifact in `update_needed` with no way back.
-        """
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_accepted_project(directory)
-            with self.assertRaises(ValueError):
-                project_tool.record_creator_acceptance(
-                    root, artifact_id="EP001:script", decision="TOTALLY_BOGUS"
-                )
-            self.assertEqual(self.states(root), {"EP001:script": "accepted"})
+            self.assertEqual(both(), ("update_needed", "update_needed"))
 
     def test_configure_updates_manifest_and_accepts_authority_without_ledger_ceremony(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1826,7 +1035,7 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 },
                 visual_direction={"look_development": "ink_wash_trial_v1"},
                 production_profile={
-                    "target_video_model": "seedance-2.5",
+                    "target_video_model": "studio-video-v2",
                     "video_prompt_language": "zh-CN",
                     "native_duration_seconds": {"min": 4, "max": 15},
                     "supported_generation_modes": ["text", "first_frame", "reference"],
@@ -1851,7 +1060,7 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 {"form": "水墨笔触", "first_hook_seconds": 4.5},
             )
             self.assertEqual(
-                status["video_model_profile"]["target_video_model"], "seedance-2.5"
+                status["video_model_profile"]["target_video_model"], "studio-video-v2"
             )
             for value in status["authority"].values():
                 self.assertEqual(value, "bound")
@@ -2009,29 +1218,12 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                     production_profile={"native_duration_seconds": {"min": 8, "max": 4}},
                 )
 
-    def test_package_relaxed_ledger_blocks_unedited_reject_or_revise_and_allows_edited_file(
+    def test_package_blocks_unedited_rejected_or_revise_state_and_allows_edited_file(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "project"
-            project_tool.initialize_project(
-                root,
-                title="轻量短剧",
-                language="zh-CN",
-                aspect_ratio="9:16",
-                suite_root=SKILL,
-            )
+            root = self.make_tracked_project(directory, decision="rejected")
             source = root / "剧集/EP001/screenplay.md"
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama-write",
-                artifact_id="EP001:script",
-                outputs={"剧集/EP001/screenplay.md": "# rejected draft\n"},
-                inputs=[],
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="rejected"
-            )
             with self.assertRaisesRegex(
                 project_tool.PackageBlockedError, "delivery source was rejected"
             ):
@@ -2046,22 +1238,17 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
                 [item["source"] for item in packaged_after_reject["files"]],
             )
 
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama-write",
-                artifact_id="EP001:script",
-                outputs={"剧集/EP001/screenplay.md": "# needs revise\n"},
-                inputs=[],
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="EP001:script", decision="accepted"
-            )
-            project_tool.record_review(
-                root,
-                artifact_id="EP001:script",
-                verdict="revise",
-                reviewer="independent reviewer",
-            )
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_tracked_project(directory, decision="accepted")
+            source = root / "剧集/EP001/screenplay.md"
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            state_path = root / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["artifacts"]["EP001:script"]["review"] = {
+                "verdict": "revise",
+                "outputs": {"剧集/EP001/screenplay.md": digest},
+            }
+            project_tool.atomic_json(state_path, state)
             with self.assertRaisesRegex(
                 project_tool.PackageBlockedError, "requires revision before packaging"
             ):
@@ -2074,165 +1261,6 @@ class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
             self.assertIn(
                 "剧集/EP001/screenplay.md",
                 [item["source"] for item in packaged_after_revise["files"]],
-            )
-
-    def test_review_verdict_reject_sets_revise_state_and_blocks_unedited_package(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_accepted_project(directory)
-            cli = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "review",
-                    str(root),
-                    "--artifact-id",
-                    "EP001:script",
-                    "--verdict",
-                    "reject",
-                    "--reviewer",
-                    "independent reviewer",
-                    "--note",
-                    "结构推翻重写",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-            )
-            self.assertEqual(cli.returncode, 0, cli.stderr)
-            payload = json.loads(cli.stdout)
-            self.assertEqual(payload["verdict"], "reject")
-            self.assertEqual(payload["state"], "revise")
-            self.assertEqual(self.states(root), {"EP001:script": "revise"})
-
-            state_path = root / ".short-drama/state.json"
-            record = json.loads(state_path.read_text(encoding="utf-8"))["artifacts"][
-                "EP001:script"
-            ]
-            self.assertEqual(project_tool._artifact_state(root, record), "revise")
-            if os.name != "nt":
-                directory_fd = os.open(root, os.O_RDONLY)
-                try:
-                    self.assertEqual(
-                        project_tool._artifact_state_at(directory_fd, record), "revise"
-                    )
-                finally:
-                    os.close(directory_fd)
-
-            with self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "requires revision before packaging"
-            ):
-                project_tool.build_delivery_package(root, episode="EP001")
-            with self.assertRaises(project_tool.PackageBlockedError):
-                project_tool.build_delivery_package(
-                    root, episode="EP001", strict_ledger=True
-                )
-
-            (root / "剧集/EP001/screenplay.md").write_text(
-                "# 第一集\n重写稿\n", encoding="utf-8"
-            )
-            packaged = project_tool.build_delivery_package(root, episode="EP001")
-            self.assertIn(
-                "剧集/EP001/screenplay.md",
-                [item["source"] for item in packaged["files"]],
-            )
-
-    def test_nested_authority_updates_refresh_bound_ancestors_without_laundering_hand_edits(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "project"
-            project_tool.initialize_project(
-                root,
-                title="权威层级测试",
-                language="zh-CN",
-                aspect_ratio="9:16",
-                suite_root=SKILL,
-            )
-            project_tool.configure_project(
-                root,
-                visual_direction={"form": "实拍", "palette": "冷青"},
-            )
-            decisions_rel = "创作者决策/decisions.jsonl"
-            decisions_text = (
-                json.dumps(
-                    {
-                        "decision_id": "DEC-PALETTE-1",
-                        "status": "accepted",
-                        "target_locators": [
-                            {
-                                "src": "short-drama",
-                                "field": "/creator_authority/visual_direction/choices/palette",
-                            }
-                        ],
-                        "accepted_value": "暖琥珀",
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-                + json.dumps(
-                    {
-                        "decision_id": "DEC-PALETTE-2",
-                        "status": "accepted",
-                        "target_locators": [
-                            {
-                                "src": "short-drama",
-                                "field": "/creator_authority/visual_direction/choices/palette",
-                            }
-                        ],
-                        "accepted_value": "深海蓝",
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-            project_tool.publish_candidate(
-                root,
-                owner="short-drama",
-                artifact_id="decisions",
-                outputs={decisions_rel: decisions_text},
-                inputs=[],
-            )
-            project_tool.record_creator_acceptance(
-                root, artifact_id="decisions", decision="accepted"
-            )
-
-            project_tool.set_creator_authority(
-                root,
-                field="/creator_authority/visual_direction/choices/palette",
-                decision_path=decisions_rel,
-                decision_id="DEC-PALETTE-1",
-            )
-            authority_status = project_tool.project_status(root)["authority"]
-            self.assertEqual(
-                authority_status["/creator_authority/visual_direction"], "bound"
-            )
-            self.assertEqual(
-                authority_status["/creator_authority/visual_direction/choices/palette"],
-                "bound",
-            )
-
-            # A genuine hand edit to a sibling key must NOT be laundered by a subsequent leaf write.
-            manifest_path = root / "short-drama.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["creator_authority"]["visual_direction"]["choices"]["form"] = "手改画风"
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            project_tool.set_creator_authority(
-                root,
-                field="/creator_authority/visual_direction/choices/palette",
-                decision_path=decisions_rel,
-                decision_id="DEC-PALETTE-2",
-            )
-            after_hand_edit = project_tool.project_status(root)["authority"]
-            self.assertEqual(
-                after_hand_edit["/creator_authority/visual_direction"], "hand_edited"
-            )
-            self.assertEqual(
-                after_hand_edit["/creator_authority/visual_direction/choices/palette"],
-                "bound",
             )
 
 

@@ -43,7 +43,7 @@ episode_intake = _module(
 review_check = _module("g_review_check", "short-drama-review/scripts/review_check.py", LEGACY)
 novel_index = _module("g_novel_index", "short-drama-novel-analyze/scripts/novel_index.py")
 screenplay_index = _module(
-    "g_screenplay_index", "short-drama-write/scripts/screenplay_index.py"
+    "g_screenplay_index", "short-drama-write/scripts/screenplay_index.py", LEGACY
 )
 duration_estimate = _module(
     "g_duration_estimate", "short-drama-write/scripts/duration_estimate.py"

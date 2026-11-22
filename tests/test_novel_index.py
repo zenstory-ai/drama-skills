@@ -942,5 +942,153 @@ class RoundThreeEdgeCaseTests(unittest.TestCase):
         )
 
 
+class EnglishChapterHeadingTests(unittest.TestCase):
+    def _en_prose(self, lines: int = 8) -> str:
+        return "\n".join(
+            "Mara walks across the wet courtyard and checks the locked gate before dawn."
+            for _ in range(lines)
+        )
+
+    def test_english_arabic_word_and_roman_chapter_headings_index_cleanly(self) -> None:
+        text = (
+            f"Chapter 1\n{self._en_prose()}\n\n"
+            f"Chapter 02: The Arrival\n{self._en_prose()}\n\n"
+            f"CHAPTER THREE\n{self._en_prose()}\n\n"
+            f"## Chapter IV - The Trap\n{self._en_prose()}\n\n"
+            f"Chapter 5. The Deal\n{self._en_prose()}\n\n"
+            f"### Chapter Six — Endgame\n{self._en_prose()}\n"
+        )
+        index, verified = index_and_verify(text)
+        self.assertEqual(index["chapter_unit"], "Chapter")
+        self.assertEqual(index["chapter_count"], 6)
+        self.assertEqual(
+            [row["source_number"] for row in index["chapters"]],
+            [1, 2, 3, 4, 5, 6],
+        )
+        self.assertEqual(
+            [row["title"] for row in index["chapters"]],
+            ["", "The Arrival", "", "The Trap", "The Deal", "Endgame"],
+        )
+        self.assertEqual(index["problems"], [])
+        self.assertEqual(index["warnings"], [])
+        self.assertTrue(verified["verified"], verified)
+
+    def test_english_number_parsers_handle_compound_words_and_roman_numerals(self) -> None:
+        word_cases = {
+            "One": 1,
+            "TWENTY-THREE": 23,
+            "Twenty Three": 23,
+            "One Hundred": 100,
+            "One Hundred and Two": 102,
+            "Two Hundred Thirty-Four": 234,
+            "One Thousand and Five": 1005,
+        }
+        for raw, expected in word_cases.items():
+            with self.subTest(word=raw):
+                self.assertEqual(novel_index.english_number_to_int(raw), expected)
+                self.assertEqual(novel_index.parse_chapter_number(raw), expected)
+
+        for bad_word in ("", "one two", "twenty thirty", "and five", "five and", "hundred"):
+            with self.subTest(bad_word=bad_word):
+                self.assertIsNone(novel_index.english_number_to_int(bad_word))
+
+        roman_cases = {"I": 1, "IV": 4, "IX": 9, "XII": 12, "XIV": 14, "XLII": 42, "MCMXCIX": 1999}
+        for raw, expected in roman_cases.items():
+            with self.subTest(roman=raw):
+                self.assertEqual(novel_index.roman_to_int(raw), expected)
+                self.assertEqual(novel_index.parse_chapter_number(raw), expected)
+
+        for bad_roman in ("", "IIII", "IIX", "VV", "mild", "lid", "dim", "iv"):
+            with self.subTest(bad_roman=bad_roman):
+                self.assertIsNone(novel_index.roman_to_int(bad_roman))
+
+    def test_english_non_heading_lines_are_not_matched_and_toc_is_dropped(self) -> None:
+        toc = "\n".join(
+            [
+                "Table of Contents",
+                "Chapter 1: First",
+                "Chapter 2: Second",
+                "Chapter 3: Third",
+            ]
+        )
+        body = (
+            f"Chapter 1: First\n{self._en_prose()}\n"
+            "Chapter of the old book sat open on the desk.\n"
+            "Chapter mild weather arrived by noon.\n"
+            "Chapter 10a is an appendix code.\n"
+            "Chapter 1-2: Combined recap note.\n"
+            "Chapter 1-3\n"
+            "Chapter 1 - Chapter 2 summary\n"
+            "Chapter IV-V arc\n"
+            "Chapter Twenty-First century blues\n\n"
+            f"Chapter 2: Second\n{self._en_prose()}\n\n"
+            f"Chapter 3: Third\n{self._en_prose()}\n"
+        )
+        index, verified = index_and_verify(toc + "\n\n" + body)
+        self.assertEqual(index["chapter_unit"], "Chapter")
+        self.assertEqual(index["contents_entries_dropped"], 3)
+        self.assertEqual(index["chapter_count"], 3)
+        self.assertEqual(index["problems"], [])
+        self.assertTrue(verified["verified"], verified)
+
+    def test_isolated_cli_smoke_runs_without_selftest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "novel.txt"
+            index_path = root / "index.json"
+            source.write_text(
+                f"Chapter 1: Opening\n{self._en_prose()}\n\n"
+                f"Chapter 2: Turn\n{self._en_prose()}\n",
+                encoding="utf-8",
+            )
+            env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+            cmd = (
+                [sys.executable, "-B", "-P", str(SCRIPT)]
+                if sys.version_info >= (3, 11)
+                else [
+                    sys.executable,
+                    "-B",
+                    "-c",
+                    (
+                        "import pathlib, runpy, sys; "
+                        "script = sys.argv[1]; "
+                        "script_dir = str(pathlib.Path(script).resolve().parent); "
+                        "sys.path[:] = [p for p in sys.path if p not in ('', script_dir)]; "
+                        "sys.argv = [script, *sys.argv[2:]]; "
+                        "runpy.run_path(script, run_name='__main__')"
+                    ),
+                    str(SCRIPT),
+                ]
+            )
+            built = subprocess.run(
+                [*cmd, "index", str(source), "--out", str(index_path)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            verified = subprocess.run(
+                [*cmd, "verify", str(index_path), str(source)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(verified.returncode, 0, verified.stderr)
+            source.write_text(source.read_text(encoding="utf-8") + "drift\n", encoding="utf-8")
+            drifted = subprocess.run(
+                [*cmd, "verify", str(index_path), str(source)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(drifted.returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

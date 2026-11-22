@@ -39,7 +39,7 @@ duration_estimate = _module(
     "sd_duration_estimate", "short-drama-write/scripts/duration_estimate.py"
 )
 screenplay_index = _module(
-    "sd_screenplay_index", "short-drama-write/scripts/screenplay_index.py"
+    "sd_screenplay_index", "short-drama-write/scripts/screenplay_index.py", LEGACY
 )
 
 
@@ -328,13 +328,11 @@ class ContainerReconciliationTests(unittest.TestCase):
 
 
 class SpokenDurationTests(unittest.TestCase):
-    """The estimate reads the index; it has no reader of its own.
+    """The estimate parses the screenplay directly in memory via one grammar.
 
-    Two readers of one format give two answers. This script used to carry its
-    own, and it timed `[VO]` at zero, billed a Markdown comment as speech, read
-    an action paragraph as dialogue whenever it contained a colon, and counted
-    one multi-line paragraph once per line. Every case below is measured through
-    `screenplay_index`, because that is the only way the two cannot disagree.
+    It times `[VO]` and `[OS]` as speech, ignores Markdown comments, refuses to
+    guess colon-bearing action prose as dialogue when a cast/speaker list is
+    declared, and counts a multi-line action paragraph once.
     """
 
     PROJECT = {"format": {"pacing": {
@@ -347,30 +345,16 @@ class SpokenDurationTests(unittest.TestCase):
         project: dict[str, Any] | None = None,
         target_seconds: float | None = None,
     ) -> dict[str, Any]:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            screenplay = root / "screenplay.md"
-            index_path = root / "screenplay-index.jsonl"
-            screenplay.write_text(
-                "# EP001\n\n## EP001-SC001 内 · 值班室 · 夜\n\n" + body,
-                encoding="utf-8",
-            )
-            screenplay_index.build_index(
-                screenplay,
-                index_path,
-                source_ref="剧集/EP001/screenplay.md",
-                speakers=speakers or ["葛晴", "船员"],
-            )
-            records = [
-                json.loads(line)
-                for line in index_path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
-            source = screenplay.read_bytes()
-            blocks, review = duration_estimate.index_blocks(records, source)
-            return duration_estimate.estimate(
-                source, blocks, project or self.PROJECT, review, target_seconds
-            )
+        source = (
+            "# EP001\n\n## EP001-SC001 内 · 值班室 · 夜\n\n" + body
+        ).encode("utf-8")
+        blocks, review = duration_estimate.parse_script_blocks(
+            source,
+            speakers=speakers or ["葛晴", "船员"],
+        )
+        return duration_estimate.estimate(
+            source, blocks, project or self.PROJECT, review, target_seconds
+        )
 
     def test_an_episode_target_replaces_the_project_target(self) -> None:
         project = {"format": dict(self.PROJECT["format"], target_seconds_per_episode=2)}
@@ -384,7 +368,7 @@ class SpokenDurationTests(unittest.TestCase):
         for value in ("0", "-5", "nan", "inf"):
             with self.subTest(value=value), self.assertRaises(SystemExit) as raised:
                 duration_estimate.main(
-                    ["missing.md", "--index", "missing.jsonl", "--target-seconds", value]
+                    ["--script", "missing.md", "--target-seconds", value]
                 )
             self.assertIn("--target-seconds", str(raised.exception.code))
 
@@ -615,12 +599,21 @@ class SpokenDurationTests(unittest.TestCase):
         self.assertTrue(report["rates"]["declared"])
         self.assertEqual(report["seconds"], 1.6)
 
-    def test_an_index_built_from_other_bytes_is_refused(self) -> None:
-        """Stale spans land on text the index never classified."""
+    def test_out_of_range_block_spans_are_reported_as_unreadable(self) -> None:
+        """A block span that does not fit the screenplay bytes is reported, not guessed."""
 
-        stale = [{"record_type": "screenplay_index_meta", "source_byte_length": 10}]
-        with self.assertRaises(duration_estimate.StaleIndex):
-            duration_estimate.index_blocks(stale, b"a much longer screenplay")
+        bad_blocks = [
+            {
+                "record_type": "block",
+                "block_id": "BLK-0001",
+                "kind": "dialogue",
+                "byte_start": 0,
+                "byte_end": 9999,
+            }
+        ]
+        report = duration_estimate.estimate(b"short", bad_blocks, self.PROJECT)
+        self.assertIn("incomplete", report)
+        self.assertEqual(report["incomplete"]["unreadable_blocks"], ["BLK-0001"])
 
 
 class VoiceSheetCheckTests(unittest.TestCase):

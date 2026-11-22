@@ -42,13 +42,39 @@ CHINESE_NUMERALS = "零〇一二三四五六七八九十百千两"
 # but a book that uses 章 for chapters may also use 节 for subsections inside
 # them. Matching every unit at once turns those subsections into chapters, so
 # the unit is captured here and a single dominant unit is chosen below.
-CHAPTER_UNITS = ("章", "回", "集", "话", "話", "幕", "节")
+CHAPTER_UNITS = ("章", "Chapter", "回", "集", "话", "話", "幕", "节")
+_EN_CARDINAL_WORD = (
+    r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)"
+)
+_EN_WORD_NUMBER_RE = rf"(?i:{_EN_CARDINAL_WORD}(?:(?:[ \t-]+and[ \t-]+|[ \t-]+){_EN_CARDINAL_WORD})*)"
+_ROMAN_NUMBER_RE = (
+    r"(?=[IVXLCDM])M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})"
+)
+_EN_CHAPTER_SEP = r"(?:——|[·：:–—-]|\.(?=[ \t　]|$))"
 CHAPTER_RE = re.compile(
-    r"^[ \t　]*(?:#{1,6}\s+)?[ \t　]*第\s*([0-9]+|["
+    r"^[ \t　]*(?:#{1,6}\s+)?[ \t　]*(?:"
+    r"第\s*(?P<zh_num>[0-9]+|["
     + CHINESE_NUMERALS
-    + r"]+)\s*(["
-    + "".join(CHAPTER_UNITS)
-    + r"])[ \t　]*(.*?)[ \t　]*$"
+    + r"]+)\s*(?P<zh_unit>["
+    + "".join(unit for unit in CHAPTER_UNITS if unit != "Chapter")
+    + r"])[ \t　]*(?P<zh_title>.*?)"
+    r"|(?P<en_unit>(?i:Chapter))[ \t　]+"
+    r"(?P<en_num>[0-9]+|"
+    + _EN_WORD_NUMBER_RE
+    + r"|"
+    + _ROMAN_NUMBER_RE
+    + r")"
+    r"(?![ \t　]*[-–—][ \t　]*(?:(?i:Chapter)[ \t　]+)?[0-9]+)"
+    r"(?!(?<=[A-Za-z])-[A-Za-z])"
+    r"(?=$|[ \t　]*"
+    + _EN_CHAPTER_SEP
+    + r"|[ \t　]+)"
+    r"(?:(?:[ \t　]*"
+    + _EN_CHAPTER_SEP
+    + r"[ \t　]*|[ \t　]+)(?P<en_title>.*?))?"
+    r")[ \t　]*$"
 )
 MD_HEADING_PREFIX_RE = re.compile(r"^[ \t　]*#{1,6}\s+")
 CHINESE_DIGITS = {
@@ -56,6 +82,18 @@ CHINESE_DIGITS = {
     "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
 }
 CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
+ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+_STRICT_ROMAN_RE = re.compile(rf"^{_ROMAN_NUMBER_RE}$")
+ENGLISH_ONES = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+ENGLISH_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
 # A chapter heading is a short standalone line. A body paragraph that happens to
 # open with 第三章 — a character recalling what happened back then — otherwise
 # becomes a chapter boundary, and the index silently gains a chapter whose span
@@ -127,6 +165,103 @@ def chinese_to_int(text: str) -> int | None:
     return total
 
 
+def roman_to_int(text: str) -> int | None:
+    """Convert a canonical uppercase Roman numeral (I..MMMCMXCIX) to an int, or None."""
+
+    token = text.strip()
+    if not token or _STRICT_ROMAN_RE.fullmatch(token) is None:
+        return None
+    total = 0
+    previous = 0
+    for character in reversed(token):
+        value = ROMAN_VALUES[character]
+        if value < previous:
+            total -= value
+        else:
+            total += value
+            previous = value
+    return total
+
+
+def english_number_to_int(text: str) -> int | None:
+    """Convert English cardinal words (One, Twenty-Three, One Hundred and Two) to an int."""
+
+    tokens = [part for part in re.split(r"[\s-]+", text.strip().lower()) if part]
+    if not tokens:
+        return None
+    if tokens == ["zero"]:
+        return 0
+    if "zero" in tokens or tokens[0] == "and" or tokens[-1] == "and":
+        return None
+
+    total = 0
+    current = 0
+    expect_after_tens = False
+    used_thousand = False
+    used_hundred = False
+    saw_and = False
+    for token in tokens:
+        if token == "and":
+            if saw_and or (total == 0 and current == 0) or (not used_hundred and not used_thousand):
+                return None
+            saw_and = True
+            expect_after_tens = False
+            continue
+        if token in ENGLISH_ONES:
+            value = ENGLISH_ONES[token]
+            if expect_after_tens:
+                if value >= 10:
+                    return None
+                current += value
+                expect_after_tens = False
+            elif current == 0 or (current % 100 == 0 and current > 0):
+                current += value
+            else:
+                return None
+            saw_and = False
+        elif token in ENGLISH_TENS:
+            if expect_after_tens or (current % 100 != 0):
+                return None
+            current += ENGLISH_TENS[token]
+            expect_after_tens = True
+            saw_and = False
+        elif token == "hundred":
+            if used_hundred or current == 0 or current >= 10 or expect_after_tens:
+                return None
+            current *= 100
+            used_hundred = True
+            saw_and = False
+        elif token == "thousand":
+            if used_thousand or current == 0:
+                return None
+            total += current * 1000
+            current = 0
+            used_thousand = True
+            used_hundred = False
+            expect_after_tens = False
+            saw_and = False
+        else:
+            return None
+    return total + current
+
+
+def parse_chapter_number(text: str) -> int | None:
+    """Parse an Arabic, Chinese, uppercase Roman, or English cardinal chapter number."""
+
+    token = text.strip()
+    if not token:
+        return None
+    if token.isascii() and token.isdigit():
+        return int(token)
+    chinese = chinese_to_int(token)
+    if chinese is not None:
+        return chinese
+    roman = roman_to_int(token)
+    if roman is not None:
+        return roman
+    return english_number_to_int(token)
+
+
 def _atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -159,13 +294,21 @@ def find_heading_lines(lines: list[str]) -> tuple[list[dict[str, Any]], int]:
         if _visible_width(stripped_heading) > MAX_HEADING_LINE_WIDTH:
             long_lines += 1
             continue
+        if match.group("en_unit") is not None:
+            number = parse_chapter_number(match.group("en_num"))
+            unit = "Chapter"
+            title = (match.group("en_title") or "").strip()
+        else:
+            number = chinese_to_int(match.group("zh_num"))
+            unit = match.group("zh_unit")
+            title = match.group("zh_title").strip()
         headings.append(
             {
                 "line_index": offset,
                 "raw": candidate.strip(),
-                "number": chinese_to_int(match.group(1)),
-                "unit": match.group(2),
-                "title": match.group(3).strip(),
+                "number": number,
+                "unit": unit,
+                "title": title,
             }
         )
     return headings, long_lines
@@ -472,12 +615,15 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
             if ignored_units.get(other)
         ]
         if coarser:
+            def _unit_label(name: str) -> str:
+                return "Chapter N" if name == "Chapter" else f"第N{name}"
+
             warnings.append(
-                "chapters were indexed as 第N{} while coarser headings were skipped: {}"
+                "chapters were indexed as {} while coarser headings were skipped: {}"
                 "; pass --unit to choose the unit yourself".format(
-                    unit,
+                    _unit_label(unit),
                     ", ".join(
-                        "第N{} x{}".format(other, ignored_units[other])
+                        "{} x{}".format(_unit_label(other), ignored_units[other])
                         for other in coarser
                     ),
                 )
@@ -804,7 +950,7 @@ def main(argv: list[str] | None = None) -> int:
         "--unit",
         choices=CHAPTER_UNITS,
         default=None,
-        help="force the chapter unit instead of detecting it (章 / 回 / 集 / 话 / 話 / 幕 / 节)",
+        help="force the chapter unit instead of detecting it (章 / Chapter / 回 / 集 / 话 / 話 / 幕 / 节)",
     )
 
     check = sub.add_parser("verify", help="re-check an index against its source")

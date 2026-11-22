@@ -1,4 +1,4 @@
-<!-- Last synced with README.md: 2026-11-20 -->
+<!-- Last synced with README.md: 2026-11-21 -->
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/zenstory-ai/zenstory/main/apps/web/public/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
@@ -52,6 +52,8 @@ These skills grew out of our motion-comic studio's production line: after more t
 - **Preview and confirm before spending money** — image, video (single shots or `GROUP-*` multi-shot groups), voice, and music jobs can be previewed as a batch first, listing exact counts, prompts, references, and parameters before calling external APIs; API keys stay outside the project and upstream files stay provider-neutral.
 - **Editing is part of the suite** — the editing skill records the reason for every in and out point, pulls subtitles verbatim from the script, normalizes loudness, and renders the episode; check and measurement scripts report objective results without making creative calls for you.
 
+> **Language-agnostic creative guidance vs. automated scripts**: The creative workflows, craft guides, prompt-writing methods, and review rubrics are language- and layout-agnostic—you can use them in English or any other language, aspect ratio, or existing directory structure without running local scripts. The bundled automated scripts (cross-document checks, local creator workspace, production handoff, and edit rendering) currently expect the standard Chinese five-document filenames (`剧本.md`, `视觉设定.md`, `分镜.md`, `图片提示词.md`, `视频提示词.md`), `剪辑单.md`, and their Chinese Markdown field structure.
+
 ## Install
 
 Prerequisite: Claude Code, Codex, or another coding agent supporting the Agent Skill spec, with `npx` (Node.js) available in your terminal.
@@ -60,7 +62,7 @@ Prerequisite: Claude Code, Codex, or another coding agent supporting the Agent S
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-`-g` installs globally (omit it to install into the current directory only); **re-run the same command to update**. Local scripts require **Python 3.9 or newer**, and rendering an edited cut also needs `ffmpeg` / `ffprobe` on `PATH`.
+`-g` installs globally (omit it to install into the current directory only); **re-run the same command to update**. The 7 script-backed skills require **Python 3.9 or newer** (the other 5 documentation-only skills have no runtime prerequisites), rendering an edited cut also needs `ffmpeg` / `ffprobe` on `PATH`, and optional Remotion screen-text or dynamic-subtitle overlays additionally need `Node.js` / `npm` / `npx`.
 
 On platforms that import skills directly from a GitHub URL (such as WorkBuddy; see the [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384) in Chinese), you can tell your agent:
 
@@ -91,7 +93,7 @@ Each skill directory is standalone; link only the directories you need. `short-d
 
 </details>
 
-Skills are also listed on [ClawHub](https://clawhub.ai/) (manifest: [`.clawhub/publish.json`](.clawhub/publish.json)). Claude Code invokes skills as `/short-drama`, Codex uses `$short-drama`, and plain-language requests work in any runtime; examples below use `$`.
+Skills are also listed on [ClawHub](https://clawhub.ai/) (manifest: [`.clawhub/publish.json`](.clawhub/publish.json)). The skills themselves use host-neutral skill names (such as `short-drama` and `short-drama-write`), while invocation prefixes differ by runtime: Claude Code uses `/short-drama`, Codex uses `$short-drama`, and other Agent Skill runtimes accept the plain skill name or natural language; examples below use `$`, so adapt or omit the prefix for your runtime.
 
 > Release notes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases); for existing projects, see [What do I do after upgrading?](#what-do-i-do-after-upgrading).
 

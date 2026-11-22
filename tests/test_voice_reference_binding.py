@@ -13,7 +13,7 @@ from pathlib import Path
 
 SUITE = Path(__file__).resolve().parents[1]
 EXAMPLE = SUITE / "examples/creator-first/EP001"
-FIXTURE_ADAPTER = SUITE / "skills/short-drama-produce/scripts/fixture_adapter.py"
+FIXTURE_ADAPTER = SUITE / "tests/fixtures/fixture_adapter.py"
 
 
 def load_module(name: str, relative: str):
@@ -137,10 +137,6 @@ class CheckerTests(unittest.TestCase):
                 AUDIO_LINE.replace("角色：江晨", "角色：路人甲"),
                 "不是《视觉设定.md》里的人物条目",
             ),
-            "character is silent in this shot": (
-                AUDIO_LINE.replace("角色：江晨", "角色：周薄森"),
-                "没有说出《剧本.md》记在其名下的台词",
-            ),
             "file is not in the project": (
                 AUDIO_LINE.replace(VOICE_PATH, "输入/声音/不存在.wav"),
                 "REF 文件不存在",
@@ -161,8 +157,8 @@ class CheckerTests(unittest.TestCase):
                 self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_dialogue_is_read_the_way_the_screenplay_index_reads_it(self) -> None:
-        # 江晨's line as written in 剧本.md, and whether screenplay_index.py
-        # would emit it as his dialogue block.
+        # 江晨's line as written in 剧本.md, and whether _screenplay_dialogue
+        # emits it as his dialogue block.
         line = "江晨：下周榜首，是我们团。"
         cases = {
             "wrapped onto a second line": ("江晨：下周榜首，\n是我们团。", True),
@@ -175,55 +171,14 @@ class CheckerTests(unittest.TestCase):
             "missing the separator before ASCII dialogue": (f"{line}\nNote: 旁注", False),
         }
         for name, (written, speaks) in cases.items():
-            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                episode = bound_episode(root)
-                screenplay = episode / "剧本.md"
-                screenplay.write_text(
-                    screenplay.read_text(encoding="utf-8").replace(line, written, 1),
-                    encoding="utf-8",
-                )
-                errors = checker.validate_episode(episode, root)
-                silent = [e for e in errors if "人物「江晨」在本镜可复制提示词里没有说出" in e]
-                self.assertEqual(bool(silent), not speaks, errors)
-
-    def test_a_line_two_people_share_is_attributed_or_reported(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            episode = bound_episode(root)
-            screenplay = episode / "剧本.md"
-            screenplay.write_text(
-                screenplay.read_text(encoding="utf-8").replace(
-                    "江晨：下周榜首，是我们团。",
-                    "江晨：下周榜首，是我们团。\n\n周薄森：下周榜首，是我们团。",
-                    1,
-                ),
-                encoding="utf-8",
-            )
-            errors = checker.validate_episode(episode, root)
-            self.assertTrue(
-                any("也是周薄森的台词" in error for error in errors), errors
-            )
-
-            # Naming the speaker in the clause that introduces the quote
-            # attributes it: 江晨 speaks, and 周薄森 does not.
-            video = episode / "视频提示词.md"
-            _edit_section(
-                video,
-                MOTION,
-                "He says in Chinese, steady and forceful,",
-                "Jiangchen says in Chinese, steady and forceful,",
-            )
-            self.assertEqual(checker.validate_episode(episode, root), [])
-            _edit_section(video, MOTION, "角色：江晨", "角色：周薄森")
-            errors = checker.validate_episode(episode, root)
-            self.assertTrue(
-                any(
-                    "人物「周薄森」在本镜可复制提示词里没有说出" in error
-                    for error in errors
-                ),
-                errors,
-            )
+            with self.subTest(name):
+                screenplay = f"# EP001\n\n## EP001-SC001 内 · 办公室 · 夜\n\n{written}\n"
+                spoken = [
+                    item
+                    for item in checker._screenplay_dialogue(screenplay)
+                    if item.speaker == "江晨" and "下周榜首" in item.key
+                ]
+                self.assertEqual(bool(spoken), speaks, spoken)
 
     def test_the_binding_must_match_the_characters_recorded_voice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

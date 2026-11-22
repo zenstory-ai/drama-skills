@@ -8,10 +8,11 @@ ASSETS = SUITE / "skills/short-drama-assets"
 class RuleTests(unittest.TestCase):
     def test_one_spelling_per_pronunciation_blocks(self) -> None:
         # A second spelling is invisible in text review and only audible in the
-        # finished cut, so it cannot wait for a judgement call.
+        # finished cut, so it stays a blocking reviewed_invariant even without a
+        # deterministic script check.
         contract = (ASSETS / "references/stage-contract.md").read_text(encoding="utf-8")
         row = next(r for r in contract.splitlines() if r.startswith("| AST-10 "))
-        self.assertIn("structural_invariant", row)
+        self.assertIn("reviewed_invariant", row)
 
 
 if __name__ == "__main__":

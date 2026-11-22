@@ -1327,14 +1327,24 @@ class ProviderRuntimeTests(unittest.TestCase):
                 content = provider_adapters._read_reference(path)
         self.assertEqual(content, payload)
 
-    def test_cli_selftest_and_safe_failure_do_not_expose_credentials(self) -> None:
-        completed = subprocess.run(
+    def test_cli_safe_failure_and_argument_validation_do_not_expose_credentials(
+        self,
+    ) -> None:
+        missing_provider = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(missing_provider.returncode, 0)
+
+        removed_selftest = subprocess.run(
             [sys.executable, str(SCRIPT), "--selftest"],
             check=False,
             capture_output=True,
             text=True,
         )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertNotEqual(removed_selftest.returncode, 0)
 
         secret = "credential-must-not-appear"
         env = os.environ.copy()
@@ -1365,6 +1375,31 @@ class ProviderRuntimeTests(unittest.TestCase):
         self.assertEqual(failed.stderr.strip(), "provider adapter failed safely")
         self.assertNotIn(secret, failed.stdout)
         self.assertNotIn(secret, failed.stderr)
+
+        malformed = subprocess.run(
+            [sys.executable, str(SCRIPT), "gpt-image-2"],
+            input="{not-json",
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(malformed.returncode, 1)
+        self.assertEqual(
+            json.loads(malformed.stdout),
+            {
+                "error": {
+                    "provider": "gpt-image-2",
+                    "category": "invalid_request",
+                    "code": "invalid_job",
+                    "retryable": False,
+                    "submitted": False,
+                }
+            },
+        )
+        self.assertEqual(malformed.stderr.strip(), "provider adapter failed safely")
+        self.assertNotIn(secret, malformed.stdout)
+        self.assertNotIn(secret, malformed.stderr)
 
     def test_openai_runtime_writes_multiple_requested_images_and_minimax_env_defaults(
         self,

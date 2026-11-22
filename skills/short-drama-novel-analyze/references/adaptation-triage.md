@@ -8,7 +8,7 @@
 - **短篇小说或已定范围**：短篇作品（如总章数不超过 30 章，抽样已近乎覆盖全篇）或创作者已指定拆解范围（如「拆前 100 章」「拆第一季」）、明确要求一次跑完时，**不在 S1 暂停等拍板**，直接进入 S2 逐章提取（短篇可直接合并进正式拆解，无需先停工交快评）。
 
 ```bash
-python3 {技能目录}/scripts/novel_index.py sample \
+<PYTHON> <SKILL_DIR>/scripts/novel_index.py sample \
   项目开发/source-analysis/_index.json --count 12
 ```
 

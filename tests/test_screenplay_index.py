@@ -11,7 +11,7 @@ from typing import Any
 
 
 SUITE = Path(__file__).resolve().parents[1]
-SCRIPT = SUITE / "skills/short-drama-write/scripts/screenplay_index.py"
+SCRIPT = SUITE / "tests/legacy/short-drama-write/scripts/screenplay_index.py"
 SPEC = importlib.util.spec_from_file_location("short_drama_screenplay_index", SCRIPT)
 assert SPEC and SPEC.loader
 screenplay_index = importlib.util.module_from_spec(SPEC)
@@ -1013,18 +1013,23 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
             self.assertEqual(direct_report["seconds"], 6.0)
             self.assertEqual(direct_report["target_seconds"], 15.0)
 
-            index_path = root / "index.jsonl"
-            screenplay_index.build_index(
-                source, index_path, speakers={"陈予安", "Dr. Lin"}
+            # In-memory parse_screenplay matches the legacy indexer's block grammar.
+            parsed_blocks, parsed_issues = duration_estimate.parse_screenplay(
+                source.read_bytes(), {"陈予安", "Dr. Lin"}
             )
-            legacy = subprocess.run(
+            self.assertEqual(parsed_issues, [])
+            self.assertEqual(
+                [row["kind"] for row in parsed_blocks],
+                ["scene_heading", "action", "dialogue", "dialogue", "production_tag"],
+            )
+
+            # Positional screenplay argument works identically without --script.
+            positional = subprocess.run(
                 [
                     sys.executable,
                     "-B",
                     str(DURATION_SCRIPT),
                     str(source),
-                    "--index",
-                    str(index_path),
                     "--project",
                     str(project_path),
                     "--target-seconds",
@@ -1034,25 +1039,33 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(legacy.returncode, 0, legacy.stderr)
-            self.assertEqual(json.loads(legacy.stdout), direct_report)
+            self.assertEqual(positional.returncode, 0, positional.stderr)
+            self.assertEqual(json.loads(positional.stdout), direct_report)
 
-    def test_duration_estimate_script_flags_colon_action_and_panels_while_honoring_cast_and_speakers(
+    def test_duration_estimate_script_honors_cast_speakers_and_structural_exclusions(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            # Bracketed dialect tags and colon-bearing action lines under a declared
+            # cast are held for review rather than guessed as dialogue.
             for label, body in (
-                ("colon_action", "他写下两个字：军宣。\n\n他写下两个字：必胜。\n"),
-                ("panel_label", "第二格：许棠猛地回头。\n\n第三格：走廊灯灭。\n"),
-                ("bracket_tag", "【音效：雷声】\n"),
+                (
+                    "colon_action_with_cast",
+                    "人物：许棠\n\n## EP001-SC001 内 · 办公室 · 夜\n\n他写下两个字：军宣。\n\n他写下两个字：必胜。\n",
+                ),
+                (
+                    "panel_label_with_cast",
+                    "人物：许棠\n\n## EP001-SC001 内 · 办公室 · 夜\n\n第二格：许棠猛地回头。\n\n第三格：走廊灯灭。\n",
+                ),
+                (
+                    "bracket_tag",
+                    "## EP001-SC001 内 · 办公室 · 夜\n\n【音效：雷声】\n",
+                ),
             ):
                 with self.subTest(case=label):
                     source = root / f"{label}.md"
-                    source.write_text(
-                        "# EP001 测试\n\n## EP001-SC001 内 · 办公室 · 夜\n\n" + body,
-                        encoding="utf-8",
-                    )
+                    source.write_text("# EP001 测试\n\n" + body, encoding="utf-8")
                     completed = subprocess.run(
                         [sys.executable, "-B", str(DURATION_SCRIPT), "--script", str(source)],
                         check=False,
@@ -1128,7 +1141,7 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
             self.assertNotIn("incomplete", resolved_report)
             self.assertEqual(resolved_report["counts"]["dialogue_lines"], 3)
 
-    def test_auto_speaker_accepts_names_alphanumeric_roles_and_latin_phrases_while_blocking_action(
+    def test_auto_speaker_accepts_names_alphanumeric_roles_and_latin_phrases_with_structural_exclusions(
         self,
     ) -> None:
         valid_script = (
@@ -1150,16 +1163,35 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
         self.assertNotIn("incomplete", report)
         self.assertEqual(report["counts"]["dialogue_lines"], 9)
 
+        # Structural exclusions hold without any cast declaration.
         for label, line in (
-            ("pronoun_action", "他写下两个字：军宣。"),
-            ("screen_display", "手机屏幕显示：密码错误。"),
-            ("wall_writing", "墙上写着：闲人免进。"),
             ("bare_number", "1：推门进去。"),
-            ("time_measure", "10分钟后：众人散去。"),
+            ("bracket_prefix", "【音效：雷声】"),
+            ("punct_prefix", "桌上、墙上：字迹模糊。"),
+            ("overlong_prefix", "门外突然跑进来送货的老张：放门口了。"),
         ):
             with self.subTest(case=label):
                 raw = (
                     "# EP001 测试\n\n## EP001-SC001 内 · 门厅 · 夜\n\n" + line + "\n"
+                ).encode("utf-8")
+                bad_blocks, bad_review = duration_estimate.parse_script_blocks(raw)
+                bad_report = duration_estimate.estimate(raw, bad_blocks, None, bad_review)
+                self.assertEqual(bad_review["review_status"], "review_required")
+                self.assertIn("incomplete", bad_report)
+                self.assertEqual(bad_report["counts"]["dialogue_lines"], 0)
+
+        # With an explicit 人物： declaration, any colon-bearing prose not in the cast
+        # is flagged without relying on verb blacklists.
+        for label, line in (
+            ("pronoun_action", "他写下两个字：军宣。"),
+            ("screen_display", "手机屏幕显示：密码错误。"),
+            ("wall_writing", "墙上写着：闲人免进。"),
+        ):
+            with self.subTest(declared_cast_case=label):
+                raw = (
+                    "# EP001 测试\n\n人物：林落\n\n## EP001-SC001 内 · 门厅 · 夜\n\n"
+                    + line
+                    + "\n"
                 ).encode("utf-8")
                 bad_blocks, bad_review = duration_estimate.parse_script_blocks(raw)
                 bad_report = duration_estimate.estimate(raw, bad_blocks, None, bad_review)
@@ -1374,25 +1406,41 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
                 self.assertIsNone(by_arg["target_seconds"])
                 self.assertNotIn("delta_seconds", by_arg)
 
-    def test_selftest_runs_cleanly_under_isolated_sys_path(self) -> None:
-        selftest = SUITE / "skills/short-drama-write/scripts/selftest.py"
-        cmd = (
-            [sys.executable, "-B", "-P", str(selftest)]
-            if sys.version_info >= (3, 11)
-            else [
-                sys.executable,
-                "-B",
-                "-c",
-                (
-                    "import pathlib, runpy, sys; "
-                    "script_dir = str(pathlib.Path(sys.argv[1]).resolve().parent); "
-                    "sys.path[:] = [p for p in sys.path if p not in ('', script_dir)]; "
-                    "runpy.run_path(sys.argv[1], run_name='__main__')"
-                ),
-                str(selftest),
-            ]
-        )
+    def test_duration_estimate_runs_cleanly_under_isolated_sys_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            screenplay = root / "剧本.md"
+            screenplay.write_text(
+                "# EP001\n\n"
+                "## EP001-SC001 内 · 房间 · 日\n\n"
+                "<!-- 待确认：这一段的转场是否保留。 -->\n\n"
+                "[画面文字] 店门告示：暂停营业\n\n"
+                "林落： 一二三四五六。\n\n"
+                "[VO] 林落：一二三四五。\n\n"
+                "Agent Smith： Stay back.\n\n"
+                "他站起来，\n走到窗边，\n把窗帘拉开。\n",
+                encoding="utf-8",
+            )
+            cmd = (
+                [sys.executable, "-B", "-P", str(DURATION_SCRIPT), "--script", str(screenplay)]
+                if sys.version_info >= (3, 11)
+                else [
+                    sys.executable,
+                    "-B",
+                    "-c",
+                    (
+                        "import pathlib, runpy, sys; "
+                        "script = sys.argv[1]; "
+                        "script_dir = str(pathlib.Path(script).resolve().parent); "
+                        "sys.path[:] = [p for p in sys.path if p not in ('', script_dir)]; "
+                        "sys.argv = [script, *sys.argv[2:]]; "
+                        "runpy.run_path(script, run_name='__main__')"
+                    ),
+                    str(DURATION_SCRIPT),
+                    "--script",
+                    str(screenplay),
+                ]
+            )
             completed = subprocess.run(
                 cmd,
                 cwd=directory,
@@ -1402,6 +1450,12 @@ class LoosenedGrammarAndDirectEstimateTests(unittest.TestCase):
                 text=True,
             )
         self.assertEqual(completed.returncode, 0, completed.stderr)
+        report = json.loads(completed.stdout)
+        self.assertNotIn("incomplete", report)
+        self.assertIsNone(report["seconds"])
+        self.assertEqual(report["counts"]["dialogue_lines"], 3)
+        self.assertEqual(report["counts"]["action_paragraphs"], 1)
+        self.assertEqual(report["counts"]["production_tag_lines"], 1)
 
 
 class R4ParserAndDurationHardeningTests(unittest.TestCase):
@@ -1594,8 +1648,9 @@ class R4ParserAndDurationHardeningTests(unittest.TestCase):
                 sliced = raw_bytes[row["byte_start"] : row["byte_end"]]
                 self.assertTrue(sliced.decode("utf-8"))
 
-            idx_rows = read_jsonl(output)
-            est_blocks, est_review = duration_estimate.index_blocks(idx_rows, raw_bytes)
+            est_blocks, est_review = duration_estimate.parse_script_blocks(
+                raw_bytes, speakers={"许棠"}
+            )
             report = duration_estimate.estimate(raw_bytes, est_blocks, None, est_review)
             self.assertEqual(report["counts"]["dialogue_lines"], 1)
             self.assertEqual(report["counts"]["dialogue_characters"], 3)
@@ -1736,28 +1791,23 @@ class R4ParserAndDurationHardeningTests(unittest.TestCase):
         self.assertEqual(report["seconds"], 1.0)
         self.assertEqual(report["speech_seconds"], 1.0)
 
-        # --extra-speaker and --speaker work in --index mode via CLI.
+        # --extra-speaker and --speaker work in --script mode via CLI.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             script_path = root / "剧本.md"
-            index_path = root / "screenplay-index.jsonl"
             script_path.write_text(
                 "# EP001\n\n## EP001-SC001 内 · 走廊 · 夜\n\n"
                 "许棠：先别开门。\n\n"
                 "Guest: Wait outside.\n",
                 encoding="utf-8",
             )
-            screenplay_index.build_index(
-                script_path, index_path, speakers={"许棠"}
-            )
             proc = subprocess.run(
                 [
                     sys.executable,
                     "-B",
                     str(DURATION_SCRIPT),
+                    "--script",
                     str(script_path),
-                    "--index",
-                    str(index_path),
                     "--extra-speaker",
                     "Guest",
                 ],

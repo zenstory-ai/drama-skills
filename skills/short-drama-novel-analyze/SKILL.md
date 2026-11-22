@@ -1,6 +1,6 @@
 ---
 name: short-drama-novel-analyze
-description: 把小说、连载网文或多集散稿拆成有据可查的原著拆解：支持全书或按创作者指定章节范围（如前 100 章、第一季）分批完成章节索引、改编价值快评、逐章情节提取、剧情单元与爽点梳理、人物与设定跨卷演进整理，给出结合目标制作形态的改编取舍建议与分集候选，移交 $short-drama-develop 定改编方案。用户说“导入这本小说”“拆这本书”“先拆前一百章”“分析原著”“这本书能不能改短剧”“把小说拆成分集候选”，或直接给出小说文件路径时使用。
+description: 拆解长篇小说、连载网文或多章原著，完成章节索引、改编价值评估、情节提取、爽点与人物演进梳理及分集候选，移交 short-drama-develop 定改编方案。用户说“导入/拆这本小说”“分析原著”“先拆前N章”或给小说文件时使用；不写立项简报或剧本。
 license: MIT
 ---
 
@@ -10,11 +10,12 @@ license: MIT
 
 ## 快速开始
 
-离线验证章节索引、抽样和原文变更检测：
+> 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
+
+为长篇原著建立章节索引：
 
 ```bash
-python3 {技能目录}/scripts/selftest.py
-python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-index.json>
+<PYTHON> <SKILL_DIR>/scripts/novel_index.py index <原著.txt> --out <chapter-index.json>
 ```
 
 ## 开始前与材料前提
@@ -25,13 +26,14 @@ python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-
 
 ## 先判断入口
 
-1. **只有书名，没有原文**：请创作者提供文件路径或粘贴正文，不凭书名回忆情节。
-2. **有原文，未建目录**：建立只读输入目录 `输入/` 与工作目录 `项目开发/source-analysis/_work/`，把原文复制到 `输入/` 后用 `novel_index.py` 建索引。
-3. **已有部分拆解结果**：读 `项目开发/source-analysis/_progress.md` 从上次进度接着跑（分批拆解新区间时直接续跑新增章节）。
+1. **轻量快检（短篇、≤5 章，或仅快速评估改编可行性）**：直接通读原文，在当前对话中给出精炼的改编可行性评估、核心看点与爽点、主要改编难点及简明分集/节拍思路即可，**无需建立 `输入/`、`_work/_index.next.json` 或 S0–S5 全套十余份拆解文件**；只有创作者明确需要沉淀长篇拆解档案时，才进入下方完整流程。
+2. **只有书名，没有原文**：请创作者提供文件路径或粘贴正文，不凭书名回忆情节。
+3. **有多章原文，未建目录**：建立只读输入目录 `输入/` 与工作目录 `项目开发/source-analysis/_work/`，把原文复制到 `输入/` 后用 `novel_index.py` 建索引。
+4. **已有部分拆解结果**：读 `项目开发/source-analysis/_progress.md` 从上次进度接着跑（分批拆解新区间时直接续跑新增章节）。
 
 ## 拆解流程
 
-全部产出落在 `项目开发/source-analysis/`（先写进 `_work/` 核对无误后再整份替换写入正式路径，若项目启用了台账也可配合 `project_tool.py`）。
+全部产出落在 `项目开发/source-analysis/`（先写进 `_work/` 核对无误后再整份替换写入正式路径；若项目已安装 `short-drama` 技能并启用了项目台账，交由 `short-drama` 技能登记进度，独立运行时直接按目录约定落盘，不跨技能调用其他技能的脚本）。
 
 | 阶段 | 做什么 | 产出 | 停顿条件 |
 |---|---|---|---|
@@ -40,16 +42,16 @@ python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-
 | S2 | 目标区间逐章情节提取 | `chapters/ch-<N>-extract.md` | 目标区间缺章时补齐 |
 | S3 | 剧情单元汇总与爽点梳理 | `story-units.md`、`rhythm-and-emotion.md` | — |
 | S4 | 人物合并与设定跨卷演进整理 | `characters.md`、`world.md` | — |
-| S5 | 结合制作形态的改编取舍与分集候选 | `adaptation-value.md`、`episode-candidates.jsonl` | 移交 `$short-drama-develop` |
+| S5 | 结合制作形态的改编取舍与分集候选 | `adaptation-value.md`、`episode-candidates.jsonl` | 移交 `short-drama-develop` 技能 |
 
 ### S0 章节索引
 
 各阶段共用 [章节索引脚本](scripts/novel_index.py) 建立的章节边界，不各自重新切分：
 
 ```bash
-python3 {技能目录}/scripts/novel_index.py index 输入/{原文文件} \
+<PYTHON> <SKILL_DIR>/scripts/novel_index.py index 输入/{原文文件} \
   --out 项目开发/source-analysis/_work/_index.next.json
-python3 {技能目录}/scripts/novel_index.py verify \
+<PYTHON> <SKILL_DIR>/scripts/novel_index.py verify \
   项目开发/source-analysis/_work/_index.next.json 输入/{原文文件}
 ```
 
@@ -66,7 +68,7 @@ python3 {技能目录}/scripts/novel_index.py verify \
 按 [逐章提取与人物设定整理](references/chapter-extraction.md) 将本批目标区间内的每章拆进 `chapters/ch-<N>-extract.md`（支持并行子任务时每批 5–8 章）。写完后核对覆盖情况：
 
 ```bash
-python3 {技能目录}/scripts/novel_index.py coverage \
+<PYTHON> <SKILL_DIR>/scripts/novel_index.py coverage \
   项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters [--start <起> --end <止>]
 ```
 
@@ -82,7 +84,7 @@ python3 {技能目录}/scripts/novel_index.py coverage \
 
 ### S5 改编取舍与分集候选
 
-按 [改编价值与分集候选](references/adaptation-value.md#三类判定) 结合目标制作形态评估各剧情单元（区分实拍与动态漫/漫剧对心理吐槽及密集对话的不同承载力），写出 `adaptation-value.md` 与轻量级 `episode-candidates.jsonl`，完成后汇报本批覆盖章数、预计可改集数与主要改编注意点，移交 `$short-drama-develop`（如需独立把关可调 `$short-drama-review` 的 `source_analysis` 范围）。
+按 [改编价值与分集候选](references/adaptation-value.md#三类判定) 结合目标制作形态评估各剧情单元（区分实拍与动态漫/漫剧对心理吐槽及密集对话的不同承载力），写出 `adaptation-value.md` 与轻量级 `episode-candidates.jsonl`，完成后汇报本批覆盖章数、预计可改集数与主要改编注意点，移交 `short-drama-develop` 技能（如需独立把关可交 `short-drama-review` 技能做 `source_analysis` 范围审查）。
 
 ## 按需加载
 

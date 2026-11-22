@@ -1555,6 +1555,89 @@ class Round3ParserAndProbeTests(unittest.TestCase):
                 Path("/tmp"), [], [], {}, 1.0, Path("/tmp/ws"), concurrency=0
             )
 
+    def test_shot_match_filter_grain_delivery_and_basic_cut_list_defects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            (episode / "media").mkdir(parents=True)
+            (episode / "视频提示词.md").write_text(
+                "# EP001\n\n## MOTION-EP001-010 · 镜\n", encoding="utf-8"
+            )
+            (episode / "剧本.md").write_text(
+                "# EP001\n\n## EP001-SC001 内 · 房间 · 夜\n\n角色甲：这条路我自己走。\n",
+                encoding="utf-8",
+            )
+            (episode / "media" / "010.mp4").write_bytes(b"")
+            base = (
+                "# EP001 剪辑单\n\n"
+                "- 成片目标时长：3.00 秒\n"
+                "- 交付响度：-16 LUFS\n\n"
+                "## CUT-EP001-001 · 镜\n\n"
+                "- 来源：MOTION-EP001-010 · media/010.mp4\n"
+                "- 入点：0.00\n"
+                "- 出点：3.00\n"
+                "- 时长：3.00\n"
+                "- 取舍：入点=起；出点=止\n"
+                "- 声音：保留原声\n"
+                "- 字幕：这条路我自己走\n"
+            )
+            path = episode / edit.CUT_LIST_NAME
+            path.write_text(base, encoding="utf-8")
+            delivery, cuts, _ = edit.parse_cut_list(path)
+            self.assertEqual(delivery.target_seconds, 3.0)
+            self.assertEqual(delivery.loudness_lufs, -16.0)
+            self.assertIsNone(delivery.grain)
+            self.assertEqual(edit._shot_match_filter(cuts[0]), "")
+            self.assertEqual(edit.check_cuts(episode, cuts, root, probe=False), [])
+
+            # Grain is delivery-wide and bounded.
+            path.write_text(base.replace("- 交付响度：", "- 颗粒：6\n- 交付响度：", 1), encoding="utf-8")
+            self.assertEqual(edit.parse_cut_list(path)[0].grain, 6.0)
+            path.write_text(base.replace("- 交付响度：", "- 颗粒：无\n- 交付响度：", 1), encoding="utf-8")
+            self.assertIsNone(edit.parse_cut_list(path)[0].grain)
+            path.write_text(base.replace("- 交付响度：", "- 颗粒：80\n- 交付响度：", 1), encoding="utf-8")
+            with self.assertRaises(edit.EditError):
+                edit.parse_cut_list(path)
+
+            # Explicit shot-match terms compile cleanly; out-of-range or vague ones fail.
+            path.write_text(
+                base.replace("- 声音：保留原声", "- 声音：保留原声\n- 画面：亮度 +0.06；色温 -6", 1),
+                encoding="utf-8",
+            )
+            chain = edit._shot_match_filter(edit.parse_cut_list(path)[1][0])
+            self.assertIn("brightness=0.06", chain)
+            self.assertIn("colorbalance", chain)
+            self.assertIn("rm=-0.06", chain)
+            for bad_picture in ("饱和 -1.5", "亮度 +0.9", "调暖一点"):
+                with self.subTest(bad_picture=bad_picture):
+                    path.write_text(
+                        base.replace(
+                            "- 声音：保留原声",
+                            f"- 声音：保留原声\n- 画面：{bad_picture}",
+                            1,
+                        ),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaises(edit.EditError):
+                        edit.parse_cut_list(path)
+
+            # Duration drift, invented subtitle, and missing required field are reported.
+            path.write_text(base.replace("- 时长：3.00", "- 时长：2.50"), encoding="utf-8")
+            findings = edit.check_cuts(episode, edit.parse_cut_list(path)[1], root, probe=False)
+            self.assertTrue(any("与「时长" in item for item in findings), findings)
+
+            path.write_text(
+                base.replace("- 字幕：这条路我自己走", "- 字幕：这条陆我自己走"),
+                encoding="utf-8",
+            )
+            findings = edit.check_cuts(episode, edit.parse_cut_list(path)[1], root, probe=False)
+            self.assertTrue(any("找不到原文" in item for item in findings), findings)
+
+            path.write_text(base.replace("- 出点：3.00\n", ""), encoding="utf-8")
+            with self.assertRaises(edit.EditError) as raised:
+                edit.parse_cut_list(path)
+            self.assertIn("出点", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

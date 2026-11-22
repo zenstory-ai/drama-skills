@@ -113,6 +113,38 @@ class EpisodeIntakeTests(unittest.TestCase):
         second_slice = episode_intake.slice_episode(self.index_path, self.source, "EP002")
         self.assertIn(b"## EP002-SC001\n", second_slice)
 
+    def test_english_episode_headings_index_verify_and_slice_cleanly(self) -> None:
+        raw = (
+            "Episode 1\n"
+            "Mara steps into the hallway.\n"
+            "Episode 02: The Locked Drawer\n"
+            "She checks the ledger.\n"
+            "EPISODE 3\n"
+            "The alarm rings.\n"
+            "# Episode 004 - Aftermath\n"
+            "Episodes 1-3 recap line is prose, not a heading.\n"
+            "Episode 1-Episode 2 range is not a heading.\n"
+            "EP001.mp4 clip filename is not a heading.\n"
+            "## EPISODE 5. The Deal\n"
+            "They sign the contract.\n"
+            "Episode 6:\n"
+            "Fade out.\n"
+        ).encode("utf-8")
+        document = self.build(raw)
+        self.assertEqual(document["problems"], [])
+        self.assertEqual(
+            [row["episode_id"] for row in document["episodes"]],
+            ["EP001", "EP002", "EP003", "EP004", "EP005", "EP006"],
+        )
+        self.assertTrue(episode_intake.verify_index(self.index_path, self.source)["verified"])
+        ep2 = episode_intake.slice_episode(self.index_path, self.source, "EP002").decode("utf-8")
+        self.assertTrue(ep2.startswith("Episode 02: The Locked Drawer\n"))
+        ep4 = episode_intake.slice_episode(self.index_path, self.source, "EP004").decode("utf-8")
+        self.assertIn("Episodes 1-3 recap line", ep4)
+        self.assertIn("Episode 1-Episode 2 range", ep4)
+        self.assertIn("EP001.mp4", ep4)
+        self.assertIsNone(episode_intake._heading_number_from_text("Episode 0: Prologue"))
+
     def test_manual_episode_ids_use_the_project_canonical_spelling(self) -> None:
         self.source.write_text("第一幕\n甲\n", encoding="utf-8")
         for episode_id in ("EP000", "EP0001"):
@@ -590,34 +622,67 @@ class WorkflowContractTests(unittest.TestCase):
                 for row in index_doc["episodes"]:
                     self.assertNotIn(creative_field, row)
 
-            selftest = SUITE / "skills/short-drama-develop/scripts/selftest.py"
+            episode_script = SUITE / "skills/short-drama-develop/scripts/episode_intake.py"
             env = os.environ.copy()
             env["PYTHONDONTWRITEBYTECODE"] = "1"
-            cmd = (
-                [sys.executable, "-B", "-P", str(selftest)]
-                if sys.version_info >= (3, 11)
-                else [
-                    sys.executable,
-                    "-B",
-                    "-c",
-                    (
-                        "import pathlib, runpy, sys; "
-                        "script_dir = str(pathlib.Path(sys.argv[1]).resolve().parent); "
-                        "sys.path[:] = [p for p in sys.path if p not in ('', script_dir)]; "
-                        "runpy.run_path(sys.argv[1], run_name='__main__')"
-                    ),
-                    str(selftest),
-                ]
+            smoke_source = root / "isolated-episodes.md"
+            smoke_index = root / "isolated-index.json"
+            smoke_slice = root / "isolated-ep002.md"
+            smoke_source.write_text(
+                "第1集 开端\n行动一。\n第2集 反转\n行动二。\n", encoding="utf-8"
             )
-            isolated = subprocess.run(
-                cmd,
-                cwd=root,
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False,
+
+            def run_isolated(*cli_args: str) -> subprocess.CompletedProcess[str]:
+                cmd = (
+                    [sys.executable, "-B", "-P", str(episode_script), *cli_args]
+                    if sys.version_info >= (3, 11)
+                    else [
+                        sys.executable,
+                        "-B",
+                        "-c",
+                        (
+                            "import pathlib, runpy, sys; "
+                            "script = sys.argv[1]; "
+                            "script_dir = str(pathlib.Path(script).resolve().parent); "
+                            "sys.path[:] = [p for p in sys.path if p not in ('', script_dir)]; "
+                            "sys.argv = [script, *sys.argv[2:]]; "
+                            "runpy.run_path(script, run_name='__main__')"
+                        ),
+                        str(episode_script),
+                        *cli_args,
+                    ]
+                )
+                return subprocess.run(
+                    cmd,
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+            self.assertEqual(
+                run_isolated("index", str(smoke_source), "--out", str(smoke_index)).returncode,
+                0,
             )
-            self.assertEqual(isolated.returncode, 0, isolated.stderr)
+            self.assertEqual(
+                run_isolated("verify", str(smoke_index), str(smoke_source)).returncode,
+                0,
+            )
+            self.assertEqual(
+                run_isolated(
+                    "slice", str(smoke_index), str(smoke_source), "EP002", "--out", str(smoke_slice)
+                ).returncode,
+                0,
+            )
+            self.assertTrue(smoke_slice.read_bytes().startswith("第2集".encode("utf-8")))
+            smoke_source.write_text(
+                smoke_source.read_text(encoding="utf-8") + "变更。\n", encoding="utf-8"
+            )
+            self.assertNotEqual(
+                run_isolated("verify", str(smoke_index), str(smoke_source)).returncode,
+                0,
+            )
 
 
 class UnmappedSpanScopeTests(unittest.TestCase):
@@ -911,6 +976,9 @@ class HardenedValidationTests(unittest.TestCase):
             "# EP003——对峙\n"
             "丙亮出工牌。\n"
             "# EP004-尾声\n"
+            "Episode 1-3: Arc summary\n"
+            "EP01-03 recap\n"
+            "Episode 1 - 3 overview\n"
             "丁把钥匙放在桌上。\n"
             "第5集·余波\n"
             "戊合上账本。\n"

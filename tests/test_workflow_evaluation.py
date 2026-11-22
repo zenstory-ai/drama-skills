@@ -250,9 +250,8 @@ class VoiceOverCoverageTests(unittest.TestCase):
         report = run_json(
             [
                 str(script("short-drama-write/scripts/duration_estimate.py")),
+                "--script",
                 "剧集/EP001/screenplay.md",
-                "--index",
-                "剧集/EP001/screenplay-index.jsonl",
                 "--project",
                 "short-drama.json",
             ]
@@ -310,7 +309,7 @@ class DerivedLayerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             rebuilt = Path(directory) / "screenplay-index.jsonl"
             args = [
-                str(script("short-drama-write/scripts/screenplay_index.py")),
+                str(legacy_script("short-drama-write/scripts/screenplay_index.py")),
                 str(screenplay),
                 "--output",
                 str(rebuilt),
