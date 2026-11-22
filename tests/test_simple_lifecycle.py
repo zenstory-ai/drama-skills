@@ -198,7 +198,8 @@ class SimpleLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
             initial = b"# first version\n"
-            source = self.write_episode_file(root, "剧集/EP001/剧本.md", initial.decode())
+            source = self.write_episode_file(root, "剧集/EP001/剧本.md", "")
+            source.write_bytes(initial)
             real_sha256_bytes = project_tool.sha256_bytes
 
             def mutate_after_hash(content: bytes) -> str:

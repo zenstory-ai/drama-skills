@@ -251,7 +251,7 @@ def _project_file(root: Path, relative: str, *, create_parent: bool = False) -> 
             current.mkdir()
     if target.exists() and (target.is_symlink() or not target.is_file()):
         raise ValueError(f"unsafe project file: {relative}")
-    if not target.parent.resolve().is_relative_to(root):
+    if not target.parent.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"path escapes project root: {relative}")
     return target
 
@@ -312,7 +312,7 @@ def _open_project_input(root: Path, relative: str) -> Iterator[BinaryIO]:
             raise FileNotFoundError(f"job input is missing: {relative}") from exc
         if _is_link_or_reparse(details):
             raise ValueError(f"unsafe job input path: {relative}")
-    if not path.resolve().is_relative_to(root):
+    if not path.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"job input escapes project root: {relative}")
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode):
@@ -538,7 +538,7 @@ def _metadata_directory(
             details = current.lstat()
         if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
             raise ValueError("production metadata directory is unsafe")
-    if not current.resolve().is_relative_to(root):
+    if not current.resolve().is_relative_to(root.resolve()):
         raise ValueError("production metadata directory escapes the project")
     yield current, None
 
@@ -1810,7 +1810,7 @@ def _is_builtin_audio_capable_command(command: Sequence[str]) -> bool:
 
 def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str], int, frozenset[str] | None]:
     resolved = config_path.expanduser().resolve()
-    if resolved.is_relative_to(root):
+    if resolved.is_relative_to(root.resolve()):
         raise ValueError("adapter config must live outside the project")
     document = json.loads(resolved.read_text(encoding="utf-8"))
     adapters = document.get("adapters") if isinstance(document, Mapping) else None

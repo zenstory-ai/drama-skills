@@ -162,7 +162,7 @@ class ShippingBoundaryTests(unittest.TestCase):
         leaks: list[str] = []
         seen: dict[str, set[str]] = {}
         for path in shipped_text_files():
-            relative = str(path.relative_to(SUITE))
+            relative = path.relative_to(SUITE).as_posix()
             for found in url.findall(path.read_text(encoding="utf-8")):
                 seen.setdefault(relative, set()).add(found)
                 if found not in ALLOWED_PROVIDER_URLS.get(relative, set()):
