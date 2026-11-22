@@ -93,6 +93,23 @@ class TranscriptTests(unittest.TestCase):
         self.assertEqual([segment["s"] for segment in segments], [0.5, 2.2])
         self.assertEqual(segments[1]["t"], "你凭什么")
 
+    def test_utf8_bom_json_and_srt_transcripts_parse_without_crashing(self):
+        bom_json = "\ufeff" + json.dumps(
+            {"segments": [{"start": 1.0, "end": 2.5, "text": "带BOM的JSON台词"}]},
+            ensure_ascii=False,
+        )
+        self.assertEqual(
+            breakdown.parse_transcript(bom_json, ".json"),
+            [{"s": 1.0, "e": 2.5, "t": "带BOM的JSON台词"}],
+        )
+        bom_srt = "\ufeff1\r\n00:00:00,500 --> 00:00:01,500\r\n带BOM的SRT\r\n"
+        self.assertEqual(
+            breakdown.parse_transcript(bom_srt, ".srt"),
+            [{"s": 0.5, "e": 1.5, "t": "带BOM的SRT"}],
+        )
+        with self.assertRaises(breakdown.BreakdownError):
+            breakdown.parse_transcript("\ufeff{broken json", ".json")
+
 
 class SpeechTimingTests(unittest.TestCase):
     def test_overlapping_cues_count_occupied_time_once(self):
@@ -114,7 +131,9 @@ class EpisodeNumberTests(unittest.TestCase):
     def test_a_marked_episode_number_wins_over_other_digits(self):
         for stem, expected in (("E001_5550001234567890123", 1), ("2026短剧第3集", 3),
                                ("ep12-final", 12), ("片段07", 7), ("Love2026_EP002", 2),
-                               ("夏夜第1季第2集", 2), ("Season1-E05", 5), ("第4话", 4)):
+                               ("夏夜第1季第2集", 2), ("Season1-E05", 5), ("第4话", 4),
+                               ("Season2_Episode03", 3), ("Season2-Episode_09", 9),
+                               ("S02_EP_11", 11), ("Drama.Episode.04", 4)):
             with self.subTest(stem=stem):
                 self.assertEqual(breakdown.episode_number(stem), expected)
 
@@ -155,6 +174,21 @@ class ProfileTests(unittest.TestCase):
             loaded = breakdown.load_records([root])
             self.assertEqual(len(loaded), 1)
             self.assertEqual(loaded[0]["episode"], 1)
+
+    def test_duplicate_episode_numbers_are_preserved_with_soft_warning(self):
+        records = [
+            dict(episode(2, 50.0 + idx, [5.0] * 10, [(0.5, 2.0, "台词")]), source=f"Season2_clip{idx:02d}.mp4")
+            for idx in range(1, 11)
+        ]
+        records.append({"source": "mystery_clip.mp4", "episode": None, "duration": 30.0, "shot_seconds": [10.0]})
+        result = breakdown.profile(records, opening=3)
+        self.assertEqual(result["all"]["episodes"], 10)
+        self.assertEqual(result["opening"]["episodes"], 10)
+        self.assertEqual(len(result["per_episode"]), 10)
+        self.assertTrue(any("集号 2 重复出现 10 次" in w for w in result["warnings"]), result["warnings"])
+        self.assertTrue(any("未识别出集号" in w for w in result["warnings"]), result["warnings"])
+        table = breakdown.render_table({"REF-DUP": result})
+        self.assertIn("集号 2 重复出现 10 次", table)
 
 
 class TranscriptOverrunTests(unittest.TestCase):

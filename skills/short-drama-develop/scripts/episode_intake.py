@@ -81,11 +81,14 @@ def _strict_int(value: Any) -> int | None:
 
 
 def chinese_to_int(text: str) -> int | None:
+    """Convert 一 / 十五 / 两百零三 / 两零八 / 一千零十五 to an int, or None if malformed."""
     if not text:
         return None
     if text.isascii() and text.isdigit():
         return int(text)
     if all(character in CHINESE_DIGITS for character in text):
+        if "两" in text[1:]:
+            return None
         value = 0
         for character in text:
             value = value * 10 + CHINESE_DIGITS[character]
@@ -116,7 +119,10 @@ def chinese_to_int(text: str) -> int | None:
 
         weight = CHINESE_UNITS[character]
         if pending_digit is None:
-            if character == "十" and index == 0:
+            if character == "十" and (
+                (index == 0 and not saw_zero)
+                or (saw_zero and previous_weight is not None and previous_weight >= 1000)
+            ):
                 digit = 1
             else:
                 return None
@@ -874,6 +880,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             write_index(args.out, document)
             result: Any = {"output": str(args.out), "episode_count": document["episode_count"]}
+            if document["unmapped_spans"]:
+                result["warnings"] = [
+                    f"{len(document['unmapped_spans'])} unmapped span(s) outside episode boundaries; "
+                    "inspect unmapped_spans in the index"
+                ]
             if document["problems"]:
                 result["problems"] = document["problems"]
                 print(json.dumps(result, sort_keys=True))

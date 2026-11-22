@@ -66,11 +66,15 @@ OVERRUN_TOLERANCE_SECONDS = 0.5
 # Episodes after the opening ones count as fixed length when the 10th and
 # 90th percentiles sit this close.
 FIXED_LENGTH_SPREAD_SECONDS = 3.0
-# Strongest first: 第N集, then an EP/E marker that does not sit inside a word
-# (``Love2026_EP001``), then a 第N that is not a season or a part.
+# Strongest first: 第N集, then an EPISODE/EP/E marker that does not sit inside
+# a word (``Love2026_EP001``, ``Season2_Episode03``), then a 第N that is not a
+# season or a part.
 EPISODE_MARKERS = (
     re.compile(r"第\s*0*(\d{1,4})\s*[集话話]"),
-    re.compile(r"(?<![A-Za-z])(?:EP|E)\s*0*(\d{1,4})(?!\d)", re.IGNORECASE),
+    re.compile(
+        r"(?<![A-Za-z])(?:(?:EPISODE|EP)[\s._-]*|E\s*)0*(\d{1,4})(?!\d)",
+        re.IGNORECASE,
+    ),
     re.compile(r"第\s*0*(\d{1,4})(?![\d季部])"),
 )
 EPISODE_BARE = re.compile(r"(?<!\d)0*(\d{1,4})(?!\d)")
@@ -1213,9 +1217,13 @@ def _seconds(hours: Optional[str], minutes: str, seconds: str, fraction: str) ->
 def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
     """Timed segments ``{"s", "e", "t"}`` from SRT, WebVTT, JSON segments or annotated ``*.subtitles.json``."""
 
+    text = _normalize_text(text)
     suffix = suffix.lower()
     if suffix == ".json":
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise BreakdownError(f"JSON 转写无法解析：{error}") from error
         from_subtitles = isinstance(data, dict) and "events" in data and "segments" not in data
         items = (data.get("events") if from_subtitles else data.get("segments", data)) if isinstance(data, dict) else data
         if not isinstance(items, list):
@@ -1242,7 +1250,7 @@ def parse_transcript(text: str, suffix: str) -> List[Dict[str, Any]]:
         return _filter_valid_intervals(segments)
     pattern = SRT_TIME if suffix == ".srt" else VTT_TIME
     segments = []
-    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n")):
+    for block in re.split(r"\n\s*\n", text):
         lines = [line.strip() for line in block.strip().split("\n") if line.strip()]
         for index, line in enumerate(lines):
             found = pattern.search(line)
@@ -1335,10 +1343,10 @@ def parse_subtitle_cue_map(cue_text: str, subtitles_data: Dict[str, Any]) -> Lis
 
 
 def attach_transcript(measure: Path, transcript: Path, subtitles: Optional[Path] = None) -> None:
-    record = json.loads(measure.read_text(encoding="utf-8"))
+    record = json.loads(_normalize_text(measure.read_text(encoding="utf-8")))
     raw_text = transcript.read_text(encoding="utf-8")
     if subtitles is not None:
-        subtitles_data = json.loads(subtitles.read_text(encoding="utf-8"))
+        subtitles_data = json.loads(_normalize_text(subtitles.read_text(encoding="utf-8")))
         segments = parse_subtitle_cue_map(raw_text, subtitles_data)
     else:
         segments = parse_transcript(raw_text, transcript.suffix)
@@ -1431,21 +1439,57 @@ def transcript_overrun(record: Dict[str, Any]) -> bool:
 
 
 def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
+    unnumbered = [record for record in records if record.get("episode") is None]
     ordered = sorted(
         (record for record in records if record.get("episode") is not None),
-        key=lambda record: record["episode"],
+        key=lambda record: (int(record["episode"]), str(record.get("source") or "")),
     )
-    rows = {record["episode"]: episode_numbers(record) for record in ordered}
-    keys = sorted({key for row in rows.values() for key in row})
+    counts_by_episode: Dict[int, int] = {}
+    for record in ordered:
+        ep = int(record["episode"])
+        counts_by_episode[ep] = counts_by_episode.get(ep, 0) + 1
+
+    entries: List[Tuple[int, str, Dict[str, Optional[float]]]] = []
+    seen_occurrence: Dict[int, int] = {}
+    duplicate_sources: Dict[int, List[str]] = {}
+    for record in ordered:
+        ep = int(record["episode"])
+        row = episode_numbers(record)
+        if counts_by_episode[ep] == 1:
+            label = str(ep)
+        else:
+            occ = seen_occurrence.get(ep, 0) + 1
+            seen_occurrence[ep] = occ
+            source_name = str(record.get("source") or "")
+            duplicate_sources.setdefault(ep, []).append(source_name or f"#{occ}")
+            label = f"{ep}#{occ}"
+        entries.append((ep, label, row))
+
+    warnings: List[str] = []
+    for ep, names in sorted(duplicate_sources.items()):
+        warnings.append(
+            f"集号 {ep} 重复出现 {len(names)} 次（{', '.join(names)}）；"
+            "已全部保留未覆盖，请核对文件名或集号解析"
+        )
+    if unnumbered:
+        names = [str(record.get("source") or "未命名") for record in unnumbered]
+        warnings.append(
+            f"有 {len(unnumbered)} 份记录未识别出集号（{', '.join(names)}），"
+            "未计入按集分组统计；请核对文件名"
+        )
+
+    keys = sorted({key for _, _, row in entries for key in row})
 
     def group(selector: Callable[[int], bool]) -> Dict[str, Any]:
-        chosen = [row for episode, row in rows.items() if selector(episode)]
+        chosen = [row for episode, _, row in entries if selector(episode)]
         return {"episodes": len(chosen), **{key: _median(row.get(key) for row in chosen) for key in keys}}
 
     later: List[float] = [
-        float(row["duration"] or 0) for episode, row in rows.items() if episode > opening and row.get("duration")
+        float(row["duration"] or 0) for episode, _, row in entries if episode > opening and row.get("duration")
     ]
-    regime: Dict[str, Any] = {"opening_durations": [rows[episode]["duration"] for episode in rows if episode <= opening]}
+    regime: Dict[str, Any] = {
+        "opening_durations": [row["duration"] for episode, _, row in entries if episode <= opening]
+    }
     if len(later) >= 5:
         ranked = sorted(later)
         low, high = ranked[len(ranked) // 10], ranked[(9 * len(ranked)) // 10]
@@ -1455,11 +1499,12 @@ def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
     return {
         "sources": sources,
         "transcript_overruns": [record["episode"] for record in ordered if transcript_overrun(record)],
+        "warnings": warnings,
         "opening": group(lambda episode: episode <= opening),
         "later": group(lambda episode: episode > opening),
         "all": group(lambda episode: True),
         "length_regime": regime,
-        "per_episode": {str(episode): row for episode, row in rows.items()},
+        "per_episode": {label: row for _, label, row in entries},
     }
 
 
@@ -1468,7 +1513,7 @@ def load_records(paths: Sequence[Path]) -> List[Dict[str, Any]]:
     for path in paths:
         files = sorted(path.glob(f"*{MEASURE_SUFFIX}")) if path.is_dir() else [path]
         for file in files:
-            records.append(json.loads(file.read_text(encoding="utf-8")))
+            records.append(json.loads(_normalize_text(file.read_text(encoding="utf-8"))))
     if not records:
         raise BreakdownError("没有找到 *.measure.json；先运行 measure")
     return records
@@ -1501,6 +1546,8 @@ def render_table(profiles: Dict[str, Dict[str, Any]]) -> str:
                + ("（近似定长）" if fixed else "") if "later_p10" in regime else "")
             + (f"；转写超出片长的集：{result['transcript_overruns']}，超出部分未计入" if result["transcript_overruns"] else "")
         )
+        for warning in result.get("warnings") or []:
+            lines.append(f"- 注意（{name}）：{warning}")
     return "\n".join(lines) + "\n"
 
 

@@ -73,6 +73,7 @@ class ChineseNumeralTests(unittest.TestCase):
 class ChapterIndexTests(unittest.TestCase):
     def test_plain_source_indexes_every_chapter(self) -> None:
         index = build_from(chapters(["一", "二", "三", "四", "五", "六"]) + "\n")
+        self.assertEqual(index["schema_version"], "1.0.0")
         self.assertEqual(index["chapter_count"], 6)
         self.assertEqual(index["contents_entries_dropped"], 0)
         self.assertEqual(index["problems"], [])
@@ -886,6 +887,7 @@ class RoundThreeEdgeCaseTests(unittest.TestCase):
             "〇": 0,
             "一零八": 108,
             "一〇八": 108,
+            "两零八": 208,
             "一二三": 123,
             "一百〇三": 103,
             "一千零十五": 1015,
@@ -894,7 +896,18 @@ class RoundThreeEdgeCaseTests(unittest.TestCase):
             with self.subTest(numeral=numeral):
                 self.assertEqual(novel_index.chinese_to_int(numeral), expected)
 
-        for malformed in ("十十", "一百百", "十百", "一二百", "一百零", "零百", "一百二", "一两三"):
+        for malformed in (
+            "十十",
+            "一百百",
+            "十百",
+            "一二百",
+            "一百零",
+            "零百",
+            "一百二",
+            "一两三",
+            "二十零三",
+            "一百零二十",
+        ):
             with self.subTest(malformed=malformed):
                 self.assertIsNone(novel_index.chinese_to_int(malformed))
 

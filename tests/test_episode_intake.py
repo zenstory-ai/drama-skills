@@ -713,6 +713,15 @@ class UnmappedSpanScopeTests(unittest.TestCase):
         spans = self.index()["unmapped_spans"]
         self.assertEqual(len(spans), 1)
         self.assertEqual(spans[0]["line_start"], 1)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "episodes.md"
+            index_path = root / "index.json"
+            source.write_text(self.SOURCE, encoding="utf-8")
+            result = run_cli("index", source, "--out", index_path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads(result.stdout)
+            self.assertTrue(any("unmapped" in w for w in summary.get("warnings", [])), summary)
 
     def test_episode_spans_leave_no_gap_for_anything_else_to_land_in(self) -> None:
         """The mechanical reason the other half of the promise was unkeepable."""
@@ -759,6 +768,7 @@ class HardenedValidationTests(unittest.TestCase):
             "二零": 20,
             "一零一": 101,
             "一〇八": 108,
+            "两零八": 208,
             "一二": 12,
             "一百": 100,
             "一百零二": 102,
@@ -766,6 +776,7 @@ class HardenedValidationTests(unittest.TestCase):
             "一百二十三": 123,
             "一千零五": 1005,
             "一千零一十": 1010,
+            "一千零十五": 1015,
             "一千二百零三": 1203,
         }
         for numeral, expected in valid_cases.items():
@@ -774,6 +785,7 @@ class HardenedValidationTests(unittest.TestCase):
 
         invalid_cases = (
             "",
+            "一两三",
             "十十",
             "十百",
             "百千",

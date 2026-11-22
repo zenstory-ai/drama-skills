@@ -32,7 +32,7 @@ if sys.version_info < MINIMUM_PYTHON:
         )
     )
 
-SCHEMA_VERSION = "1.0.0-draft"
+SCHEMA_VERSION = "1.0.0"
 
 # Chapter numbers appear as Arabic digits or Chinese numerals. 千 and 两 are
 # included because serialized fiction routinely passes 1000 chapters, and
@@ -102,7 +102,7 @@ MAX_HEADING_LINE_WIDTH = 50
 
 
 def chinese_to_int(text: str) -> int | None:
-    """Convert 一 / 十五 / 两百零三 / 一零八 / 一千零一 to an int, or None if malformed.
+    """Convert 一 / 十五 / 两百零三 / 两零八 / 一千零十五 to an int, or None if malformed.
 
     Returning None rather than raising matters: a heading whose number cannot be
     read must be reported as an unreadable heading, not crash the whole index
@@ -113,56 +113,65 @@ def chinese_to_int(text: str) -> int | None:
         return None
     if text.isascii() and text.isdigit():
         return int(text)
-    if not any(character in CHINESE_UNITS for character in text):
-        if not all(character in CHINESE_DIGITS for character in text):
+    if all(character in CHINESE_DIGITS for character in text):
+        if "两" in text[1:]:
             return None
-        if len(text) == 1:
-            return CHINESE_DIGITS[text]
-        if "两" in text:
-            return None
-        return int("".join(str(CHINESE_DIGITS[character]) for character in text))
+        value = 0
+        for character in text:
+            value = value * 10 + CHINESE_DIGITS[character]
+        return value
+    if not all(
+        character in CHINESE_DIGITS or character in CHINESE_UNITS
+        for character in text
+    ):
+        return None
 
     total = 0
-    current_digit: int | None = None
-    last_unit = 10000
-    zero_pending = False
-    for character in text:
-        if character in ("零", "〇"):
-            if total == 0 or current_digit is not None or zero_pending:
-                return None
-            zero_pending = True
-        elif character in CHINESE_DIGITS:
-            if current_digit is not None:
-                return None
-            current_digit = CHINESE_DIGITS[character]
-        elif character in CHINESE_UNITS:
-            unit_val = CHINESE_UNITS[character]
-            if unit_val >= last_unit:
-                return None
-            if total > 0 and not zero_pending and last_unit // unit_val > 10:
-                return None
-            if current_digit is None:
-                if unit_val != 10 or not (
-                    (total == 0 and not zero_pending)
-                    or (zero_pending and last_unit >= 1000)
-                ):
+    previous_weight: int | None = None
+    pending_digit: int | None = None
+    saw_zero = False
+
+    for index, character in enumerate(text):
+        if character in CHINESE_DIGITS:
+            digit = CHINESE_DIGITS[character]
+            if digit == 0:
+                if previous_weight is None or pending_digit is not None or saw_zero:
                     return None
-                multiplier = 1
+                saw_zero = True
             else:
-                multiplier = current_digit
-            total += multiplier * unit_val
-            last_unit = unit_val
-            current_digit = None
-            zero_pending = False
+                if pending_digit is not None:
+                    return None
+                pending_digit = digit
+            continue
+
+        weight = CHINESE_UNITS[character]
+        if pending_digit is None:
+            if character == "十" and (
+                (index == 0 and not saw_zero)
+                or (saw_zero and previous_weight is not None and previous_weight >= 1000)
+            ):
+                digit = 1
+            else:
+                return None
         else:
-            return None
-    if zero_pending and current_digit is None:
+            digit = pending_digit
+            pending_digit = None
+
+        if previous_weight is not None:
+            if weight >= previous_weight:
+                return None
+            if (previous_weight > weight * 10) != saw_zero:
+                return None
+        saw_zero = False
+        previous_weight = weight
+        total += digit * weight
+
+    if pending_digit is None:
+        return None if saw_zero else total
+    assert previous_weight is not None
+    if (previous_weight > 10) != saw_zero:
         return None
-    if current_digit is not None:
-        if not zero_pending and last_unit >= 100:
-            return None
-        total += current_digit
-    return total
+    return total + pending_digit
 
 
 def roman_to_int(text: str) -> int | None:
