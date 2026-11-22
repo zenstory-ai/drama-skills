@@ -14,7 +14,7 @@ The canonical packager adds the root license only when needed. Cross-platform in
 
 ## Cold start and normal operation
 
-`bootstrapSha` pins the first authorized source snapshot so the initial upload does not wait for a future release. Manual bootstrap, stable releases, and the 12-hour reconciliation schedule all call the same central writer. Identical owner/slug/version/fingerprint tuples are no-ops; the workflow must fail rather than overwrite a different fingerprint at the same version.
+`bootstrapSha` pins the first authorized source snapshot so the initial upload does not wait for a future release. Manual bootstrap, stable releases, and the weekly Monday reconciliation schedule (`17 3 * * 1`, matching `publish-clawhub.yml`) all call the same central writer. Identical owner/slug/version/fingerprint tuples are no-ops; the workflow must fail rather than overwrite a different fingerprint at the same version.
 
 New entries begin at the explicit `1.0.0` semver baseline; known existing entries retain an owner-qualified current/target version instead of being reset. Before the first write, the organization-level dry run reconciles every version with the existing ClawHub identity. `publisher: worldwonderer` is also subject to owner-qualified resolution before a write.
 

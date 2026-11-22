@@ -3772,6 +3772,127 @@ process.stdout.write(JSON.stringify({
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["g"], "配乐")
 
+    def test_music_prompts_extended_fields_and_view_prompts_rendering(self) -> None:
+        video_md = (
+            "# EP001 视频提示词\n\n"
+            "## MOTION-EP001-001 · 开场\n"
+            "- 分镜：SHOT-EP001-001\n"
+            "- 时长：3s\n"
+            "- 生成方式：文生视频\n"
+            "- 输入参考图：无（文生视频）。\n"
+            "- 开场画面：昏暗监控室。\n\n"
+            "### 可复制提示词\n"
+            "> Dim monitoring room, slow push-in.\n\n"
+            "## MUSIC-EP001-01 · 监控室悬疑铺底\n"
+            "- 区间：SHOT-EP001-001 至 SHOT-EP001-006（约 22s，末 2s 淡出）\n"
+            "- 剧情作用：压低环境焦躁感，烘托断电前的紧张对峙\n"
+            "- 情绪与乐器：冷峻克制、低频脉冲合成器、轻拨大提琴\n"
+            "- 禁用：人声哼唱、欢快鼓点\n"
+            "- 时长：22s\n\n"
+            "### 可复制提示词\n"
+            "> Dark minimalist suspense underscore, pulsing synth bass and pizzicato cello.\n\n"
+            "## MUSIC-EP001-02 · 尾声余韵\n"
+            "- 适用范围：结尾定格\n"
+            "- 风格：极简室内乐\n"
+            "- 乐器：独奏钢琴\n"
+            "- 节奏：慢板自由拍\n"
+            "- 情绪起伏：由紧转松\n"
+            "- 备注：留 2 秒自然混响尾音\n\n"
+            "### 可复制提示词\n"
+            "> Minimalist solo piano coda, lingering room reverb.\n"
+        )
+        parsed = views.read_episode("EP001", {views.VIDEO_PROMPTS: video_md}, None)
+        self.assertEqual(len(parsed["musicPrompts"]), 2)
+        first, second = parsed["musicPrompts"]
+        self.assertEqual(first["id"], "MUSIC-EP001-01")
+        self.assertEqual(first["range"], "SHOT-EP001-001 至 SHOT-EP001-006（约 22s，末 2s 淡出）")
+        self.assertEqual(first["use"], "压低环境焦躁感，烘托断电前的紧张对峙")
+        self.assertEqual(first["mood"], "冷峻克制、低频脉冲合成器、轻拨大提琴")
+        self.assertEqual(first["avoid"], "人声哼唱、欢快鼓点")
+        self.assertEqual(first["sec"], 22.0)
+        self.assertEqual(second["range"], "结尾定格")
+        self.assertEqual(second["style"], "极简室内乐")
+        self.assertEqual(second["instruments"], "独奏钢琴")
+        self.assertEqual(second["tempo"], "慢板自由拍")
+        self.assertEqual(second["mood"], "由紧转松")
+        self.assertEqual(second["notes"], "留 2 秒自然混响尾音")
+
+        rows = views.search_entries(parsed)
+        for needle, expected_id in (
+            ("轻拨大提琴", "MUSIC-EP001-01"),
+            ("人声哼唱", "MUSIC-EP001-01"),
+            ("极简室内乐", "MUSIC-EP001-02"),
+            ("独奏钢琴", "MUSIC-EP001-02"),
+            ("慢板自由拍", "MUSIC-EP001-02"),
+            ("自然混响尾音", "MUSIC-EP001-02"),
+            ("结尾定格", "MUSIC-EP001-02"),
+        ):
+            hits = views.search(rows, needle)
+            self.assertEqual(len(hits), 1, needle)
+            self.assertEqual(hits[0]["g"], "配乐")
+            self.assertEqual(hits[0]["view"], "prompts")
+            self.assertEqual(hits[0]["arg"], "video")
+            self.assertEqual(hits[0]["id"], expected_id)
+
+        result = self.run_app(
+            """
+const row = {
+  id: 'EP001',
+  title: '第一集',
+  has: { script: false, settings: false, board: false, imgp: false, vidp: true, cut: false, film: false, review: false },
+  review: { must: 0, should: 0, could: 0 },
+};
+const ep = {
+  docs: { '视频提示词.md': '剧集/EP001/视频提示词.md' },
+  problems: [],
+  media: { clips: {}, frames: {} },
+  metrics: {},
+  videoPrompts: [{ id: 'MOTION-EP001-001', title: '开场', shot: 'SHOT-EP001-001', sec: 3, mode: '文生视频', prompt: 'Dim room.' }],
+  videoGroups: [],
+  imagePrompts: [],
+  musicPrompts: [
+    {
+      id: 'MUSIC-EP001-01',
+      title: '监控室<img id="pwn" src="x">',
+      range: 'SHOT-EP001-001 至 SHOT-EP001-006',
+      use: '烘托紧张',
+      mood: '冷峻克制、轻拨大提琴<script>alert(1)</script>',
+      style: '极简悬疑',
+      instruments: '',
+      tempo: '慢速脉冲',
+      avoid: '欢快鼓点',
+      notes: '末2s淡出',
+      sec: 22,
+      prompt: 'Dark suspense underscore <svg onload="x">',
+    },
+  ],
+  board: null,
+};
+const html = logic.viewPrompts(row, ep, 'video', new URLSearchParams('id=MUSIC-EP001-01'));
+const meta = logic.stageMeta(row, ep);
+const epHome = logic.viewEpisode(row, ep);
+console.log(JSON.stringify({ html, meta, epHome }));
+"""
+        )
+        html = result["html"]
+        self.assertIn('id="musicPromptsSection"', html)
+        self.assertIn('id="p-MUSIC-EP001-01"', html)
+        self.assertIn('data-prompt-id="MUSIC-EP001-01"', html)
+        self.assertIn("视频 1 · 配乐 1", html)
+        self.assertIn("0 / 2", html)
+        self.assertIn("情绪与乐器：冷峻克制、轻拨大提琴&lt;script&gt;", html)
+        self.assertIn("禁用：欢快鼓点", html)
+        self.assertIn("风格：极简悬疑", html)
+        self.assertIn("节奏：慢速脉冲", html)
+        self.assertIn("备注：末2s淡出", html)
+        self.assertNotIn('<img id="pwn"', html)
+        self.assertNotIn("<script>", html)
+        self.assertNotIn("<svg onload=", html)
+        # Jumping via ?id=MUSIC-EP001-01 expands the target card (no clamp class).
+        self.assertIn('<div class="ptext " data-act="expand">Dark suspense underscore', html)
+        self.assertEqual(result["meta"]["prompts"], "2 条")
+        self.assertIn("配乐 1 条", result["epHome"])
+
     def test_dashboard_status_badge_cut_duration_prompt_fallback_film_seek_and_async_races(self) -> None:
         result = self.run_app(
             """

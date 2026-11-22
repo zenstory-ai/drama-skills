@@ -48,6 +48,7 @@
 - 英文断词、16:9 横屏排版与多语种剪辑渲染（`short-drama-edit`）：修复英文字幕按 12 字符硬切单词、横屏 16:9 字幕边距与 Remotion 面板宽度溢出、非 CJK/ASCII 语系字体探针报错、多词英文卡片标签被拆分、`libass` `\N`/`\n`/`\h` 转义、关键词最长匹配优先级与 `ffmpeg`/`ffprobe` PATH 回退问题。
 - 生产适配器与工具链细节缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」、旧版模型名硬编码及 `background="transparent"` 硬阻断问题；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验问题。
 - 本地创作台竞态与扫描截断（`short-drama`）：修复 `dashboard_server.py` 扫描 `.git`/`node_modules`/`.venv`/`__pycache__`/`.short-drama` 触发节点截断的问题；修复 `app.js` 快速切换项目/单集/刷新时的异步竞态、creator-first 项目状态徽章显示、仅含剪辑单剧集时长列及时间轴零宽保护；替换 `README.md`/`README_EN.md`/`docs/real-outputs*.md` 中已失效的校验示例。
+- 本地创作台配乐提示词展示与字段映射（`short-drama`）：修复 `creator_views.py` 未映射 `MUSIC-*` 条目中的 `- 情绪与乐器：` 及扩展元数据字段、且创作台「提示词 / 视频」视图未渲染 `MUSIC-*` 成片配乐卡片导致 `⌘K` 搜索跳转落空的问题，现于视频提示词页签独立分组展示配乐卡片并支持逐条复制与搜索高亮定位。
 - 带引号技能命令校验覆盖（`tests/test_standalone_skill_tooling.py`）：修复 `SKILL.md` CLI 子命令对账正则，使其正确覆盖带双引号的 `"<SKILL_DIR>/scripts/..."` 技能脚本命令。
 
 ### Removed

@@ -404,6 +404,104 @@ class DeliveryGroupBrowserTests(Browser, unittest.TestCase):
 
 
 @unittest.skipUnless(sync_playwright, "Playwright is unavailable")
+class MusicPromptsBrowserTests(Browser, unittest.TestCase):
+    """MUSIC-* entries render in Video Prompts, escape raw HTML, and work with Cmd+K jumps."""
+
+    MUSIC_PROMPT_BODY = (
+        "Dark minimalist suspense underscore, low pulsing analog synth bass and pizzicato cello, "
+        "<script>window.__musicXss = true;</script> clean tail."
+    )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temporary = tempfile.TemporaryDirectory()
+        workspace = Path(cls.temporary.name)
+        project = workspace / "with-music"
+        make_creator_project(project)
+        video = project / "剧集/EP001/视频提示词.md"
+        video.write_text(
+            video.read_text(encoding="utf-8")
+            + '\n## MUSIC-EP001-01 · 监控室悬疑铺底<img id="pwn" src="x">\n'
+            + '- 区间：SHOT-EP001-001 至 SHOT-EP001-006<img id="pwn2" src="x">\n'
+            + "- 剧情作用：压低环境焦躁感，烘托断电前的紧张对峙\n"
+            + "- 情绪与乐器：冷峻克制、低频脉冲合成器、轻拨大提琴\n"
+            + "- 风格：暗黑极简悬疑\n"
+            + "- 禁用：人声哼唱、欢快鼓点\n"
+            + "- 时长：22s\n\n"
+            + "### 可复制提示词\n"
+            + f"> {cls.MUSIC_PROMPT_BODY}\n",
+            encoding="utf-8",
+        )
+        cls.start(workspace)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.stop()
+        cls.temporary.cleanup()
+
+    def test_music_prompt_renders_safely_copies_and_responds_to_search_jump(self) -> None:
+        page = self.open(route="#/EP001/prompts/video")
+        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=self.origin)
+
+        # Tab counter, dedicated section, copybar progress, and anchor card.
+        expect(page.locator('.seg a[aria-current="page"]')).to_contain_text("视频 22 · 配乐 1")
+        expect(page.locator("#musicPromptsSection h3")).to_have_text("成片配乐")
+        expect(page.locator("#copyProgress")).to_have_text("0 / 23")
+
+        card = page.locator("#p-MUSIC-EP001-01")
+        expect(card).to_be_visible()
+        expect(card).to_contain_text("监控室悬疑铺底")
+        expect(card).to_contain_text("情绪与乐器：冷峻克制、低频脉冲合成器、轻拨大提琴")
+        expect(card).to_contain_text("风格：暗黑极简悬疑")
+        expect(card).to_contain_text("禁用：人声哼唱、欢快鼓点")
+        expect(card).to_contain_text("22 秒")
+
+        # XSS guard: raw HTML/script payloads stay text, never elements or executed scripts.
+        self.assertEqual(page.locator("#pwn, #pwn2").count(), 0)
+        self.assertFalse(page.evaluate("() => Boolean(window.__musicXss)"))
+        expect(card).to_contain_text('<img id="pwn"')
+        expect(card).to_contain_text("<script>window.__musicXss = true;</script>")
+
+        # Copy button on music card copies verbatim text and updates progress.
+        card.locator(".pact button").click()
+        expect(page.locator("#copyProgress")).to_have_text("1 / 23")
+        self.assertEqual(page.evaluate("() => navigator.clipboard.readText()"), self.MUSIC_PROMPT_BODY)
+        expect(card).to_have_class(re.compile(r"\bcopied\b"))
+        page.get_by_role("button", name="清除标记").click()
+        expect(page.locator("#copyProgress")).to_have_text("0 / 23")
+
+        # Navigate away and jump back via Cmd/Ctrl+K search matching - 情绪与乐器：.
+        self.go(page, "#/EP001/board")
+        page.keyboard.press("Control+k")
+        expect(page.locator("#palette")).to_be_visible()
+        page.fill("#palq", "轻拨大提琴")
+        hit = page.locator(".pal-item", has_text="MUSIC-EP001-01").first
+        expect(hit).to_be_visible()
+        hit.click()
+        page.wait_for_function("() => location.hash === '#/EP001/prompts/video?id=MUSIC-EP001-01'")
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+        target = page.locator("#p-MUSIC-EP001-01")
+        expect(target).to_be_visible()
+        # Target card is expanded (not clamped) and scrolled into the viewport.
+        self.assertFalse(
+            target.locator(".ptext").evaluate("node => node.classList.contains('clamp')")
+        )
+        page.wait_for_function(
+            """() => {
+              const el = document.getElementById('p-MUSIC-EP001-01');
+              if (!el) return false;
+              const box = el.getBoundingClientRect();
+              return box.top >= 0 && box.top < window.innerHeight;
+            }"""
+        )
+        self.assertEqual(page.locator("#pwn, #pwn2").count(), 0)
+
+        # Narrow phone layout stays free of horizontal overflow.
+        page.set_viewport_size({"width": 390, "height": 844})
+        self.assertNoHorizontalOverflow(page)
+
+
+@unittest.skipUnless(sync_playwright, "Playwright is unavailable")
 class PlainProjectBrowserTests(Browser, unittest.TestCase):
     """Projects outside the five documents still open, and raw text stays text."""
 
