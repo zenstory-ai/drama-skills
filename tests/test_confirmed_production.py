@@ -2869,13 +2869,23 @@ class ConfirmedProductionTests(unittest.TestCase):
                     stale_bytes = b"\x89PNG\r\n\x1a\nstale-runner"
 
                     def fake_run_adapter(
-                        command, timeout, payload, project_root, *, consumes_confirmation=True
+                        command,
+                        timeout,
+                        payload,
+                        project_root,
+                        *,
+                        consumes_confirmation=True,
+                        _collected_bytes=collected_bytes,
+                        _stale_bytes=stale_bytes,
+                        _root=root,
+                        _config=config,
+                        _adapter_outcome=adapter_outcome,
                     ):
                         out_dir = Path(payload["output_root"])
                         target_rel = payload["outputs"][0]
                         if payload.get("collect_provider_job_id"):
                             collected_src = out_dir / "collected.png"
-                            collected_src.write_bytes(collected_bytes)
+                            collected_src.write_bytes(_collected_bytes)
                             return {
                                 "outputs": [
                                     {"target": target_rel, "source": str(collected_src)}
@@ -2889,10 +2899,10 @@ class ConfirmedProductionTests(unittest.TestCase):
                             encoding="utf-8",
                         )
                         collected = production_tool.collect_job(
-                            root, job_id="EP001-RACE", adapter_config=config
+                            _root, job_id="EP001-RACE", adapter_config=_config
                         )
                         self.assertEqual(collected["state"], "succeeded")
-                        if adapter_outcome == "raises_after_collect":
+                        if _adapter_outcome == "raises_after_collect":
                             raise production_tool.AdapterError(
                                 "poll timed out after collect already finished",
                                 public_error={
@@ -2904,7 +2914,7 @@ class ConfirmedProductionTests(unittest.TestCase):
                                 },
                             )
                         stale_src = out_dir / "stale.png"
-                        stale_src.write_bytes(stale_bytes)
+                        stale_src.write_bytes(_stale_bytes)
                         return {
                             "outputs": [{"target": target_rel, "source": str(stale_src)}],
                             "provider_job_id": "remote-race-handle",
@@ -3009,7 +3019,16 @@ class ConfirmedProductionTests(unittest.TestCase):
                     adapter_calls = 0
 
                     def collect_adapter(
-                        command, timeout, payload, project_root, *, consumes_confirmation=True
+                        command,
+                        timeout,
+                        payload,
+                        project_root,
+                        *,
+                        consumes_confirmation=True,
+                        _stage=stage,
+                        _out2_path=out2_path,
+                        _out1=out1,
+                        _out2=out2,
                     ):
                         nonlocal adapter_calls
                         adapter_calls += 1
@@ -3018,12 +3037,12 @@ class ConfirmedProductionTests(unittest.TestCase):
                         s2 = out_dir / "2.png"
                         s1.write_bytes(b"\x89PNG\r\n\x1a\nnew-first")
                         s2.write_bytes(b"\x89PNG\r\n\x1a\nnew-second")
-                        if stage == "during_adapter":
-                            out2_path.write_bytes(b"\x89PNG\r\n\x1a\nappeared-mid-collect")
+                        if _stage == "during_adapter":
+                            _out2_path.write_bytes(b"\x89PNG\r\n\x1a\nappeared-mid-collect")
                         return {
                             "outputs": [
-                                {"target": out1, "source": str(s1)},
-                                {"target": out2, "source": str(s2)},
+                                {"target": _out1, "source": str(s1)},
+                                {"target": _out2, "source": str(s2)},
                             ],
                             "provider_job_id": "remote-multi-1",
                         }

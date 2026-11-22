@@ -5,13 +5,14 @@ import json
 import math
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from tests.media_require import has_ffmpeg
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "skills/short-drama-edit/scripts/edit_tool.py"
@@ -803,7 +804,7 @@ class StillCutCheckTests(unittest.TestCase):
                 edit._require("ffmpeg")
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class StillRenderTests(unittest.TestCase):
     WIDTH, HEIGHT, FPS = 180, 320, 24
 

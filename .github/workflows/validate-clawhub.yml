@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: validate-clawhub-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   guard-central-ref:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Require reviewed immutable central workflow ref
@@ -24,11 +29,11 @@ jobs:
   validate:
     name: ClawHub inventory validation
     needs: guard-central-ref
-    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@b8dbd133b557dce5143c18902a887ddca9d4cdf0
+    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@c3fe6ce840b369b4535121a6283dde24e486c2bc
     with:
       source_ref: ${{ github.event.pull_request.head.sha || github.sha }}
       policy_ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      control_ref: b8dbd133b557dce5143c18902a887ddca9d4cdf0
+      control_ref: c3fe6ce840b369b4535121a6283dde24e486c2bc
       mode: validate
       manifest_path: .clawhub/publish.json
       dry_run: true

@@ -638,7 +638,7 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
                 if found:
                     loudness = float(found.group(0))
         elif name == "字幕":
-            burn = "无" != value.strip() and "不烧" not in value
+            burn = value.strip() != "无" and "不烧" not in value
         elif name == "颗粒":
             # Grain belongs to the delivery spec rather than to a cut, for the
             # same reason loudness does: applied per cut it would become one
@@ -3002,7 +3002,7 @@ def _validate_remotion_workspace(
 ) -> Path:
     lexical = Path(os.path.abspath(workspace.expanduser()))
     darwin_root_links = (
-        {Path("/var"), Path("/tmp"), Path("/etc")}
+        {Path("/var"), Path("/tmp"), Path("/etc")}  # noqa: S108  # macOS system root symlinks
         if sys.platform == "darwin"
         else set()
     )
@@ -3956,7 +3956,7 @@ def _grey_frames(ffmpeg: str, media: Path) -> Optional[list[bytes]]:
 
 
 def _mean_difference(first: bytes, second: bytes) -> float:
-    return sum(map(abs, map(operator.sub, first, second))) / len(first)
+    return float(sum(map(abs, map(operator.sub, first, second))) / len(first))
 
 
 def _suspect_frames(frames: Sequence[bytes]) -> list[tuple[int, float, float, float]]:

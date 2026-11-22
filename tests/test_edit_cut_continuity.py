@@ -2,11 +2,12 @@ import contextlib
 import importlib.util
 import io
 import json
-import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+
+from tests.media_require import has_ffmpeg
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "skills/short-drama-edit/scripts/edit_tool.py"
@@ -266,7 +267,7 @@ class FrameReportTests(unittest.TestCase):
         self.assertEqual(len(report["请回听"]), 1)
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class RenderedMatchTests(unittest.TestCase):
     def test_render_narrows_a_within_scene_jump_and_verify_measures_it(self):
         # A 10-bit source must be corrected by the same amount as an 8-bit one.
@@ -308,7 +309,7 @@ class RenderedMatchTests(unittest.TestCase):
 
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class RenderedAudioTests(unittest.TestCase):
     def test_a_tone_across_a_cut_has_no_dropout(self):
         """Sound that runs over a cut stays continuous in the film.

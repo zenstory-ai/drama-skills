@@ -702,7 +702,7 @@ def check_screenplay_coverage(
             if resolved is None or resolved.record_id is None:
                 continue
             record_id = str(resolved.record_id)
-            if record_id in claims:
+            if record_id in claims and isinstance(shot_id, str):
                 claims[record_id].append(shot_id)
             elif resolved.artifact.endswith("screenplay-index.jsonl"):
                 unknown.append({"shot_id": shot_id, "block_id": record_id})

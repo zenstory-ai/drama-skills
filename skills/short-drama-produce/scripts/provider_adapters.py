@@ -1088,12 +1088,12 @@ def _request_json(
     token: str,
 ) -> tuple[dict[str, Any], Mapping[str, str]]:
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(url, data=data, method=method)
+    request = urllib.request.Request(url, data=data, method=method)  # noqa: S310  # HTTPS enforced by _base_url
     request.add_header("Authorization", f"Bearer {token}")
     if body is not None:
         request.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=180) as response:  # noqa: S310  # HTTPS enforced by _base_url
             raw = response.read(MAX_JSON_RESPONSE + 1)
             headers = dict(response.headers.items())
     except urllib.error.HTTPError as exc:
@@ -1455,7 +1455,7 @@ def _download(
     path = _output_root(job) / ("result" + Path(target).suffix.casefold())
     size = 0
     try:
-        with urllib.request.urlopen(url, timeout=180) as response, path.open("xb") as handle:
+        with urllib.request.urlopen(url, timeout=180) as response, path.open("xb") as handle:  # noqa: S310  # HTTPS checked above
             while chunk := response.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_OUTPUT_BYTES:
@@ -1694,11 +1694,11 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path | list[Path], str | None]:
     references = _reference_paths(job)
     if references:
         encoded, content_type = _multipart(body, references)
-        request = urllib.request.Request(f"{base}/images/edits", data=encoded, method="POST")
+        request = urllib.request.Request(f"{base}/images/edits", data=encoded, method="POST")  # noqa: S310  # HTTPS enforced by _base_url
         request.add_header("Authorization", f"Bearer {token}")
         request.add_header("Content-Type", content_type)
         try:
-            with urllib.request.urlopen(request, timeout=300) as response:
+            with urllib.request.urlopen(request, timeout=300) as response:  # noqa: S310  # HTTPS enforced by _base_url
                 raw = response.read(MAX_JSON_RESPONSE + 1)
                 request_id = _request_id(dict(response.headers.items()))
         except urllib.error.HTTPError as exc:

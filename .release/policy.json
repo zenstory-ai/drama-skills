@@ -36,11 +36,12 @@
       "file": "ci.yml",
       "jobs": [
         "tests (py3.9)",
-        "tests (py3.10)",
         "tests (py3.14)",
         "Dashboard browser regressions",
         "Windows CRLF installation and dashboard",
-        "lint and types"
+        "lint and types",
+        "Remotion typecheck",
+        "ci-gate"
       ]
     },
     {

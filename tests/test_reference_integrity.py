@@ -282,16 +282,22 @@ class ReferenceIntegrityTests(unittest.TestCase):
             docs = documents(path)
             sources = declared_sources(docs)
 
-            def walk(node: Any, cursor: str) -> None:
+            def walk(
+                node: Any,
+                cursor: str,
+                *,
+                _sources: dict[str, dict[str, Any]] = sources,
+                _path: Path = path,
+            ) -> None:
                 nonlocal checked
                 if isinstance(node, dict):
-                    resolved = resolve_reference(node, sources)
+                    resolved = resolve_reference(node, _sources)
                     record_id = node.get("record_id")
                     if resolved and isinstance(record_id, str):
                         artifact = resolved.get("artifact")
                         if isinstance(artifact, str):
                             target = GOLDEN / artifact
-                            where = f"{path.relative_to(GOLDEN)}:{cursor} -> {artifact}"
+                            where = f"{_path.relative_to(GOLDEN)}:{cursor} -> {artifact}"
                             self.assertTrue(target.is_file(), f"{where}: missing target")
                             records = data_records(target)
                             if not records:
@@ -302,10 +308,10 @@ class ReferenceIntegrityTests(unittest.TestCase):
                                 f"{where}#{record_id}: no such record",
                             )
                     for key, child in node.items():
-                        walk(child, f"{cursor}/{key}")
+                        walk(child, f"{cursor}/{key}", _sources=_sources, _path=_path)
                 elif isinstance(node, list):
                     for index, child in enumerate(node):
-                        walk(child, f"{cursor}/{index}")
+                        walk(child, f"{cursor}/{index}", _sources=_sources, _path=_path)
 
             for index, document in enumerate(docs):
                 walk(document, f"#doc{index}")

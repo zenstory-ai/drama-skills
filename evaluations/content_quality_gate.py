@@ -372,8 +372,8 @@ def _report_template(
     case_sha: str,
     artifacts: dict[str, str],
 ) -> dict[str, Any]:
-    zero = {dimension: 0 for dimension in DIMENSIONS}
-    evidence = {dimension: "具体证据" for dimension in DIMENSIONS}
+    zero = dict.fromkeys(DIMENSIONS, 0)
+    evidence = dict.fromkeys(DIMENSIONS, "具体证据")
     return {
         "case_id": case_id,
         "replicate_id": replicate_id,
@@ -1073,7 +1073,7 @@ def evaluate(
                     flags_b if baseline_label == "A" else flags_a
                 )
 
-            if family_counts != Counter({family: 2 for family in FAMILIES}):
+            if family_counts != Counter(dict.fromkeys(FAMILIES, 2)):
                 raise GateError(
                     f"{case_id} {replicate_id}: each judge family must run exactly twice"
                 )

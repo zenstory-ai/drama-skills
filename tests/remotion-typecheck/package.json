@@ -1,0 +1,11 @@
+{
+  "name": "drama-skills-remotion-typecheck",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.10",
+    "typescript": "5.8.3"
+  }
+}

@@ -1074,8 +1074,8 @@ class ProviderRuntimeTests(unittest.TestCase):
                 }
                 captured: dict[str, object] = {}
 
-                def fake_request(url, **kwargs):  # type: ignore[no-untyped-def]
-                    captured["body"] = kwargs.get("body")
+                def fake_request(url, _captured=captured, **kwargs):  # type: ignore[no-untyped-def]
+                    _captured["body"] = kwargs.get("body")
                     raise provider_adapters.AdapterFailure("stop after compile")
 
                 with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(

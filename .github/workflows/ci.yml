@@ -10,20 +10,141 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Exercise the declared Python floor and the newest supported CI runtime.
-  # The tests use unittest directly, so CI does not install a second test runner.
+  # Classify changed files so docs-only pull requests run fast contract checks
+  # instead of full Playwright/Windows/media matrices. Pushes to main always
+  # run every verification job to satisfy .release/policy.json ci-proof.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      browser: ${{ steps.detect.outputs.browser }}
+      windows: ${{ steps.detect.outputs.windows }}
+      remotion: ${{ steps.detect.outputs.remotion }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        name: Classify changed paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            {
+              echo "code=true"
+              echo "browser=true"
+              echo "windows=true"
+              echo "remotion=true"
+              echo "docs_only=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! files=$(git diff --name-only "$BASE_SHA...HEAD") || [ -z "$files" ]; then
+            {
+              echo "code=true"
+              echo "browser=true"
+              echo "windows=true"
+              echo "remotion=true"
+              echo "docs_only=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          printf '%s\n' "$files"
+
+          code=false
+          browser=false
+          windows=false
+          remotion=false
+
+          if printf '%s\n' "$files" | grep -Eq '^(\.github/workflows/ci\.yml|pyproject\.toml)$'; then
+            code=true
+            browser=true
+            windows=true
+            remotion=true
+          else
+            if printf '%s\n' "$files" | grep -Eq '(\.(py|js|mjs|ts|tsx|css|html)$|^(skills|tests|evaluations|examples|tools)/.*\.(json|jsonl)$)'; then
+              code=true
+              windows=true
+            fi
+            if printf '%s\n' "$files" | grep -Eq '^(skills/short-drama/assets/dashboard/|skills/short-drama/scripts/(dashboard_server|creator_views|project_tool)\.py|tests/test_dashboard_(browser|server)\.py|examples/)'; then
+              browser=true
+            fi
+            if printf '%s\n' "$files" | grep -Eq '^(skills/short-drama-edit/assets/remotion/|tests/remotion-typecheck/)'; then
+              remotion=true
+            fi
+          fi
+
+          if [ "$code" = "true" ]; then
+            docs_only=false
+          else
+            docs_only=true
+          fi
+
+          {
+            echo "code=$code"
+            echo "browser=$browser"
+            echo "windows=$windows"
+            echo "remotion=$remotion"
+            echo "docs_only=$docs_only"
+          } >> "$GITHUB_OUTPUT"
+
+  # Fast path for docs-only PRs: verifies installation links, shipping
+  # boundaries, suite anatomy, reference integrity, golden fixtures, and CLI
+  # contracts without spinning up Playwright, Windows, or ffmpeg.
+  docs-checks:
+    name: Docs and contract checks
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Run docs and contract regressions
+        run: >-
+          python -B -m unittest
+          tests.test_installation_resolution
+          tests.test_shipping_boundaries
+          tests.test_suite_anatomy
+          tests.test_reference_integrity
+          tests.test_standalone_skill_tooling
+          tests.test_output_language
+          tests.test_upstream_traceability
+          tests.test_private_release_gate
+          tests.test_cross_parser_parity
+          tests.test_creator_first_golden
+          tests.test_golden_project
+          tests.test_workflow_evaluation
+          -v
+
+  # Exercise the declared Python floor (3.9) and the newest supported CI
+  # runtime (3.14), including fail-closed ffmpeg/libass media regressions.
   test:
     name: tests (py${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # actions/python-versions does not ship Python 3.9 for Ubuntu 26.04+; pin the
     # declared 3.9 floor to ubuntu-24.04 while newer runtimes track ubuntu-latest.
     runs-on: ${{ matrix.python-version == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.14"]
+        python-version: ["3.9", "3.14"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -32,11 +153,21 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
+      - name: Install ffmpeg with libass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffmpeg -hide_banner -filters | grep -Eq '^\s*[A-Z.]+\s+ass\s+'
       - name: unit tests
+        env:
+          FFMPEG_REQUIRED: "1"
         run: python -B -m unittest discover -s tests -v
 
   dashboard-browser:
     name: Dashboard browser regressions
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
     # Pinned playwright==1.58.0 supports Chromium host deps through ubuntu-24.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -47,48 +178,67 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.58.0-${{ runner.os }}
       # Browser tooling stays CI-local rather than becoming a runtime dependency
       # of the filesystem-first skill package.
       - name: Install pinned Chromium test runtime
         run: |
           python -m pip install --disable-pip-version-check playwright==1.58.0
-          python -m playwright install --with-deps chromium
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            python -m playwright install-deps chromium
+          else
+            python -m playwright install --with-deps chromium
+          fi
       - name: Run real-browser Dashboard regressions
         run: python -B -m unittest tests.test_dashboard_browser -v
 
   windows-install:
     name: Windows CRLF installation and dashboard
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.x"
-      # The dashboard pins directories by verified path here rather than by
-      # descriptor, and that half of it exists for this runner. The POSIX jobs
-      # exercise the same backend by forcing the selection, but only this one
-      # proves it against real Windows file semantics -- reparse points,
-      # msvcrt locking, and a replace that a holder can refuse.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      # Exercises real Windows file semantics -- reparse points, msvcrt locking,
+      # CRLF handling, and production_tool/dashboard_server nt branches.
       - name: Run Windows portability regressions
         run: >-
           python -B -m unittest
           tests.test_installation_resolution
-          tests.test_episode_intake
+          tests.test_shipping_boundaries
           tests.test_standalone_skill_tooling
+          tests.test_episode_intake
           tests.test_golden_project
+          tests.test_simple_lifecycle
           tests.test_dashboard_server
-          tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_rejects_path_aliases_and_unsafe_episode_ids
-          tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_text
+          tests.test_confirmed_production
+          tests.test_provider_adapters
+          tests.test_cross_parser_parity
+          tests.test_creator_first_golden
           -v
 
-  # Tool versions are pinned on purpose. This repository has no dependency
-  # manifest, so an unpinned `pip install ruff` turns main red the next time
-  # ruff changes its default rule set — with nobody having touched the code.
-  # Bumping these is a deliberate pull request, not a surprise.
+  # Tool versions are pinned on purpose. This repository has no runtime
+  # dependency manifest, so an unpinned `pip install ruff` turns main red the
+  # next time ruff changes its default rule set — with nobody having touched
+  # the code. Bumping these is a deliberate pull request, not a surprise.
   lint:
     name: lint and types
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -98,57 +248,120 @@ jobs:
       - name: ruff
         run: ruff check .
       - name: mypy
+        shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          skill_scripts=(skills/*/scripts/*.py)
+          test "${#skill_scripts[@]}" -gt 0
           mypy --python-version 3.10 \
-            skills/short-drama/scripts/project_tool.py \
-            skills/short-drama/scripts/dashboard_server.py \
-            skills/short-drama/scripts/creator_markdown_check.py \
-            skills/short-drama/scripts/creator_views.py \
-            skills/short-drama-novel-analyze/scripts/novel_index.py \
-            skills/short-drama-develop/scripts/episode_intake.py \
-            skills/short-drama-write/scripts/duration_estimate.py \
-            tests/legacy/short-drama-assets/scripts/asset_check.py \
-            tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py \
-            skills/short-drama-produce/scripts/production_tool.py \
-            skills/short-drama-produce/scripts/provider_adapters.py \
-            skills/short-drama-edit/scripts/edit_tool.py \
-            skills/short-drama-breakdown/scripts/breakdown_tool.py \
-            tests/legacy/short-drama-review/scripts/review_check.py \
-            tests/legacy/short-drama-video-prompts/scripts/music_spec_check.py \
-            evaluations/content_quality_gate.py \
-            tools/compact_refs.py \
-            --ignore-missing-imports
+            --ignore-missing-imports \
+            --disallow-untyped-defs \
+            --warn-return-any \
+            --disallow-any-generics \
+            --warn-unused-ignores \
+            "${skill_scripts[@]}"
+          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py tools/compact_refs.py)
+          mypy --python-version 3.10 \
+            --ignore-missing-imports \
+            "${support_scripts[@]}"
       - name: mypy (Python 3.9 stdlib floor)
         # mypy 2.x requires --python-version >= 3.10; keep a pinned 1.19.1 venv
         # so typeshed still rejects Python 3.10+ stdlib additions against the 3.9 floor.
+        shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          skill_scripts=(skills/*/scripts/*.py)
+          test "${#skill_scripts[@]}" -gt 0
+          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py tools/compact_refs.py)
           python -m venv /tmp/mypy39
           /tmp/mypy39/bin/pip install --disable-pip-version-check mypy==1.19.1
           /tmp/mypy39/bin/mypy --python-version 3.9 \
-            skills/short-drama/scripts/project_tool.py \
-            skills/short-drama/scripts/dashboard_server.py \
-            skills/short-drama/scripts/creator_markdown_check.py \
-            skills/short-drama/scripts/creator_views.py \
-            skills/short-drama-novel-analyze/scripts/novel_index.py \
-            skills/short-drama-develop/scripts/episode_intake.py \
-            skills/short-drama-write/scripts/duration_estimate.py \
-            tests/legacy/short-drama-assets/scripts/asset_check.py \
-            tests/legacy/short-drama-image-prompts/scripts/image_prompt_check.py \
-            skills/short-drama-produce/scripts/production_tool.py \
-            skills/short-drama-produce/scripts/provider_adapters.py \
-            skills/short-drama-edit/scripts/edit_tool.py \
-            skills/short-drama-breakdown/scripts/breakdown_tool.py \
-            tests/legacy/short-drama-review/scripts/review_check.py \
-            tests/legacy/short-drama-video-prompts/scripts/music_spec_check.py \
-            evaluations/content_quality_gate.py \
-            tools/compact_refs.py \
-            --ignore-missing-imports
+            --ignore-missing-imports \
+            --disallow-untyped-defs \
+            --warn-return-any \
+            --disallow-any-generics \
+            --warn-unused-ignores \
+            "${skill_scripts[@]}"
+          /tmp/mypy39/bin/mypy --python-version 3.9 \
+            --ignore-missing-imports \
+            "${support_scripts[@]}"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-      - name: dashboard script parses
+      - name: dashboard and remotion scripts parse
         run: |
           node --check skills/short-drama/assets/dashboard/app.js
           node --check skills/short-drama-edit/assets/remotion/src/rules.mjs
+
+  remotion-typecheck:
+    name: Remotion typecheck
+    needs: changes
+    if: needs.changes.outputs.remotion == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: tests/remotion-typecheck/package-lock.json
+      - name: Install minimal TypeScript toolchain
+        run: npm --prefix tests/remotion-typecheck ci --no-audit --no-fund
+      - name: Typecheck Remotion sources
+        run: npm --prefix tests/remotion-typecheck run typecheck
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs:
+      - changes
+      - docs-checks
+      - test
+      - dashboard-browser
+      - windows-install
+      - lint
+      - remotion-typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all applicable CI jobs succeeded
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_RESULT: ${{ needs.docs-checks.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          BROWSER_RESULT: ${{ needs.dashboard-browser.result }}
+          WINDOWS_RESULT: ${{ needs.windows-install.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          REMOTION_RESULT: ${{ needs.remotion-typecheck.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes job did not succeed (result=$CHANGES_RESULT)"
+            exit 1
+          fi
+          ran=0
+          for pair in \
+            "docs-checks:$DOCS_RESULT" \
+            "test:$TEST_RESULT" \
+            "dashboard-browser:$BROWSER_RESULT" \
+            "windows-install:$WINDOWS_RESULT" \
+            "lint:$LINT_RESULT" \
+            "remotion-typecheck:$REMOTION_RESULT"; do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$name: $result"
+            if [ "$result" = "success" ]; then
+              ran=$((ran + 1))
+            elif [ "$result" != "skipped" ]; then
+              echo "::error::CI job '$name' ended with '$result'"
+              exit 1
+            fi
+          done
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::No CI verification jobs ran"
+            exit 1
+          fi

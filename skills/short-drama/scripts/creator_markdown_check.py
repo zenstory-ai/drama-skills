@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path, PurePosixPath
 from collections.abc import Iterable, Mapping
-from typing import NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
 
 
 MINIMUM_PYTHON = (3, 9)
@@ -638,16 +638,16 @@ class EntryIndex(NamedTuple):
     # None when that document is not part of a partial check: its locators
     # cannot be resolved, so they are not reported as missing either.
     images: Optional[dict[str, str]]
-    shots: Optional[frozenset]
+    shots: Optional[frozenset[str]]
 
 
-def _slot_matches(value: str) -> list:
+def _slot_matches(value: str) -> list[tuple[int, int, str, tuple[Any, ...]]]:
     """Every `REF-...` and `PLAN-...` slot in `value`, in written order.
 
     The two patterns cannot match the same span: a REF locator has to be an
     image path and a PLAN locator has to be an `IMG-`/`SHOT-` id.
     """
-    found = []
+    found: list[tuple[int, int, str, tuple[Any, ...]]] = []
     for kind, pattern in (("REF", REF_RE), ("PLAN", PLAN_RE)):
         for match in pattern.finditer(value):
             found.append((match.start(), match.end(), kind, match.groups()))
@@ -661,7 +661,7 @@ def _references(
     project_root: Optional[Path],
     errors: list[str],
     entries: Optional[EntryIndex] = None,
-) -> frozenset:
+) -> frozenset[str]:
     """Validate one 输入参考图/参考 declaration; return the slot kinds it uses."""
     if _is_none(value):
         return frozenset()
@@ -970,7 +970,7 @@ def _check_role_voices(
 class VoiceContext(NamedTuple):
     """What a MOTION's 参考音频 line is checked against."""
 
-    characters: frozenset
+    characters: frozenset[str]
     records: dict[str, str]
     dialogue: list[SpokenLine]
     # False when that document is not part of a partial check: the checks
@@ -1414,7 +1414,7 @@ def _infer_prompt_language(
     return "en"
 
 
-def _load_manifest_dict(project_root: Optional[Path]) -> Optional[dict]:
+def _load_manifest_dict(project_root: Optional[Path]) -> Optional[dict[str, Any]]:
     if project_root is None:
         return None
     configuration = project_root / "short-drama.json"
@@ -1573,7 +1573,7 @@ def _check_delivery_groups(
     motions: dict[str, str],
     motion_duration: dict[str, str],
     shot_order: Optional[list[str]],
-    shot_scenes: dict[str, list],
+    shot_scenes: dict[str, list[str]],
     errors: list[str],
     project_root: Optional[Path] = None,
     entries: Optional[EntryIndex] = None,
@@ -1676,8 +1676,8 @@ def _storyboard_head(storyboard: str) -> str:
 
 
 def _shot_sources(
-    value: str, owner: str, scenes: "Optional[frozenset]", errors: list[str]
-) -> list:
+    value: str, owner: str, scenes: "Optional[frozenset[str]]", errors: list[str]
+) -> list[str]:
     """Resolve one shot's 来源 against the scene ids that exist in 剧本.md.
 
     ``scenes`` is None when 剧本.md is not part of a partial check; the ids are
@@ -1708,11 +1708,11 @@ def _shot_sources(
 
 
 def _unfilmed_scenes(
-    storyboard: str, scenes: "frozenset", errors: list[str]
-) -> dict:
+    storyboard: str, scenes: "frozenset[str]", errors: list[str]
+) -> dict[str, str]:
     """Scenes 分镜.md declares it deliberately does not film, with reasons."""
     head = _storyboard_head(storyboard)
-    declared: dict = {}
+    declared: dict[str, str] = {}
     # The line belongs to the episode, not to a shot. Placed inside a SHOT
     # section it would be read as that shot's field and quietly do nothing,
     # which looks exactly like forgetting to write it.
@@ -1842,8 +1842,8 @@ def validate_documents(
         if has_storyboard and has_screenplay
         else {}
     )
-    claimed_scenes: set = set()
-    shot_scene_map: dict[str, list] = {}
+    claimed_scenes: set[str] = set()
+    shot_scene_map: dict[str, list[str]] = {}
     locks = _continuity_locks(visual, errors)
     visual_entries = _visual_entries(visual, errors)
     role_voices = _role_voices(visual, errors)

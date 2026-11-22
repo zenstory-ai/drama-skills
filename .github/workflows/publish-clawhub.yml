@@ -4,7 +4,7 @@ on:
   release:
     types: [published]
   schedule:
-    - cron: '17 */12 * * *'
+    - cron: '17 3 * * 1'
   workflow_dispatch:
     inputs:
       mode:
@@ -40,6 +40,7 @@ jobs:
       github.event_name != 'release' ||
       (github.event.release.draft == false && github.event.release.prerelease == false)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       source_ref: ${{ steps.source.outputs.source_ref }}
       policy_ref: ${{ steps.source.outputs.policy_ref }}
@@ -143,11 +144,11 @@ jobs:
 
   publish:
     needs: resolve-source
-    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@b8dbd133b557dce5143c18902a887ddca9d4cdf0
+    uses: zenstory-ai/.github/.github/workflows/clawhub-publish.yml@c3fe6ce840b369b4535121a6283dde24e486c2bc
     with:
       source_ref: ${{ needs.resolve-source.outputs.source_ref }}
       policy_ref: ${{ needs.resolve-source.outputs.policy_ref }}
-      control_ref: b8dbd133b557dce5143c18902a887ddca9d4cdf0
+      control_ref: c3fe6ce840b369b4535121a6283dde24e486c2bc
       mode: ${{ needs.resolve-source.outputs.mode }}
       manifest_path: .clawhub/publish.json
       dry_run: ${{ needs.resolve-source.outputs.dry_run == 'true' }}
