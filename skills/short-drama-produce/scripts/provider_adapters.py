@@ -365,7 +365,10 @@ def _prompt_with_reference_contract(
             if role != "reference_audio" or not isinstance(character, str) or not character.strip():
                 raise ValueError("reference audio character is invalid")
             # The source's explicit speaker wins over the free-form asset label.
-            label = f"{character.strip()}音色参考"
+            if language.startswith("zh"):
+                label = f"{character.strip()}音色参考"
+            else:
+                label = f"{character.strip()} voice reference"
         role_text = role.strip()
         values = {
             "order": index,
@@ -829,12 +832,37 @@ def _minimax_video_runtime_profile() -> tuple[
     return allowed_ratios, allowed_resolutions, duration_range
 
 
-def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
+def _resolve_model_override(
+    parameters: dict[str, Any],
+    *,
+    env_name: str,
+    default: str,
+    explicit: str | None = None,
+    label: str,
+) -> str:
+    """Resolve optional model override: parameters.model > explicit arg > env var > default."""
+    raw_param = parameters.pop("model", None)
+    if raw_param is not None:
+        if not isinstance(raw_param, str) or not raw_param.strip():
+            raise ValueError(f"{label} model must be a non-empty string")
+        return raw_param.strip()
+    if explicit is not None:
+        if not isinstance(explicit, str) or not explicit.strip():
+            raise ValueError(f"{label} model must be a non-empty string")
+        return explicit.strip()
+    env_value = (os.environ.get(env_name) or "").strip()
+    return env_value or default
+
+
+def compile_gpt_image_2_payload(
+    job: Mapping[str, Any], *, model: str | None = None
+) -> dict[str, Any]:
     """Compile an image job into GPT Image 2 generation/edit fields."""
     prompt, parameters = _require_job(job, "image", max_outputs=16)
     parameters = _take(
         parameters,
         {
+            "model",
             "width",
             "height",
             "size",
@@ -843,6 +871,13 @@ def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
             "moderation",
             "prompt_language",
         },
+    )
+    resolved_model = _resolve_model_override(
+        parameters,
+        env_name="OPENAI_IMAGE_MODEL",
+        default=OPENAI_MODEL,
+        explicit=model,
+        label="GPT Image",
     )
     prompt_language = _pop_prompt_language(parameters)
     prompt = _prompt_with_reference_contract(
@@ -911,7 +946,7 @@ def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("GPT Image references must be supported image files")
     return {
-        "model": OPENAI_MODEL,
+        "model": resolved_model,
         "prompt": prompt,
         "n": len(job["outputs"]),
         "output_format": output_format,
@@ -995,12 +1030,29 @@ def compile_minimax_speech_payload(job: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def compile_minimax_music_payload(job: Mapping[str, Any]) -> dict[str, Any]:
+def compile_minimax_music_payload(
+    job: Mapping[str, Any], *, model: str | None = None
+) -> dict[str, Any]:
     """Compile an audio job into the official MiniMax Music 3.0 JSON body."""
     prompt, parameters = _require_job(job, "music")
     parameters = _take(
         parameters,
-        {"lyrics", "sample_rate", "bitrate", "format", "lyrics_optimizer", "is_instrumental"},
+        {
+            "model",
+            "lyrics",
+            "sample_rate",
+            "bitrate",
+            "format",
+            "lyrics_optimizer",
+            "is_instrumental",
+        },
+    )
+    resolved_model = _resolve_model_override(
+        parameters,
+        env_name="MINIMAX_MUSIC_MODEL",
+        default=MINIMAX_MUSIC_MODEL,
+        explicit=model,
+        label="MiniMax music",
     )
     target_format = Path(job["outputs"][0]).suffix.casefold().lstrip(".")
     requested_format = parameters.pop("format", target_format)
@@ -1026,7 +1078,7 @@ def compile_minimax_music_payload(job: Mapping[str, Any]) -> dict[str, Any]:
     if bitrate not in {32000, 64000, 128000, 256000}:
         raise ValueError("unsupported MiniMax bitrate")
     body: dict[str, Any] = {
-        "model": MINIMAX_MUSIC_MODEL,
+        "model": resolved_model,
         "prompt": prompt,
         "stream": False,
         "output_format": "hex",

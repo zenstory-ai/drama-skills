@@ -2086,6 +2086,149 @@ class ProviderRuntimeTests(unittest.TestCase):
             self.assertIsNone(provider_adapters._safe_public_id("bad id/with spaces"))
             self.assertEqual(provider_adapters._safe_public_id("task_123-ok.v1"), "task_123-ok.v1")
 
+    def test_voice_reference_character_label_respects_prompt_language(self) -> None:
+        voice_binding = {
+            "slot_id": "REF-AUD-01",
+            "order": 1,
+            "path": "输入/voice.wav",
+            "label": "raw-label",
+            "role": "reference_audio",
+            "character": "Jiangchen",
+            "may_control": ["timbre"],
+            "must_not_control": ["dialogue"],
+        }
+        for lang, expected_label in (
+            ("zh-CN", "Jiangchen音色参考"),
+            ("en", "Jiangchen voice reference"),
+            (None, "Jiangchen voice reference"),
+            ("ja", "Jiangchen voice reference"),
+        ):
+            params: dict[str, object] = {"duration": 5, "ratio": "9:16"}
+            if lang is not None:
+                params["prompt_language"] = lang
+            job = {
+                "modality": "video",
+                "prompt": "Character speaks calmly.",
+                "references": ["输入/voice.wav"],
+                "reference_bindings": [voice_binding],
+                "outputs": ["制作成果/shot.mp4"],
+                "parameters": params,
+            }
+            with self.subTest(provider="seedance", lang=lang):
+                payload = provider_adapters.compile_seedance_payload(
+                    job,
+                    model="configured-model",
+                    reference_urls=["https://cdn.example/voice.wav"],
+                    reference_roles=["reference_audio"],
+                )
+                text = payload["content"][0]["text"]
+                self.assertIn(expected_label, text)
+                if lang != "zh-CN":
+                    self.assertNotIn("音色参考", text)
+
+            h3_job = {
+                **job,
+                "parameters": {**params, "resolution": "768P"},
+            }
+            with self.subTest(provider="minimax-h3", lang=lang):
+                payload = provider_adapters.compile_minimax_h3_payload(
+                    h3_job,
+                    model="configured-model",
+                    reference_urls=["https://cdn.example/voice.wav"],
+                    reference_roles=["reference_audio"],
+                )
+                text = payload["content"][0]["text"]
+                self.assertIn(expected_label, text)
+                if lang != "zh-CN":
+                    self.assertNotIn("音色参考", text)
+
+    def test_openai_image_and_minimax_music_model_overrides_preserve_defaults(self) -> None:
+        base_img_job = {
+            "modality": "image",
+            "prompt": "vertical portrait",
+            "references": [],
+            "outputs": ["剧集/EP001/制作成果/images/portrait.png"],
+            "parameters": {},
+        }
+        base_music_job = {
+            "modality": "music",
+            "prompt": "restrained piano score",
+            "references": [],
+            "outputs": ["剧集/EP001/制作成果/music/cue.mp3"],
+            "parameters": {"is_instrumental": True},
+        }
+        clean_env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"OPENAI_IMAGE_MODEL", "MINIMAX_MUSIC_MODEL"}
+        }
+        with mock.patch.dict(os.environ, clean_env, clear=True):
+            self.assertEqual(
+                provider_adapters.compile_gpt_image_2_payload(base_img_job)["model"],
+                "gpt-image-2",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(base_music_job)["model"],
+                "music-3.0",
+            )
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                **clean_env,
+                "OPENAI_IMAGE_MODEL": "gpt-image-2-2026-preview",
+                "MINIMAX_MUSIC_MODEL": "music-3.5-pro",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                provider_adapters.compile_gpt_image_2_payload(base_img_job)["model"],
+                "gpt-image-2-2026-preview",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(base_music_job)["model"],
+                "music-3.5-pro",
+            )
+            # Explicit parameters.model wins over env var override.
+            self.assertEqual(
+                provider_adapters.compile_gpt_image_2_payload(
+                    {**base_img_job, "parameters": {"model": "gpt-image-custom"}}
+                )["model"],
+                "gpt-image-custom",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(
+                    {
+                        **base_music_job,
+                        "parameters": {"is_instrumental": True, "model": "music-custom"},
+                    }
+                )["model"],
+                "music-custom",
+            )
+
+        # Empty env var falls back cleanly to defaults; blank parameters.model is rejected.
+        with mock.patch.dict(
+            os.environ,
+            {**clean_env, "OPENAI_IMAGE_MODEL": "   ", "MINIMAX_MUSIC_MODEL": ""},
+            clear=True,
+        ):
+            self.assertEqual(
+                provider_adapters.compile_gpt_image_2_payload(base_img_job)["model"],
+                "gpt-image-2",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(base_music_job)["model"],
+                "music-3.0",
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            provider_adapters.compile_gpt_image_2_payload(
+                {**base_img_job, "parameters": {"model": "  "}}
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            provider_adapters.compile_minimax_music_payload(
+                {**base_music_job, "parameters": {"is_instrumental": True, "model": ""}}
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

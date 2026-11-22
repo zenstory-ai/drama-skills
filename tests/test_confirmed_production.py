@@ -3630,6 +3630,483 @@ class ConfirmedProductionTests(unittest.TestCase):
                     root, job_id="EP001-RESUME-1", adapter_config=cfg
                 )
 
+    def test_bold_colon_inside_emphasis_fields_never_drops_refs_or_voice(self) -> None:
+        # Colon INSIDE emphasis (`- **输入参考图：** REF-...`, `- **参考音频：** REF-...`,
+        # `- **生成方式：** ...`, `* *参考:* ...`, `- **_输入参考图：_** ...`) must parse
+        # identically to `- **字段**：...` and `- 字段：...`, especially on GROUP-* where
+        # `输入参考图` is optional and would otherwise be silently dropped.
+        self.assertEqual(
+            production_tool._unwrap_field_key_value("**输入参考图", "** REF-1"),
+            ("输入参考图", "REF-1"),
+        )
+        self.assertEqual(
+            production_tool._unwrap_field_key_value("**输入参考图**", "**保留值加粗**"),
+            ("输入参考图", "**保留值加粗**"),
+        )
+        self.assertEqual(
+            production_tool._unwrap_field_key_value("**_输入参考图", "_** REF-1"),
+            ("输入参考图", "REF-1"),
+        )
+        self.assertEqual(
+            production_tool._unwrap_field_key_value("***生成方式", "*** 图生视频"),
+            ("生成方式", "图生视频"),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            (root / "输入/voice.wav").write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 冒号在加粗内\n"
+                "- **分镜：** SHOT-EP001-001\n"
+                "- **生成方式：** 图生视频\n"
+                "- **输入参考图：** REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（用途：起始帧；控制：首帧构图；不得控制：动作）\n"
+                "- **参考音频：** REF-VOICE（顺序：1）· 输入/voice.wav《女主音色》"
+                "（用途：音色；角色：江晨；控制：音色；不得控制：台词）\n\n"
+                "### 可复制提示词\n"
+                "> She speaks softly in the rain.\n\n"
+                "## GROUP-EP001-01 · 合拍冒号在加粗内\n"
+                "- **成员：** MOTION-EP001-001\n"
+                "- **输入参考图：** REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（用途：主体；控制：外貌；不得控制：动作）\n"
+                "* *参考音频:* REF-VOICE（顺序：1）· 输入/voice.wav《女主音色》"
+                "（用途：音色；角色：江晨；控制：音色；不得控制：台词）\n\n"
+                "### 可复制提示词\n"
+                "> Multi-shot group sequence.\n\n"
+                "## GROUP-EP001-02 · 合拍待补参考图不得静默放过\n"
+                "- **成员：** MOTION-EP001-001\n"
+                "- **输入参考图：** 无；待补参考图：等首帧定稿\n\n"
+                "### 可复制提示词\n"
+                "> Draft group.\n",
+                encoding="utf-8",
+            )
+            for job_id, entry, expected_roles in (
+                ("EP001-BOLD-MOTION", "MOTION-EP001-001", ["first_frame", "reference_audio"]),
+                ("EP001-BOLD-GROUP", "GROUP-EP001-01", ["reference_image", "reference_audio"]),
+            ):
+                with self.subTest(entry=entry):
+                    job_file = root / f"{job_id}.json"
+                    job_file.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "job_id": job_id,
+                                "modality": "video",
+                                "adapter": "fixture",
+                                "source": "剧集/EP001/视频提示词.md",
+                                "source_entry": entry,
+                                "outputs": [f"剧集/EP001/制作成果/video/{job_id}.mp4"],
+                                "parameters": {"prompt_language": "zh-CN"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    preview = production_tool.prepare_job(root, job_file)
+                    self.assertEqual(
+                        [b["role"] for b in preview["reference_bindings"]],
+                        expected_roles,
+                    )
+                    self.assertEqual(
+                        [b["path"] for b in preview["reference_bindings"]],
+                        ["输入/reference.png", "输入/voice.wav"],
+                    )
+
+            pending_group = root / "pending-group.json"
+            pending_group.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-BOLD-PENDING",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "GROUP-EP001-02",
+                        "outputs": ["剧集/EP001/制作成果/video/GROUP-02.mp4"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "pending or unsubmittable"):
+                production_tool.prepare_job(root, pending_group)
+
+            img_md = root / "剧集/EP001/图片提示词.md"
+            img_md.write_text(
+                "# EP001 图片提示词\n\n"
+                "## IMG-EP001-01 · 冒号在加粗内\n"
+                "- __参考：__ REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（用途：外貌；控制：脸型；不得控制：构图）\n\n"
+                "### 可复制提示词\n"
+                "> Vertical portrait of heroine.\n",
+                encoding="utf-8",
+            )
+            img_job = root / "bold-img.json"
+            img_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-BOLD-IMG",
+                        "modality": "image",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "IMG-EP001-01",
+                        "outputs": ["剧集/EP001/制作成果/image/IMG-01.png"],
+                        "parameters": {"prompt_language": "zh-CN"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            img_preview = production_tool.prepare_job(root, img_job)
+            self.assertEqual(img_preview["references"], ["输入/reference.png"])
+
+    def test_music_source_entry_extracts_prompt_and_isolates_hash_from_video_shots(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            config = self.adapter_config(directory)
+            video_md = root / "剧集/EP001/视频提示词.md"
+            video_md.write_text(
+                "# EP001 视频提示词\n\n"
+                "## MOTION-EP001-001 · 开场镜头\n"
+                "- 分镜：SHOT-EP001-001\n"
+                "- 输入参考图：无（文生视频）\n\n"
+                "### 可复制提示词\n"
+                "> Original video shot prompt.\n\n"
+                "## MUSIC-EP001-01 · 夜雨悬疑主题\n"
+                "- 纯音乐：是\n"
+                "- 情绪：克制悬疑\n\n"
+                "### 可复制提示词\n"
+                "> Restrained minimalist piano and low cello pulse, 84 BPM, suspenseful urban night.\n\n"
+                "### 备注\n"
+                "> 供剪辑铺底。\n",
+                encoding="utf-8",
+            )
+            music_job = root / "music-entry.json"
+            music_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MUSIC-01",
+                        "modality": "music",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "MUSIC-EP001-01",
+                        "outputs": ["剧集/EP001/制作成果/music/MUSIC-01.wav"],
+                        "parameters": {"is_instrumental": True},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            preview = self.prepare_and_confirm(root, music_job)
+            self.assertEqual(preview["source_entry"], "MUSIC-EP001-01")
+            self.assertEqual(
+                preview["prompt"],
+                "Restrained minimalist piano and low cello pulse, 84 BPM, suspenseful urban night.",
+            )
+            self.assertEqual(preview["warnings"], [])
+
+            # Editing a video shot in the same 视频提示词.md must NOT invalidate MUSIC-EP001-01!
+            video_md.write_text(
+                video_md.read_text(encoding="utf-8").replace(
+                    "Original video shot prompt.",
+                    "Revised video shot prompt with slow dolly.",
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-MUSIC-01")["state"],
+                "confirmed",
+            )
+            ran = production_tool.run_job(
+                root, job_id="EP001-MUSIC-01", adapter_config=config
+            )
+            self.assertEqual(ran["state"], "succeeded")
+            self.assertEqual(production_tool.audit_project(root)["status"], "pass")
+
+            # Editing the MUSIC-EP001-01 section itself MUST invalidate confirmation / flag audit.
+            video_md.write_text(
+                video_md.read_text(encoding="utf-8").replace("84 BPM", "92 BPM"),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-MUSIC-01")["state"],
+                "needs_reconfirmation",
+            )
+
+            # Standalone music Markdown document with MUSIC-* source_entry also works end-to-end.
+            standalone_md = root / "剧集/EP001/配乐提示词.md"
+            standalone_md.write_text(
+                "# EP001 配乐\n\n"
+                "## MUSIC-EP001-THEME · 片尾曲\n\n"
+                "### 可复制提示词\n"
+                "> Warm acoustic guitar ballad with soft female vocal.\n",
+                encoding="utf-8",
+            )
+            standalone_job = root / "standalone-music.json"
+            standalone_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MUSIC-THEME",
+                        "modality": "music",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/配乐提示词.md",
+                        "source_entry": "MUSIC-EP001-THEME",
+                        "outputs": ["剧集/EP001/制作成果/music/THEME.wav"],
+                        "parameters": {"is_instrumental": False, "lyrics": "[Verse]\n夜色渐深"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            st_preview = self.prepare_and_confirm(root, standalone_job)
+            self.assertEqual(
+                st_preview["prompt"],
+                "Warm acoustic guitar ballad with soft female vocal.",
+            )
+            self.assertEqual(
+                production_tool.run_job(
+                    root, job_id="EP001-MUSIC-THEME", adapter_config=config
+                )["state"],
+                "succeeded",
+            )
+
+            # Backward compatibility: music job on 视频提示词.md WITHOUT source_entry still prepares
+            # and emits a soft-gate `music_whole_file_hash` warning.
+            legacy_music_job = root / "legacy-music.json"
+            legacy_music_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MUSIC-LEGACY",
+                        "modality": "music",
+                        "adapter": "fixture",
+                        "prompt": "Manual music prompt.",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "outputs": ["剧集/EP001/制作成果/music/LEGACY.wav"],
+                        "parameters": {"is_instrumental": True},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            legacy_preview = production_tool.prepare_job(root, legacy_music_job)
+            self.assertIsNone(legacy_preview["source_entry"])
+            self.assertEqual(
+                [w["code"] for w in legacy_preview["warnings"]],
+                ["music_whole_file_hash"],
+            )
+
+            # Wrong entry prefix (`MOTION-*`) or wrong canonical doc (`图片提示词.md`) is rejected.
+            bad_prefix_job = root / "bad-music-prefix.json"
+            bad_prefix_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MUSIC-BAD-PREFIX",
+                        "modality": "music",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "MOTION-EP001-001",
+                        "outputs": ["剧集/EP001/制作成果/music/BAD.wav"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "does not match the job modality"):
+                production_tool.prepare_job(root, bad_prefix_job)
+
+            (root / "剧集/EP001/图片提示词.md").write_text(
+                "## MUSIC-EP001-01\n### 可复制提示词\n> Wrong file.\n",
+                encoding="utf-8",
+            )
+            bad_file_job = root / "bad-music-file.json"
+            bad_file_job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MUSIC-BAD-FILE",
+                        "modality": "music",
+                        "adapter": "fixture",
+                        "source": "剧集/EP001/图片提示词.md",
+                        "source_entry": "MUSIC-EP001-01",
+                        "outputs": ["剧集/EP001/制作成果/music/BAD2.wav"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "does not match the job modality"):
+                production_tool.prepare_job(root, bad_file_job)
+
+    def test_explicit_adapter_capabilities_and_soft_gate_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            (root / "输入/voice.wav").write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+            job_file = root / "custom-audio-job.json"
+            job_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-CAP-AUDIO",
+                        "modality": "video",
+                        "adapter": "custom-video",
+                        "prompt": "Character speaks under rain.",
+                        "reference_bindings": [
+                            {
+                                "slot_id": "REF-LOOK",
+                                "order": 1,
+                                "path": "输入/reference.png",
+                                "label": "女主定妆照",
+                                "role": "identity_and_look",
+                                "may_control": ["外貌"],
+                                "must_not_control": ["构图"],
+                            },
+                            {
+                                "slot_id": "REF-VOICE",
+                                "order": 2,
+                                "path": "输入/voice.wav",
+                                "label": "女主音色",
+                                "role": "reference_audio",
+                                "character": "江晨",
+                                "may_control": ["音色"],
+                                "must_not_control": ["台词"],
+                            },
+                        ],
+                        "outputs": ["剧集/EP001/制作成果/video/CAP-AUDIO.mp4"],
+                        "overwrite": True,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            # Pre-create existing output to verify `overwrite_existing_output` + `missing_prompt_language` soft warnings.
+            existing_out = root / "剧集/EP001/制作成果/video/CAP-AUDIO.mp4"
+            existing_out.parent.mkdir(parents=True, exist_ok=True)
+            existing_out.write_bytes(b"prior-take")
+            preview = self.prepare_and_confirm(root, job_file)
+            self.assertEqual(
+                sorted(w["code"] for w in preview["warnings"]),
+                ["missing_prompt_language", "overwrite_existing_output"],
+            )
+
+            # 1. Explicit `audio_capable: false` overrides even a script named `provider_adapters.py seedance`.
+            builtin_stub = Path(directory) / "provider_adapters.py"
+            builtin_stub.write_text(
+                "import json, pathlib, sys\n"
+                "payload = json.load(sys.stdin)\n"
+                "out = pathlib.Path(payload['output_root']) / 'out.mp4'\n"
+                "out.write_bytes(b'\\x00\\x00\\x00\\x18ftypisom')\n"
+                "json.dump({'outputs': [{'target': payload['outputs'][0], 'source': str(out)}]}, sys.stdout)\n",
+                encoding="utf-8",
+            )
+            disabled_cfg = Path(directory) / "disabled-audio.json"
+            disabled_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "custom-video": {
+                                "command": [sys.executable, str(builtin_stub), "seedance"],
+                                "timeout_seconds": 30,
+                                "audio_capable": False,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "reference_audio; nothing was submitted"):
+                production_tool.run_job(
+                    root, job_id="EP001-CAP-AUDIO", adapter_config=disabled_cfg
+                )
+            # Confirmation remains valid because rejection happened pre-submission.
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-CAP-AUDIO")["state"],
+                "confirmed",
+            )
+
+            # 2. Contradictory config (`audio_capable: false` + `reference_audio` in `reference_roles`) fails closed.
+            conflict_cfg = Path(directory) / "conflict.json"
+            conflict_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "custom-video": {
+                                "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                "timeout_seconds": 30,
+                                "reference_roles": ["identity_and_look", "reference_audio"],
+                                "audio_capable": False,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "conflict"):
+                production_tool.run_job(
+                    root, job_id="EP001-CAP-AUDIO", adapter_config=conflict_cfg
+                )
+
+            # 3. Custom adapter (NOT named provider_adapters.py) with `audio_capable: true` succeeds!
+            custom_cfg = Path(directory) / "custom-audio-capable.json"
+            custom_cfg.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "custom-video": {
+                                "command": [sys.executable, str(FIXTURE_ADAPTER)],
+                                "timeout_seconds": 30,
+                                "audio_capable": True,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ran = production_tool.run_job(
+                root, job_id="EP001-CAP-AUDIO", adapter_config=custom_cfg
+            )
+            self.assertEqual(ran["state"], "succeeded")
+
+            # 4. Soft-gate check for unpinned vs version-pinned external package runners.
+            self.assertEqual(
+                [
+                    w["code"]
+                    for w in production_tool._adapter_command_warnings(
+                        ["uvx", "drama-providers", "seedance"]
+                    )
+                ],
+                ["unpinned_remote_adapter"],
+            )
+            self.assertEqual(
+                production_tool._adapter_command_warnings(
+                    ["uvx", "--from", "drama-providers==1.2.3", "drama-providers", "seedance"]
+                ),
+                [],
+            )
+            self.assertEqual(
+                [
+                    w["code"]
+                    for w in production_tool._adapter_command_warnings(
+                        ["npx", "drama-providers@latest"]
+                    )
+                ],
+                ["unpinned_remote_adapter"],
+            )
+            self.assertEqual(
+                production_tool._adapter_command_warnings(
+                    ["npx", "drama-providers@1.2.3"]
+                ),
+                [],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
