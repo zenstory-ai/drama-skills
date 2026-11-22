@@ -30,7 +30,7 @@
 
 ## 三、可选画面图文叠加层（`- 画面文字 N：`）
 
-`画面文字` 属于**可选**叠加层，需本机配置 [Remotion 图文叠加层](../assets/remotion/README.md) 才能由 `edit_tool.py render` 自动烧录（若无 Node/Remotion 环境，可省略 `画面文字` 行直接走默认 `ffmpeg` 渲染，或输出无叠字成片交外部剪辑软件叠加）。
+`画面文字` 属于**可选**叠加层，默认由 `edit_tool.py render --screen-text-mode auto` 处理：包含复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 [Remotion 图文叠加层](../assets/remotion/README.md) 时走 Remotion；未装 Node/Remotion 且全片仅含普通 `字卡` 时自动降级为 `ffmpeg` ASS 烧录并给出提醒；也可传 `--screen-text-mode ffmpeg` 强制烧录纯 `字卡`，或传 `--screen-text-mode off` 跳过全部 `画面文字` 叠层（无需删除剪辑单中的 `画面文字` 行）以直接出片或交外部剪辑软件叠加。
 
 基本语法为 `- 画面文字 N：<起>-<止> <样式> <项>｜<项>…`（单条可省编号，同屏位置时间段不得重叠）：
 

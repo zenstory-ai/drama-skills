@@ -3778,7 +3778,7 @@ def _build_screen_text_ass(
         rendered = [_ass_text(items[0])]
         for secondary in items[1:]:
             rendered.append(
-                f"{{\\fs{sub_size}\\b0\\alpha&H33&}}{_ass_text(secondary)}"
+                f"{{\\fs{sub_size}\\b0\\1a&H33&}}{_ass_text(secondary)}"
             )
         joined_text = "\\N".join(rendered)
         lines.append(

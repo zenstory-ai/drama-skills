@@ -61,7 +61,7 @@ EP_HEADING_RE = re.compile(
     r"^[ \t　]*(?:#{1,6}[ \t　]+)?(?:EPISODE|EP)[ \t　]*([0-9]+)"
     r"(?![0-9])"
     rf"(?![ \t　]*{_HEADING_SEP}?[ \t　]*SC[0-9])"
-    r"(?![ \t　]*[-–—][ \t　]*(?:EPISODE|EP)[ \t　]*[0-9]+)"
+    r"(?![ \t　]*[-–—][ \t　]*(?:(?:EPISODE|EP)[ \t　]*)?[0-9]+)"
     + _EN_HEADING_TAIL
     + r"[ \t　]*$",
     re.IGNORECASE,

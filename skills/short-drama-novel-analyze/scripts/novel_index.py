@@ -66,6 +66,8 @@ CHAPTER_RE = re.compile(
     + r"|"
     + _ROMAN_NUMBER_RE
     + r")"
+    r"(?![ \t　]*[-–—][ \t　]*(?:(?i:Chapter)[ \t　]+)?[0-9]+)"
+    r"(?!(?<=[A-Za-z])-[A-Za-z])"
     r"(?=$|[ \t　]*"
     + _EN_CHAPTER_SEP
     + r"|[ \t　]+)"

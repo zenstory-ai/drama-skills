@@ -1015,7 +1015,12 @@ class EnglishChapterHeadingTests(unittest.TestCase):
             f"Chapter 1: First\n{self._en_prose()}\n"
             "Chapter of the old book sat open on the desk.\n"
             "Chapter mild weather arrived by noon.\n"
-            "Chapter 10a is an appendix code.\n\n"
+            "Chapter 10a is an appendix code.\n"
+            "Chapter 1-2: Combined recap note.\n"
+            "Chapter 1-3\n"
+            "Chapter 1 - Chapter 2 summary\n"
+            "Chapter IV-V arc\n"
+            "Chapter Twenty-First century blues\n\n"
             f"Chapter 2: Second\n{self._en_prose()}\n\n"
             f"Chapter 3: Third\n{self._en_prose()}\n"
         )

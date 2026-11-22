@@ -1,6 +1,6 @@
 # 内置生成接口说明
 
-内置脚本 `<SKILL_DIR>/scripts/provider_adapters.py` 仅使用 Python 3.9+ 标准库与供应商公开 HTTP 接口通信，通用输入输出协议与参考素材体积限制见 [生成接口协议规范](adapter-contract.md)（离线模拟脚本 `scripts/fixture_adapter.py` 仅供开发测试，不用于正式生成）。
+内置脚本 `<SKILL_DIR>/scripts/provider_adapters.py` 仅使用 Python 3.9+ 标准库与供应商公开 HTTP 接口通信，通用输入输出协议与参考素材体积限制见 [生成接口协议规范](adapter-contract.md)（离线模拟测试夹具仅保存在仓库测试目录中，不随技能包分发）。
 
 > 跨平台说明：将下文示例中的 `<SKILL_DIR>` 替换为本技能实际安装目录；Windows 下可将 `"python3"` 替换为 `"py", "-3"` 或 `"python"`。
 
