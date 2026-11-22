@@ -11,6 +11,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -307,10 +309,14 @@ class RelaxedGateContractTests(EpisodeCase):
             "> 9:16 vertical close-up in the office as a young man sets the glass cup onto the wooden desk.\n",
         )
         (self.episode / "视频提示词.md").write_text(english_video, encoding="utf-8")
-        errors = self.errors()
-        self.assertTrue(any("江晨" in err and "提示词名称" in err for err in errors), errors)
+        result = check.validate_episode_with_warnings(self.episode, self.project)
+        self.assertEqual(result.errors, [])
+        self.assertTrue(
+            any("江晨" in warn and "提示词名称" in warn for warn in result.warnings),
+            result.warnings,
+        )
 
-    def test_mixed_en_keyframes_and_zh_video_prompts_require_screen_names(self) -> None:
+    def test_mixed_en_keyframes_and_zh_video_prompts_warn_for_screen_names(self) -> None:
         manifest = {
             "format": {"prompt_language": "en"},
             "creator_authority": {
@@ -326,8 +332,9 @@ class RelaxedGateContractTests(EpisodeCase):
         visual = (self.episode / "视觉设定.md").read_text(encoding="utf-8")
         visual_no_names = re.sub(r"^- 提示词名称：[^\n]*\n", "", visual, flags=re.MULTILINE)
         (self.episode / "视觉设定.md").write_text(visual_no_names, encoding="utf-8")
-        errors = self.errors()
-        self.assertTrue(any("提示词名称" in err for err in errors), errors)
+        result = check.validate_episode_with_warnings(self.episode, self.project)
+        self.assertEqual(result.errors, [])
+        self.assertTrue(any("提示词名称" in warn for warn in result.warnings), result.warnings)
 
     def test_multiword_speakers_and_duplicate_motion_fields_without_nlp_false_positives(
         self,
@@ -339,11 +346,8 @@ class RelaxedGateContractTests(EpisodeCase):
             + "\nDr. Lin (whispering)：先把名单收好。\n",
             encoding="utf-8",
         )
-        dialogue = check._screenplay_dialogue(screenplay_path.read_text(encoding="utf-8"))
-        self.assertTrue(
-            any(line.speaker == "Dr. Lin" and line.key == "先把名单收好" for line in dialogue),
-            dialogue,
-        )
+        speakers = check._screenplay_dialogue(screenplay_path.read_text(encoding="utf-8"))
+        self.assertIn("Dr. Lin", speakers)
         visual_path = self.episode / "视觉设定.md"
         visual_path.write_text(
             visual_path.read_text(encoding="utf-8")
@@ -567,13 +571,10 @@ class RelaxedGateContractTests(EpisodeCase):
         )
 
         # ASCII-colon foreign dialogue is recognized in `_screenplay_dialogue`
-        dialogue = check._screenplay_dialogue(
+        speakers = check._screenplay_dialogue(
             "<!-- 场记注释 -->\n## EP001-SC001 外 · Pier · 夜\n\nElena: Stay back.\n\n12:30 灯亮。\n"
         )
-        self.assertEqual(
-            [(line.scene, line.speaker, line.key) for line in dialogue],
-            [("EP001-SC001", "Elena", "stayback")],
-        )
+        self.assertEqual(speakers, {"Elena"})
 
     def test_crlf_and_utf8_bom_normalize_across_all_episode_documents_and_helpers(self) -> None:
         videos_path = self.episode / "视频提示词.md"
@@ -654,11 +655,8 @@ class RelaxedGateContractTests(EpisodeCase):
             "- **人物：**许棠、顾沉\n"
             "许棠：站住。\n"
         )
-        dialogue = check._screenplay_dialogue(raw)
-        self.assertEqual(
-            [(line.scene, line.speaker, line.key) for line in dialogue],
-            [("EP001-SC001", "许棠", "站住")],
-        )
+        speakers = check._screenplay_dialogue(raw)
+        self.assertEqual(speakers, {"许棠"})
 
         script_path = self.episode / "剧本.md"
         base = script_path.read_text(encoding="utf-8")
@@ -722,6 +720,96 @@ class RelaxedGateContractTests(EpisodeCase):
             any("视觉设定.md" in err and "未闭合的 HTML 注释" in err for err in unclosed_errors),
             unclosed_errors,
         )
+
+    def test_soft_gate_cli_prints_warnings_and_exits_zero_without_hard_errors(self) -> None:
+        visual_path = self.episode / "视觉设定.md"
+        visual_path.write_text(
+            re.sub(r"^- 提示词名称：[^\n]*\n", "", visual_path.read_text(encoding="utf-8"), flags=re.MULTILINE),
+            encoding="utf-8",
+        )
+        result = check.validate_episode_with_warnings(self.episode, self.project)
+        self.assertEqual(result.errors, [])
+        self.assertTrue(result.warnings)
+        texts = {name: (self.episode / name).read_text(encoding="utf-8") for name in check.REQUIRED_DOCUMENTS}
+        self.assertEqual(check.collect_warnings(texts, self.project), result.warnings)
+
+        cli = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "skills/short-drama/scripts/creator_markdown_check.py"),
+                str(self.episode),
+                "--project-root",
+                str(self.project),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertIn("WARNING:", cli.stdout)
+        self.assertIn("OK:", cli.stdout)
+
+    def test_image_reference_accepts_parenthetical_none_and_tail_frame_catches_extra_spaces(self) -> None:
+        base_img = (self.episode / "图片提示词.md").read_text(encoding="utf-8")
+        for ok_ref in (
+            "- 参考：无（纯文生图）",
+            "- 参考：无（纯文生图）。",
+            "- 参考：无外部参考（首次建卡）",
+            "- 参考：无外部参考（首次建卡）；三视图保持同一脸型。",
+            "- 参考：无(pure t2i)",
+        ):
+            with self.subTest(ok_ref=ok_ref):
+                mutated = base_img.replace(
+                    "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                    ok_ref,
+                    1,
+                )
+                (self.episode / "图片提示词.md").write_text(mutated, encoding="utf-8")
+                self.assertEqual(self.errors(), [])
+        (self.episode / "图片提示词.md").write_text(base_img, encoding="utf-8")
+
+        base_board = (self.episode / "分镜.md").read_text(encoding="utf-8")
+        for heading in ("###  尾帧提示词", "###\u3000尾帧提示词", "###\t尾帧提示词"):
+            with self.subTest(heading=repr(heading)):
+                mutated_board = base_board.replace(
+                    "## SHOT-EP001-002",
+                    f"{heading}\n\n## SHOT-EP001-002",
+                    1,
+                )
+                (self.episode / "分镜.md").write_text(mutated_board, encoding="utf-8")
+                errs = self.errors()
+                self.assertTrue(
+                    any("SHOT-EP001-001" in err and "尾帧提示词" in err for err in errs),
+                    errs,
+                )
+
+    def test_music_sections_validate_cleanly_and_dead_helpers_are_removed(self) -> None:
+        for removed in ("_HTML_COMMENT_RE", "_han_key", "_LEADING_LANG_TAG_RE", "_dialogue_key", "SpokenLine", "VisualBasis"):
+            self.assertFalse(hasattr(check, removed), removed)
+
+        videos_path = self.episode / "视频提示词.md"
+        base_video = videos_path.read_text(encoding="utf-8")
+        music_section = (
+            "\n## MUSIC-EP001-01 · 办公室悬念铺底\n"
+            "- 用途：对峙铺底\n"
+            "- 区间：SHOT-EP001-001 至 SHOT-EP001-005\n"
+            "- 时长：15s\n\n"
+            "### 可复制提示词\n"
+            "> Minimalist tense cello pulse, dry room resonance, no vocals.\n"
+        )
+        videos_path.write_text(base_video + music_section, encoding="utf-8")
+        self.assertEqual(self.errors(), [])
+
+        videos_path.write_text(base_video + music_section + music_section, encoding="utf-8")
+        self.assertIn("视频提示词.md: MUSIC 标题 ID 重复", self.errors())
+
+        videos_path.write_text(
+            base_video + "\n## MUSIC-EP001-02 · 空提示词\n- 用途：过场\n\n### 可复制提示词\n\n",
+            encoding="utf-8",
+        )
+        errs = self.errors()
+        self.assertTrue(any("MUSIC-EP001-02" in err and "可复制提示词" in err for err in errs), errs)
 
 
 if __name__ == "__main__":

@@ -93,7 +93,10 @@ class SimpleLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(choices_match, result.stdout)
         assert choices_match is not None
         commands = set(choices_match.group(1).split(","))
-        self.assertEqual(commands, {"init", "configure", "status", "package", "verify", "export"})
+        self.assertEqual(
+            commands,
+            {"init", "configure", "scaffold-episode", "status", "package", "verify", "export"},
+        )
         for retired in ("publish", "accept", "review", "set-authority", "recover"):
             self.assertNotIn(retired, commands)
         for removed_api in (
@@ -102,6 +105,7 @@ class SimpleLifecycleTests(unittest.TestCase):
             "record_review",
             "set_creator_authority",
             "record_independent_review",
+            "project_layout",
         ):
             self.assertFalse(hasattr(project_tool, removed_api), removed_api)
 
@@ -1219,50 +1223,259 @@ class ActiveConfigureAndDashboardContractTests(unittest.TestCase):
                     production_profile={"native_duration_seconds": {"min": 8, "max": 4}},
                 )
 
-    def test_package_blocks_unedited_rejected_or_revise_state_and_allows_edited_file(
+    def test_legacy_artifact_state_remains_readable_in_status_without_blocking_package(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_tracked_project(directory, decision="rejected")
-            source = root / "剧集/EP001/screenplay.md"
-            with self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "delivery source was rejected"
-            ):
-                project_tool.build_delivery_package(root, episode="EP001")
-
-            source.write_text("# creator fixed after reject\n", encoding="utf-8")
-            packaged_after_reject = project_tool.build_delivery_package(
-                root, episode="EP001"
-            )
+            status = project_tool.project_status(root)
+            self.assertEqual(status["artifacts"].get("EP001:script"), "revise")
+            packaged = project_tool.build_delivery_package(root, episode="EP001")
             self.assertIn(
                 "剧集/EP001/screenplay.md",
-                [item["source"] for item in packaged_after_reject["files"]],
+                [item["source"] for item in packaged["files"]],
             )
 
+    def test_configure_supports_json_file_and_at_path_for_windows_shells(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = self.make_tracked_project(directory, decision="accepted")
-            source = root / "剧集/EP001/screenplay.md"
-            digest = hashlib.sha256(source.read_bytes()).hexdigest()
-            state_path = root / ".short-drama/state.json"
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-            state["artifacts"]["EP001:script"]["review"] = {
-                "verdict": "revise",
-                "outputs": {"剧集/EP001/screenplay.md": digest},
-            }
-            project_tool.atomic_json(state_path, state)
-            with self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "requires revision before packaging"
-            ):
-                project_tool.build_delivery_package(root, episode="EP001")
+            root = Path(directory) / "win-json"
+            project_tool.initialize_project(
+                root,
+                title="跨平台配置",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            cfg_file = Path(directory) / "config.json"
+            # Write with UTF-8 BOM to mimic Windows PowerShell Set-Content -Encoding UTF8.
+            cfg_file.write_bytes(
+                "\ufeff".encode("utf-8")
+                + json.dumps(
+                    {
+                        "title": "文件配置剧名",
+                        "episode_count": 10,
+                        "target_seconds_per_episode": 75,
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
+            cli = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "configure",
+                    str(root),
+                    "--json-file",
+                    str(cfg_file),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            status = json.loads(cli.stdout)["status"]
+            self.assertEqual(status["title"], "文件配置剧名")
+            self.assertEqual(status["format"]["episode_count"], 10)
+            self.assertEqual(status["format"]["target_seconds_per_episode"], 75)
 
-            source.write_text("# creator fixed after revise\n", encoding="utf-8")
-            packaged_after_revise = project_tool.build_delivery_package(
-                root, episode="EP001"
+            pacing_file = Path(directory) / "pacing.json"
+            pacing_file.write_text(
+                json.dumps(
+                    {
+                        "spoken_characters_per_second": 4.4,
+                        "seconds_per_action_paragraph": 2.0,
+                    }
+                ),
+                encoding="utf-8",
             )
-            self.assertIn(
-                "剧集/EP001/screenplay.md",
-                [item["source"] for item in packaged_after_revise["files"]],
+            cli_at = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "configure",
+                    str(root),
+                    "--pacing-json",
+                    f"@{pacing_file}",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
+            self.assertEqual(cli_at.returncode, 0, cli_at.stderr)
+            self.assertEqual(json.loads(cli_at.stdout)["status"]["profile_notes"], [])
+
+            conflict = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "configure",
+                    str(root),
+                    "--json",
+                    '{"title":"a"}',
+                    "--json-file",
+                    str(cfg_file),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(conflict.returncode, 2)
+
+    def test_scaffold_episode_creates_skeletons_without_clobbering_and_reports_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "fresh-project"
+            result = project_tool.scaffold_episode(
+                root, episode="EP001", title="第一集试拍", suite_root=SKILL
+            )
+            self.assertTrue(result["project_initialized"])
+            self.assertEqual(set(result["created_files"]), set(project_tool.CREATOR_DOCUMENTS))
+            self.assertEqual(result["existing_files"], [])
+            gap_kinds = {item["kind"] for item in result["gaps"]}
+            self.assertEqual(
+                gap_kinds,
+                {"missing_scenes", "missing_visual_entries", "missing_shots", "missing_motions"},
+            )
+
+            # Write a real scene and one shot referencing a missing IMG and missing MOTION.
+            ep_dir = root / "剧集/EP001"
+            (ep_dir / "剧本.md").write_text(
+                "# EP001 · 试拍\n\n## EP001-SC001 内 · 走廊 · 夜\n\n许棠推门。\n\n## EP001-SC002 外 · 天台 · 夜\n\n风吹衣角。\n",
+                encoding="utf-8",
+            )
+            (ep_dir / "分镜.md").write_text(
+                "# EP001 分镜\n\n"
+                "## SHOT-EP001-001 · 推门\n"
+                "- 来源：EP001-SC001\n"
+                "- 时长：3s\n"
+                "- 图片提示词项：IMG-XT-SHEET《许棠设定图》（控制：人物外貌）\n"
+                "- 输入参考图：无（文生视频）。\n"
+                "- 出场设定：无\n",
+                encoding="utf-8",
+            )
+            second = subprocess.run(
+                [sys.executable, str(SCRIPT), "scaffold-episode", str(root), "EP001"],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(second.returncode, 0, second.stderr)
+            report = json.loads(second.stdout)
+            self.assertFalse(report["project_initialized"])
+            self.assertEqual(report["created_files"], [])
+            self.assertEqual(report["inventory"]["scenes"], ["EP001-SC001", "EP001-SC002"])
+            self.assertEqual(report["inventory"]["shots"], ["SHOT-EP001-001"])
+            gaps_by_kind = {(item["kind"], item.get("id")) for item in report["gaps"]}
+            self.assertIn(("unclaimed_scene", "EP001-SC002"), gaps_by_kind)
+            self.assertIn(("missing_keyframe_prompt", "SHOT-EP001-001"), gaps_by_kind)
+            self.assertIn(("missing_image_prompt", "IMG-XT-SHEET"), gaps_by_kind)
+            self.assertIn(("missing_motion_for_shot", "SHOT-EP001-001"), gaps_by_kind)
+
+            # Complete valid episode yields zero gaps and leaves files byte-for-byte untouched.
+            golden_root = Path(directory) / "golden-project"
+            project_tool.initialize_project(
+                golden_root, title="样例", language="zh-CN", aspect_ratio="9:16", suite_root=SKILL
+            )
+            shutil.copytree(SUITE / "examples/creator-first/EP001", golden_root / "剧集/EP001")
+            before = {
+                name: (golden_root / "剧集/EP001" / name).read_bytes()
+                for name in project_tool.CREATOR_DOCUMENTS
+            }
+            clean = project_tool.scaffold_episode(golden_root, episode="EP001", suite_root=SKILL)
+            self.assertEqual(clean["created_files"], [])
+            self.assertEqual(clean["gaps"], [])
+            self.assertEqual(clean["checker_errors"], [])
+            self.assertEqual(clean["checker_warnings"], [])
+            for name, raw in before.items():
+                self.assertEqual((golden_root / "剧集/EP001" / name).read_bytes(), raw)
+
+    def test_export_manifest_direct_verify_security_and_package_deprecation_notice(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            project_tool.initialize_project(
+                root, title="导出校验", language="zh-CN", aspect_ratio="9:16", suite_root=SKILL
+            )
+            ep_dir = root / "剧集/EP001"
+            ep_dir.mkdir(parents=True)
+            for name in project_tool.CREATOR_DOCUMENTS:
+                (ep_dir / name).write_text(f"# EP001 {name}\n", encoding="utf-8")
+            out = Path(directory) / "handover"
+
+            exp = subprocess.run(
+                [sys.executable, str(SCRIPT), "export", str(root), "--out", str(out), "--manifest"],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(exp.returncode, 0, exp.stderr)
+            exp_payload = json.loads(exp.stdout)
+            self.assertEqual(exp_payload["manifest"], "manifest.json")
+            self.assertEqual(exp_payload["checksums"], "checksums.sha256")
+
+            ver = subprocess.run(
+                [sys.executable, str(SCRIPT), "verify", str(out)],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(ver.returncode, 0, ver.stdout + ver.stderr)
+            ver_payload = json.loads(ver.stdout)
+            self.assertEqual(ver_payload["status"], "verified")
+            self.assertEqual(ver_payload["episodes"], ["EP001"])
+
+            # Detect tampered file + unexpected file.
+            script_copy = out / "剧集/EP001/剧本.md"
+            original_script = script_copy.read_bytes()
+            script_copy.write_text("# tampered\n", encoding="utf-8")
+            (out / "extra.txt").write_text("sneaky\n", encoding="utf-8")
+            tampered = subprocess.run(
+                [sys.executable, str(SCRIPT), "verify", str(out)],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(tampered.returncode, 1)
+            tampered_payload = json.loads(tampered.stdout)
+            self.assertEqual(tampered_payload["status"], "tampered")
+            self.assertTrue(any("checksum mismatch" in p for p in tampered_payload["problems"]))
+            self.assertTrue(any("unexpected export file" in p for p in tampered_payload["problems"]))
+
+            # Symlink rejection inside export directory and on export root.
+            script_copy.write_bytes(original_script)
+            (out / "extra.txt").unlink()
+            if hasattr(os, "symlink"):
+                outside = Path(directory) / "outside.txt"
+                outside.write_text("secret\n", encoding="utf-8")
+                try:
+                    (out / "leak.md").symlink_to(outside)
+                    linked_root = Path(directory) / "linked-handover"
+                    linked_root.symlink_to(out, target_is_directory=True)
+                except OSError:
+                    pass
+                else:
+                    sym_report = project_tool.verify_export_directory(out)
+                    self.assertEqual(sym_report["status"], "tampered")
+                    self.assertTrue(any("symlink is not allowed" in p for p in sym_report["problems"]))
+                    with self.assertRaises(project_tool.ProjectConflictError):
+                        project_tool.verify_export_directory(linked_root)
+
+            # Package CLI stays functional and prints a gentle deprecation notice to stderr.
+            pkg = subprocess.run(
+                [sys.executable, str(SCRIPT), "package", str(root), "--episode", "EP001"],
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            self.assertEqual(pkg.returncode, 0, pkg.stderr)
+            self.assertIn("DEPRECATION", pkg.stderr)
+            self.assertEqual(json.loads(pkg.stdout)["episode"], "EP001")
 
 
 if __name__ == "__main__":

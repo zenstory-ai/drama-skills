@@ -122,8 +122,30 @@ class CreatorDeskBrowserTests(Browser, unittest.TestCase):
             todos.evaluate_all("nodes => nodes.map((node) => node.dataset.ep)"), ["EP001", "EP002", "EP003"]
         )
         expect(todos.first).to_contain_text("必须改")
+        # Series status badge derives from actual episode progress instead of staying stuck on 创作中.
+        expect(page.locator(".hero-t .eyebrow")).to_have_text("全剧 · 需要修改")
         rows.nth(1).click()
         page.wait_for_function("() => location.hash === '#/EP002'")
+
+    def test_creator_first_overview_avoids_redundant_status_fetch_and_shows_cut_only_duration(self) -> None:
+        episode = self.project / "剧集/EP004"
+        (episode / "剪辑单.md").write_text(STILL_CUT_LIST, encoding="utf-8")
+        self.addCleanup(lambda: (episode / "剪辑单.md").unlink())
+        status_requests: list[str] = []
+        context = self.browser.new_context(
+            viewport={"width": 1440, "height": 900}, reduced_motion="reduce"
+        )
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.on(
+            "request",
+            lambda req: status_requests.append(req.url) if "/api/status" in req.url else None,
+        )
+        page.goto(self.url)
+        expect(page.locator("#view")).to_have_attribute("data-state", "ready")
+        self.assertEqual(status_requests, [])
+        ep004_row = page.locator('.matrix tbody tr[data-episode="EP004"]')
+        expect(ep004_row).to_contain_text("0:07")
 
     def test_copy_to_assistant_puts_a_request_on_the_clipboard_instead_of_producing(self) -> None:
         page = self.open()

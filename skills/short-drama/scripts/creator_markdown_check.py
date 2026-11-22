@@ -28,7 +28,9 @@ REQUIRED_DOCUMENTS = (
     "分镜.md",
     "视频提示词.md",
 )
-SECTION_RE = re.compile(r"^##[ \t\u3000]+((?:IMG|SHOT|MOTION|GROUP)-[A-Z0-9-]+)\b", re.MULTILINE)
+SECTION_RE = re.compile(
+    r"^##[ \t\u3000]+((?:IMG|SHOT|MOTION|GROUP|MUSIC)-[A-Z0-9-]+)\b", re.MULTILINE
+)
 ANY_SECTION_RE = re.compile(r"^##[ \t\u3000]+", re.MULTILINE)
 IMG_RE = re.compile(r"\b(IMG-[A-Z0-9-]+)《([^》]+)》（控制：([^）]+)）")
 REF_SLOT_ID_PATTERN = r"REF-[A-Z0-9][A-Z0-9-]{0,79}"
@@ -134,7 +136,6 @@ def _strip_key_emphasis(key: str) -> str:
 
 
 _FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$", re.MULTILINE)
-_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
 _COPYABLE_BLOCK_RE = re.compile(
     r"^###[ \t\u3000]+(?:可复制提示词|首帧提示词|尾帧提示词)[ \t\u3000]*\r?$",
     re.MULTILINE,
@@ -553,7 +554,12 @@ def _is_no_external_reference(value: str) -> bool:
         not _contains_slot_token(stripped)
         and not _has_pending_references(stripped)
         and "待补参考图" not in stripped
-        and bool(re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", stripped))
+        and bool(
+            re.fullmatch(
+                r"无(?:外部参考)?(?:（[^）\n]+）|\([^)\n]+\))?(?:[；;][^\n]*)?。?",
+                stripped,
+            )
+        )
     )
 
 
@@ -793,31 +799,6 @@ def _check_project_file(
         errors.append(f"{owner}: REF 文件不存在: {locator}")
 
 
-def _han_key(value: str) -> str:
-    """Only the Han characters, so quoting and language tags do not decide identity."""
-    return "".join(re.findall(r"[\u3400-\u9fff]+", value))
-
-
-_LEADING_LANG_TAG_RE = re.compile(r"^\s*\[[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\]\s*")
-
-
-def _dialogue_key(value: str) -> str:
-    """Comparison key for a spoken line: Han characters when present, else folded letters/digits."""
-    han = _han_key(value)
-    if han:
-        return han
-    cleaned = _LEADING_LANG_TAG_RE.sub("", value)
-    return re.sub(r"[^0-9A-Za-z\u00C0-\u024F\u0400-\u04FF]+", "", cleaned).casefold()
-
-
-class SpokenLine(NamedTuple):
-    """One dialogue paragraph of 剧本.md: its scene, speaker and comparison key."""
-
-    scene: Optional[str]
-    speaker: str
-    key: str
-
-
 def _valid_scene_heading_id(line: str) -> Optional[str]:
     match = FULL_SCENE_HEADING_RE.fullmatch(line)
     if match is None:
@@ -827,20 +808,18 @@ def _valid_scene_heading_id(line: str) -> Optional[str]:
     return match.group("scene")
 
 
-def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
-    """Every dialogue paragraph, read the way screenplay_index.py reads it.
+def _screenplay_dialogue(screenplay: str) -> set[str]:
+    """Every speaking character in 剧本.md, read the way screenplay_index.py reads it.
 
     Mirrors `_parse_screenplay` block by block: closed comments are stripped with
     line preservation, and an unclosed comment ends the parse; a heading sets or
     clears the scene (scene ids use FULL_SCENE_HEADING_RE); a paragraph runs
     until a blank line, a heading or a comment and counts only inside a scene; a
     later line that starts another block means a missing separator, so the
-    paragraph is not dialogue. The one difference is the speaker list: the index
-    takes it from the project, and here a speaker is only ever looked up by 人物
-    entry name.
+    paragraph is not dialogue.
     """
     screenplay = _strip_html_comments(screenplay)
-    found: list[SpokenLine] = []
+    speakers: set[str] = set()
     scene: Optional[str] = None
     seen_first_scene = False
     at_scene_head = False
@@ -896,11 +875,9 @@ def _screenplay_dialogue(screenplay: str) -> list[SpokenLine]:
         match = SCREENPLAY_VOICE_TAG_RE.fullmatch(text) or SCREENPLAY_DIALOGUE_RE.fullmatch(
             text
         )
-        if match is not None:
-            key = _dialogue_key(match.group("text"))
-            if key:
-                found.append(SpokenLine(scene, match.group("speaker"), key))
-    return found
+        if match is not None and match.group("text").strip():
+            speakers.add(match.group("speaker"))
+    return speakers
 
 
 def _voice_records(visual: str, errors: list[str]) -> dict[str, str]:
@@ -956,7 +933,7 @@ def _check_role_voices(
     """When voice direction is declared, require it only on speaking characters."""
     if not (voices.has_visual and voices.has_screenplay) or not role_voices:
         return
-    speaking = {line.speaker for line in voices.dialogue}
+    speaking = voices.dialogue
     for entry in visual_entries:
         if entry.category != "人物" or entry.name not in speaking:
             continue
@@ -972,7 +949,7 @@ class VoiceContext(NamedTuple):
 
     characters: frozenset[str]
     records: dict[str, str]
-    dialogue: list[SpokenLine]
+    dialogue: set[str]
     # False when that document is not part of a partial check: the checks
     # that read it are skipped instead of reporting every name as unknown.
     has_visual: bool = True
@@ -1201,18 +1178,6 @@ def _visual_entries(document: str, errors: list[str]) -> list[VisualEntry]:
     return entries
 
 
-class VisualBasis(NamedTuple):
-    """One shot's parsed 出场设定: what it declares, and what it excludes."""
-
-    parsed: bool
-    declared: set[tuple[str, str]]
-    offscreen: set[tuple[str, str]]
-
-    @property
-    def accounted(self) -> set[tuple[str, str]]:
-        return self.declared | self.offscreen
-
-
 def _resolve_entry(
     key: tuple[str, str],
     known: set[tuple[str, str]],
@@ -1241,11 +1206,10 @@ def _visual_basis(
     entries: list[VisualEntry],
     other_headings: dict[str, str],
     errors: list[str],
-) -> VisualBasis:
-    """Parse one shot's 出场设定 and resolve it against `视觉设定.md`."""
-    empty = VisualBasis(True, set(), set())
+) -> None:
+    """Validate one shot's 出场设定 and resolve it against `视觉设定.md`."""
     if _is_none(value):
-        return empty
+        return
     plain = _plain(value)
     offscreen_raw = ""
     if OFFSCREEN_PREFIX in plain:
@@ -1272,9 +1236,7 @@ def _visual_basis(
             f"{owner}: 出场设定必须使用完整语法："
             "《视觉设定.md》·<人物|造型|地点|道具>「<名称>」（控制：<范围>），多项用；连接"
         )
-        # Coverage is not reported on top of a parse failure: every entry would
-        # be listed as uncovered and bury the one error that matters.
-        return VisualBasis(False, set(), set())
+        return
     known = {entry.key for entry in entries}
     declared: set[tuple[str, str]] = set()
     for match in matches:
@@ -1285,7 +1247,6 @@ def _visual_basis(
         _resolve_entry(key, known, other_headings, owner, errors)
         if not match.group(3).strip():
             errors.append(f"{owner}: 出场设定缺少控制范围: {key[0]}「{key[1]}」")
-    offscreen: set[tuple[str, str]] = set()
     if offscreen_raw:
         offscreen_raw = offscreen_raw.replace(VISUAL_BASIS_PREFIX, "")
         remainder = OFFSCREEN_ENTRY_RE.sub("", offscreen_raw).strip("；、 ")
@@ -1294,16 +1255,14 @@ def _visual_basis(
             errors.append(
                 f"{owner}: 画外清单必须写成 `；画外：<人物|造型|地点|道具>「<名称>」`，多项用；连接"
             )
-            return VisualBasis(False, set(), set())
+            return
         for match in offscreen_matches:
             key = (match.group(1), match.group(2).strip())
             if key in declared:
                 errors.append(
                     f"{owner}: {key[0]}「{key[1]}」同时写进出场设定和画外清单"
                 )
-            offscreen.add(key)
             _resolve_entry(key, known, other_headings, owner, errors)
-    return VisualBasis(True, declared, offscreen)
 
 
 class ContinuityLock(NamedTuple):
@@ -1468,7 +1427,7 @@ def _check_language_designators(
     project_root: Optional[Path],
     *,
     entries: list[VisualEntry],
-    errors: list[str],
+    warnings: list[str],
     has_image_family: bool = False,
     has_video_family: bool = False,
     image_prompts: Iterable[Optional[str]] = (),
@@ -1476,7 +1435,7 @@ def _check_language_designators(
     copyable_prompts: Iterable[Optional[str]] = (),
     fallback_texts: Iterable[str] = (),
 ) -> None:
-    """Every character must be nameable whenever any active prompt family is non-zh."""
+    """Emit soft warnings when a character lacks a cross-language prompt designator."""
     if project_root is None:
         # Without a project root the prompt language is unknown; validate_documents
         # promises to skip what needs the disk rather than guess a language.
@@ -1514,13 +1473,13 @@ def _check_language_designators(
         if not entry.has_screen_name and entry.designators == [entry.name]:
             name_has_zh = bool(re.search(r"[\u3400-\u9fff]", entry.name))
             if name_has_zh and has_non_zh_prompt:
-                errors.append(
+                warnings.append(
                     f"视觉设定.md: 人物「{entry.name}」缺少提示词名称；"
                     "提示词正文不是中文时，写「提示词名称：<正文里的拼写>」，"
                     "正文从不点名时写「提示词名称：无」"
                 )
             elif not name_has_zh and has_zh_prompt:
-                errors.append(
+                warnings.append(
                     f"视觉设定.md: 人物「{entry.name}」缺少提示词名称；"
                     "提示词正文是中文时，写「提示词名称：<正文里的拼写>」，"
                     "正文从不点名时写「提示词名称：无」"
@@ -1744,10 +1703,17 @@ def missing_documents(episode: Path) -> list[str]:
     return [name for name in REQUIRED_DOCUMENTS if not (episode / name).is_file()]
 
 
-def validate_episode(
+class ValidationResult(NamedTuple):
+    """Structured outcome of validating one episode: blocking errors + soft warnings."""
+
+    errors: list[str]
+    warnings: list[str]
+
+
+def validate_episode_with_warnings(
     episode: Path, project_root: Optional[Path] = None, *, partial: bool = False
-) -> list[str]:
-    """Return all deterministic contract errors for ``episode``.
+) -> ValidationResult:
+    """Return blocking contract errors and soft warnings for ``episode``.
 
     By default all five documents are required. ``partial`` checks only the
     documents that exist: rules that need a missing document are skipped, never
@@ -1759,9 +1725,26 @@ def validate_episode(
         for name in REQUIRED_DOCUMENTS
         if (episode / name).is_file()
     }
-    return validate_documents(
+    return validate_documents_with_warnings(
         texts, (project_root or episode.parent.parent).resolve(), partial=partial
     )
+
+
+def validate_episode(
+    episode: Path, project_root: Optional[Path] = None, *, partial: bool = False
+) -> list[str]:
+    """Return all blocking deterministic contract errors for ``episode``."""
+    return validate_episode_with_warnings(episode, project_root, partial=partial).errors
+
+
+def collect_warnings(
+    texts: "Mapping[str, Optional[str]]",
+    project_root: Optional[Path],
+    *,
+    partial: bool = False,
+) -> list[str]:
+    """Return only the non-blocking soft warnings for ``texts``."""
+    return validate_documents_with_warnings(texts, project_root, partial=partial).warnings
 
 
 def validate_documents(
@@ -1770,21 +1753,32 @@ def validate_documents(
     *,
     partial: bool = False,
 ) -> list[str]:
-    """The same rules over document text already in hand, keyed by file name.
+    """Return only blocking deterministic contract errors for ``texts``."""
+    return validate_documents_with_warnings(texts, project_root, partial=partial).errors
+
+
+def validate_documents_with_warnings(
+    texts: "Mapping[str, Optional[str]]",
+    project_root: Optional[Path],
+    *,
+    partial: bool = False,
+) -> ValidationResult:
+    """Validate document text in hand, returning blocking errors and soft warnings.
 
     A missing or None entry is a missing document. ``project_root`` None skips
     only what needs the disk: whether a REF file exists, and the project's
     prompt language.
     """
     errors: list[str] = []
+    warnings: list[str] = []
     missing = [name for name in REQUIRED_DOCUMENTS if texts.get(name) is None]
     if missing and not partial:
-        return [f"缺少创作文档: {', '.join(missing)}"]
+        return ValidationResult([f"缺少创作文档: {', '.join(missing)}"], [])
     present = frozenset(REQUIRED_DOCUMENTS) - frozenset(missing)
     if not present:
         # A partial check before any document exists has nothing to fail on;
         # the CLI says so instead of reporting an error the creator cannot fix.
-        return []
+        return ValidationResult([], [])
 
     def read(name: str, *, preserve_copyable: bool = False) -> str:
         raw = _normalize_text(texts.get(name) or "")
@@ -1861,6 +1855,7 @@ def validate_documents(
         match.group(2).strip(): match.group(1).strip()
         for match in OTHER_SETTING_HEADING_RE.finditer(visual)
         if match.group(1).strip() not in VISUAL_CATEGORIES
+        and not match.group(1).strip().startswith("MUSIC-")
     }
     shots = _sections(storyboard, "SHOT")
     image_pairs = re.findall(
@@ -1925,6 +1920,26 @@ def validate_documents(
     group_ids = re.findall(r"^##[ \t\u3000]+(GROUP-[A-Z0-9-]+)\b", video, re.MULTILINE)
     if len(group_ids) != len(set(group_ids)):
         errors.append("视频提示词.md: GROUP 标题 ID 重复")
+    music_ids = re.findall(r"^##[ \t\u3000]+(MUSIC-[A-Z0-9-]+)\b", video, re.MULTILINE)
+    if len(music_ids) != len(set(music_ids)):
+        errors.append("视频提示词.md: MUSIC 标题 ID 重复")
+    named_music = re.findall(
+        r"^##[ \t\u3000]+(MUSIC-[A-Z0-9-]+) · ([^\r\n]+)\r?$", video, re.MULTILINE
+    )
+    if len(named_music) != len(music_ids) or any(
+        not label.strip() for _, label in named_music
+    ):
+        errors.append("视频提示词.md: MUSIC 标题必须写成 ## MUSIC-... · <名称>")
+    for music_id, body in _sections(video, "MUSIC").items():
+        _fields(body, owner=music_id, errors=errors)
+        if (
+            re.search(r"^###[ \t\u3000]+可复制提示词[ \t\u3000]*\r?$", body, re.MULTILINE)
+            and _copyable_prompt(body) is None
+        ):
+            errors.append(
+                f"{music_id}: 缺少唯一且非空的可复制提示词"
+                + _copyable_prompt_cause(body)
+            )
     named_shots = re.findall(
         r"^##[ \t\u3000]+(SHOT-[A-Z0-9-]+) · ([^\r\n]+)\r?$", storyboard, re.MULTILINE
     )
@@ -2078,7 +2093,7 @@ def validate_documents(
                 f"{shot_id}: 缺少唯一且非空的首帧提示词"
                 + _copyable_prompt_cause(shot_body, heading=r"首帧提示词")
             )
-        if re.search(r"^### 尾帧提示词\s*$", shot_body, re.MULTILINE):
+        if re.search(r"^###[ \t\u3000]+尾帧提示词[ \t\u3000]*\r?$", shot_body, re.MULTILINE):
             closing = _copyable_prompt(shot_body, heading=r"尾帧提示词")
             collected_keyframes.append(closing)
             if closing is None:
@@ -2134,7 +2149,7 @@ def validate_documents(
     _check_language_designators(
         project_root,
         entries=visual_entries,
-        errors=errors,
+        warnings=warnings,
         has_image_family=has_images or has_storyboard,
         has_video_family=has_video,
         image_prompts=image_family_prompts,
@@ -2147,7 +2162,7 @@ def validate_documents(
         image_prompts=image_prompts if has_images else None,
         errors=errors,
     )
-    return errors
+    return ValidationResult(errors, warnings)
 
 
 def main() -> int:
@@ -2166,9 +2181,13 @@ def main() -> int:
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if reconfigure is not None:
         reconfigure(errors="backslashreplace")
-    errors = validate_episode(args.episode, args.project_root, partial=args.partial)
-    if errors:
-        for error in errors:
+    result = validate_episode_with_warnings(
+        args.episode, args.project_root, partial=args.partial
+    )
+    for warning in result.warnings:
+        print(f"WARNING: {warning}")
+    if result.errors:
+        for error in result.errors:
             print(f"ERROR: {error}")
         return 1
     missing = missing_documents(args.episode) if args.partial else []

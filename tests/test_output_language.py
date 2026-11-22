@@ -144,6 +144,7 @@ class TemplateTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
+        self.assertEqual(template["schema_version"], "1.0.0")
         self.assertEqual(template["language"], "zh-CN")
         self.assertEqual(template["format"]["prompt_language"], "en")
 
@@ -317,7 +318,7 @@ class CheckerLanguageAndDialogueTests(unittest.TestCase):
                 checker.validate_episode(ep, root, partial=True), []
             )
 
-    def test_cross_language_character_headings_require_prompt_designator(self) -> None:
+    def test_cross_language_character_headings_emit_soft_warning_without_blocking(self) -> None:
         cases = (
             (
                 "zh_name_in_en_prompt",
@@ -342,13 +343,16 @@ class CheckerLanguageAndDialogueTests(unittest.TestCase):
                         character_name=name,
                         prompt_text=prompt_text,
                     )
-                    errors = checker.validate_episode(ep, root, partial=True)
+                    result = checker.validate_episode_with_warnings(
+                        ep, root, partial=True
+                    )
+                    self.assertEqual(result.errors, [])
                     self.assertTrue(
                         any(
-                            f"人物「{name}」缺少提示词名称" in err
-                            for err in errors
+                            f"人物「{name}」缺少提示词名称" in warn
+                            for warn in result.warnings
                         ),
-                        errors,
+                        result.warnings,
                     )
 
     def test_fullwidth_colon_allows_optional_horizontal_whitespace_in_dialogue(
@@ -361,15 +365,8 @@ class CheckerLanguageAndDialogueTests(unittest.TestCase):
             "陈予安（压低声音）：\t别回头。\n\n"
             "[VO] Elena Vance (whisper)： 我们来晚了。\n"
         )
-        lines = checker._screenplay_dialogue(screenplay)
-        self.assertEqual(
-            [(item.scene, item.speaker, item.key) for item in lines],
-            [
-                ("EP001-SC001", "Elena Vance", "站在那别动"),
-                ("EP001-SC001", "陈予安", "别回头"),
-                ("EP001-SC001", "Elena Vance", "我们来晚了"),
-            ],
-        )
+        speakers = checker._screenplay_dialogue(screenplay)
+        self.assertEqual(speakers, {"Elena Vance", "陈予安"})
         english = checker.SCREENPLAY_DIALOGUE_RE.fullmatch(
             "Elena Vance： Stay right there."
         )

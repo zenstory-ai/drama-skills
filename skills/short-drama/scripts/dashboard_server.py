@@ -79,6 +79,9 @@ MEDIA_TYPES = {
 }
 DEFAULT_MAX_DEPTH = 8
 DEFAULT_MAX_NODES = 2_000
+SKIPPED_DIRECTORIES = frozenset(
+    {".git", "node_modules", ".venv", "__pycache__", ".short-drama"}
+)
 DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_MEDIA_BYTES = 256 * 1024 * 1024
 MAX_JSON_EXPANSION = 6
@@ -534,12 +537,17 @@ class ProjectStore:
                 warnings.append(f"无法读取 {'/'.join(parts) or '.'}: {exc}")
                 return
             for entry in entries:
+                if _entry_is_link(entry):
+                    continue
+                if (
+                    entry.is_dir(follow_symlinks=False)
+                    and entry.name.casefold() in SKIPPED_DIRECTORIES
+                ):
+                    continue
                 if nodes >= self.max_nodes:
                     node_truncated = True
                     return
                 nodes += 1
-                if _entry_is_link(entry):
-                    continue
                 if (
                     entry.is_file(follow_symlinks=False)
                     and entry.name == "short-drama.json"
@@ -694,6 +702,11 @@ class ProjectStore:
                 return children
             for entry in entries:
                 if _entry_is_link(entry):
+                    continue
+                if (
+                    entry.is_dir(follow_symlinks=False)
+                    and entry.name.casefold() in SKIPPED_DIRECTORIES
+                ):
                     continue
                 relative = "/".join((*parts, entry.name))
                 if parts == () and entry.name.casefold() == ".short-drama":

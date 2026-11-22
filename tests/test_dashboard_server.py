@@ -3706,6 +3706,234 @@ process.stdout.write(JSON.stringify({
         self.assertTrue(result["mdKeepsPromptComment"])
         self.assertEqual(result["headingSlice"], "## SHOT-EP001-001 · 真正的镜头")
 
+    def test_discover_and_tree_skip_git_node_modules_venv_pycache_and_short_drama(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            # Populate noisy directories with more files than max_nodes.
+            for noisy in (".git/objects/aa", "node_modules/pkg", ".venv/lib", "__pycache__"):
+                folder = workspace / noisy
+                folder.mkdir(parents=True, exist_ok=True)
+                for idx in range(15):
+                    (folder / f"f{idx}.txt").write_text("x", encoding="utf-8")
+            project = workspace / "zzz-drama"
+            make_project(project, "仓库内短剧")
+            for noisy in (".git/objects/bb", "node_modules/x", ".venv/bin", "__pycache__"):
+                folder = project / noisy
+                folder.mkdir(parents=True, exist_ok=True)
+                for idx in range(15):
+                    (folder / f"p{idx}.md").write_text("# noise\n", encoding="utf-8")
+            (project / "README.md").write_text("# 可见说明\n", encoding="utf-8")
+
+            store = dashboard_server.ProjectStore(
+                workspace,
+                dashboard_server.load_project_tool(SKILL),
+                max_nodes=25,
+            )
+            self.addCleanup(store.close)
+            projects, warnings = store.discover()
+            self.assertEqual(warnings, [])
+            self.assertEqual([item["title"] for item in projects], ["仓库内短剧"])
+
+            tree = store.tree(projects[0]["id"])
+            self.assertEqual(tree["warnings"], [])
+            names = [node["name"] for node in tree["tree"]]
+            self.assertIn("README.md", names)
+            for skipped in (".git", "node_modules", ".venv", "__pycache__", ".short-drama"):
+                self.assertNotIn(skipped, names)
+
+    def test_music_prompts_parse_and_index_and_dead_view_constants_are_removed(self) -> None:
+        self.assertFalse(hasattr(views, "SCALES"))
+        self.assertFalse(hasattr(views, "VOICE_BODY_RE"))
+        video_md = (
+            "# EP001 视频提示词\n\n"
+            "## MOTION-EP001-001 · 开场\n"
+            "- 分镜：SHOT-EP001-001\n"
+            "- 时长：3s\n"
+            "- 生成方式：文生视频\n"
+            "- 输入参考图：无（文生视频）。\n"
+            "- 开场画面：桌面。\n\n"
+            "### 可复制提示词\n"
+            "> Vertical shot of a desk.\n\n"
+            "## MUSIC-EP001-01 · 悬念弦乐\n"
+            "- 用途：开场铺底\n"
+            "- 区间：SHOT-EP001-001 至 SHOT-EP001-003\n"
+            "- 情绪：克制紧绷\n"
+            "- 时长：12s\n\n"
+            "### 可复制提示词\n"
+            "> Sparse low cello ostinato, dry room tone, no vocals.\n"
+        )
+        parsed = views.read_episode("EP001", {views.VIDEO_PROMPTS: video_md}, None)
+        self.assertEqual(len(parsed["musicPrompts"]), 1)
+        self.assertEqual(parsed["musicPrompts"][0]["id"], "MUSIC-EP001-01")
+        self.assertEqual(parsed["musicPrompts"][0]["title"], "悬念弦乐")
+        self.assertEqual(parsed["musicPrompts"][0]["sec"], 12.0)
+        self.assertIn("cello", parsed["musicPrompts"][0]["prompt"])
+        hits = views.search(views.search_entries(parsed), "cello")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["g"], "配乐")
+
+    def test_dashboard_status_badge_cut_duration_prompt_fallback_film_seek_and_async_races(self) -> None:
+        result = self.run_app(
+            """
+const fullHas = { script: true, settings: true, board: true, imgp: true, vidp: true, cut: true, film: true, review: true };
+const emptyLifecycle = { artifact_state: {} };
+const doneRow = { id: 'EP001', title: '完成', has: fullHas, seconds: 0, cutSeconds: 62, review: { must: 0, should: 0, could: 0 }, reviewTone: 'ok', reviewLabel: '可以继续', must: [] };
+const fixRow = { id: 'EP002', title: '待改', has: fullHas, seconds: 0, cutSeconds: 45, review: { must: 1, should: 0, could: 0 }, reviewTone: 'bad', reviewLabel: '需要修改', must: [{ id: 'REV-001', title: '改一处' }] };
+const warnRow = { id: 'EP003', title: '待核', has: fullHas, seconds: 0, cutSeconds: 30, review: { must: 0, should: 0, could: 0 }, reviewTone: 'warn', reviewLabel: '待补材料复核', must: [] };
+const wipRow = { id: 'EP004', title: '写稿', has: { script: true, settings: false, board: false, imgp: false, vidp: false, cut: false, film: false, review: false }, seconds: 0, cutSeconds: null, review: { must: 0, should: 0, could: 0 }, must: [] };
+
+const statusDone = logic.creatorStatus(emptyLifecycle, null, [doneRow]);
+const statusFix = logic.creatorStatus(emptyLifecycle, null, [doneRow, fixRow]);
+const statusWarn = logic.creatorStatus(emptyLifecycle, null, [doneRow, warnRow]);
+const statusWip = logic.creatorStatus(emptyLifecycle, null, [doneRow, wipRow]);
+
+logic.S.series = {
+  title: '测试剧',
+  format: { episode_count: 1, target_seconds_per_episode: 60, aspect_ratio: '9:16' },
+  lifecycle: emptyLifecycle,
+  episodes: [doneRow],
+  cast: [],
+};
+const overviewDone = logic.viewOverview();
+
+const unreadablePrompts = logic.viewPrompts(
+  { id: 'EP001', has: { vidp: true, imgp: false, board: false } },
+  {
+    docs: { '视频提示词.md': '剧集/EP001/视频提示词.md' },
+    problems: ['视频提示词.md 没有按结构读出来'],
+    media: { clips: {}, frames: {} },
+    videoPrompts: null,
+    videoGroups: [],
+    imagePrompts: null,
+    board: null,
+  },
+  'video',
+  new URLSearchParams()
+);
+
+// Test bindFilm click guard (width === 0 ignored; out-of-range clamped to [0, total]).
+let hitHandler = null;
+let mockWidth = 0;
+const fakeVideo = { duration: 10, currentTime: 2, paused: true, addEventListener() {} };
+const fakeHead = { style: {} };
+const fakeNow = { textContent: '' };
+const fakeCutLabel = { textContent: '' };
+const fakeHit = {
+  addEventListener(name, fn) { if (name === 'click') hitHandler = fn; },
+  getBoundingClientRect() { return { left: 100, width: mockWidth }; },
+};
+const fakeTl = { clientWidth: 264 };
+const mapBySel = { '#film': fakeVideo, '#tl': fakeTl, '#tlhit': fakeHit, '#playhead': fakeHead, '#nowTime': fakeNow, '#nowCut': fakeCutLabel };
+globalThis.document = {
+  querySelector: (sel) => mapBySel[sel] || null,
+  querySelectorAll: () => [],
+  getElementById: () => null,
+};
+globalThis.location = { hash: '#/EP001/film' };
+globalThis.CSS = { escape: (x) => x };
+logic.bindFilm({ cutTotal: 10, cuts: [{ id: 'CUT-001', n: '001', title: '一', at: 0, sec: 10 }] });
+fakeVideo.currentTime = 5;
+hitHandler({ clientX: 150 }); // width === 0 must be ignored
+const afterZeroWidth = fakeVideo.currentTime;
+mockWidth = 200;
+hitHandler({ clientX: 50 }); // left of bar -> clamped to 0
+const afterLeftClamp = fakeVideo.currentTime;
+hitHandler({ clientX: 500 }); // right of bar -> clamped to total (10)
+const afterRightClamp = fakeVideo.currentTime;
+
+// Test async race conditions in loadProject, loadEpisode, refreshProject, and skipping /api/status.
+const resolvers = [];
+const fetchedPaths = [];
+globalThis.fetch = (url) => {
+  fetchedPaths.push(url);
+  return new Promise((resolve) => {
+    resolvers.push({ url, resolve });
+  });
+};
+const okResp = (data) => ({ ok: true, status: 200, json: async () => data });
+
+(async () => {
+  const pA = logic.loadProject('projA');
+  const pB = logic.loadProject('projB');
+  // Resolve B first, then A (stale)!
+  for (const item of resolvers.filter((r) => r.url.includes('project=projB'))) {
+    item.resolve(okResp(item.url.includes('/api/series')
+      ? { title: 'B', format: {}, lifecycle: emptyLifecycle, episodes: [], cast: [] }
+      : { tree: [], warnings: [] }));
+  }
+  const okB = await pB;
+  for (const item of resolvers.filter((r) => r.url.includes('project=projA'))) {
+    item.resolve(okResp(item.url.includes('/api/series')
+      ? { title: 'A', format: {}, lifecycle: emptyLifecycle, episodes: [], cast: [] }
+      : { tree: [], warnings: [] }));
+  }
+  const okA = await pA;
+  const projectAfterRace = logic.S.project;
+  const titleAfterRace = logic.S.series.title;
+  const statusRequestedForCreatorFirst = fetchedPaths.some((u) => u.includes('/api/status'));
+
+  // Test loadEpisode race when S.episodes is swapped mid-flight.
+  resolvers.length = 0;
+  const epReq = logic.loadEpisode('EP001');
+  const freshMap = new Map();
+  logic.S.episodes = freshMap;
+  resolvers[0].resolve(okResp({ id: 'EP001', title: 'stale' }));
+  await epReq;
+  const stalePollutedNewCache = freshMap.has('EP001');
+
+  // Test refreshProject race when project switches mid-flight.
+  resolvers.length = 0;
+  const refReq = logic.refreshProject();
+  logic.S.project = 'projC';
+  for (const item of resolvers) {
+    item.resolve(okResp(item.url.includes('/api/series')
+      ? { title: 'StaleB', format: {}, lifecycle: emptyLifecycle, episodes: [], cast: [] }
+      : { tree: [], warnings: [] }));
+  }
+  const refApplied = await refReq;
+
+  process.stdout.write(JSON.stringify({
+    statusDone,
+    statusFix,
+    statusWarn,
+    statusWip,
+    overviewHasReadyBadge: overviewDone.includes('全剧 · 可以导出'),
+    overviewHasCutDuration: overviewDone.includes('1:02'),
+    promptsWrapCount: (unreadablePrompts.match(/class="wrap"/g) || []).length,
+    promptsNoticeCount: (unreadablePrompts.match(/class="notice"/g) || []).length,
+    afterZeroWidth,
+    afterLeftClamp,
+    afterRightClamp,
+    okA,
+    okB,
+    projectAfterRace,
+    titleAfterRace,
+    statusRequestedForCreatorFirst,
+    stalePollutedNewCache,
+    refApplied,
+  }));
+})();
+"""
+        )
+        self.assertEqual(result["statusDone"], ["可以导出", "success"])
+        self.assertEqual(result["statusFix"], ["需要修改", "danger"])
+        self.assertEqual(result["statusWarn"], ["待你确认", "warning"])
+        self.assertEqual(result["statusWip"], ["创作中", "neutral"])
+        self.assertTrue(result["overviewHasReadyBadge"])
+        self.assertTrue(result["overviewHasCutDuration"])
+        self.assertEqual(result["promptsWrapCount"], 1)
+        self.assertEqual(result["promptsNoticeCount"], 1)
+        self.assertEqual(result["afterZeroWidth"], 5)
+        self.assertEqual(result["afterLeftClamp"], 0)
+        self.assertEqual(result["afterRightClamp"], 10)
+        self.assertFalse(result["okA"])
+        self.assertTrue(result["okB"])
+        self.assertEqual(result["projectAfterRace"], "projB")
+        self.assertEqual(result["titleAfterRace"], "B")
+        self.assertFalse(result["statusRequestedForCreatorFirst"])
+        self.assertFalse(result["stalePollutedNewCache"])
+        self.assertFalse(result["refApplied"])
+
 
 if __name__ == "__main__":
     unittest.main()
