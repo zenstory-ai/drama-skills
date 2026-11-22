@@ -19,7 +19,7 @@ license: MIT
 多条资产优先走**批次确认工作流**，先汇总预览整批清单，未确认前绝不发起任何外部扣费调用：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json>
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" prepare-batch <project> --jobs <job-1.json> <job-2.json>
 ```
 
 ## 确认工作流（推荐批次确认，兼容单任务）
@@ -35,17 +35,17 @@ license: MIT
 详细字段与接口协议见 [生成接口协议规范](references/adapter-contract.md)，命令行由 [production_tool.py](scripts/production_tool.py) 提供：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json> [--batch-id <batch_id>]
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py run-batch <project> (--batch-id <batch_id> | --job-ids <id>...) --adapter-config <outside-project-config.json> [--continue-on-error]
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" prepare-batch <project> --jobs <job-1.json> <job-2.json> [--batch-id <batch_id>]
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" run-batch <project> (--batch-id <batch_id> | --job-ids <id>...) --adapter-config <outside-project-config.json> [--continue-on-error]
 
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare <project> --job <job.json>
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm <project> --job-id <id> --confirmation "CONFIRM <id> <code>"
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py run <project> --job-id <id> --adapter-config <outside-project-config.json>
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py status <project> (--job-id <id> | --batch-id <batch_id>)
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py collect <project> --job-id <id> --adapter-config <outside-project-config.json>
-<PYTHON> <SKILL_DIR>/scripts/production_tool.py audit <project>
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" prepare <project> --job <job.json>
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" confirm <project> --job-id <id> --confirmation "CONFIRM <id> <code>"
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" run <project> --job-id <id> --adapter-config <outside-project-config.json>
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" status <project> (--job-id <id> | --batch-id <batch_id>)
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" collect <project> --job-id <id> --adapter-config <outside-project-config.json>
+<PYTHON> "<SKILL_DIR>/scripts/production_tool.py" audit <project>
 ```
 
 同一任务单存在未结清的 `running` 记录时，禁止重新执行 `prepare`、`confirm` 或 `run`。

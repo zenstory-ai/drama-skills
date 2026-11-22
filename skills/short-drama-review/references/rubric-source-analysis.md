@@ -22,7 +22,7 @@
   - `输入/对标/<REF-ID>/还原/` 与主项目严格隔离，仅 `owned` / `licensed` 并附依据时才可整套复制为独立项目，严禁把单集还原文件混入主项目剧集目录（`BRK-11 · reviewed_invariant`）。
 - **证据口径、可借鉴规律与职责边界**：
   - 拆解结论区分事实、作用分析与盲区，统计注明样本范围、阈值与转写来源（`BRK-03 · reviewed_invariant`）；可借鉴手法注明独立故事数、解决问题与失效条件，单部做法标为个例（`BRK-04 · reviewed_invariant`）；
-  - 同尺差距表标清 `plan` 与 `measure` 口径（`BRK-06 · reviewed_invariant`），不把外部对标均值当成卡死交付的门槛（`BRK-07 · reviewed_invariant`），不直接改写其他技能文档（`BRK-08 · reviewed_invariant`）。
+  - 同尺差距表标清数字来自纸面估算还是成片实测（`measure`）口径（`BRK-06 · reviewed_invariant`），不把外部对标均值当成卡死交付的门槛（`BRK-07 · reviewed_invariant`），不直接改写其他技能文档（`BRK-08 · reviewed_invariant`）。
 - **视频反推还原核查**：
   - 切镜以实测为准、硬字幕台词起止以扫描为准、缺依据项标推断、未点破姓名改身份称呼不编造、非实测吻合的镜内切点单列交人工（`BRK-12 · reviewed_invariant`）；
   - 避敏字/同音错字校对、同场切反应镜不误标 `[OS]`、篇首 `人物：` 补全、原片穿帮归入 `还原核对.md` 与跨集硬切接缝处理属 `craft_default`，偏离仅记 `minor` / `note`，不单独触发 `REVISE`（若《剧本.md》正文残留非法制作标记或违背实测守真边界，按 `SCR-05 · structural_invariant` 或 `BRK-12 · reviewed_invariant` 定级）。

@@ -37,7 +37,7 @@
 `--screen-text-mode auto|remotion|ffmpeg|off` 控制 `画面文字` 渲染路线（默认 `auto`：含复杂面板或本机已装 Remotion 时调用 Remotion，无 Remotion 且仅含普通 `字卡` 时自动降级为 `ffmpeg` ASS）；如需强制走 Remotion 或切换动态字幕路线，显式传入对应参数：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> --screen-text-mode auto --subtitles remotion
+<PYTHON> "<SKILL_DIR>/scripts/edit_tool.py" render <剧集/EP001> --project-root <project> --screen-text-mode auto --subtitles remotion
 ```
 
 Remotion 先渲染带透明通道的视频层（VP8 + alpha），再由 `ffmpeg` 叠合到成片画面；字幕走默认 `ffmpeg` 路线时，烧录层级位于画面文字之上。
