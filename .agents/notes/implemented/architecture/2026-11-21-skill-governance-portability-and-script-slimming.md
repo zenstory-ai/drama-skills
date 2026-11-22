@@ -28,7 +28,7 @@ Status: implemented
 
 - **宿主中立化**：全部 13 个技能的 `SKILL.md`（含 YAML `description`）与 `references/*.md` 统一使用宿主中立技能名（如 `` `short-drama-write` 技能 ``），不再使用 Codex 专属 `$short-drama-*` 语法；各平台调用前缀说明收归 `README.md` / `README_EN.md`。`maintainers/skills/short-drama-knowhow/SKILL.md` 在正文与 frontmatter 显式声明维护者触发边界，`CONTRIBUTING.md` 改为通用 `$SKILLS_DIR` 并明确 `<SKILL_DIR>` 与跨平台 Python 3.9+ 约定。
 - **消除漂移、触发碰撞与跨技能脚本泄露**：修复 `creator-documents.md` 字段与连戏锁挂点；同步三份 `stage-contract.md` 的共享 `CON-*` 正文；清理 `video-prompts` 对未定义规则号的悬空引用；重写 13 份 YAML `description` 为清晰互斥边界；统一技能文档命令路径为 `<SKILL_DIR>/scripts/...` 与 `<ADAPTER_SCRIPT>`，撤下 `selftest.py` 说明，移除子技能直接执行其他技能目录脚本的指令。
-- **分发清单与 README 边界澄清**：`.clawhub/publish.json` 移除 3 处陈旧循环依赖与 5 个纯文档技能上的 `bin:python>=3.9`，为 `short-drama-edit` 补齐可选 Remotion 依赖（`bin:node`/`npm`/`npx`）；`README.md` 与 `README_EN.md` 如实说明语言无关创作指导层与标准中文自动化脚本层边界。
+- **分发清单与 README 边界澄清**：`.clawhub/publish.json` 移除 3 处陈旧循环依赖与 5 个纯文档技能上的 `bin:python>=3.9`，为 `short-drama-edit` 补齐可选 Remotion 依赖（`bin:node`/`npm`/`npx`），并递增 12 个受改动技能的补丁版本、使用固定 `control_ref`（`b8dbd133b557dce5143c18902a887ddca9d4cdf0`）的 `clawhub_release.py lock` 锁定 `packageDigest` 且通过离线校验；`README.md` 与 `README_EN.md` 如实说明语言无关创作指导层与标准中文自动化脚本层边界。
 
 ### 2. 脚本瘦身、测试资产外移与多语言/无 Remotion 解耦（Wave 2）
 
@@ -55,9 +55,9 @@ Status: implemented
 3. **仅修正文档错漏，保留全部随包 `selftest.py`、v0.5 台账子命令、NLP 启发式与 205 条编号规则**
    - 最强理由：几乎不触碰 `tests/`，短期合并成本最低。
    - 为何不用：审计已证明过重的随包脚本、越界 NLP 正则与庞大的常规手艺编号表正是维护摩擦、假阳性报错与跨文件漂移的根因；只改文案不瘦身脚本与规则表，长期维护成本会持续攀升。
-4. **直接删除 `agents/openai.yaml` 并手工重算 `.clawhub/publish.json` 的 `version` / `packageDigest`**
-   - 最强理由：一次性去掉所有 vendor 适配文件并提前同步分发摘要。
-   - 为何不用：`agents/openai.yaml` 仍承担 Codex 宿主展示元数据并受安装解析测试校验，保留作轻量适配层同时将核心规则收回宿主中立 `SKILL.md` 更平稳；`.clawhub/publish.json` 的版本号与 `packageDigest` 须按 `.clawhub/README.md` 在发版合流时通过中央 `clawhub_release.py lock` 一次锁定。
+4. **直接删除 `agents/openai.yaml`（放弃 Codex 适配层）**
+   - 最强理由：一次性去掉所有 vendor 专属适配文件，让目录完全中立。
+   - 为何不用：`agents/openai.yaml` 仍承担 Codex 宿主展示元数据并受安装解析测试校验，保留作轻量适配层同时将核心规则收回宿主中立 `SKILL.md` 更平稳。至于 `.clawhub/publish.json`，因 PR 门禁 `validate-clawhub.yml` 强制核对 `packageDigest` 与相对 `origin/main` 的版本递增，本轮直接通过固定 `control_ref` 的中央 `clawhub_release.py lock` 统一锁定并通过离线校验。
 
 ## Consequences
 

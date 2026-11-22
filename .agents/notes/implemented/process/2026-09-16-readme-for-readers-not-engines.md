@@ -25,3 +25,5 @@ Status: implemented
 ## Verification
 
 手动检查：前两屏依次是标题、项目主页、徽章、dashboard 截图、简介、安装命令与快速开始示例请求，与 CHANGELOG、skills/ 目录中的技能名和数量一致。对 README.md 与 README_EN.md grep `不会自动同步|不是安装命令|也不要求把所有阶段跑完|输出仍需审阅|不等于|不承诺|不表示|不保证|独立产品|截至|as of|do not sync|separate product|does not promise|not a guarantee|not evidence|核对于|Last checked|Source checked|项目页：|All ZenStory AI projects` 为空。
+
+后续调整：合并 `由来`、移除 `延伸阅读` 等尾节并收敛 FAQ 见 [精简 README 非核心章节与模型细则 FAQ](../simplification/2026-11-19-slim-readme-sections-and-faq.md)。

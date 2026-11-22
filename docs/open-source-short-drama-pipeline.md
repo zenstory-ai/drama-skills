@@ -1,4 +1,4 @@
-# An open-source AI short-drama pipeline: script, assets, storyboard, prompts, then generation
+# An open-source AI short-drama pipeline: script, visual settings, storyboard, prompts, then production
 
 Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, GPT Image 2, MiniMax H3 video, MiniMax speech and MiniMax Music.
 
@@ -38,10 +38,10 @@ The five core Markdown documents hold each episode's creative decisions. Editing
 | `short-drama-assets` | Characters and looks, locations and views, props and states, continuity locks (locked look phrases) |
 | `short-drama-image-prompts` | Lookdev style frames, character/location/prop reference-board prompts |
 | `short-drama-storyboard` | Shot list with dramatic purpose, spatial continuity, first-frame prompts |
-| `short-drama-video-prompts` | Per-shot action progression, performance, camera, sound, opening and end frames; timeline music plan |
-| `short-drama-produce` | Runs confirmed image, video, TTS or music jobs through external provider interfaces and records results |
-| `short-drama-edit` | In and out points, shot order, dialogue completeness, subtitles, loudness, render |
-| `short-drama-breakdown` | Measures benchmark dramas and compares them with the project's own plan or footage on the same yardstick; hands each gap to the owning skill |
+| `short-drama-video-prompts` | Per-shot action progression, performance, camera, sound, `GROUP-*` multi-shot groups, opening and end frames; timeline music plan |
+| `short-drama-produce` | Previews and runs confirmed single or batched image, video (including `GROUP-*` groups), TTS or music jobs through external provider interfaces with resume support |
+| `short-drama-edit` | In and out points (single shots or `GROUP-*` clips), shot order, dialogue completeness, subtitles, loudness, render |
+| `short-drama-breakdown` | Measures benchmark dramas and compares them with the project's own plan or footage on the same yardstick; also reverse-engineers reference videos into standard scripts, visual settings, and prompts |
 | `short-drama-review` | Structural and continuity review; writes findings, does not edit source files |
 
 ## What makes it hold together across shots
@@ -49,7 +49,7 @@ The five core Markdown documents hold each episode's creative decisions. Editing
 Three mechanisms, all in plain Markdown files:
 
 - **Continuity locks** (`连戏锁`). The visual design sheet locks only appearance details that do not change with the plot (a fixed earring, a coat colour and cut) and leaves changing state to per-shot notes. Each **locked phrase** (`锁定词`) is written as a short noun phrase that can be pasted into prompts unchanged.
-- **Prompts, plans and references**. `IMG-*` identifies a prompt entry. `PLAN-*` tells the creator what to attach in an external generation tool. `REF-*` binds a real image file in the project. Both plans and references can support video prompts; this pack's production tool requires readable `REF-*` files.
+- **Prompts, plans and references**. `IMG-*` identifies a prompt entry. `PLAN-*` tells the creator what to attach in an external generation tool. `REF-*` binds a real image file in the project. Both plans and references work when writing video prompts; running jobs through this pack's production tool requires readable `REF-*` files on disk.
 - **First-frame prompts plus on-screen settings**. Each shot writes its exact opening-frame image (`首帧提示词`), then lists every character, location and prop in that frame whose appearance, look state or spatial layout must stay consistent (`出场设定`). Anything named in the first-frame prompt must appear in `出场设定`.
 
 Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
@@ -58,7 +58,7 @@ Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
 
 - Media production calls external provider interfaces only after you explicitly confirm the previewed batch. A preview, a "continue", or a budget note does not grant that confirmation.
 - Review records findings and revision requests; the creator makes the final creative decisions.
-- Language: skill files and canonical document filenames are Chinese; creator-facing notes and reviews follow `short-drama.json#/language` (or the user's current language). Image and first-frame prompts follow the project's `format.prompt_language`; video prompts first follow the target model profile's `video_prompt_language`. Spoken lines retain the script language.
+- Language: skill files and canonical document filenames are Chinese; creator-facing notes and reviews follow `short-drama.json#/language` (or the user's current language). Image and first-frame prompts follow the project's `format.prompt_language`; video prompts use the target model profile's `video_prompt_language` when set, falling back to `format.prompt_language`. Spoken dialogue stays in the script's language.
 
 ## Install and first request
 
@@ -79,4 +79,4 @@ A complete public example of one episode, from script to prompts, is in [`exampl
 
 - Repository: [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills) (formerly `worldwonderer/drama-skills`; old links redirect)
 - Site guides: [Novel to short drama](https://zenstory.ai/drama-skills/novel-to-short-drama), [Character consistency](https://zenstory.ai/drama-skills/character-consistency)
-- Sibling packs: web-fiction writing (`oh-story-claudecode`), novel to game (`novel-to-game`), video recap (`video-recap-skills`)
+- Sibling projects: web-fiction writing (`oh-story-claudecode`), novel to game (`novel-to-game`), video recap (`video-recap-skills`), DeepSeek Harness plugin (`oh-story-dsh`), web workbench (`zenstory`)
