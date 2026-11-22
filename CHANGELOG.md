@@ -35,6 +35,8 @@
   - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器并移除启发式动词黑名单与旧字节偏移行表脚手架；`production_tool.py` 优先按适配器显式 `reference_roles` / `audio_capable` 声明判定能力，不再绑定文件名；`provider_adapters.py` 彻底移除 `gpt-image-2` 与 `music-3.0` 硬编码默认模型名（改为必填 `parameters.model` 或 `OPENAI_IMAGE_MODEL` / `MINIMAX_MUSIC_MODEL`，缺失时请求前安全 fail-closed），新增通用主命令 `openai-image`（保留 `gpt-image-2` 向后兼容别名）并透传 `background="transparent"`；`novel_index.py` 与项目模板 `schema_version` 由 `1.0.0-draft` 转正为 `1.0.0`。
 - 持续集成与脚本质量门禁加固（仓库测试与工具链）：
   - CI 在 Python 3.9 与 3.14 上启用 `ffmpeg`/`libass` fail-closed 实跑全部媒体回归测试，新增纯文档 PR 快速路径、Playwright Chromium 缓存、统一 `ci-gate` 汇总检查、独立 Remotion TypeScript 严格类型检查与 `SKILL.md` CLI 子命令自动对账；扩展 Windows 回归至全量平台敏感测试模块；引入 `pyproject.toml` 收紧 `ruff` 规则并改为自动发现严格 `mypy` 校验（含 `src/_shared/` 与 `tools/`）。
+- 全仓库文档时效性对齐（根目录 `AGENTS.md`/`CONTRIBUTING.md`/`DESIGN.md`/`README*.md`、`docs/*`、`evaluations/README.md`、4 篇活跃决策笔记与 11 个技能文档）：
+  - 清理已删除脚本、过时规则 ID 与旧 `episode-map.jsonl` 字段引用，对齐软门禁分级与 CI 测试矩阵，统一宿主中性技能名与带引号脚本路径写法，并为 4 篇决策笔记补齐后续演进事实互链。
 
 ### Deprecated
 
@@ -46,6 +48,7 @@
 - 英文断词、16:9 横屏排版与多语种剪辑渲染（`short-drama-edit`）：修复英文字幕按 12 字符硬切单词、横屏 16:9 字幕边距与 Remotion 面板宽度溢出、非 CJK/ASCII 语系字体探针报错、多词英文卡片标签被拆分、`libass` `\N`/`\n`/`\h` 转义、关键词最长匹配优先级与 `ffmpeg`/`ffprobe` PATH 回退问题。
 - 生产适配器与工具链细节缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」、旧版模型名硬编码及 `background="transparent"` 硬阻断问题；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验问题。
 - 本地创作台竞态与扫描截断（`short-drama`）：修复 `dashboard_server.py` 扫描 `.git`/`node_modules`/`.venv`/`__pycache__`/`.short-drama` 触发节点截断的问题；修复 `app.js` 快速切换项目/单集/刷新时的异步竞态、creator-first 项目状态徽章显示、仅含剪辑单剧集时长列及时间轴零宽保护；替换 `README.md`/`README_EN.md`/`docs/real-outputs*.md` 中已失效的校验示例。
+- 带引号技能命令校验覆盖（`tests/test_standalone_skill_tooling.py`）：修复 `SKILL.md` CLI 子命令对账正则，使其正确覆盖带双引号的 `"<SKILL_DIR>/scripts/..."` 技能脚本命令。
 
 ### Removed
 
