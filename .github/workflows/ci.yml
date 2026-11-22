@@ -79,7 +79,7 @@ jobs:
           tests.test_golden_project
           tests.test_dashboard_server
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_rejects_path_aliases_and_unsafe_episode_ids
-          tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_approved_text
+          tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_text
           -v
 
   # Tool versions are pinned on purpose. This repository has no dependency
