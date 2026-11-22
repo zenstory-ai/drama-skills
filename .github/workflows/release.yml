@@ -8,9 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
-  checks: read
+  contents: read
 
 concurrency:
   group: source-release-${{ github.ref }}

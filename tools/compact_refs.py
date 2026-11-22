@@ -46,6 +46,7 @@ Guarantees:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import stat
@@ -386,10 +387,8 @@ def _atomic_write_bytes(path: Path, root: Path, resolved_root: Path, payload: by
         tmp_path = None
     finally:
         if tmp_path is not None:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 tmp_path.unlink()
-            except FileNotFoundError:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -905,12 +904,10 @@ def migrate(root: Path) -> int:
             written.append(loaded)
     except (OSError, ValueError) as exc:
         for previous in reversed(written):
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 _atomic_write_bytes(
                     previous.path, root, resolved_root, previous.original_bytes
                 )
-            except (OSError, ValueError):
-                pass
         emit(f"error: {exc}", stream=sys.stderr)
         return 1
 

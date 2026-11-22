@@ -199,10 +199,8 @@ def _atomic_bytes(path: Path, content: bytes) -> None:
         os.replace(temporary, path)
         _fsync_directory(path.parent)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def atomic_json(path: Path, document: Mapping[str, Any]) -> None:
@@ -857,9 +855,9 @@ def _lock_handle(handle: Any) -> Iterator[None]:
             handle.write(b"0")
             handle.flush()
         handle.seek(0)
-        locking = getattr(msvcrt, "locking")
-        lock = getattr(msvcrt, "LK_LOCK")
-        unlock = getattr(msvcrt, "LK_UNLCK")
+        locking = getattr(msvcrt, "locking")  # noqa: B009
+        lock = getattr(msvcrt, "LK_LOCK")  # noqa: B009
+        unlock = getattr(msvcrt, "LK_UNLCK")  # noqa: B009
         locking(handle.fileno(), lock, 1)
         try:
             yield
@@ -2484,10 +2482,8 @@ def _lock_at(directory_fd: int) -> Any:
             dir_fd=directory_fd,
         )
     except FileNotFoundError:
-        try:
+        with contextlib.suppress(FileExistsError):
             os.mkdir(".short-drama", 0o700, dir_fd=directory_fd)
-        except FileExistsError:
-            pass
         operations = os.open(
             ".short-drama",
             os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,

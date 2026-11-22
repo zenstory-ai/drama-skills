@@ -45,7 +45,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
@@ -1438,7 +1438,7 @@ def profile(records: Sequence[Dict[str, Any]], opening: int) -> Dict[str, Any]:
     rows = {record["episode"]: episode_numbers(record) for record in ordered}
     keys = sorted({key for row in rows.values() for key in row})
 
-    def group(selector) -> Dict[str, Any]:
+    def group(selector: Callable[[int], bool]) -> Dict[str, Any]:
         chosen = [row for episode, row in rows.items() if selector(episode)]
         return {"episodes": len(chosen), **{key: _median(row.get(key) for row in chosen) for key in keys}}
 

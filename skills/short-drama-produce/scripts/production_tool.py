@@ -251,7 +251,7 @@ def _project_file(root: Path, relative: str, *, create_parent: bool = False) -> 
             current.mkdir()
     if target.exists() and (target.is_symlink() or not target.is_file()):
         raise ValueError(f"unsafe project file: {relative}")
-    if not target.parent.resolve().is_relative_to(root):
+    if not target.parent.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"path escapes project root: {relative}")
     return target
 
@@ -312,7 +312,7 @@ def _open_project_input(root: Path, relative: str) -> Iterator[BinaryIO]:
             raise FileNotFoundError(f"job input is missing: {relative}") from exc
         if _is_link_or_reparse(details):
             raise ValueError(f"unsafe job input path: {relative}")
-    if not path.resolve().is_relative_to(root):
+    if not path.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"job input escapes project root: {relative}")
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode):
@@ -505,10 +505,8 @@ def _metadata_directory(
                     except FileNotFoundError:
                         if not create:
                             raise
-                        try:
+                        with contextlib.suppress(FileExistsError):
                             os.mkdir(part, mode=0o700, dir_fd=directory_fd)
-                        except FileExistsError:
-                            pass
                         next_fd = os.open(
                             part, flags | nofollow, dir_fd=directory_fd
                         )
@@ -535,14 +533,12 @@ def _metadata_directory(
         except FileNotFoundError:
             if not create:
                 raise
-            try:
+            with contextlib.suppress(FileExistsError):
                 current.mkdir(mode=0o700)
-            except FileExistsError:
-                pass
             details = current.lstat()
         if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
             raise ValueError("production metadata directory is unsafe")
-    if not current.resolve().is_relative_to(root):
+    if not current.resolve().is_relative_to(root.resolve()):
         raise ValueError("production metadata directory escapes the project")
     yield current, None
 
@@ -584,10 +580,8 @@ def _metadata_atomic_json(
             finally:
                 if descriptor >= 0:
                     os.close(descriptor)
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     os.unlink(temporary_name, dir_fd=directory_fd)
-                except FileNotFoundError:
-                    pass
             return
 
         before = directory.lstat()
@@ -609,10 +603,8 @@ def _metadata_atomic_json(
                 raise ValueError("production metadata directory changed")
             os.replace(temporary, directory / name)
         finally:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 temporary.unlink()
-            except FileNotFoundError:
-                pass
 
 
 def _metadata_read_json(
@@ -740,9 +732,9 @@ def _project_lock(root: Path) -> Iterator[None]:
                     handle.write(b"0")
                     handle.flush()
                 handle.seek(0)
-                locking = getattr(msvcrt, "locking")
-                lock = getattr(msvcrt, "LK_LOCK")
-                unlock = getattr(msvcrt, "LK_UNLCK")
+                locking = getattr(msvcrt, "locking")  # noqa: B009
+                lock = getattr(msvcrt, "LK_LOCK")  # noqa: B009
+                unlock = getattr(msvcrt, "LK_UNLCK")  # noqa: B009
                 locking(handle.fileno(), lock, 1)
                 try:
                     yield
@@ -1598,10 +1590,8 @@ def prepare_job(root: Path, job_file: Path) -> dict[str, Any]:
             raise RuntimeError("this job is already running")
         job_name = f"{_job_key(str(job['job_id']))}.json"
         _metadata_atomic_json(root, ("jobs",), job_name, job)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             _metadata_unlink(root, ("confirmations",), job_name)
-        except FileNotFoundError:
-            pass
     return _preview(job)
 
 
@@ -1820,7 +1810,7 @@ def _is_builtin_audio_capable_command(command: Sequence[str]) -> bool:
 
 def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str], int, frozenset[str] | None]:
     resolved = config_path.expanduser().resolve()
-    if resolved.is_relative_to(root):
+    if resolved.is_relative_to(root.resolve()):
         raise ValueError("adapter config must live outside the project")
     document = json.loads(resolved.read_text(encoding="utf-8"))
     adapters = document.get("adapters") if isinstance(document, Mapping) else None
@@ -2172,10 +2162,8 @@ def _stage_output_to_temporary(
         if descriptor >= 0:
             os.close(descriptor)
         if not succeeded:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 temporary.unlink()
-            except FileNotFoundError:
-                pass
 
 
 def _link_without_following(temporary: Path, target: Path) -> None:
@@ -2207,10 +2195,8 @@ def _copy_output(
                 ) from exc
             temporary.unlink()
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temporary.unlink()
-        except FileNotFoundError:
-            pass
     return digest, size
 
 
@@ -2252,17 +2238,13 @@ def _commit_outputs(
                     temporary.unlink()
             except Exception:
                 for created in linked:
-                    try:
+                    with contextlib.suppress(FileNotFoundError):
                         created.unlink()
-                    except FileNotFoundError:
-                        pass
                 raise
     finally:
         for _, temporary, _, _, _ in staged:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 temporary.unlink()
-            except FileNotFoundError:
-                pass
     return [
         {
             "path": target_name,
@@ -2529,12 +2511,10 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                         )
                     )
                     if unsubmitted_preflight:
-                        try:
+                        with contextlib.suppress(FileNotFoundError):
                             _metadata_unlink(
                                 root, ("runs", _job_key(job_id)), f"{run_id}.json"
                             )
-                        except FileNotFoundError:
-                            pass
                         receipt["consumed_at"] = None
                         receipt["run_id"] = None
                         _metadata_atomic_json(
@@ -3138,10 +3118,8 @@ def prepare_batch(
         for job in jobs:
             job_name = f"{_job_key(str(job['job_id']))}.json"
             _metadata_atomic_json(root, ("jobs",), job_name, job)
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 _metadata_unlink(root, ("confirmations",), job_name)
-            except FileNotFoundError:
-                pass
         batch_doc = {
             "schema_version": JOB_SCHEMA,
             "batch_id": resolved_batch_id,

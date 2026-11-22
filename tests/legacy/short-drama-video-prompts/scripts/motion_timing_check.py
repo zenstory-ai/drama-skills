@@ -159,9 +159,8 @@ def _accepted_duration(
             record_id = duration_ref["record_id"]
 
     shot_ref = spec.get("shot_ref")
-    if record_id is None and isinstance(shot_ref, dict):
-        if isinstance(shot_ref.get("record_id"), str):
-            record_id = shot_ref["record_id"]
+    if record_id is None and isinstance(shot_ref, dict) and isinstance(shot_ref.get("record_id"), str):
+        record_id = shot_ref["record_id"]
 
     authoritative: float | None = None
     if record_id is not None:

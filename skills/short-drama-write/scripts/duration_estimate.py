@@ -945,9 +945,7 @@ def _voiced_units(line: str, *, prefer_words: bool = False) -> tuple[int, int]:
         if not character.isspace() and unicodedata.category(character)[0] not in "PMSC":
             characters += 1
         position += 1
-    if words and not characters:
-        words += len(digit_runs)
-    elif (
+    if (words and not characters) or (
         not words
         and not characters
         and digit_runs
@@ -1004,7 +1002,7 @@ def measure(screenplay: bytes, blocks: Iterable[Mapping[str, Any]]) -> dict[str,
     voiceover_characters = 0
     action_paragraphs = 0
     tag_lines = 0
-    untimed_lines = {tag: 0 for tag in UNTIMED_TAGS}
+    untimed_lines = dict.fromkeys(UNTIMED_TAGS, 0)
     on_screen_text_characters = 0
     unreadable_blocks: list[str] = []
 
@@ -1343,7 +1341,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             loaded_project = json.loads(args.project.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, ValueError) as error:
-            raise SystemExit("{}: {}".format(args.project, error))
+            raise SystemExit("{}: {}".format(args.project, error)) from error
         if not isinstance(loaded_project, dict):
             raise SystemExit("{}: project file must be a JSON object".format(args.project))
         project = loaded_project
@@ -1351,7 +1349,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         screenplay = source_path.read_bytes()
     except OSError as error:
-        raise SystemExit("{}: {}".format(source_path, error))
+        raise SystemExit("{}: {}".format(source_path, error)) from error
     try:
         blocks, review = parse_script_blocks(
             screenplay,
@@ -1359,7 +1357,7 @@ def main(argv: list[str] | None = None) -> int:
             extra_speakers=args.extra_speaker,
         )
     except UnicodeDecodeError as error:
-        raise SystemExit("{}: {}".format(source_path, error))
+        raise SystemExit("{}: {}".format(source_path, error)) from error
 
     report = estimate(screenplay, blocks, project, review, args.target_seconds)
     print(

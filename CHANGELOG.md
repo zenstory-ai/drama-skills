@@ -26,6 +26,8 @@
   - `stage-contract.md` 规则表仅保留阻断级不变量（`structural_invariant` 与 `reviewed_invariant`），唯一规则 ID 从 205 条精简至 105 条；全部 `craft_default` 与 `taste_option` 下沉回各阶段参考文档的自然语言指导；校正 `SCR-05`/`SCR-25`、`AST-10`、`SHT-05`/`SHT-10`、`VID-01`/`VID-29`、`VID-13`/`VID-20`、`VID-24`/`VID-03` 六组规则边界并同步瘦身审查 rubric。
 - 确定性脚本瘦身与职责回归（`short-drama`、`short-drama-write`、`short-drama-breakdown`）：
   - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器（不再依赖落盘索引文件）并移除启发式动词黑名单。
+- 持续集成与脚本质量门禁加固（仓库测试与工具链）：
+  - CI 在 Python 3.9 与 3.14 上启用 `ffmpeg`/`libass` fail-closed 实跑全部媒体回归测试，新增纯文档 PR 快速路径、Playwright Chromium 缓存、统一 `ci-gate` 汇总检查、独立 Remotion TypeScript 严格类型检查与 `SKILL.md` CLI 子命令自动对账；扩展 Windows 回归至全量平台敏感测试模块；引入 `pyproject.toml` 收紧 `ruff` 规则并改为自动发现严格 `mypy` 校验（同步补齐脚本类型注解与异常链）。
 
 ### Removed
 

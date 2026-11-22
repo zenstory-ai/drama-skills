@@ -112,12 +112,10 @@ class ProjectStoreTests(unittest.TestCase):
             workspace = Path(directory)
             make_project(workspace / "alpha", "甲项目")
             make_project(workspace / "nested/beta", "乙项目")
-            try:
+            with contextlib.suppress(OSError):
                 (workspace / "linked").symlink_to(
                     workspace / "nested", target_is_directory=True
                 )
-            except OSError:
-                pass
 
             projects, warnings = self.store(workspace).discover()
 
@@ -3310,7 +3308,7 @@ class FrontendLogicTests(unittest.TestCase):
             {"id": "EP002", "has": {**empty, "script": True}, "review": {"must": 0}, "must": []},
             {"id": "EP003", "has": dict(empty), "review": {"must": 0}, "must": []},
             {"id": "EP004", "has": {**empty, "script": True, "review": True}, "review": {"must": 2}, "must": [{"id": "REV-001", "title": "开场慢"}, {"id": "REV-002", "title": "旁白多"}]},
-            {"id": "EP005", "has": {key: True for key in empty}, "review": {"must": 0}, "must": []},
+            {"id": "EP005", "has": dict.fromkeys(empty, True), "review": {"must": 0}, "must": []},
         ]
         result = self.run_app(
             f"const rows = {json.dumps(rows, ensure_ascii=False)};\n"

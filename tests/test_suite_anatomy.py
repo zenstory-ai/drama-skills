@@ -315,7 +315,7 @@ class SuiteAnatomyTests(unittest.TestCase):
                 for key, value in document.items():
                     if (
                         key != "boundary_refs"
-                        and (key.endswith("_ref") or key.endswith("_refs"))
+                        and key.endswith(("_ref", "_refs"))
                         and value is not None
                     ):
                         references = value if isinstance(value, list) else [value]
@@ -579,18 +579,24 @@ class SuiteAnatomyTests(unittest.TestCase):
 
             observed_candidate_owners: set[str] = set()
 
-            def check(value: object, cursor: str = "") -> None:
+            def check(
+                value: object,
+                cursor: str = "",
+                *,
+                _path: Path = path,
+                _observed: set[str] = observed_candidate_owners,
+            ) -> None:
                 if isinstance(value, dict):
                     if {"owner", "artifact"}.issubset(value):
                         authority = value.get("authority")
-                        self.assertIn(authority, {None, "candidate"}, f"{path}:{cursor}")
+                        self.assertIn(authority, {None, "candidate"}, f"{_path}:{cursor}")
                         if authority == "candidate":
-                            observed_candidate_owners.add(str(value["owner"]))
+                            _observed.add(str(value["owner"]))
                     for key, child in value.items():
-                        check(child, f"{cursor}/{key}")
+                        check(child, f"{cursor}/{key}", _path=_path, _observed=_observed)
                 elif isinstance(value, list):
                     for index, child in enumerate(value):
-                        check(child, f"{cursor}/{index}")
+                        check(child, f"{cursor}/{index}", _path=_path, _observed=_observed)
 
             check(document)
 

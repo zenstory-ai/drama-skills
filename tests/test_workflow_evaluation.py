@@ -48,8 +48,8 @@ def run_json(args: list[str]) -> dict[str, Any]:
     payload = completed.stdout.strip() or completed.stderr.strip()
     try:
         return json.loads(payload)
-    except json.JSONDecodeError:  # pragma: no cover - only on a broken checker
-        raise AssertionError(f"{args[0]} did not print a JSON report:\n{payload}")
+    except json.JSONDecodeError as exc:  # pragma: no cover - only on a broken checker
+        raise AssertionError(f"{args[0]} did not print a JSON report:\n{payload}") from exc
 
 
 def records(path: Path) -> list[dict[str, Any]]:
@@ -350,7 +350,7 @@ class DerivedLayerTests(unittest.TestCase):
             [str(script("short-drama/scripts/project_tool.py")), "status", "."]
         )
         self.assertEqual(
-            {state for state in report["artifacts"].values()},
+            set(report["artifacts"].values()),
             {"accepted"},
             f"artifact states: {report['artifact_states']}",
         )

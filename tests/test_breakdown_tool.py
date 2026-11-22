@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.media_require import has_ffmpeg
+
 SUITE = Path(__file__).resolve().parents[1]
 SCRIPT = SUITE / "skills/short-drama-breakdown/scripts/breakdown_tool.py"
 SPEC = importlib.util.spec_from_file_location("breakdown_tool", SCRIPT)
@@ -176,7 +178,7 @@ class TranscriptOverrunTests(unittest.TestCase):
         self.assertEqual(later["later"]["speech_share"], 0.5)
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class MeasureTests(unittest.TestCase):
     def test_a_same_length_replacement_cut_does_not_keep_the_old_transcript(self):
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
@@ -382,7 +384,7 @@ class CandidateRunTests(unittest.TestCase):
                                 {"at": 9.0, "until": 9.0, "frames": 1}])
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class AudioAndShotTests(unittest.TestCase):
     def make_clip(self, root: Path) -> Path:
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
@@ -566,7 +568,7 @@ class AudioAndShotTests(unittest.TestCase):
         self.assertEqual((clip["width"], clip["height"]), (720, 1280))
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+@unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
 class SubtitleScanTests(unittest.TestCase):
     def test_burned_in_lines_are_timed_and_cropped_and_a_lit_background_is_not_a_line(self):
         quiet = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
@@ -651,7 +653,7 @@ class SubtitleScanTests(unittest.TestCase):
         self.assertTrue(sheet_kept)
         self.assertEqual(len(record["videos"][0]["frames_at"]), 2)
         self.assertTrue(lit)
-        self.assertTrue(all(0.78 <= band["top"] and band["bottom"] <= 0.92 for band in lit), lit)
+        self.assertTrue(all(band["top"] >= 0.78 and band["bottom"] <= 0.92 for band in lit), lit)
         self.assertTrue(any(band["changed"] > 0 for band in lit), lit)
 
 
@@ -788,11 +790,7 @@ class VideoReverseEngineeringEnhancementTests(unittest.TestCase):
         self.assertIsNone(breakdown.suggest_subtitle_band(static_only, height, width, static_prof))
 
 
-@unittest.skipUnless(
-    (shutil.which("ffmpeg") or Path.home().joinpath(".local/bin/ffmpeg").is_file())
-    and (shutil.which("ffprobe") or Path.home().joinpath(".local/bin/ffprobe").is_file()),
-    "needs ffmpeg",
-)
+@unittest.skipUnless(has_ffmpeg(include_local_bin=True), "needs ffmpeg")
 class SubtitleSheetAndTailCandidateMediaTests(unittest.TestCase):
     def test_single_character_glyph_paginated_sheets_and_tail_cut_candidates(self):
         from unittest import mock

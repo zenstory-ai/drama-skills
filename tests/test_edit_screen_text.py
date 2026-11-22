@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.media_require import has_ffmpeg
+
 
 SKILL = Path(__file__).resolve().parents[1] / "skills/short-drama-edit"
 SPEC = importlib.util.spec_from_file_location("edit_screen_text", SKILL / "scripts/edit_tool.py")
@@ -495,7 +497,7 @@ class SoundEffectTests(unittest.TestCase):
             with self.assertRaises(edit.EditError):
                 project.parse()
 
-    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+    @unittest.skipUnless(has_ffmpeg(), "needs ffmpeg")
     def test_effect_is_heard_in_its_window_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1061,12 +1063,7 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
         self.assertIn("-vf", final)
         self.assertIn("subtitles.ass", final[final.index("-vf") + 1])
 
-    @unittest.skipUnless(
-        shutil.which("ffmpeg")
-        and shutil.which("ffprobe")
-        and edit._has_ffmpeg_filter(shutil.which("ffmpeg"), "ass"),
-        "needs ffmpeg with libass",
-    )
+    @unittest.skipUnless(has_ffmpeg(require_ass=True), "needs ffmpeg with libass")
     def test_cli_renders_plain_caption_without_node_or_remotion(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

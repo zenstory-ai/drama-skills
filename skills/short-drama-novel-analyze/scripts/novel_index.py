@@ -338,7 +338,7 @@ def select_chapter_unit(
     its chapters 第N节 with nothing coarser still works.
     """
 
-    counts = {unit: 0 for unit in CHAPTER_UNITS}
+    counts = dict.fromkeys(CHAPTER_UNITS, 0)
     for heading in headings:
         counts[heading["unit"]] += 1
     if not headings:
@@ -546,12 +546,11 @@ def _collect_chapter_warnings(
                 if not reported_duplicate:
                     warnings.append(f"duplicate chapter number {current}{label}")
                     reported_duplicate = True
-            elif current != previous + 1:
-                if not reported_gap:
-                    warnings.append(
-                        f"chapter numbering jumps from {previous} to {current}{label}"
-                    )
-                    reported_gap = True
+            elif current != previous + 1 and not reported_gap:
+                warnings.append(
+                    f"chapter numbering jumps from {previous} to {current}{label}"
+                )
+                reported_gap = True
     empty = [chapter["sequence"] for chapter in chapters if chapter["char_count"] < 50]
     if empty:
         warnings.append(

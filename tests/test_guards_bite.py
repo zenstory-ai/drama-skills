@@ -102,7 +102,7 @@ class EpisodeIdentityTests(unittest.TestCase):
     """
 
     def test_a_record_for_an_unknown_episode_is_refused(self) -> None:
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             episode_intake._validated_records(
                 [{"episode_id": "EP999", "x": 1}], {"EP001", "EP002"}, "episode map"
             )

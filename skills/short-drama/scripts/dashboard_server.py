@@ -213,7 +213,7 @@ def _is_link_or_reparse(details: os.stat_result) -> bool:
     return stat.S_ISLNK(details.st_mode) or bool(attributes & reparse_flag)
 
 
-def _entry_is_link(entry: os.DirEntry) -> bool:
+def _entry_is_link(entry: os.DirEntry[str]) -> bool:
     try:
         if entry.is_symlink():
             return True
@@ -276,7 +276,7 @@ class _DescriptorDirectory:
         )
 
     @contextlib.contextmanager
-    def scandir(self) -> Iterator[Iterator[os.DirEntry]]:
+    def scandir(self) -> Iterator[Iterator[os.DirEntry[str]]]:
         with os.scandir(self._fd) as entries:
             yield entries
 
@@ -298,10 +298,16 @@ class _DescriptorDirectory:
             self._fd = -1
 
     def status(self, tool: ModuleType, project_root: str) -> dict[str, Any]:
-        return tool.project_status_at(self._fd, project_root=project_root)
+        result: dict[str, Any] = tool.project_status_at(
+            self._fd, project_root=project_root
+        )
+        return result
 
     def lifecycle(self, tool: ModuleType, relative: str) -> dict[str, str] | None:
-        return tool.project_path_lifecycle_at(self._fd, relative)
+        result: dict[str, str] | None = tool.project_path_lifecycle_at(
+            self._fd, relative
+        )
+        return result
 
     def coordinated_edit(
         self, tool: ModuleType, relative: str, expected_version: str
@@ -368,7 +374,7 @@ class _PathDirectory:
         return _PathDirectory.open_root(self._pinned() / name)
 
     @contextlib.contextmanager
-    def scandir(self) -> Iterator[Iterator[os.DirEntry]]:
+    def scandir(self) -> Iterator[Iterator[os.DirEntry[str]]]:
         with os.scandir(self._pinned()) as entries:
             yield entries
 
@@ -420,12 +426,16 @@ class _PathDirectory:
         return None
 
     def status(self, tool: ModuleType, project_root: str) -> dict[str, Any]:
-        return tool.project_status_from_root(
+        result: dict[str, Any] = tool.project_status_from_root(
             self._pinned(), project_root=project_root
         )
+        return result
 
     def lifecycle(self, tool: ModuleType, relative: str) -> dict[str, str] | None:
-        return tool.project_path_lifecycle(self._pinned(), relative)
+        result: dict[str, str] | None = tool.project_path_lifecycle(
+            self._pinned(), relative
+        )
+        return result
 
     def coordinated_edit(
         self, tool: ModuleType, relative: str, expected_version: str
@@ -776,9 +786,9 @@ class ProjectStore:
                 HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "file type is not editable text"
             )
         try:
-            with self._pinned_project(project_id) as (directory, _root):
-                with _open_parent_directory(directory, pure) as (parent, name):
-                    data, _ = self._read_regular(parent, name)
+            with self._pinned_project(project_id) as (directory, _root), \
+                    _open_parent_directory(directory, pure) as (parent, name):
+                data, _ = self._read_regular(parent, name)
         except OSError as exc:
             raise DashboardError(
                 HTTPStatus.FORBIDDEN, "text file cannot be opened safely"
@@ -1729,8 +1739,8 @@ def _try_exclusive_lock(handle: Any) -> bool:
         handle.seek(0)
         # Reached through getattr for the same reason project_tool.py does: the
         # POSIX stubs mypy checks against do not declare these Windows names.
-        locking = getattr(msvcrt, "locking")
-        non_blocking = getattr(msvcrt, "LK_NBLCK")
+        locking = getattr(msvcrt, "locking")  # noqa: B009
+        non_blocking = getattr(msvcrt, "LK_NBLCK")  # noqa: B009
         try:
             locking(handle.fileno(), non_blocking, 1)
         except OSError:

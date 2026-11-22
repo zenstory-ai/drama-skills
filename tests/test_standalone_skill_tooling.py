@@ -315,6 +315,73 @@ class StandaloneSkillToolingTests(unittest.TestCase):
                     help_run = self.run_in_copy(name, rel_script, "--help")
                     self.assertEqual(help_run.returncode, 0, help_run.stderr)
 
+    def test_skill_docs_only_reference_registered_cli_subcommands(self) -> None:
+        command_re = re.compile(
+            r"<PYTHON>\s+<SKILL_DIR>/(scripts/[A-Za-z0-9_/-]+\.py)\s+([a-z][a-z0-9-]*)\b"
+        )
+        probe_code = (
+            "import argparse, contextlib, io, json, runpy, sys\n"
+            "found = []\n"
+            "orig_add = argparse._SubParsersAction.add_parser\n"
+            "def spy_sub(self, name, *a, **kw):\n"
+            "    found.append(name)\n"
+            "    for alias in kw.get('aliases', ()):\n"
+            "        found.append(alias)\n"
+            "    return orig_add(self, name, *a, **kw)\n"
+            "argparse._SubParsersAction.add_parser = spy_sub\n"
+            "orig_arg = argparse.ArgumentParser.add_argument\n"
+            "def spy_arg(self, *a, **kw):\n"
+            "    if a and not str(a[0]).startswith('-') and kw.get('choices') and not found:\n"
+            "        found.extend(str(c) for c in kw['choices'])\n"
+            "    return orig_arg(self, *a, **kw)\n"
+            "argparse.ArgumentParser.add_argument = spy_arg\n"
+            "script = sys.argv[1]\n"
+            "sys.argv = [script, '--help']\n"
+            "with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):\n"
+            "    try:\n"
+            "        runpy.run_path(script, run_name='__main__')\n"
+            "    except SystemExit:\n"
+            "        pass\n"
+            "print(json.dumps(sorted(set(found))))\n"
+        )
+        registered_cache: dict[Path, set[str]] = {}
+        checked_pairs = 0
+        for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
+            skill_dir = skill_md.parent
+            body = skill_md.read_text(encoding="utf-8")
+            documented = sorted(set(command_re.findall(body)))
+            for rel_script, subcommand in documented:
+                script_path = skill_dir / rel_script
+                self.assertTrue(
+                    script_path.is_file(),
+                    f"{skill_md.relative_to(SUITE)} references missing script {rel_script}",
+                )
+                if script_path not in registered_cache:
+                    env = os.environ.copy()
+                    env["PYTHONDONTWRITEBYTECODE"] = "1"
+                    run = subprocess.run(
+                        [sys.executable, "-c", probe_code, str(script_path)],
+                        env=env,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    registered_cache[script_path] = set(json.loads(run.stdout))
+                with self.subTest(
+                    skill=skill_dir.name, script=rel_script, subcommand=subcommand
+                ):
+                    self.assertIn(
+                        subcommand,
+                        registered_cache[script_path],
+                        f"{skill_md.relative_to(SUITE)} documents unknown subcommand "
+                        f"{subcommand!r} for {rel_script} "
+                        f"(registered: {sorted(registered_cache[script_path])})",
+                    )
+                    checked_pairs += 1
+        self.assertGreater(
+            checked_pairs, 0, "expected SKILL.md CLI subcommands to be verified"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
