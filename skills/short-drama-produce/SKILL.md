@@ -14,10 +14,12 @@ license: MIT
 
 - **来源提取与参考绑定**：指定 `source` 与 `source_entry`（`IMG-*`、`SHOT-*`、`MOTION-*` 或 `GROUP-*`）时，工具自动从该二级标题段落提取可复制提示词与已落盘 `REF-...` 绑定，并按条目段落计算摘要（修改后续镜头不会连坐作废前序确认码）；详细字段规则见 [生成接口协议规范](references/adapter-contract.md#任务单格式job-json)。
 
-多条资产优先走**批次确认工作流**，先汇总预览整批清单，未确认前绝不发起任何外部扣费调用（下文 `<SKILL_DIR>` 为本 `SKILL.md` 所在目录，需 Python 3.9+，macOS/Linux 用 `python3`，Windows 可用 `py -3` 或 `python`）：
+> 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
+
+多条资产优先走**批次确认工作流**，先汇总预览整批清单，未确认前绝不发起任何外部扣费调用：
 
 ```bash
-python3 <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json>
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json>
 ```
 
 ## 确认工作流（推荐批次确认，兼容单任务）
@@ -30,20 +32,20 @@ python3 <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <j
 
 ## 命令
 
-详细字段与接口协议见 [生成接口协议规范](references/adapter-contract.md)，命令行由 [production_tool.py](scripts/production_tool.py) 提供（Windows 将 `python3` 换为 `py -3` 或 `python`）：
+详细字段与接口协议见 [生成接口协议规范](references/adapter-contract.md)，命令行由 [production_tool.py](scripts/production_tool.py) 提供：
 
 ```text
-python3 <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json> [--batch-id <batch_id>]
-python3 <SKILL_DIR>/scripts/production_tool.py confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
-python3 <SKILL_DIR>/scripts/production_tool.py confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
-python3 <SKILL_DIR>/scripts/production_tool.py run-batch <project> (--batch-id <batch_id> | --job-ids <id>...) --adapter-config <outside-project-config.json> [--continue-on-error]
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare-batch <project> --jobs <job-1.json> <job-2.json> [--batch-id <batch_id>]
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm-batch <project> [--batch-id <batch_id>] --confirmation "CONFIRM BATCH <batch_id> <code>"
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py run-batch <project> (--batch-id <batch_id> | --job-ids <id>...) --adapter-config <outside-project-config.json> [--continue-on-error]
 
-python3 <SKILL_DIR>/scripts/production_tool.py prepare <project> --job <job.json>
-python3 <SKILL_DIR>/scripts/production_tool.py confirm <project> --job-id <id> --confirmation "CONFIRM <id> <code>"
-python3 <SKILL_DIR>/scripts/production_tool.py run <project> --job-id <id> --adapter-config <outside-project-config.json>
-python3 <SKILL_DIR>/scripts/production_tool.py status <project> (--job-id <id> | --batch-id <batch_id>)
-python3 <SKILL_DIR>/scripts/production_tool.py collect <project> --job-id <id> --adapter-config <outside-project-config.json>
-python3 <SKILL_DIR>/scripts/production_tool.py audit <project>
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py prepare <project> --job <job.json>
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py confirm <project> --job-id <id> --confirmation "CONFIRM <id> <code>"
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py run <project> --job-id <id> --adapter-config <outside-project-config.json>
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py status <project> (--job-id <id> | --batch-id <batch_id>)
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py collect <project> --job-id <id> --adapter-config <outside-project-config.json>
+<PYTHON> <SKILL_DIR>/scripts/production_tool.py audit <project>
 ```
 
 同一任务单存在未结清的 `running` 记录时，禁止重新执行 `prepare`、`confirm` 或 `run`。

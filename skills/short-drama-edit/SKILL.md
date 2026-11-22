@@ -40,16 +40,22 @@ license: MIT
 
 ## 命令与无 Remotion 降级路径
 
-命令行工具由 [edit_tool.py](scripts/edit_tool.py) 提供（`<SKILL_DIR>` 为本 `SKILL.md` 所在目录，需 Python 3.9+；macOS/Linux 用 `python3`，Windows 可用 `py -3` 或 `python`）：
+> 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
+
+命令行工具由 [edit_tool.py](scripts/edit_tool.py) 提供：
 
 ```text
-python3 <SKILL_DIR>/scripts/edit_tool.py check <剧集/EP001> --project-root <project> [--partial]
-python3 <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
-python3 <SKILL_DIR>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
+<PYTHON> <SKILL_DIR>/scripts/edit_tool.py check <剧集/EP001> --project-root <project> [--partial]
+<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
+<PYTHON> <SKILL_DIR>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
 - `check`：核对入出点算术自洽、来源编号与全集镜头下落（`--partial` 下未入片镜头转提醒）、媒体可读与时长边界、同源视频区间重叠、画幅宽高比一致、字幕与画面文字匹配剧本原文及音轨时间范围。
-- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**）；`--screen-text-mode` 控制 `画面文字` 渲染方式（默认 `auto`）：复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 Remotion 时走可选的 [Remotion 图文叠加层](assets/remotion/README.md)（默认并发数为 2）；未装 Node/Remotion 且全片仅含普通 `字卡` 时自动降级到 `ffmpeg` ASS 烧录并在报告中给出提醒；显式传 `ffmpeg` 强制用 `ffmpeg` 烧录普通 `字卡`（遇复杂面板样式报错），传 `remotion` 强制走 Remotion，传 `off` 跳过全部 `画面文字` 叠层。
+- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**）；`--screen-text-mode` 控制 `画面文字` 渲染方式（默认 `auto`）：
+  - `auto`（默认）：存在复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 Remotion 时，走可选的 [Remotion 图文叠加层](assets/remotion/README.md)（默认并发数为 2）；未装 Node/Remotion 且全片仅含普通 `字卡` 时，自动降级为 `ffmpeg` ASS 烧录并在报告中给出提醒。
+  - `ffmpeg`：强制用 `ffmpeg` ASS 烧录普通 `字卡`（遇复杂面板样式时报错拦截）。
+  - `remotion`：强制走 Remotion 渲染全部 `画面文字` 叠层。
+  - `off`：跳过全部 `画面文字` 叠层，其余裁切、混音与字幕烧录照常执行。
 - `verify`：实测成片总时长、综合响度与真峰值，列出图文与音轨起止秒数，并标出切点亮度跳变、切点音量跳变与疑似坏帧位置供人工复核。
 
 **无 Node / Remotion 环境时的降级方案**：

@@ -59,7 +59,7 @@ license: MIT
 <PYTHON> <SKILL_DIR>/scripts/duration_estimate.py --script 剧集/<EP>/剧本.md
 ```
 
-有 `short-drama.json` 时可追加 `--project short-drama.json` 读取项目语速与节奏设定；本集单独设了目标时长时可追加 `--target-seconds <秒数>`；若罕见单次角色名触发 `incomplete`，可追加 `--extra-speaker <角色名>`（可重复传入，在自动识别、篇首/场首 `人物：` 声明或已有索引说话人之上补充；`--speaker <角色名>` 则覆盖说话人白名单，`--script` 与 `--index` 模式均支持）。
+有 `short-drama.json` 时可追加 `--project short-drama.json` 读取项目语速与节奏设定；本集单独设了目标时长时可追加 `--target-seconds <秒数>`；若罕见单次角色名触发 `incomplete`，可追加 `--extra-speaker <角色名>`（可重复传入，在自动识别与篇首/场首 `人物：` 声明之上补充；`--speaker <角色名>` 则覆盖说话人白名单）。
 
 统计说明：
 - `dialogue_characters`（含标点）用来算 `vo_share`（`[VO]` 占全部台词字数比例；`[OS]` 计入分母、不计入分子）；`voiced_characters`（去标点实读字）与空格分词外语 `voiced_words` 分别按字数/词数语速折算秒数，未配置语速的单位列在 `untimed_speech`。
