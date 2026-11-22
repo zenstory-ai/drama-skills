@@ -23,10 +23,15 @@
 
 1. **技能自包含**：改一个技能，改动只落在它自己的目录。技能内 Markdown 相对链接解析后必须
    仍在本目录（`tests/test_installation_resolution.py` 检查）；跨技能只按技能名路由
-   （如 `$short-drama-review`），不链对方的文件。
-2. **知识与做法优先**：新能力先写进 `SKILL.md` 工作流或 `references/`；脚本只做稳定索引、
-   结构校验、清单这类确定性工作，不把创作判断写成规则代码。
-3. **规则分级**：每条规范归入 `structural_invariant` / `reviewed_invariant` /
+   （如 `short-drama-review`），不链对方的文件。
+2. **知识与做法优先（硬门禁 vs 软门禁）**：新能力先写进 `SKILL.md` 工作流或 `references/`；
+   脚本遵循**软门禁原则**——只有 100% 确定性的机械/安全检查（ID 存在性与唯一性、本地文件路径与
+   符号链接安全、时长算术加总、下游必需字段、付费/外发确认令牌）设为硬阻断 `ERROR`
+   （对应 `structural_invariant`）；其余一切启发式检查、跨语种提示词名称提醒、语义保真或正文锁词
+   核查一律做成**软门禁**（脚本输出 `WARNING` 提醒 Agent 重点复核而不粗暴报错，或交由
+   `short-drama-review` 按 `reviewed_invariant` 结合上下文审定），不把创作判断写成规则代码。
+3. **规则分级**：每条规范归入 `structural_invariant`（100% 确定性硬门禁，脚本阻断） /
+   `reviewed_invariant`（需结合上下文与语义审定的内容底线，由审稿或脚本软 `WARNING` 提醒把关） /
    `craft_default` / `taste_option`；不得把统一的字数、比例、数量配方设为质量门槛。
 4. **所有权与审查分离**：每个产物只有一个负责技能；修订不能冒充审查 verdict，自检要如实标注。
 5. **来源边界**：不得提交非公开项目内容、内部标识、私有网址、供应商任务或媒体文件，

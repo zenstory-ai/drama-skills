@@ -1,4 +1,4 @@
 interface:
   display_name: "原著拆解分析"
-  short_description: "将小说全本或指定章节拆成章节索引、剧情单元与分集候选清单"
-  default_prompt: "使用 $short-drama-novel-analyze 拆解这部原著小说，梳理剧情单元、爽点排序与分集候选清单。"
+  short_description: "支持短篇直读、长篇抽样快评与全本/指定区间章节索引、剧情提取和分集候选"
+  default_prompt: "使用 $short-drama-novel-analyze 快速评估原著改编可行性，或完成指定章节区间的拆解分析与分集候选。"

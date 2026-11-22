@@ -25,14 +25,13 @@
 ### 1. 跑测量脚本与字幕拼版
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py measure <各集.mp4> --out 输入/对标/<REF-ID>/measure
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py subtitle-sheet <代表集.mp4> --out 输入/对标/<REF-ID>/subtitles
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py subtitles <各集.mp4> --out 输入/对标/<REF-ID>/subtitles \
-  --band <左,上,右,下> [--color <字色>] [--min-share <比例>]
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" measure <各集.mp4> --out 输入/对标/<REF-ID>/measure
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" subtitle-sheet <代表集.mp4> --out 输入/对标/<REF-ID>/subtitles
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" subtitles <各集.mp4> --out 输入/对标/<REF-ID>/subtitles --band <左,上,右,下> [--color <字色>] [--min-share <比例>]
 # 可选：没有全程铺满背景音乐时辅助看静音段
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py audio <各集.mp4> --out 输入/对标/<REF-ID>/audio
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" audio <各集.mp4> --out 输入/对标/<REF-ID>/audio
 # 需要还原分镜与提示词时再对目标集跑：
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py shots <重点集.mp4> <重点集.measure.json>
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" shots <重点集.mp4> <重点集.measure.json>
 ```
 
 - **校准字幕框与字色**：对照 `subtitle-rows.json` 的 `suggested_band` 与 `subtitle-sheet.jpg` 红色比例网格，确认上下左右包住双行折行与长句首尾字，同时收窄左右边界避开两侧竖排名条、左上地点字卡或居中系统面板；黄字或彩字加 `--color`（如 `FFD400`）。不同集版式变化时单独设 `--band`。
@@ -90,11 +89,8 @@
 1. **格式校验与时长估算**：若已安装 `short-drama` 与 `short-drama-write` 技能，可分别移交它们做文档格式核对（五份文档未齐时仅作部分核对）与单集剧本时长估算（不在 `剧集/EPxxx/` 下留下临时索引文件）；独立运行时直接对照标准文档格式与本集实测时长逐项自检，不跨技能调用其他技能目录中的脚本。
 2. **字幕时间轴挂回 `measure`**：按 `T001 台词` 或 `T005-T010 合并的长句台词`（自动取首条起点至末条终点合并跨屏/跨镜拆条，非台词事件直接省略）写一份文本映射 `EPxxx.cues.txt`，挂回 `measure.json`（也可直接在 `*.subtitles.json` 的 `events` 里填 `text` 后挂接）：
    ```bash
-   <PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py transcript \
-     输入/对标/<REF-ID>/measure/<某集>.measure.json \
-     输入/对标/<REF-ID>/subtitles/<某集>.cues.txt \
-     --subtitles 输入/对标/<REF-ID>/subtitles/<某集>.subtitles.json
-   <PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py profile REF=输入/对标/<REF-ID>/measure --opening 3
+   <PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" transcript 输入/对标/<REF-ID>/measure/<某集>.measure.json 输入/对标/<REF-ID>/subtitles/<某集>.cues.txt --subtitles 输入/对标/<REF-ID>/subtitles/<某集>.subtitles.json
+   <PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" profile REF=输入/对标/<REF-ID>/measure --opening 3
    ```
    若继续用纸面剧本对照原片实测时长，可交由 `short-drama-write` 技能做单集估时（需先在还原项目配置中填好 `format.pacing` 语速与 `seconds_per_action_paragraph`）。单集时长估算会把动作段与台词串行相加——无对白打斗或静默定格偏多时纸面时长偏短，`[VO]` 叠在连续动作上偏多时纸面时长偏长，不必因此删改动作描写（首集加长而后续集定长时，估时可按本集实测秒数指定目标时长）。
 

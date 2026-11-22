@@ -19,5 +19,6 @@
 
 ## 规则分级与优先级
 
-- **四级规则**：`structural_invariant`（编号、跨文件引用、时长算术等确定性结构，由脚本核对）、`reviewed_invariant`（需结合剧情上下文核实的内容底线，归 `short-drama-review` 技能）、`craft_default`（成熟创作经验，说明用意即可突破）、`taste_option`（审美与风格取向，不作打回理由）。各环节细则见对应技能的 `references/stage-contract.md`。
+- **硬门禁 vs 软门禁原则**：只有 100% 确定性的机械与安全核对（编号与跨文件 ID 解析、本地文件路径与符号链接安全、时长算术、下游必需字段、外发/付费确认令牌）设为脚本硬阻断 `ERROR`（`structural_invariant`）；其余所有启发式核查、跨语种提示词名称提醒、语义保真与正文锁词覆盖一律采用**软门禁**（脚本输出 `WARNING` 提醒 Agent 重点复核、退出码保持 `0`，或交由 `short-drama-review` 按 `reviewed_invariant` 结合上下文审定），绝不拿脆弱启发式粗暴阻断创作。
+- **四级规则**：`structural_invariant`（100% 确定性结构与安全底线，由脚本硬阻断）、`reviewed_invariant`（需结合剧情上下文与语义核实的内容底线，归 `short-drama-review` 技能，脚本仅可输出软 `WARNING` 提醒）、`craft_default`（成熟创作经验，说明用意即可突破）、`taste_option`（审美与风格取向，不作打回理由）。各环节细则见对应技能的 `references/stage-contract.md`。
 - **冲突优先级**：创作者拍板的核心设定与改编底线 → 已确认的单集大纲与连戏事实 → 各技能 `stage-contract.md` → 题材卡、形态卡与通用经验。

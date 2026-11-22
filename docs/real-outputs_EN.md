@@ -90,32 +90,32 @@ The four originals: [`剧本.md`](../examples/creator-first/EP001/剧本.md) ·
 
 ## What the checker catches: break the sample in two places on purpose
 
-Origin: the same public sample as the previous subsection. `creator_markdown_check.py` runs cross-document checks
-across the five files of one episode. It passes on the sample as shipped. Remove Zhou Bosen from `SHOT-EP001-002`'s
-on-screen settings (`出场设定`) and change `MOTION-EP001-003`'s duration from `2s` to `3s`, and it reports the exact
-cause rather than a generic "validation failed":
+Origin: the same public sample as the previous subsection. `creator_markdown_check.py` follows a **soft-gate principle**:
+only 100% deterministic cross-document mechanical checks emit blocking `ERROR`s, while heuristic checks emit
+non-blocking `WARNING`s for review and semantic fidelity is checked by `short-drama-review`. It passes on the sample as
+shipped. Misspell `周薄森` as `周博森` in `SHOT-EP001-002`'s on-screen settings (`出场设定`) and change `MOTION-EP001-003`'s
+duration from `2s` to `3s`, and it reports the exact cause rather than a generic "validation failed":
 
 ```text
 $ python3 skills/short-drama/scripts/creator_markdown_check.py examples/creator-first/EP001 --project-root examples/creator-first
 OK: examples/creator-first/EP001
 
 $ python3 skills/short-drama/scripts/creator_markdown_check.py <broken copy>/EP001 --project-root <broken copy>
-ERROR: SHOT-EP001-002: 首帧提示词写到人物「周薄森」，出场设定没有覆盖；本镜确实看不见时在出场设定末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「提示词名称：无」
+ERROR: SHOT-EP001-002: 出场设定指向不存在的《视觉设定.md》条目: 人物「周博森」
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词时长必须与分镜一致
 ```
 
-The first line says: the first-frame prompt names the character "Zhou Bosen" (`周薄森`), but `出场设定` (on-screen
-settings) does not cover him; if he is genuinely not visible, append `; off-screen: character "Zhou Bosen"`
-(`；画外：人物「周薄森」`) to `出场设定`, and if that name is unreliable in prompt text, set `提示词名称：无`
-(`Prompt name: none`) in `视觉设定.md`. The second: the storyboard says 2 seconds and the video prompt says 3; the
-video prompt's duration must match the storyboard.
+The first line says: `出场设定` (on-screen settings) points to a character entry `周博森` that does not exist in
+`视觉设定.md`. The second: the storyboard says 2 seconds and the video prompt says 3; the video prompt's duration must
+match the storyboard.
 
-It also checks that every shot's `来源` starts with a scene ID present in `剧本.md`, and that every character,
-location, prop or look named in `首帧提示词`, `尾帧提示词` or a text-to-video `开场画面` is covered by `出场设定` or marked
-off-screen (`来源` quotations are not scanned). Every scene in the script must have a shot or be listed as deliberately
-unfilmed; spoken lines quoted inside the copyable prompt (introduced by speech verbs or `<d>`, ignoring ordinary signage
-or idioms) must match `剧本.md`, `视觉设定.md` or `分镜.md` aside from punctuation; and every `REF-*` must point to a real
-image file in the project with a stated purpose.
+It also deterministically verifies that every shot's `来源` starts with a scene ID present in `剧本.md`; every scene in
+the script has a shot or is listed as deliberately unfilmed; every `出场设定`, `图片提示词项`, and continuity-lock target
+ID resolves to a real entry; every `MOTION-...` points to an existing `SHOT-...` with matching duration, and every
+`GROUP-...` covers adjacent same-scene members whose durations sum cleanly without duplicates; and every `REF-*` /
+`REF-VOICE-*` points to a real media file inside the project with valid purpose and slot syntax. Non-deterministic
+heuristics (such as cross-language prompt designator reminders) surface as soft `WARNING`s, while verbatim locked-phrase
+retention and spoken-line traceability are reviewed contextually by `short-drama-review`.
 
 ## Estimate dialogue before fixing shot length; cut on measured timings
 
@@ -198,7 +198,7 @@ The originals of this run — the
 the [21-shot storyboard](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/%E5%89%A7%E9%9B%86/EP001/%E5%88%86%E9%95%9C.md)
 and the [RUN-LOG](https://github.com/zenstory-ai/drama-skills/blob/004d945d452f4eb607c5820f437218217af60f6e/evaluations/%E8%AE%A9%E4%BD%A0%E7%AE%A1%E8%B4%A6%E5%8F%B7/reference-run-0.6.6/RUN-LOG.md) —
 sit in commit `004d945` together with the eight clips and the film; by repository rule they are no longer kept in
-the working repository directory. They were written to the v0.6.6 rules; besides renamed field labels and checking `首帧提示词`, `尾帧提示词`, and text-to-video `开场画面` names against `出场设定`, the current
+the working repository directory. They were written to the v0.6.6 rules; besides renamed field labels and cross-document reference resolution, the current
 cut-list checker also requires the 13 unused shot IDs to be listed one by one rather than as a range, and the
 FAQ entry [What do I do after upgrading?](../README_EN.md#what-do-i-do-after-upgrading) explains how to update older
 episodes.

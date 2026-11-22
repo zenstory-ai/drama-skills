@@ -1,6 +1,6 @@
 # 题材卡目录与选用规则
 
-题材卡放在同目录的 `genre-cards/` 下，只负责提供该赛道常用的矛盾支点、名场面细节与制作省钱巧劲（整体属 `craft_default`，留钩与结局基调属 `taste_option`）。单集剧情永远服从创作者已敲定的设定事实、单集大纲与 [episode-design.md](episode-design.md)。
+题材卡放在同目录的 `genre-cards/` 下，只负责提供该赛道常用的矛盾支点、名场面细节与制作省钱巧劲（整体属 `craft_default`，留钩与结局基调属 `taste_option`）。单集剧情永远服从创作者已敲定的设定事实、单集大纲与 [episode-architecture.md](episode-architecture.md)。
 
 ## 选用原则
 
@@ -32,4 +32,4 @@
 ## 未覆盖题材与高概念叠加
 
 - **未覆盖题材**：表里没有对应项时，按 [genre-and-hook-playbook.md](genre-and-hook-playbook.md) 的六个核心问题自搭推进路数，不硬套邻近卡。
-- **叠加重生、系统、异能等高概念**：主赛道照常查取对应题材卡（直球系统/重生爽剧可直接查 [系统流](genre-cards/系统流.md) 或 [重生穿越](genre-cards/重生穿越.md)），规则底表与限制设计配合阅读 [genre-and-hook-playbook.md](genre-and-hook-playbook.md#高概念与开篇奇招)；节奏参数见 [episode-design.md](episode-design.md#10-节奏参考标准)。
+- **叠加重生、系统、异能等高概念**：主赛道照常查取对应题材卡（直球系统/重生爽剧可直接查 [系统流](genre-cards/系统流.md) 或 [重生穿越](genre-cards/重生穿越.md)），规则底表与限制设计配合阅读 [genre-and-hook-playbook.md](genre-and-hook-playbook.md#高概念与开篇奇招)；节奏参数见 [episode-architecture.md](episode-architecture.md#6-节奏参考标准)。

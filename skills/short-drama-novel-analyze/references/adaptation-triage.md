@@ -8,8 +8,7 @@
 - **短篇小说或已定范围**：短篇作品（如总章数不超过 30 章，抽样已近乎覆盖全篇）或创作者已指定拆解范围（如「拆前 100 章」「拆第一季」）、明确要求一次跑完时，**不在 S1 暂停等拍板**，直接进入 S2 逐章提取（短篇可直接合并进正式拆解，无需先停工交快评）。
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/novel_index.py sample \
-  项目开发/source-analysis/_index.json --count 12
+<PYTHON> "<SKILL_DIR>/scripts/novel_index.py" sample 项目开发/source-analysis/_index.json --count 12
 ```
 
 快评只评估剧情看点与视听转化条件，不提前生成 `chapters/` 单章文件或 `episode-candidates.jsonl`。后续 S3/S5 按完整拆解出的实据独立成文，无需回头迁就 S1 的初判比例或打分。

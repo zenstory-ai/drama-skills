@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧剪辑"
-  short_description: "把逐镜生成的素材按分镜剪辑成有节奏、台词完整、可交付的短剧成片"
-  default_prompt: "使用 $short-drama-edit 把 EP001 已生产的镜头素材剪成成片。"
+  short_description: "编排剪辑单并渲染带字幕、花字、调色接镜与混音的短剧成片，支持可插拔画面文字渲染器"
+  default_prompt: "使用 $short-drama-edit 按分镜和实测音频编排剪辑单，并渲染台词完整、节奏紧实的短剧成片。"

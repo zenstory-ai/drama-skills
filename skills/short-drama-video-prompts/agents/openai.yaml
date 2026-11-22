@@ -1,4 +1,4 @@
 interface:
-  display_name: "短剧视频提示词"
-  short_description: "依据分镜起止状态编写动作、表演、运镜、声音与节奏的视频提示词"
-  default_prompt: "使用 $short-drama-video-prompts 根据已定稿的分镜和首帧编写描写动作、表演与运镜变化的视频提示词。"
+  display_name: "短剧视频与配乐提示词"
+  short_description: "支持轻量起草或正式项目编写动作、运镜、声音、多镜合生与成片配乐（MUSIC-*）提示词"
+  default_prompt: "使用 $short-drama-video-prompts 编写视频动态、多镜合生或成片配乐提示词，贴合分镜起止与目标模型特点。"

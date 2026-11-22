@@ -12,9 +12,14 @@ license: MIT
 
 测量、字幕挂接与对标汇总使用 [breakdown_tool.py](scripts/breakdown_tool.py)，具体命令见[第 2 步](#2-测量)。
 
+## 模式选择（轻量单段速拆 vs 正式对标建档）
+
+- **轻量单段速拆**：用户仅发来单条短视频/单场片段想快速看节奏、镜头切法、开场钩子或叙事结构（不建长期对标库、不做多集同尺统计）时，直接对单段运行一次 `measure`（或在无终端时结合字幕/截图直接拉片），在当前对话中给出清晰的分镜节奏与看点拆解，**无需建立 `REF-ID` 登记目录或多集 `profile`**。
+- **正式对标建档 / 整集还原**：做多集对标统计、与本项目同尺比对差距，或反推标准《剧本.md》及全套五份文档时，按下方完整工作流建档执行。
+
 ## 使用边界与职责分工
 
-- 只读取当前对话提供或明确授权的素材。原片、转写稿、缩略图拼图与还原结果一律放在 `输入/对标/<REF-ID>/` 下，不进入正式交付或公开文件；学习用途（`study`）对标剧的真实剧名、专有角色名、逐字台词与独有桥段严禁进入原创项目文档或公开材料（本地记录与脱敏细则见 [阶段规范](references/stage-contract.md) `BRK-02`）。
+- 只读取当前对话提供或明确授权的素材。原片、转写稿、缩略图拼图与还原结果一律放在 `输入/对标/<REF-ID>/` 下，不进入正式交付或公开文件；学习用途（`study`）对标剧的真实剧名、专有角色名、逐字台词与独有桥段严禁进入原创项目文档或公开材料（脱敏边界详见 [阶段规范](references/stage-contract.md)）。
 - 还原出来的全套文档只有在明确登记为自有（`owned`）或已获授权（`licensed`）并写明依据时，才能转出对标目录交给下游使用。
 - 本技能只负责测量、拆解、同尺比对与对标还原，不替创作者定节奏数值；本项目的正式创作文档由对应负责技能修改，实测节奏数值须经 `short-drama-develop` 技能拟定方案并由创作者拍板确认后，才写入项目节奏目标。本环节完整规则见 [阶段规范](references/stage-contract.md)。
 
@@ -29,20 +34,23 @@ license: MIT
 按 [测量与观看](references/measure-and-read.md) 抽取样本集。默认先用 `measure` 生成代表帧缩略图拼版并挂接字幕转写拆解全局，仅对创作者指定的重点集或高光段落按需跑 `shots` 逐镜切片（运行环境 `PATH` 需有 `ffmpeg` 与 `ffprobe`）：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py measure <视频...> --out 输入/对标/<REF-ID>/measure
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py transcript <某集.measure.json> <同集字幕.srt>
-<PYTHON> <SKILL_DIR>/scripts/breakdown_tool.py profile <REF-ID>=输入/对标/<REF-ID>/measure --opening 3
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" measure <视频...> --out 输入/对标/<REF-ID>/measure
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" transcript <某集.measure.json> <同集字幕.srt>
+<PYTHON> "<SKILL_DIR>/scripts/breakdown_tool.py" profile <REF-ID>=输入/对标/<REF-ID>/measure --opening 3
 ```
 
 ### 3. 看片细读
 
 对照代表帧拼图与带时间戳的转写稿，按 [拆解维度](references/breakdown-dimensions.md) 逐项梳理整剧集长编排、开场第一拍、信息交代方式、对白密度、镜头分切、集尾留钩与跨集衔接、画幅与制作形态；每一项都分开写明**实测与画面事实**、**作用分析**和**待确认盲区**。
 
-- **无原生音视频多模态输入时的降级路径**：若当前智能体环境不支持直接读取视频或音频文件，优先使用外挂字幕（SRT/WebVTT）或本地 ASR 转写稿，配合 `breakdown_tool.py` 生成的代表帧拼图（`*.sheet.jpg`）、字幕拼版（`*.subtitles.sheet*.jpg`）与音轨测量（`audio`）完成拆解与对照；无法从静帧与文字确认的语气、声线、配乐与非字幕人声须按 `BRK-03` 明确记为待确认盲区，不凭猜测补全。
+- **无原生音视频多模态输入时的降级路径**：若当前智能体环境不支持直接读取视频或音频文件，优先使用外挂字幕（SRT/WebVTT）或本地 ASR 转写稿，配合 `breakdown_tool.py` 生成的代表帧拼图（`*.sheet.jpg`）、字幕拼版（`*.subtitles.sheet*.jpg`）与音轨测量（`audio`）完成拆解与对照；无法从静帧与文字确认的语气、声线、配乐与非字幕人声须明确记为待确认盲区，不凭猜测补全。
 
 ### 3a. 视频反推剧本与整集还原（按需）
 
-要把单集或连续多集视频反推成跨集统一的逐字标准《剧本.md》，或按需进一步还原人物场景道具设定、逐镜分镜和图片与视频提示词（含拿自家老片续写或重制）时，按 [整集与多集还原](references/reconstruct.md) 在 `输入/对标/<REF-ID>/还原/` 下建独立还原项目：只需剧本时跑 `measure` 与 `subtitles` 并结合全片音画（无原生音视频输入时改用外挂字幕/ASR 转写稿配合拼图关键帧与 `audio` 测量）直接写出《剧本.md》，不切单镜视频；需要全套五份文档时再对目标集跑 `shots` 补齐，跨集人物、穿帮与核对记录统一放入 `还原/审查/还原核对.md`。
+要把单集或连续多集视频反推成标准《剧本.md》或全套五份制作文档（含拿自家老片续写或重制）时，按 [整集与多集还原](references/reconstruct.md) 在 `输入/对标/<REF-ID>/还原/` 下建独立还原项目：
+
+- **只需反推剧本**：跑 `measure` 与 `subtitles` 并结合全片音画（无原生音视频输入时改用外挂字幕/ASR 转写稿配合拼图关键帧与 `audio` 测量）直接写出跨集统一的《剧本.md》，不切单镜视频。
+- **需还原全套五份文档**：对目标集加跑 `shots` 导出单镜切片与首中尾静帧，补齐视觉设定、分镜、图片与视频提示词；跨集人物表、原片穿帮与核对记录统一放入 `还原/审查/还原核对.md`。
 
 ### 4. 提炼可借鉴手法
 
@@ -54,4 +62,4 @@ license: MIT
 
 ### 6. 归档拆解记录
 
-将对标清单（隐私与脱敏边界见 [阶段规范](references/stage-contract.md) `BRK-02`）、实测统计、可借鉴手法、同尺差距表及后续成片同尺复测结果整理写入 `项目开发/对标拆解.md`。
+将对标清单（隐私与脱敏边界见 [阶段规范](references/stage-contract.md)）、实测统计、可借鉴手法、同尺差距表及后续成片同尺复测结果整理写入 `项目开发/对标拆解.md`。

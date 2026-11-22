@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧生产"
-  short_description: "预览并确认后执行图片、视频、语音和音乐生成任务，保留运行记录"
-  default_prompt: "使用 $short-drama-produce 先预览待生成的媒体任务清单，经创作者明确确认后再安全执行。"
+  short_description: "先预览后确认，执行图片、视频、角色配音与配乐（MUSIC-*）生成任务并保留可追溯运行记录"
+  default_prompt: "使用 $short-drama-produce 先预览图片、视频、配音或配乐生成任务清单，经创作者明确确认后再执行。"
