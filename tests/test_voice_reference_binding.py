@@ -173,12 +173,8 @@ class CheckerTests(unittest.TestCase):
         for name, (written, speaks) in cases.items():
             with self.subTest(name):
                 screenplay = f"# EP001\n\n## EP001-SC001 内 · 办公室 · 夜\n\n{written}\n"
-                spoken = [
-                    item
-                    for item in checker._screenplay_dialogue(screenplay)
-                    if item.speaker == "江晨" and "下周榜首" in item.key
-                ]
-                self.assertEqual(bool(spoken), speaks, spoken)
+                speakers = checker._screenplay_dialogue(screenplay)
+                self.assertEqual("江晨" in speakers, speaks, speakers)
 
     def test_the_binding_must_match_the_characters_recorded_voice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

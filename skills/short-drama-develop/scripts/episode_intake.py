@@ -30,21 +30,6 @@ if sys.version_info < MINIMUM_PYTHON:
     )
 
 SCHEMA_VERSION = "1.0.0"
-CHINESE_DIGITS = {
-    "零": 0,
-    "〇": 0,
-    "一": 1,
-    "二": 2,
-    "两": 2,
-    "三": 3,
-    "四": 4,
-    "五": 5,
-    "六": 6,
-    "七": 7,
-    "八": 8,
-    "九": 9,
-}
-CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 CHINESE_NUMBER = "零〇一二三四五六七八九十百千两"
 _HEADING_SEP = r"(?:——|[·：:–—-])"
 _HEADING_TAIL = rf"(?:[ \t　]*{_HEADING_SEP}(?:[ \t　]*\S.*)?|[ \t　]+\S.*)?"
@@ -78,6 +63,24 @@ def _is_strict_int(value: Any) -> bool:
 
 def _strict_int(value: Any) -> int | None:
     return value if _is_strict_int(value) and isinstance(value, int) else None
+
+
+# BEGIN SHARED: cn_num
+CHINESE_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 
 
 def chinese_to_int(text: str) -> int | None:
@@ -145,6 +148,7 @@ def chinese_to_int(text: str) -> int | None:
     if (previous_weight > 10) != saw_zero:
         return None
     return total + pending_digit
+# END SHARED: cn_num
 
 
 def _line_table(data: bytes) -> tuple[list[bytes], list[int]]:

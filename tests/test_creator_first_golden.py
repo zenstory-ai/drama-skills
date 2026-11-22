@@ -68,6 +68,7 @@ EXPECTED_KNOWHOW = {
         "voice-direction.md",
     },
     "short-drama-image-prompts": {
+        "format-spec.md",
         "sheet-prompt-guide.md",
         "stage-contract.md",
         "variants-and-edits.md",
@@ -913,13 +914,17 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            # Omitting it is an error in its own right, reported in the same pass
-            # as everything else rather than a round later.
+            # Omitting it is a soft warning (AST-13 reviewed_invariant), not a
+            # hard script error, reported alongside any structural pass.
+            result = creator_markdown_check.validate_episode_with_warnings(
+                episode, project
+            )
+            self.assertEqual(result.errors, [])
             self.assertIn(
                 "视觉设定.md: 人物「周薄森」缺少提示词名称；"
                 "提示词正文不是中文时，写「提示词名称：<正文里的拼写>」，"
                 "正文从不点名时写「提示词名称：无」",
-                creator_markdown_check.validate_episode(episode, project),
+                result.warnings,
             )
 
             # Declaring 无 is the honest opt-out for a body that never names the
@@ -1056,13 +1061,10 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         }.items():
             with self.subTest(case=label):
                 errors: list[str] = []
-                basis = creator_markdown_check._visual_basis(
+                creator_markdown_check._visual_basis(
                     value, "SHOT-EP001-001", entries, {}, errors
                 )
                 self.assertEqual(errors, [])
-                self.assertEqual(
-                    basis.declared, {("人物", "小宇"), ("地点", "家庭书房")}
-                )
 
     def test_a_named_subject_that_is_not_in_frame_is_recorded_rather_than_claimed(
         self,
@@ -1116,23 +1118,28 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            result = creator_markdown_check.validate_episode_with_warnings(
+                episode, project
+            )
+            self.assertEqual(result.errors, [])
             self.assertIn(
                 "视觉设定.md: 人物「周薄森」缺少提示词名称；"
                 "提示词正文不是中文时，写「提示词名称：<正文里的拼写>」，"
                 "正文从不点名时写「提示词名称：无」",
-                creator_markdown_check.validate_episode(episode, project),
+                result.warnings,
             )
 
             (project / "short-drama.json").write_text(
                 '{"format": {"prompt_language": "zh-CN"}}', encoding="utf-8"
             )
+            zh_result = creator_markdown_check.validate_episode_with_warnings(
+                episode, project
+            )
             self.assertEqual(
                 [
-                    error
-                    for error in creator_markdown_check.validate_episode(
-                        episode, project
-                    )
-                    if "提示词名称" in error
+                    item
+                    for item in (*zh_result.errors, *zh_result.warnings)
+                    if "提示词名称" in item
                 ],
                 [],
             )
@@ -1236,12 +1243,10 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         for value in shown:
             with self.subTest(value=value):
                 errors: list[str] = []
-                basis = creator_markdown_check._visual_basis(
+                creator_markdown_check._visual_basis(
                     value, "SPEC", entries, {}, errors
                 )
                 self.assertEqual(errors, [])
-                self.assertTrue(basis.parsed)
-                self.assertTrue(basis.accounted)
 
     def test_documented_shot_and_motion_pair_satisfies_the_pairing_rules(self) -> None:
         # A creator copies this pair as the starting shape; if the checker

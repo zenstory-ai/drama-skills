@@ -77,11 +77,6 @@ CHAPTER_RE = re.compile(
     r")[ \t　]*$"
 )
 MD_HEADING_PREFIX_RE = re.compile(r"^[ \t　]*#{1,6}\s+")
-CHINESE_DIGITS = {
-    "零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
-    "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
-}
-CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
 _STRICT_ROMAN_RE = re.compile(rf"^{_ROMAN_NUMBER_RE}$")
 ENGLISH_ONES = {
@@ -101,14 +96,26 @@ ENGLISH_TENS = {
 MAX_HEADING_LINE_WIDTH = 50
 
 
+# BEGIN SHARED: cn_num
+CHINESE_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
+
+
 def chinese_to_int(text: str) -> int | None:
-    """Convert 一 / 十五 / 两百零三 / 两零八 / 一千零十五 to an int, or None if malformed.
-
-    Returning None rather than raising matters: a heading whose number cannot be
-    read must be reported as an unreadable heading, not crash the whole index
-    and leave the creator with no boundary table at all.
-    """
-
+    """Convert 一 / 十五 / 两百零三 / 两零八 / 一千零十五 to an int, or None if malformed."""
     if not text:
         return None
     if text.isascii() and text.isdigit():
@@ -172,6 +179,7 @@ def chinese_to_int(text: str) -> int | None:
     if (previous_weight > 10) != saw_zero:
         return None
     return total + pending_digit
+# END SHARED: cn_num
 
 
 def roman_to_int(text: str) -> int | None:
