@@ -47,7 +47,7 @@ Drama Skills covers the AI short-drama and motion-comic pipeline from idea or so
 
 These skills grew out of our motion-comic studio's production line: after more than a thousand AI short-drama and motion-comic projects since 2025, a nearly 80,000-line all-in-one GUI could no longer keep up with model iteration, so we distilled our workflows and prompt craft into plain-file agent skills and kept only the generation queue in-house.
 
-- **Five Markdown files record creative decisions** — each episode maintains the files its stages need: `剧本.md` (script), `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts), and `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when editing.
+- **Five Markdown files record creative decisions** — each episode maintains the files its stages need: `剧本.md` (script), `视觉设定.md` (visual design), `分镜.md` (storyboard), `图片提示词.md` (image prompts), and `视频提示词.md` (video prompts), plus `剪辑单.md` (cut list) when editing; when you run only part of the workflow, deliver only the documents for the stages you run.
 - **Written settings keep shots consistent** — any look that must hold across shots gets a continuity lock with a fixed phrase pasted verbatim into prompts, every first-frame prompt declares its on-screen settings, and a checker verifies cross-file references.
 - **Preview and confirm before spending money** — image, video (single shots or `GROUP-*` multi-shot groups), voice, and music jobs can be previewed as a batch first, listing exact counts, prompts, references, and parameters before calling external APIs; API keys stay outside the project and upstream files stay provider-neutral.
 - **Editing is part of the suite** — the editing skill records the reason for every in and out point, pulls subtitles verbatim from the script, normalizes loudness, and renders the episode; check and measurement scripts report objective results without making creative calls for you.
@@ -62,7 +62,7 @@ Prerequisite: Claude Code, Codex, or another coding agent supporting the Agent S
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-`-g` installs globally (omit it to install into the current directory only); **re-run the same command to update**. The 7 script-backed skills require **Python 3.9 or newer** (the other 5 documentation-only skills have no runtime prerequisites), rendering an edited cut also needs `ffmpeg` / `ffprobe` on `PATH`, and optional Remotion screen-text or dynamic-subtitle overlays additionally need `Node.js` / `npm` / `npx`.
+`-g` installs globally (omit it to install into the current directory only); **re-run the same command to update**. The 7 script-backed skills require **Python 3.9 or newer** (the other 5 documentation-only skills have no runtime prerequisites); `short-drama-edit` (rendering cuts) and `short-drama-breakdown` (benchmark video measurement and reverse-engineering) also need `ffmpeg` / `ffprobe` on `PATH`; optional Remotion complex screen-text panels or dynamic-subtitle overlays additionally need `Node.js` / `npm` / `npx` (plain title cards support `--screen-text-mode` `ffmpeg` fallback without Node/Remotion).
 
 On platforms that import skills directly from a GitHub URL (such as WorkBuddy; see the [community walkthrough](https://zhuanlan.zhihu.com/p/2088046501696222384) in Chinese), you can tell your agent:
 
@@ -266,7 +266,7 @@ Launch with one line inside your agent (Codex writes `$short-drama dashboard`):
 
 Runs natively on macOS, Linux, WSL, and Windows. The server runs in the background with `--detach` so its link stays live across your session; `--status` prints the active URL and `--stop` shuts it down. It listens on loopback only and never uploads project files.
 
-When ready to hand off, `project_tool.py export <project> --out <dir-outside-project>` packages each episode's existing five creator documents, `剪辑单.md`, and `制作成果/` into a delivery directory with a manifest and checksums; pass `--no-media` for a text-only handoff.
+When ready to hand off, `project_tool.py export <project> --out <dir-outside-project>` packages each episode's existing five creator documents, `剪辑单.md`, and `制作成果/` into a delivery directory with a manifest and checksums (pass `--no-media` for a text-only handoff), and `project_tool.py verify <export-dir>` re-checks the manifest and file checksums.
 
 ## FAQ
 

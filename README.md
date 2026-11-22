@@ -60,7 +60,7 @@ Drama Skills 覆盖 AI 短剧与漫剧从点子或原著到成片的全流程：
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-`-g` 为全局安装，去掉则只装到当前目录；**更新时重跑同一条命令即可**。带脚本的 7 个技能需要 **Python 3.9 或更高版本**（其余 5 个纯知识文档技能零运行依赖），剪辑成片另需安装 `ffmpeg` / `ffprobe`，启用可选 Remotion 画面文字或动态字幕叠层时另需 `Node.js` / `npm` / `npx`。
+`-g` 为全局安装，去掉则只装到当前目录；**更新时重跑同一条命令即可**。带脚本的 7 个技能需要 **Python 3.9 或更高版本**（其余 5 个纯知识文档技能零运行依赖），`short-drama-edit`（剪辑成片）与 `short-drama-breakdown`（对标视频测量/反推）另需安装 `ffmpeg` / `ffprobe`；启用可选 Remotion 复杂画面文字面板或动态字幕叠层时另需 `Node.js` / `npm` / `npx`（纯普通字卡场景支持 `--screen-text-mode` 降级至 `ffmpeg` 直出，无需安装 Node/Remotion）。
 
 支持直接导入 GitHub 仓库的平台（如 WorkBuddy，见社区整理的[完整用法](https://zhuanlan.zhihu.com/p/2088046501696222384)），也可以直接对 Agent 说：
 
@@ -259,7 +259,7 @@ flowchart LR
 
 原生支持 macOS、Linux、WSL 与 Windows。创作台默认在后台独立运行（`--detach`），会话期间链接持续有效；可用 `--status` 查看当前地址，`--stop` 关闭服务。服务仅监听本机，项目内容不上传。
 
-完稿后可用 `project_tool.py export <project> --out <项目外目录>` 导出交付包，把每集现有的五份创作文档、`剪辑单.md` 与 `制作成果/` 汇总成带清单和校验和的目录；只交文本时加 `--no-media`。
+完稿后可用 `project_tool.py export <project> --out <项目外目录>` 导出交付包，把每集现有的五份创作文档、`剪辑单.md` 与 `制作成果/` 汇总成带清单和校验和的目录（只交文本时加 `--no-media`），并可用 `project_tool.py verify <导出目录>` 复核导出清单与文件校验和。
 
 ## 常见问题
 

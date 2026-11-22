@@ -24,3 +24,4 @@ never 新增只断言某份文档或源码「包含 / 不包含某个纯字符�
 
 - **收益**：措辞可以随时改；测试红意味着行为变了，而不是句子变了；有变异证据的测试才算覆盖。
 - **代价与已知上限**：结构断言需要解析器——`RULE_ROW` 一度只捕获 ID 与分级，三份 CON-* 副本改了正文也不红，后来才捕获第三列（239f8df）；负向字面扫描的例外要在测试里写明为什么它是结构安全契约，否则下一个人会拿它当先例加正向子串断言。
+- **事实更新（2026-11-21）**：各技能随包 `selftest.py` 已移除（改为由 `tests/test_standalone_skill_tooling.py` 验证独立脚本行为），`fixture_adapter.py` 已迁至 `tests/fixtures/fixture_adapter.py`，详见 [技能可移植性治理、脚本瘦身与规则表减负](../architecture/2026-11-21-skill-governance-portability-and-script-slimming.md)。

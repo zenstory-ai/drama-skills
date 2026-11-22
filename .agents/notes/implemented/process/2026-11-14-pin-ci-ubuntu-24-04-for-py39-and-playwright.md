@@ -27,3 +27,4 @@ GitHub Actions 将浮动标签 `ubuntu-latest` 升级到 Ubuntu 26.04 后，[ci.
 
 - **收益**：最小改动恢复 `tests (py3.9)` 与 `Dashboard browser regressions` 在 GitHub Actions 上的完整执行，保持 `.release/policy.json` 要求的全部 6 个作业名、测试覆盖和锁定工具版本不变。
 - **代价**：`ubuntu-24.04` 镜像在未来 GitHub Actions 生命周期结束前，需要与 `MINIMUM_PYTHON` 或锁定的 `playwright` 版本一并做计划内升级，而不会随 `ubuntu-latest` 自动静默迁移。
+- **事实更新（2026-11-21）**：Python 3.9 与 `Dashboard browser regressions` 仍固定在 `ubuntu-24.04`；后续已从测试矩阵移除中间版本 Python 3.10（保留 `3.9` 与 `3.14`），并引入改动路径门控（`changes` / `docs-checks`）与统一汇总门禁 `ci-gate`，详见 [CI 加固、路径门控、媒体测试 fail-closed 与 Remotion 类型检查](../testing/2026-11-21-ci-hardening-and-path-gating.md)。

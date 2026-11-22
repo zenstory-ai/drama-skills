@@ -205,7 +205,7 @@ episodes.
 
 ## The source triage is compared against its own full pass
 
-Origin: `evaluations/让你管账号/reference-run` (the v0.4.2 run). `$short-drama-novel-analyze` first triages an
+Origin: `evaluations/让你管账号/reference-run` (the v0.4.2 run). `short-drama-novel-analyze` first triages an
 evenly sampled 12 of 20 chapters, then extracts all 20; when the full pass is done it goes back over the triage line
 by line and says which calls were overturned (4 of the table's 7 rows, translated):
 
@@ -225,14 +225,14 @@ by line and says which calls were overturned (4 of the table's 7 rows, translate
 the comparison is therefore optimistic: it demonstrates the cross-check step, not the accuracy of blind sampling.)
 In that v0.4.2 run, every episode candidate carried `source_ref` / `chapter_range` back into the chapter index with
 `creator_acceptance` set to `pending`; the current workflow writes a lightweight record with core fields such as
-`chapter_range` and `payoffs` and hands it to story development (`$short-drama-develop`) for the creator to decide.
+`chapter_range` and `payoffs` and hands it to story development (`short-drama-develop`) for the creator to decide.
 Originals: [`triage.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/triage.md) ·
 [`adaptation-value.md`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/adaptation-value.md) ·
 [`episode-candidates.jsonl`](../evaluations/让你管账号/reference-run/项目开发/source-analysis/episode-candidates.jsonl)
 
 ## Source-setting checklist: every key novel fact names the episode and the shot that shows it
 
-Same origin. `$short-drama-develop` lists the source settings that must not be altered, and each one has to answer
+Same origin. `short-drama-develop` lists the source settings that must not be altered, and each one has to answer
 "which shot shows this to the audience"; anything held back from Episode 1 is explicitly scheduled for a numbered
 later episode (3 of the table's 9 rows, translated):
 
@@ -243,8 +243,8 @@ later episode (3 of the table's 9 rows, translated):
 | F-SYS-COST | The device has a cost | **Explicitly scheduled for EP007** (first visible cost). EP001 only plants the rule setup without revealing the cost |
 
 In this run, the author's rule sheet for the device (bounds, failure conditions and cost) was worked out and accepted
-before writing EP001 while in-story reveals stayed staged across later episodes — matching the development stage's
-default craft advice (`STY-17`, `craft_default`) against inventing unforeshadowed ad-hoc plot patches in a corner:
+before writing EP001 while in-story reveals stayed staged across later episodes — following the development stage's
+craft practice of establishing core premise bounds upfront rather than inventing unforeshadowed ad-hoc plot patches in a corner:
 
 > DEV-04 · Cost of use: everything the device grants is taken by this world as his own talent. The misattribution
 > cannot be corrected — the moment he denies it, the granted ability fails for that performance. First in effect:
