@@ -545,7 +545,7 @@ a.shotref:hover { color: var(--zs-signal-ink); border-color: var(--zs-signal); }
 .pcard.copied { background: linear-gradient(90deg, var(--zs-ok-wash), transparent 40%), var(--zs-surface); }
 .pcard .pid { font: var(--zs-weight-bold) var(--zs-text-12) var(--zs-mono); color: var(--zs-signal-ink); overflow-wrap: anywhere; }
 .pcard .pt { font-weight: var(--zs-weight-bold); margin: var(--zs-space-0) 0 var(--zs-space-1h); }
-.pcard .pm { font-size: var(--zs-text-12); color: var(--zs-ink-500); display: grid; gap: var(--zs-space-0); }
+.pcard .pm { font-size: var(--zs-text-12); color: var(--zs-ink-500); display: grid; gap: var(--zs-space-0); overflow-wrap: anywhere; }
 .pcard .ptext { font: var(--zs-text-13)/1.7 var(--zs-sans); color: var(--zs-ink-700); cursor: pointer; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pcard .ptext.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pcard .pact { display: grid; gap: var(--zs-space-1h); justify-items: end; }

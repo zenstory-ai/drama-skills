@@ -546,8 +546,13 @@ def parse_music_prompts(text: str) -> list[dict[str, Any]]:
             "n": _number(music_id),
             "title": title.group(1).strip() if title else "",
             "use": fields.get("用途", "") or fields.get("剧情作用", ""),
-            "range": fields.get("区间", "") or fields.get("铺乐区间", ""),
-            "mood": fields.get("情绪", "") or fields.get("情绪起伏", ""),
+            "range": fields.get("区间", "") or fields.get("铺乐区间", "") or fields.get("适用范围", ""),
+            "mood": fields.get("情绪与乐器", "") or fields.get("情绪", "") or fields.get("情绪起伏", ""),
+            "style": fields.get("风格", ""),
+            "instruments": fields.get("乐器", ""),
+            "tempo": fields.get("节奏", ""),
+            "avoid": fields.get("禁用", ""),
+            "notes": fields.get("备注", ""),
             "sec": check._declared_seconds(fields.get("时长", "")) or 0,
             "prompt": check._copyable_prompt(section) or "",
         })
@@ -1257,7 +1262,21 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
             "prompts", "image", id=prompt["id"])
     for music in episode.get("musicPrompts") or []:
         add("配乐", music["id"], music["title"],
-            " ".join([music["prompt"], music["use"], music["mood"], music["range"]]).strip(),
+            " ".join(
+                part
+                for part in (
+                    music["prompt"],
+                    music["use"],
+                    music["mood"],
+                    music["range"],
+                    music.get("style", ""),
+                    music.get("instruments", ""),
+                    music.get("tempo", ""),
+                    music.get("avoid", ""),
+                    music.get("notes", ""),
+                )
+                if part
+            ),
             "prompts", "video", id=music["id"])
     for finding in (episode.get("review") or {}).get("findings", []):
         label = {"must": "必须改", "should": "建议改", "could": "可以更好"}[finding["sev"]]

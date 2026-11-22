@@ -1001,7 +1001,7 @@ function stageState(row, key) {
 
 function stageMeta(row, E) {
   const findings = row.review.must + row.review.should + row.review.could;
-  const prompts = E ? (E.imagePrompts?.length || 0) + (E.videoPrompts?.length || 0) : null;
+  const prompts = E ? (E.imagePrompts?.length || 0) + (E.videoPrompts?.length || 0) + (E.musicPrompts?.length || 0) : null;
   return {
     "": "",
     script: row.has.script ? (E?.script ? `${E.script.scenes.length} 场` : "已写") : "未写",
@@ -1232,7 +1232,7 @@ function viewEpisode(row, E) {
     script: E.script ? `${C.scenes.length} 场 · ${spoken} 句台词${E.metrics.vo != null ? ` · 旁白 ${pct(E.metrics.vo)}` : ""}` : "按原文阅读",
     settings: E.settings ? `${E.settings.items.length} 项${E.settings.era.period ? ` · 时代：${E.settings.era.period}` : ""}` : "按原文阅读",
     board: E.board ? `${C.shots.length} 镜 · ${num(C.total)} 秒${E.metrics.avg != null ? ` · 平均 ${num(E.metrics.avg)} 秒` : ""}` : "按原文阅读",
-    prompts: `图片 ${E.imagePrompts?.length ?? "—"} 条 · 视频 ${E.videoPrompts?.length ?? "—"} 条`,
+    prompts: `图片 ${E.imagePrompts?.length ?? "—"} 条 · 视频 ${E.videoPrompts?.length ?? "—"} 条${E.musicPrompts?.length ? ` · 配乐 ${E.musicPrompts.length} 条` : ""}`,
     film: E.cutlist ? `${C.cuts.length} 段 · ${fmt(C.cutTotal)}${E.media.film ? " · 已渲染成片" : " · 未渲染"}` : E.media.film ? "已有成片" : "按原文阅读",
     review: E.review ? `${E.review.verdict || "已写"} · 必须改 ${counts.must} · 建议改 ${counts.should}` : "按原文阅读",
   };
@@ -1598,6 +1598,31 @@ function keyframeCopyUnits(shots) {
   return units;
 }
 
+function musicCopyUnits(E) {
+  return (E.musicPrompts || []).map((music) => {
+    const meta = [
+      music.sec ? `${esc(num(music.sec))} 秒` : "",
+      music.range ? `区间：${esc(music.range)}` : "",
+      music.use ? `用途：${esc(music.use)}` : "",
+      music.mood ? `${music.instruments ? "情绪" : "情绪与乐器"}：${esc(music.mood)}` : "",
+      music.style ? `风格：${esc(music.style)}` : "",
+      music.instruments ? `乐器：${esc(music.instruments)}` : "",
+      music.tempo ? `节奏：${esc(music.tempo)}` : "",
+      music.avoid ? `禁用：${esc(music.avoid)}` : "",
+      music.notes ? `备注：${esc(music.notes)}` : "",
+    ].filter(Boolean);
+    return { key: music.id, id: music.id, title: music.title, meta, text: music.prompt };
+  });
+}
+
+function renderPromptCard(item, open) {
+  const hasText = Boolean(item.text);
+  return `<article class="card pcard ${S.copied.has(item.key) ? "copied" : ""}" id="p-${esc(item.id)}" data-key="${esc(item.key)}" data-prompt-id="${esc(item.id)}">
+    <div><div class="pid">${esc(item.id)}</div><div class="pt">${esc(item.title)}</div><div class="pm">${item.meta.filter(Boolean).map((line) => `<span>${line}</span>`).join("")}</div></div>
+    ${hasText ? `<div class="ptext ${open === item.id ? "" : "clamp"}" data-act="expand">${esc(item.text)}</div>` : '<div class="ptext muted">尚未编写可复制提示词</div>'}
+    <div class="pact">${hasText ? `${copyButton(item.text, item.key)}<span class="cc">${item.text.length} 字符</span>` : ""}</div></article>`;
+}
+
 function viewPrompts(row, E, arg, q) {
   if (!row.has.imgp && !row.has.vidp && !row.has.board) return missingView(row, "prompts");
   const C = context(E);
@@ -1606,24 +1631,28 @@ function viewPrompts(row, E, arg, q) {
     keyframe: keyframeCopyUnits(C.shots),
     image: (E.imagePrompts || []).map((prompt) => ({ key: prompt.id, id: prompt.id, title: prompt.title, meta: [esc(prompt.use), `被 ${C.shots.filter((shot) => shot.imgs.some((img) => img.id === prompt.id)).length} 镜引用`], text: prompt.prompt })),
   };
-  const tab = ["video", "keyframe", "image"].includes(arg) ? arg : sets.video.length ? "video" : sets.keyframe.length ? "keyframe" : "image";
+  const musicAll = musicCopyUnits(E);
+  const tab = ["video", "keyframe", "image"].includes(arg) ? arg : (sets.video.length || musicAll.length) ? "video" : sets.keyframe.length ? "keyframe" : "image";
   const list = sets[tab].filter((item) => item.text);
-  const done = list.filter((item) => S.copied.has(item.key)).length;
-  const nextItem = list.find((item) => !S.copied.has(item.key));
+  const musicUnits = tab === "video" ? musicAll : [];
+  const copyable = [...list, ...musicUnits.filter((item) => item.text)];
+  const done = copyable.filter((item) => S.copied.has(item.key)).length;
+  const nextItem = copyable.find((item) => !S.copied.has(item.key));
+  const nextLabel = nextItem ? nextItem.id.replace(/^(MOTION|SHOT|IMG|GROUP)-(EP\d+-)?/, "").replace(/^MUSIC-(EP\d+-)?/, "配乐 ") : "";
   const open = q.get("id");
   const docFor = { video: E.docs["视频提示词.md"], keyframe: E.docs["分镜.md"], image: E.docs["图片提示词.md"] }[tab];
-  const unreadable = { video: row.has.vidp && !E.videoPrompts, image: row.has.imgp && !E.imagePrompts, keyframe: row.has.board && !E.board }[tab];
+  const unreadable = { video: row.has.vidp && !E.videoPrompts && !musicAll.length, image: row.has.imgp && !E.imagePrompts, keyframe: row.has.board && !E.board }[tab];
+  const videoTabLabel = musicAll.length ? `视频 ${sets.video.length} · 配乐 ${musicAll.length}` : `视频 ${sets.video.length}`;
+  const hasItems = list.length > 0 || musicUnits.length > 0;
   return `<div class="wrap" data-view="prompts">
     <div class="head"><div><h2>提示词</h2><div class="sub">整段复制，粘进你的生成工具；一条就是一次生成</div></div>
-      <div class="actions"><div class="seg" role="tablist">${[["video", `视频 ${sets.video.length}`], ["keyframe", `关键帧 ${sets.keyframe.length}`], ["image", `图片 ${sets.image.length}`]].map(([key, label]) => `<a role="tab" href="#/${esc(row.id)}/prompts/${key}" ${tab === key ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</div>${editButton(docFor)}</div></div>
+      <div class="actions"><div class="seg" role="tablist">${[["video", videoTabLabel], ["keyframe", `关键帧 ${sets.keyframe.length}`], ["image", `图片 ${sets.image.length}`]].map(([key, label]) => `<a role="tab" href="#/${esc(row.id)}/prompts/${key}" ${tab === key ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</div>${editButton(docFor)}</div></div>
     ${problemNotices(E)}
-    ${unreadable ? `<div data-raw="${esc(docFor)}"><div class="loading">正在读取原文…</div></div>` : list.length ? `<div class="card copybar"><b>逐条复制</b><span class="bar"><i data-css="width:${(done / list.length) * 100}%"></i></span><span class="muted" id="copyProgress">${done} / ${list.length}</span>
-      ${nextItem ? `<button class="btn sm primary" type="button" data-copy="${esc(nextItem.text)}" data-key="${esc(nextItem.key)}" data-next="1">${icon("copy")}复制下一条 · <span class="mono">${esc(nextItem.id.replace(/^(MOTION|SHOT|IMG|GROUP)-(EP\d+-)?/, ""))}</span></button>` : `<span class="status ok">${icon("check")}全部复制过</span>`}
-      <button class="btn sm ghost" type="button" data-act="clear-copied" data-tab="${tab}">清除标记</button><span class="muted lbl-long">标记只存在这台电脑的浏览器里</span></div>
-    <div class="plist">${list.map((item) => `<article class="card pcard ${S.copied.has(item.key) ? "copied" : ""}" id="p-${esc(item.id)}" data-key="${esc(item.key)}">
-      <div><div class="pid">${esc(item.id)}</div><div class="pt">${esc(item.title)}</div><div class="pm">${item.meta.filter(Boolean).map((line) => `<span>${line}</span>`).join("")}</div></div>
-      <div class="ptext ${open === item.id ? "" : "clamp"}" data-act="expand">${esc(item.text)}</div>
-      <div class="pact">${copyButton(item.text, item.key)}<span class="cc">${item.text.length} 字符</span></div></article>`).join("")}</div>`
+    ${unreadable ? `<div data-raw="${esc(docFor)}"><div class="loading">正在读取原文…</div></div>` : hasItems ? `${copyable.length ? `<div class="card copybar"><b>逐条复制</b><span class="bar"><i data-css="width:${(done / copyable.length) * 100}%"></i></span><span class="muted" id="copyProgress">${done} / ${copyable.length}</span>
+      ${nextItem ? `<button class="btn sm primary" type="button" data-copy="${esc(nextItem.text)}" data-key="${esc(nextItem.key)}" data-next="1">${icon("copy")}复制下一条 · <span class="mono">${esc(nextLabel)}</span></button>` : `<span class="status ok">${icon("check")}全部复制过</span>`}
+      <button class="btn sm ghost" type="button" data-act="clear-copied" data-tab="${tab}">清除标记</button><span class="muted lbl-long">标记只存在这台电脑的浏览器里</span></div>` : ""}
+    ${list.length ? `<div class="plist">${list.map((item) => renderPromptCard(item, open)).join("")}</div>` : ""}
+    ${musicUnits.length ? `<div class="section-t" id="musicPromptsSection"><h3>成片配乐</h3><span class="n">${musicUnits.length} 条</span></div><div class="plist" data-prompt-group="music">${musicUnits.map((item) => renderPromptCard(item, open)).join("")}</div>` : ""}`
       : `<div class="empty"><h3>这一类还没有提示词</h3><p>${tab === "keyframe" ? "分镜里写了「首帧提示词」或「尾帧提示词」的镜头会列在这里。" : "写好后这里会逐条列出。"}</p></div>`}
   </div>`;
 }
@@ -2371,6 +2400,7 @@ if (typeof module !== "undefined" && module.exports) {
     loadEpisode,
     loadProject,
     mediaKind,
+    musicCopyUnits,
     nextFor,
     parseRoute,
     parseSettingKey,
@@ -2386,6 +2416,7 @@ if (typeof module !== "undefined" && module.exports) {
     savedContentIsCurrent,
     seriesTodos,
     settingKey,
+    stageMeta,
     stageState,
     viewEpisode,
     viewFilm,
