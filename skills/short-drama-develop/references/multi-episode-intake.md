@@ -12,10 +12,7 @@
 ## 1. 建候选索引（支持非第 1 集起步与跳集选拆）
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py index \
-  输入/<完整剧本> \
-  --source-ref 输入/<完整剧本> \
-  --out 项目开发/_work/episode-intake-index.next.json
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" index 输入/<完整剧本> --source-ref 输入/<完整剧本> --out 项目开发/_work/episode-intake-index.next.json
 ```
 
 脚本自动识别独立短行的 `第N集`、`第N集 标题` 与 Markdown `# EP N`，转为标准 `EP001` 格式。索引**允许不从第 1 集起步，也允许跳集**（例如只导入第 5～10 集分卷稿，或只抽第 1、8、12 集试拆高潮集）；退出码 `0` 表示集号按源码出现顺序严格递增且无重号、无空集，退出码 `2` 表示存在重号、倒序、空集或未识别出标题等问题。
@@ -28,17 +25,13 @@
 ```
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py manual-index \
-  输入/<完整剧本> <临时边界.jsonl> \
-  --source-ref 输入/<完整剧本> \
-  --out 项目开发/_work/episode-intake-index.next.json
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" manual-index 输入/<完整剧本> <临时边界.jsonl> --source-ref 输入/<完整剧本> --out 项目开发/_work/episode-intake-index.next.json
 ```
 
 候选索引跑通 `verify` 后存到正式路径 `项目开发/episode-intake-index.json`：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py verify \
-  项目开发/_work/episode-intake-index.next.json 输入/<完整剧本>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" verify 项目开发/_work/episode-intake-index.next.json 输入/<完整剧本>
 ```
 
 ## 2. 每次只切当前批次要读的那几集
@@ -46,16 +39,9 @@
 切单集文本前先跑 `verify`（原稿一旦改动必须重建索引，不拿旧位置硬切）：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py verify \
-  项目开发/episode-intake-index.json 输入/<完整剧本>
-
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py progress \
-  项目开发/episode-intake-index.json 输入/<完整剧本> \
-  项目开发/episode-map.jsonl --batch-size <本轮由 Agent 决定>
-
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py slice \
-  项目开发/episode-intake-index.json 输入/<完整剧本> EP001 \
-  --out <临时单集文件>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" verify 项目开发/episode-intake-index.json 输入/<完整剧本>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" progress 项目开发/episode-intake-index.json 输入/<完整剧本> 项目开发/episode-map.jsonl --batch-size <本轮由 Agent 决定>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" slice 项目开发/episode-intake-index.json 输入/<完整剧本> EP001 --out <临时单集文件>
 ```
 
 每次只读 `next_batch` 列出的那几集切片与上一集末尾交接，写完一集追加进本轮临时 batch JSONL。
@@ -65,11 +51,7 @@
 `merge` 把现有分集大纲与本轮 batch 按集号数值升序合并保存：**允许用新批次中的同 `episode_id` 记录覆盖更新已有分集记录**（返回 `added` 与 `updated` 列表；内容完全一致的记录重复合入时自动跳过），并**保留既有 `episode-map.jsonl` 中属于其他分卷的合法集号**；同时严守核心护栏——**拒绝本轮 batch 写入不在当前索引 `episodes` 声明范围内的未知集号**、同批重复集号或超出 `--batch-size` 上限的批次：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/episode_intake.py merge \
-  项目开发/episode-intake-index.json 输入/<完整剧本> \
-  <本轮 batch.jsonl> 项目开发/episode-map.jsonl \
-  --out 项目开发/episode-map.next.jsonl \
-  --batch-size <本轮由 Agent 决定>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" merge 项目开发/episode-intake-index.json 输入/<完整剧本> <本轮 batch.jsonl> 项目开发/episode-map.jsonl --out 项目开发/episode-map.next.jsonl --batch-size <本轮由 Agent 决定>
 ```
 
 核对无误后保存至 `项目开发/episode-map.jsonl` 并清理临时文件。中途断开后重跑 `progress`，自动按磁盘现有记录推导剩余 `pending` 集号。

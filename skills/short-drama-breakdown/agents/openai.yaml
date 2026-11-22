@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧拆解学习"
-  short_description: "测量并拆解对标短剧、同尺比对差距，或将参考视频反推成标准剧本与制作文档"
-  default_prompt: "使用 $short-drama-breakdown 拆解我提供的对标剧，测量集长、镜长、对白密度、开场与集尾，并和本项目对照出差距。"
+  short_description: "快速单段拆解或系统测量对标短剧、同尺比对差距，并将参考视频反推为标准剧本与制作文档"
+  default_prompt: "使用 $short-drama-breakdown 快速拆解单段参考视频，或系统测量对标剧节奏、比对差距并将视频反推成标准剧本。"

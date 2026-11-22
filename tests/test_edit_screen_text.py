@@ -316,7 +316,8 @@ class ScreenTextPlacementTests(unittest.TestCase):
                     edit._render_remotion_overlay(
                         Path(directory), [], [layer], {}, 1.0, workspace, needed_for="画面文字"
                     )
-                self.assertIn(f"cd {workspace.resolve()} && npm install", str(raised.exception))
+                self.assertIn(f'cd "{workspace.resolve()}"\n  npm install', str(raised.exception))
+                self.assertNotIn("&&", str(raised.exception))
                 self.assertIn("@fontsource/noto-sans-sc", str(raised.exception))
             self.assertFalse((Path(directory) / "叠层.webm").exists())
 
@@ -1014,7 +1015,8 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
             1280,
         )
         dialogue = next(line for line in escaped_ass.splitlines() if line.startswith("Dialogue:"))
-        self.assertIn("\\{地点\\}\\\\N教室", dialogue)
+        self.assertIn("\\{地点\\}\\\u2060N教室", dialogue)
+        self.assertNotIn("地点\\}\\N教室", dialogue)
         self.assertIn("次行\\{备注\\}", dialogue)
 
     def test_off_mode_skips_screen_text_overlays_while_still_burning_subtitles(self):
@@ -1116,7 +1118,11 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
         self.assertIn("\\{", escaped)
         self.assertIn("\\}", escaped)
         self.assertIn("姓名", escaped)
-        self.assertEqual(edit._ass_text("反斜杠 \\N 不是换行").count("\\\\"), 1)
+        for seq in ("\\N", "\\n", "\\h"):
+            with self.subTest(seq=seq):
+                neutralized = edit._ass_text(f"反斜杠 {seq} 不是控制符")
+                self.assertNotIn(seq, neutralized)
+                self.assertIn("\\\u2060" + seq[1], neutralized)
 
         ass = edit._build_ass([edit.DisplayCue(1.0, 2.0, line)], width, height)
         self.assertIn(f"PlayResX: {width}", ass)
@@ -1199,6 +1205,341 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
                     1.0, workspace, concurrency=3, needed_for="字幕",
                 )
         self.assertIn("--concurrency=3", invoked[0])
+
+    def test_bold_colon_inside_emphasis_parses_identically_across_all_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "剧集" / "EP001"
+            (episode / "media").mkdir(parents=True)
+            for name in ("1.mp4", "sfx.wav", "voice.wav"):
+                (episode / "media" / name).write_bytes(b"")
+            (episode / "剧本.md").write_text(SCREENPLAY, encoding="utf-8")
+            (episode / "视频提示词.md").write_text(
+                "## MOTION-EP001-001\n- **分镜：** SHOT-1\n\n## MOTION-EP001-002\n- **分镜：** SHOT-2\n",
+                encoding="utf-8",
+            )
+            (episode / "分镜.md").write_text(
+                "## SHOT-1\n- **来源：** EP001-SC001\n\n## SHOT-2\n- **来源：** EP001-SC001\n",
+                encoding="utf-8",
+            )
+            cut_list_path = episode / "剪辑单.md"
+            cut_list_path.write_text(
+                "# EP001 剪辑单\n\n"
+                "- **成片目标时长：** 3.00 秒\n"
+                "- **画幅与帧率：** 16:9 · 1920×1080 · 24fps\n"
+                "- **交付响度：** -16 LUFS\n"
+                "- **未采用镜头：** MOTION-EP001-002（理由：删减）\n\n"
+                "## CUT-EP001-001 · 冒号在加粗内\n\n"
+                "- **来源：** MOTION-EP001-001 · media/1.mp4\n"
+                "- **入点：** 0.00\n"
+                "- **出点：** 3.00\n"
+                "- **时长：** 3.00\n"
+                "- **取舍：** 入点=起；出点=止\n"
+                "- **声音：** 保留原声\n"
+                "- **字幕：** 五天，一百万？（重点：一百万）\n"
+                "- **画面文字：** 0.20-1.50 卡片 主号 2｜小号 1\n"
+                "- **音效：** 0.40-1.00 media/sfx.wav（增益：-6）\n"
+                "- **配音：** 0.10 media/voice.wav（增益：-3）\n",
+                encoding="utf-8",
+            )
+            delivery, cuts, unused = edit.parse_cut_list(cut_list_path)
+            self.assertEqual(delivery.target_seconds, 3.0)
+            self.assertEqual(delivery.frame_size, (1920, 1080))
+            self.assertEqual(delivery.fps, 24.0)
+            self.assertEqual(delivery.loudness_lufs, -16.0)
+            self.assertEqual(unused, ["MOTION-EP001-002（理由：删减）"])
+            self.assertEqual(len(cuts), 1)
+            cut = cuts[0]
+            self.assertEqual(cut.subtitles, ((None, None, "五天，一百万？", ("一百万",)),))
+            self.assertEqual(len(cut.screen_texts), 1)
+            self.assertEqual(cut.screen_texts[0].items, ("主号 2", "小号 1"))
+            self.assertEqual(len(cut.sound_effects), 1)
+            self.assertEqual(cut.sound_effects[0].gain_db, -6.0)
+            self.assertEqual(len(cut.voices), 1)
+            self.assertEqual(cut.voices[0].gain_db, -3.0)
+            self.assertEqual(
+                edit._scene_keys(episode, cuts), [("EP001-SC001",)]
+            )
+            self.assertEqual(
+                edit.check_cuts(
+                    episode, cuts, root, probe=False, unused=unused, delivery=delivery
+                ),
+                [],
+            )
+
+            # Plain form, bold-outside-colon, italic-inside-colon, and ASCII colon all match identically.
+            cut_list_path.write_text(
+                "# EP001 剪辑单\n\n"
+                "- __未采用镜头:__ MOTION-EP001-002（理由：删减）\n\n"
+                "## CUT-EP001-001 · 多种强调\n\n"
+                "- *来源:* MOTION-EP001-001 · media/1.mp4\n"
+                "- _入点：_ 0.00\n"
+                "- **出点**：3.00\n"
+                "- 时长：3.00\n"
+                "- **字幕 1:** 0.10-1.20 五天，一百万？\n"
+                "- __画面文字 1：__ 0.20-1.00 字卡 办公室 · 日\n"
+                "- *音效 1：* 0.40-0.90 media/sfx.wav\n"
+                "- _配音 1:_ 0.10 media/voice.wav\n",
+                encoding="utf-8",
+            )
+            _, alt_cuts, alt_unused = edit.parse_cut_list(cut_list_path)
+            self.assertEqual(alt_unused, ["MOTION-EP001-002（理由：删减）"])
+            self.assertEqual(alt_cuts[0].subtitles, ((0.1, 1.2, "五天，一百万？", ()),))
+            self.assertEqual(alt_cuts[0].screen_texts[0].style, "字卡")
+            self.assertEqual(len(alt_cuts[0].sound_effects), 1)
+            self.assertEqual(len(alt_cuts[0].voices), 1)
+
+    def test_english_subtitles_wrap_on_word_boundaries_without_chopping_words(self):
+        short_line = "I need to talk to you right now."
+        short_cues = edit._display_cues([(0.0, 2.5, short_line, ())])
+        self.assertEqual([c.text for c in short_cues], ["I need to talk to you right now"])
+
+        long_line = "Dr. Lin, the security footage from 11:30 is missing."
+        long_cues = edit._display_cues([(0.0, 4.0, long_line, ("security footage",))])
+        pieces = [c.text for c in long_cues]
+        self.assertGreaterEqual(len(pieces), 2)
+        self.assertTrue(all(len(piece) <= edit.SUBTITLE_MAX_LATIN for piece in pieces), pieces)
+        self.assertEqual(" ".join(pieces), "Dr. Lin, the security footage from 11:30 is missing")
+        for intact in ("Dr.", "Lin,", "security", "footage", "11:30", "missing"):
+            self.assertTrue(any(intact in piece.split(" ") for piece in pieces), (intact, pieces))
+        self.assertTrue(any("security footage" in c.keys for c in long_cues), long_cues)
+
+        # Even an over-length single token is never chopped mid-word.
+        giant = "SupercalifragilisticexpialidociousIdentifierToken"
+        self.assertEqual(edit._split_display(giant), [giant])
+
+    def test_landscape_ass_margin_overlapping_keywords_and_english_system_speaker(self):
+        # Landscape (16:9) margin_v is ~8-10%, portrait (9:16) stays 24%.
+        cue = edit.DisplayCue(0.0, 2.0, "给你十万元现金", "line", ("十万", "十万元"))
+        landscape_ass = edit._build_ass([cue], 1920, 1080)
+        portrait_ass = edit._build_ass([cue], 1080, 1920)
+        landscape_margin_v = float(
+            next(r for r in landscape_ass.splitlines() if r.startswith("Style:"))
+            .split(":", 1)[1].split(",")[21]
+        )
+        portrait_margin_v = float(
+            next(r for r in portrait_ass.splitlines() if r.startswith("Style:"))
+            .split(":", 1)[1].split(",")[21]
+        )
+        self.assertGreaterEqual(landscape_margin_v, 1080 * 0.08)
+        self.assertLessEqual(landscape_margin_v, 1080 * 0.10)
+        self.assertAlmostEqual(portrait_margin_v, round(1920 * 0.24))
+
+        # Overlapping keywords at the same start index choose the longest match ("十万元" beats "十万").
+        yellow = edit._ass_colour(edit.SUBTITLE_KEYWORD_COLOUR)
+        white = edit._ass_colour(edit.SUBTITLE_COLOURS["line"])
+        rendered = edit._ass_line(cue)
+        self.assertIn(f"{{\\c{yellow}}}十万元{{\\c{white}}}", rendered)
+
+        # Case-insensitive English System VO speaker classifies as `system`.
+        screenplay = (
+            "[VO] System: Mission accepted.\n"
+            "[VO] AI SYSTEM: Warning detected.\n"
+            "[VO] Systematic: This is normal narration.\n"
+        )
+        self.assertEqual(edit._line_kind("Mission accepted.", screenplay), "system")
+        self.assertEqual(edit._line_kind("Warning detected.", screenplay), "system")
+        self.assertEqual(edit._line_kind("This is normal narration.", screenplay), "vo")
+
+    def test_external_overlay_renderer_protocol_with_mock_python_script(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = Project(root, [[
+                "- 字幕：五天，一百万？",
+                "- 字幕时间：0.20-1.40",
+                "- 画面文字：0.10-1.20 卡片 主号 2｜小号 1",
+            ]])
+            cuts = project.parse()
+            mock_script = root / "mock_overlay_renderer.py"
+            received_copy = root / "received_props.json"
+            mock_script.write_text(
+                "import argparse, json, pathlib\n"
+                "p = argparse.ArgumentParser()\n"
+                "p.add_argument('--props', required=True)\n"
+                "p.add_argument('--output', required=True)\n"
+                "args = p.parse_args()\n"
+                "data = json.loads(pathlib.Path(args.props).read_text(encoding='utf-8'))\n"
+                f"pathlib.Path({str(received_copy)!r}).write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')\n"
+                "pathlib.Path(args.output).write_bytes(b'MOCK_WEBM_ALPHA')\n",
+                encoding="utf-8",
+            )
+            commands = []
+            cmd_str = f'"{edit.sys.executable}" "{mock_script}"'
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    patch.object(edit, "_has_ffmpeg_filter", return_value=True), \
+                    patch.object(edit, "_probe_video_codec", return_value="vp8"), \
+                    patch.object(edit, "_run", side_effect=commands.append), \
+                    patch.object(edit, "probe_duration", return_value=3.0), \
+                    patch.object(edit, "probe_audio", return_value=(48000, "stereo")), \
+                    patch.object(
+                        edit, "probe_stream",
+                        return_value={"width": 1920, "height": 1080, "fps": 24},
+                    ), \
+                    patch.object(
+                        edit, "_render_remotion_overlay",
+                        side_effect=AssertionError("Remotion must not run when --overlay-renderer is set"),
+                    ):
+                report = edit.render(
+                    project.episode,
+                    project.root,
+                    cuts,
+                    edit.Delivery(None, None, True, None, None, None),
+                    burn_subtitles=True,
+                    renderer="ffmpeg",
+                    screen_text_mode="auto",
+                    overlay_renderer=cmd_str,
+                )
+
+            self.assertEqual(report["画面文字渲染"], "external")
+            self.assertEqual(report["字幕渲染"], "ffmpeg")
+            self.assertTrue(Path(report["叠层"]).is_file())
+            received = json.loads(received_copy.read_text(encoding="utf-8"))
+            self.assertEqual((received["width"], received["height"], received["fps"]), (1920, 1080, 24))
+            self.assertEqual(received["cues"], [])
+            self.assertEqual(len(received["layers"]), 1)
+            self.assertEqual(received["layers"], received["screenTexts"])
+            self.assertEqual(received["layers"][0]["style"], "card")
+            final = commands[-1]
+            self.assertIn("-filter_complex", final)
+            self.assertIn("overlay=0:0:format=auto", final[final.index("-filter_complex") + 1])
+
+            # Non-zero exit from external renderer raises EditError.
+            failing_script = root / "fail_renderer.py"
+            failing_script.write_text("import sys; sys.stderr.write('boom'); sys.exit(3)\n", encoding="utf-8")
+            with self.assertRaisesRegex(edit.EditError, "外部叠层渲染失败"):
+                edit._render_external_overlay(
+                    f'"{edit.sys.executable}" "{failing_script}"',
+                    root, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                )
+
+            # Partial placeholder ({props} without {output} or vice versa) raises EditError.
+            for bad_tpl in (
+                f'"{edit.sys.executable}" "{mock_script}" --props {{props}}',
+                f'"{edit.sys.executable}" "{mock_script}" --output {{output}}',
+            ):
+                with self.assertRaisesRegex(edit.EditError, "必须同时包含"):
+                    edit._render_external_overlay(
+                        bad_tpl, root, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                    )
+
+            # Pre-existing stale 叠层.webm is unlinked before running so a no-op exit-0
+            # renderer cannot silently reuse an old overlay from a previous render.
+            stale_dir = root / "stale_case"
+            stale_dir.mkdir()
+            (stale_dir / "叠层.webm").write_bytes(b"STALE_OLD_WEBM")
+            noop_script = root / "noop_renderer.py"
+            noop_script.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+            with self.assertRaisesRegex(edit.EditError, "未生成有效叠层文件"):
+                edit._render_external_overlay(
+                    f'"{edit.sys.executable}" "{noop_script}"',
+                    stale_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                )
+            self.assertFalse((stale_dir / "叠层.webm").exists())
+
+            # Symlinks on props (pre-existing), overlay (pre-existing), and overlay
+            # (created by renderer) are all rejected.
+            if hasattr(edit.os, "symlink"):
+                outside = root / "outside_target.bin"
+                outside.write_bytes(b"OUTSIDE")
+                sym_props_dir = root / "sym_props"
+                sym_props_dir.mkdir()
+                sym_overlay_dir = root / "sym_overlay"
+                sym_overlay_dir.mkdir()
+                post_sym_dir = root / "post_sym"
+                post_sym_dir.mkdir()
+                try:
+                    (sym_props_dir / "叠层.props.json").symlink_to(outside)
+                    (sym_overlay_dir / "叠层.webm").symlink_to(outside)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(edit.EditError, "不得为符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{mock_script}"',
+                            sym_props_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+                    with self.assertRaisesRegex(edit.EditError, "不得为符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{mock_script}"',
+                            sym_overlay_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+                    symlink_creator = root / "symlink_renderer.py"
+                    symlink_creator.write_text(
+                        "import argparse, os\n"
+                        "p = argparse.ArgumentParser()\n"
+                        "p.add_argument('--props', required=True)\n"
+                        "p.add_argument('--output', required=True)\n"
+                        "args = p.parse_args()\n"
+                        f"os.symlink({str(outside)!r}, args.output)\n",
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(edit.EditError, "不得输出符号链接"):
+                        edit._render_external_overlay(
+                            f'"{edit.sys.executable}" "{symlink_creator}"',
+                            post_sym_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
+                        )
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_remotion_rules_landscape_geometry_multilingual_fallback_and_english_card_rows(self):
+        program = (
+            f"import * as rules from {json.dumps(RULES.as_uri())};\n"
+            r"""
+const out = {
+  bottomLandscape: rules.subtitleBottomU(1920, 1080),
+  bottomPortrait: rules.subtitleBottomU(1080, 1920),
+  cardLandscape: rules.panelWidth(1920, 1080, 0.8, 0.72),
+  cardPortrait: rules.panelWidth(1080, 1920, 0.8, 0.72),
+  sysLandscape: rules.panelWidth(1920, 1080, 0.82, 0.72),
+  taskLandscape: rules.panelWidth(1920, 1080, 0.86, 0.76),
+  otherScripts: ["П", "م", "안", "ส"].map((ch) => rules.isCheckableBmpGlyph(ch)),
+  cjkAscii: ["中", "A", "9", "·", "—"].map((ch) => rules.isCheckableBmpGlyph(ch)),
+  planWithOtherScripts: rules.fontLoadPlan(
+    [{ text: "Привет مرحبا 안녕하세요 สวัสดี Hello" }],
+    [{ items: [{ text: "Total Revenue $500" }] }],
+  )[0].text,
+  rows: {
+    englishMulti: rules.splitCardRow("Total Revenue $500"),
+    englishThree: rules.splitCardRow("Monthly Active Users 12,400"),
+    chineseUnit: rules.splitCardRow("本月 订单 128"),
+    chineseTwo: rules.splitCardRow("主号 2"),
+    single: rules.splitCardRow("Summary"),
+  },
+};
+console.log(JSON.stringify(out));
+"""
+        )
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", program],
+            capture_output=True, text=True, check=True,
+        )
+        data = json.loads(result.stdout)
+        self.assertEqual(data["bottomLandscape"], 9)
+        self.assertEqual(data["bottomPortrait"], 24)
+        self.assertAlmostEqual(data["cardLandscape"], 1080 * 0.72)
+        self.assertAlmostEqual(data["cardPortrait"], 1080 * 0.8)
+        self.assertAlmostEqual(data["sysLandscape"], 1080 * 0.72)
+        self.assertAlmostEqual(data["taskLandscape"], 1080 * 0.76)
+        self.assertEqual(data["otherScripts"], [False, False, False, False])
+        self.assertEqual(data["cjkAscii"], [True, True, True, True, True])
+        for ch in ("П", "م", "안", "ส"):
+            self.assertNotIn(ch, data["planWithOtherScripts"])
+        self.assertIn("H", data["planWithOtherScripts"])
+        self.assertEqual(
+            data["rows"]["englishMulti"], {"name": "Total Revenue", "unit": "", "value": "$500"}
+        )
+        self.assertEqual(
+            data["rows"]["englishThree"],
+            {"name": "Monthly Active Users", "unit": "", "value": "12,400"},
+        )
+        self.assertEqual(
+            data["rows"]["chineseUnit"], {"name": "本月", "unit": "订单", "value": "128"}
+        )
+        self.assertEqual(
+            data["rows"]["chineseTwo"], {"name": "主号", "unit": "", "value": "2"}
+        )
+        self.assertEqual(
+            data["rows"]["single"], {"name": "Summary", "unit": "", "value": ""}
+        )
 
 
 if __name__ == "__main__":

@@ -22,7 +22,6 @@ ALLOWED_PROVIDER_URLS = {
         "https://ark.cn-beijing.volces.com/api/v3",
         "https://www.volcengine.com/docs/82379/1520757",
         "https://api.openai.com/v1",
-        "https://developers.openai.com/api/docs/models/gpt-image-2",
         "https://developers.openai.com/api/reference/resources/images/methods/generate",
         "https://developers.openai.com/api/reference/resources/images/methods/edit",
         "https://api.minimax.io/v1",

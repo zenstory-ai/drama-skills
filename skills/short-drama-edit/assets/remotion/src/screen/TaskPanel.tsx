@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { formatCountdown, secondsLeft, sinceTick, splitTaskItems } from "../rules.mjs";
+import { formatCountdown, panelWidth, secondsLeft, sinceTick, splitTaskItems } from "../rules.mjs";
 import { Frame, Header, RewardTag, Typed } from "./chrome";
 import { COLOURS, MONO, StyleProps, TOP_U, entrance, exit, glitch, unit } from "./tokens";
 
@@ -22,7 +22,7 @@ export const TaskPanel: React.FC<StyleProps> = ({ text }) => {
   return (
     <AbsoluteFill style={{ alignItems: "center", paddingTop: u * TOP_U.task, opacity: leaving * jitter.opacity }}>
       <div style={{ transform: `translate(${jitter.dx}px, ${(1 - leaving) * -u * 2}px) scale(${0.9 + 0.1 * shown})` }}>
-        <Frame colour={COLOURS.task} width={width * 0.86}>
+        <Frame colour={COLOURS.task} width={panelWidth(width, height, 0.86, 0.76)}>
           <Header text="【新任务】" colour={COLOURS.task} />
           <div
             style={{

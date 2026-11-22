@@ -155,10 +155,10 @@ class ProviderCompilerTests(unittest.TestCase):
         self.assertIn("May control: 脸型, 发型", text)
         self.assertIn("Must not control: 构图, 动作", text)
 
-        image = self.image_job()
+        image = self.image_job(model="gpt-image-2.6")
         image["references"] = ["输入/reference.png"]
         image["reference_bindings"] = [self.reference_binding()]
-        gpt_image = provider_adapters.compile_gpt_image_2_payload(image)
+        gpt_image = provider_adapters.compile_openai_image_payload(image)
         self.assertIn("Reference contract:", gpt_image["prompt"])
         self.assertIn("Must not control: 构图, 动作", gpt_image["prompt"])
 
@@ -430,49 +430,62 @@ class ProviderCompilerTests(unittest.TestCase):
         self.assertEqual(compiled_extend["content"][2]["type"], "image_url")
 
     def test_provider_rejects_reference_semantics_that_do_not_match_paths(self) -> None:
-        image = self.image_job()
+        image = self.image_job(model="gpt-image-2.6")
         image["references"] = ["输入/another.png"]
         image["reference_bindings"] = [self.reference_binding()]
         with self.assertRaisesRegex(ValueError, "path does not match"):
-            provider_adapters.compile_gpt_image_2_payload(image)
+            provider_adapters.compile_openai_image_payload(image)
 
-    def test_gpt_image_2_payload_matches_the_current_contract(self) -> None:
-        payload = provider_adapters.compile_gpt_image_2_payload(
-            self.image_job(size="1152x2048", quality="medium")
+    def test_openai_image_payload_matches_the_current_contract(self) -> None:
+        payload = provider_adapters.compile_openai_image_payload(
+            self.image_job(
+                model="gpt-image-2.6",
+                size="1152x2048",
+                quality="medium",
+                background="transparent",
+            )
         )
         self.assertEqual(
             payload,
             {
-                "model": "gpt-image-2",
+                "model": "gpt-image-2.6",
                 "prompt": "vertical character portrait",
                 "n": 1,
                 "output_format": "png",
                 "size": "1152x2048",
                 "quality": "medium",
+                "background": "transparent",
             },
         )
+        # Legacy alias remains callable for backward compatibility.
+        alias_payload = provider_adapters.compile_gpt_image_2_payload(
+            self.image_job(model="gpt-image-2.6", size="1152x2048")
+        )
+        self.assertEqual(alias_payload["model"], "gpt-image-2.6")
 
-    def test_gpt_image_2_rejects_unsupported_and_invalid_geometry(self) -> None:
+    def test_openai_image_rejects_unsupported_and_invalid_geometry(self) -> None:
         for parameters in (
-            {"background": "transparent"},
+            {"background": "neon"},
             {"input_fidelity": "high"},
             {"size": "1023x1024"},
             {"size": "512x512"},
             {"size": "3840x3840"},
         ):
             with self.subTest(parameters=parameters), self.assertRaises(ValueError):
-                provider_adapters.compile_gpt_image_2_payload(
-                    self.image_job(**parameters)
+                provider_adapters.compile_openai_image_payload(
+                    self.image_job(model="gpt-image-2.6", **parameters)
                 )
 
-    def test_minimax_music_payload_is_music_3_and_never_invents_duration(self) -> None:
+    def test_minimax_music_payload_uses_configured_model_and_never_invents_duration(
+        self,
+    ) -> None:
         payload = provider_adapters.compile_minimax_music_payload(
-            self.music_job(is_instrumental=True)
+            self.music_job(model="configured-music-model", is_instrumental=True)
         )
         self.assertEqual(
             payload,
             {
-                "model": "music-3.0",
+                "model": "configured-music-model",
                 "prompt": "restrained urban drama score",
                 "stream": False,
                 "output_format": "hex",
@@ -488,19 +501,28 @@ class ProviderCompilerTests(unittest.TestCase):
         self.assertNotIn("duration", payload)
 
     def test_minimax_rejects_tts_missing_lyrics_and_instrumental_lyrics(self) -> None:
-        tts = self.music_job(is_instrumental=True)
+        tts = self.music_job(model="configured-music-model", is_instrumental=True)
         tts["modality"] = "tts"
         with self.assertRaisesRegex(ValueError, "music job"):
             provider_adapters.compile_minimax_music_payload(tts)
         with self.assertRaisesRegex(ValueError, "requires confirmed lyrics"):
-            provider_adapters.compile_minimax_music_payload(self.music_job())
+            provider_adapters.compile_minimax_music_payload(
+                self.music_job(model="configured-music-model")
+            )
         with self.assertRaisesRegex(ValueError, "must not carry lyrics"):
             provider_adapters.compile_minimax_music_payload(
-                self.music_job(is_instrumental=True, lyrics="not allowed")
+                self.music_job(
+                    model="configured-music-model",
+                    is_instrumental=True,
+                    lyrics="not allowed",
+                )
             )
         with self.assertRaisesRegex(ValueError, "optimizer is forbidden"):
             provider_adapters.compile_minimax_music_payload(
-                self.music_job(lyrics_optimizer=True)
+                self.music_job(
+                    model="configured-music-model",
+                    lyrics_optimizer=True,
+                )
             )
 
 
@@ -573,15 +595,15 @@ class ProviderCompilerTests(unittest.TestCase):
                 **self.minimax_video_profile(),
             )
 
-    def test_gpt_image_2_supports_batch_outputs_up_to_sixteen(self) -> None:
+    def test_openai_image_supports_batch_outputs_up_to_sixteen(self) -> None:
         batch_job = {
-            **self.image_job(size="1024x1536"),
+            **self.image_job(model="gpt-image-2.6", size="1024x1536"),
             "outputs": [
                 f"剧集/EP001/制作成果/images/candidate-{index}.png"
                 for index in range(1, 4)
             ],
         }
-        payload = provider_adapters.compile_gpt_image_2_payload(batch_job)
+        payload = provider_adapters.compile_openai_image_payload(batch_job)
         self.assertEqual(payload["n"], 3)
         self.assertEqual(payload["output_format"], "png")
 
@@ -593,7 +615,7 @@ class ProviderCompilerTests(unittest.TestCase):
             ],
         }
         with self.assertRaisesRegex(ValueError, "share an output format"):
-            provider_adapters.compile_gpt_image_2_payload(mixed)
+            provider_adapters.compile_openai_image_payload(mixed)
 
         too_many = {
             **batch_job,
@@ -602,7 +624,7 @@ class ProviderCompilerTests(unittest.TestCase):
             ],
         }
         with self.assertRaisesRegex(ValueError, "at most 16 outputs"):
-            provider_adapters.compile_gpt_image_2_payload(too_many)
+            provider_adapters.compile_openai_image_payload(too_many)
 
         multi_video = {
             **self.video_job(duration=5, ratio="9:16"),
@@ -820,8 +842,8 @@ class ProviderRuntimeTests(unittest.TestCase):
                     ),
                 )
                 public = provider_adapters._http_failure(
-                    "gpt-image-2", error
-                ).public("gpt-image-2")
+                    "openai-image", error
+                ).public("openai-image")
                 error.close()
                 self.assertEqual(public["http_status"], status)
                 self.assertEqual(public["category"], category)
@@ -838,7 +860,9 @@ class ProviderRuntimeTests(unittest.TestCase):
                 "ARK_API_KEY": "ark-secret",
                 "SEEDANCE_MODEL": "configured-endpoint",
                 "OPENAI_API_KEY": "openai-secret",
+                "OPENAI_IMAGE_MODEL": "gpt-image-2.6",
                 "MINIMAX_API_KEY": "minimax-secret",
+                "MINIMAX_MUSIC_MODEL": "configured-music-model",
             }
             with mock.patch.dict(os.environ, common_env, clear=False):
                 with mock.patch.object(
@@ -1279,7 +1303,7 @@ class ProviderRuntimeTests(unittest.TestCase):
             valid_png = b"\x89PNG\r\n\x1a\nsmall-image"
             path.write_bytes(valid_png)
             encoded, content_type = provider_adapters._multipart(
-                {"model": "gpt-image-2"}, [path]
+                {"model": "gpt-image-2.6"}, [path]
             )
             self.assertIn(valid_png, encoded)
             self.assertTrue(content_type.startswith("multipart/form-data; boundary="))
@@ -1349,35 +1373,37 @@ class ProviderRuntimeTests(unittest.TestCase):
         secret = "credential-must-not-appear"
         env = os.environ.copy()
         env["OPENAI_API_KEY"] = secret
-        failed = subprocess.run(
-            [sys.executable, str(SCRIPT), "gpt-image-2"],
-            input=json.dumps({"modality": "video"}),
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(failed.returncode, 1)
-        public = json.loads(failed.stdout)
-        self.assertEqual(
-            public,
-            {
-                "error": {
-                    "provider": "gpt-image-2",
-                    "category": "invalid_request",
-                    "code": "invalid_job",
-                    "retryable": False,
-                    "submitted": False,
-                    "detail": "adapter requires a image job",
-                }
-            },
-        )
-        self.assertEqual(failed.stderr.strip(), "provider adapter failed safely")
-        self.assertNotIn(secret, failed.stdout)
-        self.assertNotIn(secret, failed.stderr)
+        for subcommand in ("openai-image", "gpt-image-2"):
+            with self.subTest(subcommand=subcommand):
+                failed = subprocess.run(
+                    [sys.executable, str(SCRIPT), subcommand],
+                    input=json.dumps({"modality": "video"}),
+                    env=env,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(failed.returncode, 1)
+                public = json.loads(failed.stdout)
+                self.assertEqual(
+                    public,
+                    {
+                        "error": {
+                            "provider": "openai-image",
+                            "category": "invalid_request",
+                            "code": "invalid_job",
+                            "retryable": False,
+                            "submitted": False,
+                            "detail": "adapter requires a image job",
+                        }
+                    },
+                )
+                self.assertEqual(failed.stderr.strip(), "provider adapter failed safely")
+                self.assertNotIn(secret, failed.stdout)
+                self.assertNotIn(secret, failed.stderr)
 
         malformed = subprocess.run(
-            [sys.executable, str(SCRIPT), "gpt-image-2"],
+            [sys.executable, str(SCRIPT), "openai-image"],
             input="{not-json",
             env=env,
             check=False,
@@ -1389,7 +1415,7 @@ class ProviderRuntimeTests(unittest.TestCase):
             json.loads(malformed.stdout),
             {
                 "error": {
-                    "provider": "gpt-image-2",
+                    "provider": "openai-image",
                     "category": "invalid_request",
                     "code": "invalid_job",
                     "retryable": False,
@@ -1401,6 +1427,51 @@ class ProviderRuntimeTests(unittest.TestCase):
         self.assertNotIn(secret, malformed.stdout)
         self.assertNotIn(secret, malformed.stderr)
 
+        # Missing OPENAI_IMAGE_MODEL / MINIMAX_MUSIC_MODEL fails closed before submitting.
+        clean_cli_env = {
+            k: v
+            for k, v in env.items()
+            if k not in {"OPENAI_IMAGE_MODEL", "MINIMAX_MUSIC_MODEL"}
+        }
+        clean_cli_env["MINIMAX_API_KEY"] = secret
+        for subcommand, job_payload in (
+            (
+                "openai-image",
+                {
+                    "modality": "image",
+                    "prompt": "portrait",
+                    "references": [],
+                    "outputs": ["制作成果/out.png"],
+                    "parameters": {},
+                },
+            ),
+            (
+                "minimax-music",
+                {
+                    "modality": "music",
+                    "prompt": "score",
+                    "references": [],
+                    "outputs": ["制作成果/cue.mp3"],
+                    "parameters": {"is_instrumental": True},
+                },
+            ),
+        ):
+            with self.subTest(missing_model=subcommand):
+                missing_model = subprocess.run(
+                    [sys.executable, str(SCRIPT), subcommand],
+                    input=json.dumps(job_payload),
+                    env=clean_cli_env,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(missing_model.returncode, 1)
+                missing_err = json.loads(missing_model.stdout)["error"]
+                self.assertEqual(missing_err["provider"], subcommand)
+                self.assertFalse(missing_err["submitted"])
+                self.assertIn("explicitly configured", missing_err["detail"])
+                self.assertNotIn(secret, missing_model.stdout)
+
     def test_openai_runtime_writes_multiple_requested_images_and_minimax_env_defaults(
         self,
     ) -> None:
@@ -1409,7 +1480,9 @@ class ProviderRuntimeTests(unittest.TestCase):
             png_a = b"\x89PNG\r\n\x1a\nfirst"
             png_b = b"\x89PNG\r\n\x1a\nsecond"
             with mock.patch.dict(
-                os.environ, {"OPENAI_API_KEY": "openai-secret"}, clear=False
+                os.environ,
+                {"OPENAI_API_KEY": "openai-secret", "OPENAI_IMAGE_MODEL": "gpt-image-2.6"},
+                clear=False,
             ), mock.patch.object(
                 provider_adapters,
                 "_request_json",
@@ -1830,7 +1903,9 @@ class ProviderRuntimeTests(unittest.TestCase):
                         "parameters": {},
                     }
                     with mock.patch.dict(
-                        os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+                        os.environ,
+                        {"OPENAI_API_KEY": "sk-test", "OPENAI_IMAGE_MODEL": "gpt-image-2.6"},
+                        clear=False,
                     ), mock.patch("urllib.request.urlopen", side_effect=exc):
                         with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
                             provider_adapters._run_openai(job)
@@ -1843,9 +1918,9 @@ class ProviderRuntimeTests(unittest.TestCase):
         self,
     ) -> None:
         sync_runners = (
-            ("gpt-image-2", provider_adapters._run_openai),
-            ("minimax-image-01", provider_adapters._run_minimax),
-            ("minimax-speech-2.8-hd", provider_adapters._run_minimax_speech),
+            ("openai-image", provider_adapters._run_openai),
+            ("minimax-music", provider_adapters._run_minimax),
+            ("minimax-speech", provider_adapters._run_minimax_speech),
         )
         for name, runner in sync_runners:
             with self.subTest(provider=name):
@@ -1856,9 +1931,9 @@ class ProviderRuntimeTests(unittest.TestCase):
                         runner(
                             {
                                 "collect_provider_job_id": "remote-task-999",
-                                "modality": "image" if name != "minimax-speech-2.8-hd" else "tts",
+                                "modality": "image" if name != "minimax-speech" else "tts",
                                 "prompt": "Should never submit",
-                                "outputs": ["out.png" if name != "minimax-speech-2.8-hd" else "out.mp3"],
+                                "outputs": ["out.png" if name != "minimax-speech" else "out.mp3"],
                             }
                         )
                     self.assertEqual(ctx.exception.category, "invalid_request")
@@ -1898,7 +1973,9 @@ class ProviderRuntimeTests(unittest.TestCase):
                 "parameters": {},
             }
             with mock.patch.dict(
-                os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+                os.environ,
+                {"OPENAI_API_KEY": "sk-test", "OPENAI_IMAGE_MODEL": "gpt-image-2.6"},
+                clear=False,
             ), mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
                 out_path, request_id = provider_adapters._run_openai(job)
                 self.assertEqual(request_id, "trace-mixed-case-42")
@@ -1912,14 +1989,16 @@ class ProviderRuntimeTests(unittest.TestCase):
             empty_png = root / "empty.png"
             empty_png.write_bytes(b"")
             with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
-                provider_adapters._multipart({"model": "gpt-image-2"}, [empty_png])
+                provider_adapters._multipart({"model": "gpt-image-2.6"}, [empty_png])
             self.assertEqual(ctx.exception.code, "empty_reference")
             self.assertFalse(ctx.exception.submitted)
 
             bad_png = root / "bad.png"
             bad_png.write_bytes(b"not-a-real-png")
             with mock.patch("urllib.request.urlopen") as urlopen, mock.patch.dict(
-                os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False
+                os.environ,
+                {"OPENAI_API_KEY": "sk-test", "OPENAI_IMAGE_MODEL": "gpt-image-2.6"},
+                clear=False,
             ):
                 with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
                     provider_adapters._run_openai(
@@ -1943,7 +2022,7 @@ class ProviderRuntimeTests(unittest.TestCase):
                 provider_adapters.INLINE_REFERENCE_LIMITS, {"image_url": 10}
             ):
                 with self.assertRaises(provider_adapters.AdapterFailure) as ctx:
-                    provider_adapters._multipart({"model": "gpt-image-2"}, [big_png])
+                    provider_adapters._multipart({"model": "gpt-image-2.6"}, [big_png])
                 self.assertEqual(ctx.exception.code, "reference_too_large")
                 self.assertFalse(ctx.exception.submitted)
 
@@ -1952,7 +2031,7 @@ class ProviderRuntimeTests(unittest.TestCase):
             portable_webp.write_bytes(webp_bytes)
             with mock.patch.object(mimetypes, "guess_type", return_value=(None, None)):
                 encoded_portable, _ = provider_adapters._multipart(
-                    {"model": "gpt-image-2"}, [portable_webp]
+                    {"model": "gpt-image-2.6"}, [portable_webp]
                 )
             self.assertIn(b"Content-Type: image/webp\r\n", encoded_portable)
             portable_disposition = next(
@@ -1967,7 +2046,7 @@ class ProviderRuntimeTests(unittest.TestCase):
                 weird_webp.write_bytes(webp_bytes)
                 with mock.patch.object(mimetypes, "guess_type", return_value=(None, None)):
                     encoded, _ = provider_adapters._multipart(
-                        {"model": "gpt-image-2"}, [weird_webp]
+                        {"model": "gpt-image-2.6"}, [weird_webp]
                     )
                 self.assertIn(b"Content-Type: image/webp\r\n", encoded)
                 disposition_line = next(
@@ -2085,6 +2164,146 @@ class ProviderRuntimeTests(unittest.TestCase):
 
             self.assertIsNone(provider_adapters._safe_public_id("bad id/with spaces"))
             self.assertEqual(provider_adapters._safe_public_id("task_123-ok.v1"), "task_123-ok.v1")
+
+    def test_voice_reference_character_label_respects_prompt_language(self) -> None:
+        voice_binding = {
+            "slot_id": "REF-AUD-01",
+            "order": 1,
+            "path": "输入/voice.wav",
+            "label": "raw-label",
+            "role": "reference_audio",
+            "character": "Jiangchen",
+            "may_control": ["timbre"],
+            "must_not_control": ["dialogue"],
+        }
+        for lang, expected_label in (
+            ("zh-CN", "Jiangchen音色参考"),
+            ("en", "Jiangchen voice reference"),
+            (None, "Jiangchen voice reference"),
+            ("ja", "Jiangchen voice reference"),
+        ):
+            params: dict[str, object] = {"duration": 5, "ratio": "9:16"}
+            if lang is not None:
+                params["prompt_language"] = lang
+            job = {
+                "modality": "video",
+                "prompt": "Character speaks calmly.",
+                "references": ["输入/voice.wav"],
+                "reference_bindings": [voice_binding],
+                "outputs": ["制作成果/shot.mp4"],
+                "parameters": params,
+            }
+            with self.subTest(provider="seedance", lang=lang):
+                payload = provider_adapters.compile_seedance_payload(
+                    job,
+                    model="configured-model",
+                    reference_urls=["https://cdn.example/voice.wav"],
+                    reference_roles=["reference_audio"],
+                )
+                text = payload["content"][0]["text"]
+                self.assertIn(expected_label, text)
+                if lang != "zh-CN":
+                    self.assertNotIn("音色参考", text)
+
+            h3_job = {
+                **job,
+                "parameters": {**params, "resolution": "768P"},
+            }
+            with self.subTest(provider="minimax-h3", lang=lang):
+                payload = provider_adapters.compile_minimax_h3_payload(
+                    h3_job,
+                    model="configured-model",
+                    reference_urls=["https://cdn.example/voice.wav"],
+                    reference_roles=["reference_audio"],
+                )
+                text = payload["content"][0]["text"]
+                self.assertIn(expected_label, text)
+                if lang != "zh-CN":
+                    self.assertNotIn("音色参考", text)
+
+    def test_openai_image_and_minimax_music_require_explicit_model_config(
+        self,
+    ) -> None:
+        base_img_job = {
+            "modality": "image",
+            "prompt": "vertical portrait",
+            "references": [],
+            "outputs": ["剧集/EP001/制作成果/images/portrait.png"],
+            "parameters": {},
+        }
+        base_music_job = {
+            "modality": "music",
+            "prompt": "restrained piano score",
+            "references": [],
+            "outputs": ["剧集/EP001/制作成果/music/cue.mp3"],
+            "parameters": {"is_instrumental": True},
+        }
+        clean_env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"OPENAI_IMAGE_MODEL", "MINIMAX_MUSIC_MODEL"}
+        }
+        with mock.patch.dict(os.environ, clean_env, clear=True):
+            with self.assertRaisesRegex(ValueError, "explicitly configured"):
+                provider_adapters.compile_openai_image_payload(base_img_job)
+            with self.assertRaisesRegex(ValueError, "explicitly configured"):
+                provider_adapters.compile_minimax_music_payload(base_music_job)
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                **clean_env,
+                "OPENAI_IMAGE_MODEL": "gpt-image-2.6",
+                "MINIMAX_MUSIC_MODEL": "configured-music-model",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                provider_adapters.compile_openai_image_payload(base_img_job)["model"],
+                "gpt-image-2.6",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(base_music_job)["model"],
+                "configured-music-model",
+            )
+            # Explicit parameters.model wins over env var override.
+            self.assertEqual(
+                provider_adapters.compile_openai_image_payload(
+                    {**base_img_job, "parameters": {"model": "configured-image-override"}}
+                )["model"],
+                "configured-image-override",
+            )
+            self.assertEqual(
+                provider_adapters.compile_minimax_music_payload(
+                    {
+                        **base_music_job,
+                        "parameters": {
+                            "is_instrumental": True,
+                            "model": "configured-music-override",
+                        },
+                    }
+                )["model"],
+                "configured-music-override",
+            )
+
+        # Blank env vars fail closed; blank parameters.model is rejected.
+        with mock.patch.dict(
+            os.environ,
+            {**clean_env, "OPENAI_IMAGE_MODEL": "   ", "MINIMAX_MUSIC_MODEL": ""},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "explicitly configured"):
+                provider_adapters.compile_openai_image_payload(base_img_job)
+            with self.assertRaisesRegex(ValueError, "explicitly configured"):
+                provider_adapters.compile_minimax_music_payload(base_music_job)
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            provider_adapters.compile_openai_image_payload(
+                {**base_img_job, "parameters": {"model": "  "}}
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            provider_adapters.compile_minimax_music_payload(
+                {**base_music_job, "parameters": {"is_instrumental": True, "model": ""}}
+            )
 
 
 if __name__ == "__main__":

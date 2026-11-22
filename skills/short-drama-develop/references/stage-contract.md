@@ -13,11 +13,11 @@
 - **画面作用**：这种画风或拍摄形态能帮观众更快看懂什么、感受到什么（不写“高级”“电影感”等空泛套话）。
 - **动作量分配**：哪些重头戏需要完整连贯大动作，哪些靠定格姿态、局部微动、镜头推拉视差或剪辑就能出效果，据此控制场面规模。
 - **待测难点**：哪些画面表现还没摸准底、需要先跑小样验证。
-- **节奏起点**：本项目的节奏目标从哪组默认值起步（见 [短剧分集与单集设计](episode-design.md#10-节奏参考标准)）。
+- **节奏起点**：本项目的节奏目标从哪组默认值起步（见 [短剧分集架构与节奏设计](episode-architecture.md#6-节奏参考标准)）。
 
 ## 本阶段规则
 
-下表仅注册阻断级不变量（`structural_invariant` 与 `reviewed_invariant`）；核心看点推演、分集节拍、人物弧光、跨题材钩子、高概念规则底表、改编压缩与多集切片批次等创作方法（`craft_default` / `taste_option`）见 [story-craft.md](story-craft.md)、[episode-design.md](episode-design.md)、[serial-character-and-memory.md](serial-character-and-memory.md)、[adaptation-craft.md](adaptation-craft.md)、[genre-and-hook-playbook.md](genre-and-hook-playbook.md) 与 [multi-episode-intake.md](multi-episode-intake.md)。
+下表仅注册阻断级不变量（`structural_invariant` 与 `reviewed_invariant`）；核心看点推演、人物弧光、分集节拍、揭秘反转、跨题材钩子、高概念规则底表、改编压缩与多集切片批次等创作方法（`craft_default` / `taste_option`）见 [story-and-character-craft.md](story-and-character-craft.md)、[episode-architecture.md](episode-architecture.md)、[adaptation-craft.md](adaptation-craft.md)、[genre-and-hook-playbook.md](genre-and-hook-playbook.md) 与 [multi-episode-intake.md](multi-episode-intake.md)。
 
 ### `STY`
 

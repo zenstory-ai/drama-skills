@@ -16,7 +16,7 @@ license: MIT
 
 ## 入口与边界
 
-- **前置条件**：`剧集/<EP>/制作成果/` 中已有可读的视频文件（或关键帧图片与配音文件），且本机 `PATH` 中装有 `ffmpeg` 与 `ffprobe`（缺失时 `edit_tool.py` 直接报错退出）。同宽高比但分辨率或帧率不同的素材，`check` 给出提醒并由 `render` 自动统一至交付规格；宽高比明显不同（如横屏混入竖屏）时报错拦截，需先用外部工具统一画幅。
+- **前置条件**：`剧集/<EP>/制作成果/` 中已有可读的视频文件（或关键帧图片与配音文件），且本机已安装 `ffmpeg` 与 `ffprobe`（工具会自动回退查找 `~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`，仍缺失时直接报错退出）。**`libass` 说明**：默认 `ffmpeg` 硬字幕与无 Remotion 兜底 `字卡` 均依赖编译进 `libass`（`ass` 滤镜）的 `ffmpeg`（例如 macOS Homebrew 需安装 `ffmpeg-full`）；若当前 `ffmpeg` 不含 `libass`，请改用 `--subtitles remotion`、`--overlay-renderer <cmd>` 或 `--no-subtitles` / `--screen-text-mode off`。同宽高比但分辨率或帧率不同的素材，`check` 给出提醒并由 `render` 自动统一至交付规格；宽高比明显不同（如横屏混入竖屏）时报错拦截，需先用外部工具统一画幅。
 - **不反向篡改上游定稿文档**：镜序与镜头作用对照 `分镜.md` 与 `视频提示词.md`，对白、VO、OS、场头时空与 `[画面文字]` 对照 `剧本.md`。剪辑阶段可裁短、删减、调序或用 `--partial` 局部试剪，但不回写上游定稿文档，也不擅自加塞无剧本依据的台词。
 - **跨阶段分工**：补拍、重出或换参考图转 `short-drama-produce` 技能；改提示词转 `short-drama-video-prompts` 或 `short-drama-image-prompts` 技能；改台词或剧情转 `short-drama-write` 技能；成片审片交 `short-drama-review` 技能或创作者把关。
 
@@ -46,17 +46,20 @@ license: MIT
 
 ```text
 <PYTHON> <SKILL_DIR>/scripts/edit_tool.py check <剧集/EP001> --project-root <project> [--partial]
-<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
+<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--overlay-renderer <cmd>] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
 <PYTHON> <SKILL_DIR>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
 ```
 
-- `check`：核对入出点算术自洽、来源编号与全集镜头下落（`--partial` 下未入片镜头转提醒）、媒体可读与时长边界、同源视频区间重叠、画幅宽高比一致、字幕与画面文字匹配剧本原文及音轨时间范围。
-- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**）；`--screen-text-mode` 控制 `画面文字` 渲染方式（默认 `auto`）：
+- `check`（硬检查与软门禁分离）：
+  - **硬阻断（`findings`，退出码 1）**：仅对百分百确定性的结构与媒体缺陷拦截——缺失/不可读素材、入出点算术或边界错误、奇偶像素不合法、画幅宽高比冲突、同源视频未标 `重放` 的区间重叠、上游来源/剧本原文缺失或语法无效。
+  - **软门禁（`提醒`，不阻断渲染）**：需要 Agent 或创作者结合语境复核的经验项——同宽高比分辨率/帧率自动缩放、快闪静帧（`< 0.50s`）、短抢话或标注 `叠音` 的配音交叠、素材修改时间晚于剪辑单、同场运镜突变、目标时长大幅偏差、偏短字幕时间窗及 `--partial` 下的未入片镜头。
+- `render`：裁切分段、统一同比例分辨率与帧率、生成静帧运镜、同场自动接镜、拼接画面、混音、烧录字幕与可选图文层并统一响度，输出至 `剧集/<EP>/制作成果/成片/` 并保留分段中间文件。默认字幕走 `ffmpeg`（`libass`，**无需 Node/Remotion**），横屏（`width > height`）与竖屏（`9:16`）自动适配字幕底边距与英文按词换行；`--screen-text-mode` 控制 `画面文字` 渲染方式（默认 `auto`）：
   - `auto`（默认）：存在复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 Remotion 时，走可选的 [Remotion 图文叠加层](assets/remotion/README.md)（默认并发数为 2）；未装 Node/Remotion 且全片仅含普通 `字卡` 时，自动降级为 `ffmpeg` ASS 烧录并在报告中给出提醒。
   - `ffmpeg`：强制用 `ffmpeg` ASS 烧录普通 `字卡`（遇复杂面板样式时报错拦截）。
   - `remotion`：强制走 Remotion 渲染全部 `画面文字` 叠层。
   - `off`：跳过全部 `画面文字` 叠层，其余裁切、混音与字幕烧录照常执行。
-- `verify`：实测成片总时长、综合响度与真峰值，列出图文与音轨起止秒数，并标出切点亮度跳变、切点音量跳变与疑似坏帧位置供人工复核。
+  - `--overlay-renderer <cmd>`（外置叠层协议）：可选覆盖内置 Remotion；写出 `叠层.props.json`（含 `width`/`height`/`fps`/`durationInSeconds`/`cues`/`layers`）并调用 `<cmd> --props <props.json> --output <overlay.webm>` 生成透明叠层视频再由 `ffmpeg` 叠合（也支持命令中显式使用 `{props}` / `{output}` 占位符）。
+- `verify`（纯测量 + 软提醒，始终退出 0）：实测成片总时长、综合响度与真峰值，列出图文与音轨起止秒数，并在 `提醒`（及 `请逐帧查看` / `请回听`）中汇总响度/真峰偏离、切点亮度跳变、切点音量跳变与疑似坏帧位置，提醒 Agent 与创作者重点抽查，不做粗暴阻断。
 
 **无 Node / Remotion 环境时的降级方案**：
 

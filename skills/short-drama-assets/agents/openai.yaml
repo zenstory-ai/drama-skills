@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧视觉设定拆解"
-  short_description: "从剧本拆出角色、场景、道具及其造型状态与连戏关系，写入视觉设定"
-  default_prompt: "使用 $short-drama-assets 从定稿剧本拆出并核对角色、场景、道具、造型状态与连戏衔接。"
+  short_description: "从剧本拆出人物、造型、地点、道具、角色声线与连戏锁，写入视觉设定"
+  default_prompt: "使用 $short-drama-assets 从定稿剧本拆解人物、造型、地点、道具、角色声线与连戏锁，写入视觉设定.md。"

@@ -105,7 +105,7 @@
 
 ## 6. 时长直测
 
-日常写稿与改稿估时直接运行 `<PYTHON> <SKILL_DIR>/scripts/duration_estimate.py --script 剧集/<EP>/剧本.md`，在内存中直接解析剧本并统计场次、台词字数与估算秒数，无需落盘任何索引文件，也绝不反向修改 `剧本.md`。
+日常写稿与改稿估时直接运行 `<PYTHON> "<SKILL_DIR>/scripts/duration_estimate.py" --script 剧集/<EP>/剧本.md`，在内存中直接解析剧本并统计场次、台词字数与估算秒数，无需落盘任何索引文件，也绝不反向修改 `剧本.md`。
 
 ## 7. 现成剧本整理成标准格式
 

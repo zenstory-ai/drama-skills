@@ -11,8 +11,8 @@
 | **保留沿用** | 正常倍速播放不显眼，不影响剧情理解与前后连戏（如单帧边缘微闪、远处路人轻晃） | `note`（`craft_default`） | 留底告知剪辑，不改提示词、不重抽 → `short-drama-edit` 技能 |
 | **裁切避让** | 瑕疵落在有效动作起止点之外（如片头发呆等待、片尾多余变形），掐头去尾后本镜信息完整 | `minor`（`craft_default`） | 写明剪辑入出点避开问题区间 → `short-drama-edit` 技能 |
 | **后期修补** | 挪几帧音频对口型、调色、后期叠字或局部擦除背景穿帮小物即可解决 | `minor`（`craft_default`） | 写明后期修补做法 → `short-drama-edit` 技能 |
-| **建议重抽（创作者可豁免）** | 核心剧情能看懂，但存在较明显的外观造型偏移、连戏锁细节走样、动作容量紧促或口型听感瑕疵，后期难彻底修净 | `major`（归入对应不变量，如 `AST-01 · reviewed_invariant`、`AST-03 · reviewed_invariant`、`CON-01 · reviewed_invariant`、`CON-07 · structural_invariant`、`VID-05 · reviewed_invariant`、`EDT-04 · reviewed_invariant`） | 给出局部调优重抽方案，同时允许创作者结合工期与预算显式豁免留用或靠切镜遮掩 → 对应负责技能 / `short-drama-edit` 技能 |
-| **必须重新生成** | 漏掉关键剧情动作、核心台词或必看物证，私编发声台词，或人物换脸脱绑、空间轴线全反、关键真字乱码扭曲事实，裁切与后期均无法挽回 | `blocker`（归入对应不变量，如 `AST-05 · structural_invariant`、`CON-07 · structural_invariant`、`SHT-02 · reviewed_invariant`、`SHT-09 · reviewed_invariant`、`VID-17 · reviewed_invariant`、`VID-22 · reviewed_invariant`、`VID-25 · structural_invariant`） | 定位提示词、垫图或拆镜症结，退回对应负责技能修改后交 `short-drama-produce` 技能重生 |
+| **建议重抽（创作者可豁免）** | 核心剧情能看懂，但存在较明显的外观造型偏移、连戏锁细节走样、动作容量紧促或口型听感瑕疵，后期难彻底修净 | `major`（归入对应不变量，如 `AST-01 · reviewed_invariant`、`AST-03 · reviewed_invariant`、`CON-01 · reviewed_invariant`、`CON-07 · reviewed_invariant`、`VID-05 · reviewed_invariant`、`EDT-04 · reviewed_invariant`） | 给出局部调优重抽方案，同时允许创作者结合工期与预算显式豁免留用或靠切镜遮掩 → 对应负责技能 / `short-drama-edit` 技能 |
+| **必须重新生成** | 漏掉关键剧情动作、核心台词或必看物证，私编发声台词，或人物换脸脱绑、空间轴线全反、关键真字乱码扭曲事实，裁切与后期均无法挽回 | `blocker`（归入对应不变量，如 `AST-05 · structural_invariant`、`CON-07 · reviewed_invariant`、`SHT-02 · reviewed_invariant`、`SHT-09 · reviewed_invariant`、`VID-17 · reviewed_invariant`、`VID-22 · reviewed_invariant`、`VID-25 · reviewed_invariant`） | 定位提示词、垫图或拆镜症结，退回对应负责技能修改后交 `short-drama-produce` 技能重生 |
 | **剪辑补回**（仅成片） | 原始生成素材已拍到关键内容，但成片切点下刀太狠、字幕错漏或混音叠字把关键信息与台词弄丢 | `blocker`（归入对应不变量，如 `EDT-04 · reviewed_invariant`、`EDT-05 · structural_invariant`、`EDT-07 · reviewed_invariant`、`EDT-10 · reviewed_invariant`） | 指明需调整入出点、字幕或音轨的 `CUT-...` 条目 → `short-drama-edit` 技能 |
 
 ### 审查结论判定

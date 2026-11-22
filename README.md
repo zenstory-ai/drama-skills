@@ -192,10 +192,10 @@ done
 
 ### 漏项和不一致会自动报错
 
-`creator_markdown_check.py` 核对五份文档间的交叉引用。把样例故意改坏两处——从 SHOT-002 的「出场设定」里删掉周薄森、把 MOTION-003 的时长从 2 秒改成 3 秒——报错会直接指出问题镜头与修法：
+`creator_markdown_check.py` 遵循**软门禁原则**：只有 100% 确定性的机械与安全问题（跨文档 ID 悬空、路径缺失、时长不等、槽位语法错误）才输出阻断级 `ERROR`，启发式事项仅输出 `WARNING` 提醒 Agent 复核。把样例故意改坏两处——把 SHOT-002「出场设定」里的「周薄森」写错成「周博森」、把 MOTION-003 的时长从 2 秒改成 3 秒——报错会直接指出问题镜头与修法：
 
 ```text
-ERROR: SHOT-EP001-002: 首帧提示词写到人物「周薄森」，出场设定没有覆盖；本镜确实看不见时在出场设定末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「提示词名称：无」
+ERROR: SHOT-EP001-002: 出场设定指向不存在的《视觉设定.md》条目: 人物「周博森」
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词时长必须与分镜一致
 ```
 
@@ -242,7 +242,7 @@ flowchart LR
 | `short-drama-image-prompts` | 视觉定调风格帧、角色/场景/道具参考图提示词与局部改图说明 |
 | `short-drama-storyboard` | 场次站位调度与多机位比选、剧本逐句落镜、起止画面与首尾帧提示词 |
 | `short-drama-video-prompts` | 单镜动作推进、多人调度与视线转移、运镜、声音、`GROUP-*` 多镜合生、补拍说明及跨镜配乐表 |
-| `short-drama-produce` | 单条或整批预览图片/视频（含 `GROUP-*` 合生分组）/配音/配乐任务，明确确认后批量调用接口生成并支持断点续跑；内置支持 Seedance、GPT Image 2、MiniMax H3 / Speech / Music |
+| `short-drama-produce` | 单条或整批预览图片/视频（含 `GROUP-*` 合生分组）/配音/配乐任务，明确确认后批量调用接口生成并支持断点续跑；内置支持 Seedance、OpenAI GPT Image、MiniMax H3 / Speech / Music |
 | `short-drama-edit` | 挑选单镜或 `GROUP-*` 合生素材可用区间、写明入出点取舍、核对台词、烧录字幕并统一响度，生成剪辑单与成片 |
 | `short-drama-breakdown` | 按集长、镜长、对白密度、开场与集尾拆解对标剧并比对本项目差距；支持将参考剧集反推为剧本、设定与提示词 |
 | `short-drama-review` | 结构与剧情审查；结合实拍出片效果排查设定与提示词偏差并给出修订建议 |

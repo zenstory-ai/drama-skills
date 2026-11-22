@@ -19,8 +19,9 @@
 ```
 
 - `modality`：必填，取值为 `image`、`video`、`tts`（单句角色配音）或 `music`（单段成片配乐或主题曲）。
-- `source` 与 `source_entry`：指向 `剧集|episodes/<EP>/` 下的创作文档时，`图片提示词.md` 选 `IMG-*`（`image`），`视频提示词.md` 选 `MOTION-*` 或 `GROUP-*`（`video`；`GROUP-*` 的组级 `输入参考图` 可省略，一旦写出则与 `MOTION-*` 按同一规则校验并拦截 `待补参考图`），`分镜.md` 选 `SHOT-*`（`image`，读取 `### 首帧提示词`）；`music` 任务读取 `视频提示词.md` 配乐章节，不填 `MOTION-*` 或 `GROUP-*`。
-  - **自动提取与一致性核对**：指定有效 `source` + `source_entry` 时，若省略 `prompt` 或 `reference_bindings`，`prepare` / `prepare-batch` 会从目标二级标题段落自动提取可复制提示词及项目内已有的 `REF-...` 绑定（按文档 `用途` 自动转为 `first_frame` / `last_frame` / `reference_image` 及 `reference_audio`；`reference_video` 仅用于手动填写的任务单）；手动填写时逐项核对与源条目完全一致。
+- `source` 与 `source_entry`：指向 `剧集|episodes/<EP>/` 下的创作文档时，`图片提示词.md` 选 `IMG-*`（`image`），`视频提示词.md` 选 `MOTION-*` 或 `GROUP-*`（`video`；`GROUP-*` 的组级 `输入参考图` 可省略，一旦写出则与 `MOTION-*` 按同一规则校验并拦截 `待补参考图`），`分镜.md` 选 `SHOT-*`（`image`，读取 `### 首帧提示词`）。
+  - **`music` 条目提取（可选 `MUSIC-*`）**：`music` 任务读取 `视频提示词.md` 或独立配乐 Markdown 文档时，可选指定 `source_entry: "MUSIC-..."`（对应 `## MUSIC-...` 二级标题下的 `### 可复制提示词`），自动提取配乐提示词并启用条目级摘要，使编辑视频镜头不再作废已确认配乐任务；省略 `source_entry` 时仍保持整文件摘要向后兼容（不可填 `MOTION-*` 或 `GROUP-*`）。
+  - **自动提取与一致性核对**：指定有效 `source` + `source_entry` 时，若省略 `prompt` 或 `reference_bindings`，`prepare` / `prepare-batch` 会从目标二级标题段落自动提取可复制提示词及项目内已有的 `REF-...` 绑定（按文档 `用途` 自动转为 `first_frame` / `last_frame` / `reference_image` 及 `reference_audio`；`reference_video` 仅用于手动填写的任务单；`MUSIC-*` 条目无参考绑定）；手动填写时逐项核对与源条目完全一致。
   - **条目级摘要**：带 `source_entry` 的 Markdown 源文档按该二级标题段落计算字节摘要，修改同一文档中其他条目的内容不会令当前条目的确认码失效，也不会在 `audit` 中把其他已完成镜头标为 `job_inputs_changed`；无 `source_entry` 的源文档与所有媒体参考文件按整文件字节摘要核验。
 - `reference_bindings`：0–16 条按序排列的参考素材绑定，每条包含 `slot_id`、从 1 连续递增的 `order`、项目相对路径 `path`、非空名称 `label`（支持中文、英文或字母数字标签，如 `女主定妆照`、`USB`、`Lead Hero`）、接口角色 `role`，以及互不重叠的非空列表 `may_control` 与 `must_not_control`。
   - 唯一性按 `(path, role)` 组合校验：允许循环镜头将同一静帧同时绑定为 `first_frame` 与 `last_frame`，禁止同一 `(path, role)` 重复绑定。
@@ -48,13 +49,34 @@
     "studio-image": {
       "command": ["python3", "<ADAPTER_SCRIPT>"],
       "timeout_seconds": 600
+    },
+    "studio-video": {
+      "command": ["python3", "<ADAPTER_SCRIPT>"],
+      "timeout_seconds": 3600,
+      "audio_capable": true,
+      "reference_roles": [
+        "first_frame",
+        "last_frame",
+        "reference_image",
+        "reference_video",
+        "reference_audio"
+      ]
     }
   }
 }
 ```
 
 - `command`：参数数组（直接进程调用，严禁拼成 shell 字符串）；`timeout_seconds`：允许范围 `1–3600` 秒。API 密钥只从环境变量或系统凭据库读取，严禁写进配置文件。
-- `reference_roles`（可选列表）：声明当前接口支持的参考 `role`，未列出的 `role` 会在核销确认码前拦截。内置视频接口的默认放行列表见 [内置生成接口说明](builtin-providers.md)；自定义外部接口若需接收 `reference_audio`，须在 `reference_roles` 中显式列出。
+- **能力声明优先（`reference_roles` 与 `audio_capable`）**：`production_tool.py` **优先**读取配置文件中的显式能力声明，不再要求自定义或外置适配器脚本命名为 `provider_adapters.py`：
+  - `reference_roles`（可选字符串列表）：显式白名单，声明该配置接受的全部参考 `role`，未列出的 `role` 会在核销确认码前拦截。
+  - `audio_capable`（可选布尔值）：显式声明该配置是否接受 `reference_audio`。未配置 `reference_roles` 时，设 `"audio_capable": true` 即可放行 `reference_audio`（不限制视觉自定义 `role`）；设 `"audio_capable": false` 则显式禁用 `reference_audio`（覆盖内置默认）。若同时写 `reference_roles` 与 `audio_capable: false` 且列表里含 `reference_audio`，会被视为配置冲突并在提交前拦截。
+  - v1.x 向后兼容回退：仅当 `reference_roles` 与 `audio_capable` 均未显式声明时，内置 `provider_adapters.py` 的 `seedance` / `minimax-h3` 命令继续沿用默认视频能力集（详见 [内置生成接口说明](builtin-providers.md)）。
+- **外置适配器安全规则（严禁未锁版本运行）**：接入独立外置适配器包（例如规划中的 `drama-providers`）时，**必须锁定精确版本**（如 `["uvx", "--from", "drama-providers==1.2.3", "drama-providers", "seedance"]` 或先安装锁定版本 `pip install drama-providers==1.2.3`）或直接指定经过核验的本地脚本路径。**严禁**在配置了真实付费 API 密钥的环境中使用未锁版本的浮动远端包（如裸 `uvx drama-providers` 或 `@latest`），防止上游漂移或供应链劫持直接接触生产密钥。
+
+## 硬门禁与软门禁边界
+
+- **硬门禁（阻断执行，提交前失败且不核销确认码）**：仅保留 100% 确定性的财务与安全约束——精确确认码与指纹校验、项目路径/符号链接/工作区边界、密钥键名拦截、输出扩展名与覆写保护、待补参考图拦截、以及 `reference_roles` / `audio_capable` 能力核验。
+- **软门禁（`warnings` 数组提醒 Agent 核查，不阻断）**：启发式与提示性检查通过结构化 `warnings` 返回，提醒 Agent 重点确认后再推进，包括 `overwrite_existing_output`（`overwrite: true` 且目标文件已存在）、`music_whole_file_hash`（`music` 读取 `视频提示词.md` 但未指定 `MUSIC-*` 条目）、`missing_prompt_language`（含参考绑定但未传 `prompt_language`）以及 `unpinned_remote_adapter`（检测到 `uvx`/`pipx`/`npx` 未锁定精确版本号）。
 
 ## 标准输入协议（stdin）
 

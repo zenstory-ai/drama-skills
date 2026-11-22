@@ -60,8 +60,6 @@ FILM = "制作成果/成片/成片.mp4"
 
 # ------------------------------------------------------------------ shot size
 
-# Ordered far to close. 中近景 is its own rung between 中景 and 近景.
-SCALES = ("远景", "全景", "中景", "中近景", "近景", "特写", "大特写", "细节")
 # The rhythm profile's close_shot_share_min counts exactly these (develop's
 # episode-design reference): 近景、特写、大特写与细节镜头. 中近景 is not one.
 CLOSE_SCALES = frozenset({"近景", "特写", "大特写", "细节"})
@@ -101,9 +99,6 @@ _OPTIONAL_CUE = (
     r"(?:[ \t\u3000]*(?:（(?P<cue_fw>[^（）\r\n]+)）|\((?P<cue_hw>[^()\r\n]+)\)))?"
 )
 _NOT_CLOCK_PREFIX = r"(?!\d{1,2}[:：]\d{2}(?:\D|$))"
-VOICE_BODY_RE = re.compile(
-    rf"^{_NOT_CLOCK_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:][ \t\u3000]*(?P<text>\S[\s\S]*)$"
-)
 DIALOGUE_RE = re.compile(
     rf"^{_NOT_CLOCK_PREFIX}(?P<speaker>{_SPEAKER_LABEL}){_OPTIONAL_CUE}[：:][ \t\u3000]*(?P<text>\S[\s\S]*)$"
 )
@@ -210,7 +205,7 @@ def parse_screenplay(text: str) -> dict[str, Any]:
         tag = TAG_RE.fullmatch(paragraph)
         if tag:
             body = tag.group("body").strip()
-            voice = VOICE_BODY_RE.fullmatch(body) if tag.group("tag") in VOICED_TAGS else None
+            voice = DIALOGUE_RE.fullmatch(body) if tag.group("tag") in VOICED_TAGS else None
             if voice:
                 current["blocks"].append({
                     "k": "line", "tag": tag.group("tag"), "who": voice.group("speaker"),
@@ -536,6 +531,27 @@ def parse_video_groups(text: str) -> list[dict[str, Any]]:
             "prompt": check._copyable_prompt(section) or "",
         })
     return groups
+
+
+def parse_music_prompts(text: str) -> list[dict[str, Any]]:
+    """`MUSIC-...` music / BGM prompt entries in 视频提示词.md, if any."""
+
+    text = check._strip_html_comments(_normalize_text(text), preserve_copyable=True)
+    entries = []
+    for music_id, section in check._sections(text, "MUSIC").items():
+        fields = check._fields(section, owner=music_id, errors=[])
+        title = SHOT_TITLE_RE.search(section)
+        entries.append({
+            "id": music_id,
+            "n": _number(music_id),
+            "title": title.group(1).strip() if title else "",
+            "use": fields.get("用途", "") or fields.get("剧情作用", ""),
+            "range": fields.get("区间", "") or fields.get("铺乐区间", ""),
+            "mood": fields.get("情绪", "") or fields.get("情绪起伏", ""),
+            "sec": check._declared_seconds(fields.get("时长", "")) or 0,
+            "prompt": check._copyable_prompt(section) or "",
+        })
+    return entries
 
 
 def usable_groups(
@@ -1140,6 +1156,7 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
     motion_shots = {v["id"]: v["shot"] for v in (videos or []) if v.get("shot")}
     group_shots: dict[str, list[str]] = {}
     raw_video = documents.get(VIDEO_PROMPTS)
+    music = parse_music_prompts(raw_video) if raw_video else []
     if raw_video:
         for raw_group in parse_video_groups(raw_video):
             resolved_members: list[str] = []
@@ -1166,6 +1183,7 @@ def read_episode(episode_id: str, documents: dict[str, Optional[str]], review: O
         "imagePrompts": images,
         "videoPrompts": videos,
         "videoGroups": groups,
+        "musicPrompts": music,
         "cutlist": cutlist,
         "review": parsed_review,
         "metrics": metrics(script, board),
@@ -1237,6 +1255,10 @@ def search_entries(episode: dict[str, Any]) -> list[dict[str, Any]]:
     for prompt in episode.get("imagePrompts") or []:
         add("提示词", prompt["id"], prompt["title"], prompt["prompt"] + " " + prompt["use"],
             "prompts", "image", id=prompt["id"])
+    for music in episode.get("musicPrompts") or []:
+        add("配乐", music["id"], music["title"],
+            " ".join([music["prompt"], music["use"], music["mood"], music["range"]]).strip(),
+            "prompts", "video", id=music["id"])
     for finding in (episode.get("review") or {}).get("findings", []):
         label = {"must": "必须改", "should": "建议改", "could": "可以更好"}[finding["sev"]]
         add("审查", label, finding["title"],

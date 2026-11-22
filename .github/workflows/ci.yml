@@ -74,7 +74,7 @@ jobs:
             windows=true
             remotion=true
           else
-            if printf '%s\n' "$files" | grep -Eq '(\.(py|js|mjs|ts|tsx|css|html)$|^(skills|tests|evaluations|examples|tools)/.*\.(json|jsonl)$)'; then
+            if printf '%s\n' "$files" | grep -Eq '(\.(py|js|mjs|ts|tsx|css|html)$|^(src|tools)/|^(skills|tests|evaluations|examples)/.*\.(json|jsonl)$)'; then
               code=true
               windows=true
             fi
@@ -261,7 +261,7 @@ jobs:
             --disallow-any-generics \
             --warn-unused-ignores \
             "${skill_scripts[@]}"
-          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py tools/compact_refs.py)
+          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py src/_shared/*.py tools/*.py)
           mypy --python-version 3.10 \
             --ignore-missing-imports \
             "${support_scripts[@]}"
@@ -274,7 +274,7 @@ jobs:
           shopt -s nullglob
           skill_scripts=(skills/*/scripts/*.py)
           test "${#skill_scripts[@]}" -gt 0
-          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py tools/compact_refs.py)
+          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py src/_shared/*.py tools/*.py)
           python -m venv /tmp/mypy39
           /tmp/mypy39/bin/pip install --disable-pip-version-check mypy==1.19.1
           /tmp/mypy39/bin/mypy --python-version 3.9 \

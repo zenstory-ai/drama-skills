@@ -8,8 +8,9 @@
 
 若本机未安装 Node.js/npm，或处于受限无头环境无法启动无头浏览器：
 
-1. **仅走 `ffmpeg` 渲染**：省略剪辑单中的 `画面文字` 行，直接运行默认 `edit_tool.py render`（走 `ffmpeg` 烧录字幕）或传 `--no-subtitles` 输出无字幕成片。
-2. **导出给外部 NLE 精修**：保留 `剧集/<EP>/剪辑单.md` 作为剪辑决策表，用 `--no-subtitles` 输出干净母版与分段中间文件，配合 SRT/ASS 字幕交外部剪辑软件（剪映、Premiere、DaVinci Resolve 等）添加标题字卡与动效层。
+1. **走 `ffmpeg` 渲染纯 `字卡` 或跳过画面文字**：`--screen-text-mode auto`（默认）在未装 Remotion 且全片仅含无框 `字卡` 时自动降级为 `ffmpeg` ASS 烧录并给出提醒（也可显式传 `--screen-text-mode ffmpeg`）；若剪辑单含复杂面板样式但当前环境无 Remotion，可传 `--screen-text-mode off` 跳过全部 `画面文字` 叠层（无需删改剪辑单），其余裁切、混音与字幕烧录（或 `--no-subtitles`）照常执行。
+2. **接入外部透明叠层渲染器**：如需使用自定义图形管线替代 Remotion，可传 `--overlay-renderer <cmd>`，工具会写出 `叠层.props.json` 并调用外部命令生成透明叠层视频再由 `ffmpeg` 叠合。
+3. **导出给外部 NLE 精修**：保留 `剧集/<EP>/剪辑单.md` 作为剪辑决策表，用 `--screen-text-mode off`（可按需加 `--no-subtitles`）输出干净母版与分段中间文件，配合 SRT/ASS 字幕交外部剪辑软件（剪映、Premiere、DaVinci Resolve 等）添加标题字卡与动效层。
 
 ## 跨平台安装与运行
 
@@ -31,10 +32,12 @@
 
 **2. 触发渲染**
 
-剪辑单含有 `画面文字` 时，`render` 会自动调用 Remotion；仅需切换动态字幕路线时显式传入 `--subtitles remotion`（`<SKILL_DIR>` 为本技能目录，需 Python 3.9+；Windows 将 `python3` 换为 `py -3` 或 `python`）：
+> 下文命令中 `<SKILL_DIR>` 指 `short-drama-edit` 技能目录，`<PYTHON>` 指 Python 3.9+ 解释器（macOS/Linux 用 `python3`，Windows 用 `py -3` 或 `python`）。
+
+`--screen-text-mode auto|remotion|ffmpeg|off` 控制 `画面文字` 渲染路线（默认 `auto`：含复杂面板或本机已装 Remotion 时调用 Remotion，无 Remotion 且仅含普通 `字卡` 时自动降级为 `ffmpeg` ASS）；如需强制走 Remotion 或切换动态字幕路线，显式传入对应参数：
 
 ```bash
-python3 <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> --subtitles remotion
+<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> --screen-text-mode auto --subtitles remotion
 ```
 
 Remotion 先渲染带透明通道的视频层（VP8 + alpha），再由 `ffmpeg` 叠合到成片画面；字幕走默认 `ffmpeg` 路线时，烧录层级位于画面文字之上。

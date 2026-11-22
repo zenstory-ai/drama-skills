@@ -15,8 +15,10 @@ license: MIT
 为长篇原著建立章节索引：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/novel_index.py index <原著.txt> --out <chapter-index.json>
+<PYTHON> "<SKILL_DIR>/scripts/novel_index.py" index <原著.txt> --out <chapter-index.json>
 ```
+
+> **无终端 / 无 Python 兜底**：若当前对话环境不支持执行本地脚本，短篇或指定章数可直接由用户分批粘贴正文在对话中完成拆解与汇总；超长篇建议切分章节文件后分批上传读取。
 
 ## 开始前与材料前提
 
@@ -24,12 +26,11 @@ license: MIT
 - 只拆解创作者合法持有、拥有使用权的作品。`输入/` 只读，拆解时不改原文、不整段照抄原句（只记章节位置、起止行号和剧情作用概括，必要佐证只摘最短词句），交付文件不夹带原始全文。
 - 通俗题材里的暴力、复仇、背叛、情感拉扯与暗黑冲突照常提取剧情作用；个别片段无法处理时跳过并记明行号范围，不中断整章或整批拆解。
 
-## 先判断入口
+## 先判断入口（三条路径）
 
-1. **轻量快检（短篇、≤5 章，或仅快速评估改编可行性）**：直接通读原文，在当前对话中给出精炼的改编可行性评估、核心看点与爽点、主要改编难点及简明分集/节拍思路即可，**无需建立 `输入/`、`_work/_index.next.json` 或 S0–S5 全套十余份拆解文件**；只有创作者明确需要沉淀长篇拆解档案时，才进入下方完整流程。
-2. **只有书名，没有原文**：请创作者提供文件路径或粘贴正文，不凭书名回忆情节。
-3. **有多章原文，未建目录**：建立只读输入目录 `输入/` 与工作目录 `项目开发/source-analysis/_work/`，把原文复制到 `输入/` 后用 `novel_index.py` 建索引。
-4. **已有部分拆解结果**：读 `项目开发/source-analysis/_progress.md` 从上次进度接着跑（分批拆解新区间时直接续跑新增章节）。
+1. **短篇直读（≤5 章）**：直接通读原文，在当前对话中给出精炼的改编可行性评估、核心看点与爽点、主要改编难点及简明分集/节拍思路，**无需建立 `输入/`、索引文件或 S0–S5 全套档案**。
+2. **长篇快速可行性评估（>5 章，先判断值不值得改）**：无需落盘完整拆解目录，直接用临时索引搭配 `sample --count 12` 抽样阅读，给出改编可行性快评与建议拆解区间（见 [改编价值快评](references/adaptation-triage.md)），待创作者拍板后再决定是否进入完整拆解。
+3. **完整拆解档案（S0–S5，整本或指定区间）**：只有书名无原文时请创作者提供文件或粘贴正文，不凭书名回忆情节；已有长篇原文时建立只读 `输入/` 与 `项目开发/source-analysis/_work/`，用 `novel_index.py` 建索引后按 S0–S5 推进（已有部分拆解结果时，读 `项目开发/source-analysis/_progress.md` 从上次进度续跑）。
 
 ## 拆解流程
 
@@ -49,15 +50,14 @@ license: MIT
 各阶段共用 [章节索引脚本](scripts/novel_index.py) 建立的章节边界，不各自重新切分：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/novel_index.py index 输入/{原文文件} \
-  --out 项目开发/source-analysis/_work/_index.next.json
-<PYTHON> <SKILL_DIR>/scripts/novel_index.py verify \
-  项目开发/source-analysis/_work/_index.next.json 输入/{原文文件}
+<PYTHON> "<SKILL_DIR>/scripts/novel_index.py" index 输入/<原文文件> --out 项目开发/source-analysis/_work/_index.next.json
+<PYTHON> "<SKILL_DIR>/scripts/novel_index.py" verify 项目开发/source-analysis/_work/_index.next.json 输入/<原文文件>
 ```
 
 校验通过后将 `_work/_index.next.json` 写入正式 `_index.json`。脚本支持可选 Markdown 标题前缀（`#`–`######`）、阿拉伯与中文数字章号，按 `章 / 回 / 集 / 话 / 話 / 幕 / 节` 由粗到细自动选定主编号单位（其余记入 `ignored_heading_units`，也可传 `--unit` 指定），剔除开头目录块并分卷核对。
 
-- **区分致命错误与源书常见瑕疵**：网文源书常见的作者跳章号、重章号或简短卷首语归入输出 JSON 的 `warnings` 提醒，脚本保持退出码 `0` 正常放行；只有完全识别不到章节（无章标题散稿，可与创作者约定切分后手写 `sequence` / `line_start` / `line_end` 再过 `verify`）、第一章前遗漏大段楔子正文（可在索引开头补一条 `source_number: null` 记录覆盖第 1 行起的正文），或索引自身断号、行区间断裂时，`problems` 非空并返回非零退出码拦截。原文一旦修改须重建索引。
+- **软门禁提醒（退出码 `0`）**：网文源书常见的作者跳章号、重章号或简短卷首语仅归入输出 JSON 的 `warnings` 提醒，脚本正常放行，供 Agent 复核。
+- **确定性硬拦截（非零退出码）**：仅在以下情况拦截——完全识别不到章节（无章标题散稿可与创作者约定切分后手写 `sequence` / `line_start` / `line_end` 再过 `verify`）、第一章前遗漏大段楔子正文（可在索引开头补一条 `source_number: null` 覆盖第 1 行起的正文），或索引自身断号、行区间断裂。原文一旦修改须重建索引。
 
 ### S1 改编价值快评
 
@@ -68,8 +68,7 @@ license: MIT
 按 [逐章提取与人物设定整理](references/chapter-extraction.md) 将本批目标区间内的每章拆进 `chapters/ch-<N>-extract.md`（支持并行子任务时每批 5–8 章）。写完后核对覆盖情况：
 
 ```bash
-<PYTHON> <SKILL_DIR>/scripts/novel_index.py coverage \
-  项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters [--start <起> --end <止>]
+<PYTHON> "<SKILL_DIR>/scripts/novel_index.py" coverage 项目开发/source-analysis/_index.json 项目开发/source-analysis/chapters [--start <起> --end <止>]
 ```
 
 全书拆解时直接跑 `coverage`，按创作者指定区间（如 `sequence` 1–100）分批拆解时传 `--start 1 --end 100`；确认返回 `complete: true`（目标章齐全且无 `unmatched_files` 错名文件）即可进入 S3。

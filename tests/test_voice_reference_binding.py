@@ -173,12 +173,8 @@ class CheckerTests(unittest.TestCase):
         for name, (written, speaks) in cases.items():
             with self.subTest(name):
                 screenplay = f"# EP001\n\n## EP001-SC001 内 · 办公室 · 夜\n\n{written}\n"
-                spoken = [
-                    item
-                    for item in checker._screenplay_dialogue(screenplay)
-                    if item.speaker == "江晨" and "下周榜首" in item.key
-                ]
-                self.assertEqual(bool(spoken), speaks, spoken)
+                speakers = checker._screenplay_dialogue(screenplay)
+                self.assertEqual("江晨" in speakers, speaks, speakers)
 
     def test_the_binding_must_match_the_characters_recorded_voice(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -340,10 +336,15 @@ class ProductionTests(unittest.TestCase):
                         production_tool.prepare_job(root, path)
 
     def test_a_declared_voice_cannot_be_dropped_from_the_job(self) -> None:
-        # `- **参考音频**：` is the same field to the checker, so production must
-        # read it too, or it would accept the job that drops the voice.
+        # `- **参考音频**：` and `- **参考音频：** ` are the same field to a human,
+        # so production must read both, or it would accept a job that drops the voice.
         bold = AUDIO_LINE.replace("- 参考音频：", "- **参考音频**：", 1)
-        for name, line in (("plain", AUDIO_LINE), ("bold field name", bold)):
+        bold_colon_inside = AUDIO_LINE.replace("- 参考音频：", "- **参考音频：** ", 1)
+        for name, line in (
+            ("plain", AUDIO_LINE),
+            ("bold field name", bold),
+            ("bold colon inside", bold_colon_inside),
+        ):
             with self.subTest(name), tempfile.TemporaryDirectory() as directory:
                 root = self.project(directory, audio_line=line)
                 self.assertEqual(

@@ -197,14 +197,14 @@ The four originals: [`剧本.md`](examples/creator-first/EP001/剧本.md) · [`�
 
 ### Missing entries and mismatches are flagged
 
-`creator_markdown_check.py` checks cross-references across the five documents. Breaking the sample in two places—removing Zhou Bosen from SHOT-002's on-screen settings (`出场设定`) and changing MOTION-003's duration from 2s to 3s—produces targeted errors:
+`creator_markdown_check.py` follows a **soft-gate principle**: only 100% deterministic mechanical checks (dangling cross-document IDs, missing asset files, duration mismatches, malformed slot syntax) emit blocking `ERROR`s, while heuristic checks emit non-blocking `WARNING`s for the agent to review. Breaking the sample in two places—misspelling `周薄森` as `周博森` in SHOT-002's on-screen settings (`出场设定`) and changing MOTION-003's duration from 2s to 3s—produces targeted errors:
 
 ```text
-ERROR: SHOT-EP001-002: 首帧提示词写到人物「周薄森」，出场设定没有覆盖；本镜确实看不见时在出场设定末尾加「；画外：人物「周薄森」」，正文里这个名字不可靠时在《视觉设定.md》写「提示词名称：无」
+ERROR: SHOT-EP001-002: 出场设定指向不存在的《视觉设定.md》条目: 人物「周博森」
 ERROR: SHOT-EP001-003: 分镜时长 2 秒与视频提示词 3 秒不一致；视频提示词时长必须与分镜一致
 ```
 
-Line 1 flags that the first-frame prompt names "Zhou Bosen" without listing him in `出场设定` or marking him off-screen (`画外`). Line 2 catches a duration mismatch between the 2-second storyboard shot and the 3-second video prompt.
+Line 1 flags that `出场设定` references a character name (`周博森`) that does not exist in `视觉设定.md`. Line 2 catches a duration mismatch between the 2-second storyboard shot and the 3-second video prompt.
 
 ## The twelve skills
 
@@ -249,7 +249,7 @@ flowchart LR
 | `short-drama-image-prompts` | Lookdev style frames, character/location/prop reference prompts, and targeted image edits |
 | `short-drama-storyboard` | Scene staging and multi-angle comparisons, script-to-shot breakdown, start/end frames, and first/end-frame prompts |
 | `short-drama-video-prompts` | Single-shot motion, multi-character staging and eyeline shifts, camera moves, sound, `GROUP-*` multi-shot groups, pickup notes, and cross-shot music cues |
-| `short-drama-produce` | Preview single or batched image/video (including `GROUP-*` groups)/voice/music jobs, run provider APIs after explicit confirmation with resume support, and archive outputs; built-in profiles for Seedance, GPT Image 2, and MiniMax H3 / Speech / Music |
+| `short-drama-produce` | Preview single or batched image/video (including `GROUP-*` groups)/voice/music jobs, run provider APIs after explicit confirmation with resume support, and archive outputs; built-in profiles for Seedance, OpenAI GPT Image, and MiniMax H3 / Speech / Music |
 | `short-drama-edit` | Select usable ranges from single shots or `GROUP-*` clips, record in/out rationale, verify dialogue, burn subtitles, normalize loudness, and render finished episodes |
 | `short-drama-breakdown` | Measure benchmark dramas (episode/shot length, dialogue density, hooks/cliffhangers) against your project; reverse-engineer reference episodes into scripts, settings, and prompts |
 | `short-drama-review` | Structural and dramatic quality review; project-wide calibration and revision advice from real generated outputs |

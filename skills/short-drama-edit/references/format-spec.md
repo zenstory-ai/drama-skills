@@ -1,6 +1,8 @@
 # 剪辑单格式规范
 
-撰写 `剧集/<EP>/剪辑单.md` 以供 `edit_tool.py` 自动校验、渲染与验收时，按本规范组织交付规格与各剪辑段字段。完整样例可对照 [剪辑单样例](../assets/剪辑单.md)。
+撰写 `剧集/<EP>/剪辑单.md` 以供 `edit_tool.py` 自动校验、渲染与验收时，按本规范组织交付规格与各剪辑段字段。字段键名支持普通写法（`- 字幕：...`）与 Markdown 强调写法（`- **字幕**：...` 及冒号位于加粗内部的 `- **字幕：** ...`）。完整样例可对照 [剪辑单样例](../assets/剪辑单.md)。
+
+> **渲染前置与门禁约定**：默认 `ffmpeg` 硬字幕与无 Remotion 兜底 `字卡` 需要带 `libass`（`ass` 滤镜）的 `ffmpeg`（macOS Homebrew 可装 `ffmpeg-full`）。校验遵循软门禁原则：百分百确定性的文件/语法/区间/画幅缺陷进入 `findings` 阻断渲染；启发式与创作取舍类风险（如快闪静帧、短抢话、`--partial` 未入片镜头、目标时长大幅偏差、偏短字幕窗及 `verify` 的响度/亮度/音量跳变）进入 `提醒` 提示 Agent 与创作者重点复核，不粗暴阻断。
 
 ## 一、开头交付规格
 
@@ -30,7 +32,9 @@
 
 ## 三、可选画面图文叠加层（`- 画面文字 N：`）
 
-`画面文字` 属于**可选**叠加层，默认由 `edit_tool.py render --screen-text-mode auto` 处理：包含复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 [Remotion 图文叠加层](../assets/remotion/README.md) 时走 Remotion；未装 Node/Remotion 且全片仅含普通 `字卡` 时自动降级为 `ffmpeg` ASS 烧录并给出提醒；也可传 `--screen-text-mode ffmpeg` 强制烧录纯 `字卡`，或传 `--screen-text-mode off` 跳过全部 `画面文字` 叠层（无需删除剪辑单中的 `画面文字` 行）以直接出片或交外部剪辑软件叠加。
+`画面文字` 属于**可选**叠加层，默认由 `edit_tool.py render --screen-text-mode auto` 处理：包含复杂样式（`卡片`/`系统面板`/`任务面板`/`角标`）或本机已安装/显式配置 [Remotion 图文叠加层](../assets/remotion/README.md) 时走 Remotion；未装 Node/Remotion 且全片仅含普通 `字卡` 时自动降级为 `ffmpeg` ASS 烧录（需 `libass`）并给出提醒；也可传 `--screen-text-mode ffmpeg` 强制烧录纯 `字卡`，或传 `--screen-text-mode off` 跳过全部 `画面文字` 叠层（无需删除剪辑单中的 `画面文字` 行）以直接出片或交外部剪辑软件叠加。
+
+**外置叠层渲染协议（`--overlay-renderer <cmd>`）**：传入外部渲染命令后，`render` 会在输出目录写入 `叠层.props.json`（包含 `width`、`height`、`fps`、`durationInSeconds`、`cues`、`layers` 与兼容字段 `screenTexts`），默认以 `<cmd> --props <props.json> --output <overlay.webm>` 调用（也可在命令中显式写入 `{props}` 与 `{output}` 占位符），生成带透明通道的叠层视频再由 `ffmpeg` 叠合到成片；未传入该参数时保持内置 Remotion 与 `ffmpeg` `字卡` 兜底路线不变。
 
 基本语法为 `- 画面文字 N：<起>-<止> <样式> <项>｜<项>…`（单条可省编号，同屏位置时间段不得重叠）：
 

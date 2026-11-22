@@ -1,4 +1,4 @@
 interface:
   display_name: "短剧创作"
-  short_description: "创建或继续本地短剧项目，衔接各创作环节，打开短剧创作台并导出成果"
-  default_prompt: "使用 $short-drama 创建或继续我的本地短剧项目，查看当前进度或打开短剧创作台。"
+  short_description: "初始化与配置短剧/漫剧项目，统筹制作形态与视觉定调（Lookdev），打开创作台并导出校验交付"
+  default_prompt: "使用 $short-drama 初始化或配置我的短剧项目、统筹视觉定调（Lookdev）、打开本地创作台或导出校验交付成果。"

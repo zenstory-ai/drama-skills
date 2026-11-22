@@ -339,11 +339,9 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
         # 2. Screenplay scenes, speakers, clock action lines, and HTML comments align.
-        spoken_lines = creator_check._screenplay_dialogue(SCREENPLAY_MD)
-        check_speakers = [(line.scene, line.speaker) for line in spoken_lines]
         self.assertEqual(
-            check_speakers,
-            [("EP001-SC001", "许棠"), ("EP001-SC002", "Dr. Lin")],
+            creator_check._screenplay_dialogue(SCREENPLAY_MD),
+            {"许棠", "Dr. Lin"},
         )
 
         view_sp = creator_views.parse_screenplay(SCREENPLAY_MD)
@@ -777,6 +775,171 @@ class CrossScriptMarkdownParserParityTests(unittest.TestCase):
             ],
         )
 
+    def test_bold_colon_inside_emphasis_parity_across_all_four_parsers(self) -> None:
+        """All four Markdown parsers treat `- **字段：** 值` identically to `- **字段**：值`."""
+        img_dir = self.project / "输入/参考图"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        (img_dir / "xutang.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        voice_dir = self.project / "输入/声音"
+        voice_dir.mkdir(parents=True, exist_ok=True)
+        (voice_dir / "xutang.wav").write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+
+        settings_bold = (
+            "# EP001 视觉设定\n\n"
+            "- **制作形态：** 写实竖屏短剧，9:16。\n"
+            "- **时代背景：** 当下（2020 年代）；设备：液晶监视器。\n\n"
+            "## 人物 · 许棠\n\n"
+            "- **外观特征：** 齐耳短黑发、深灰工装夹克。\n"
+            "- **提示词名称：** Xutang\n"
+            "- **角色声线：** 冷清女中音；不允许娇嗔气声\n"
+            "- **声音参考：** 输入/声音/xutang.wav（用途：音色；控制：音色、音区；不得控制：情绪、混响；状态：创作者已说明）\n\n"
+            "## 人物 · Dr. Lin\n\n"
+            "- **外观特征：** 银边眼镜、白大褂。\n"
+            "- **提示词名称：** 无\n"
+            "* *角色声线:* 沉稳低男中音\n\n"
+            "## 地点 · 监控室\n\n"
+            "- **外观特征：** 黑色操作台、液晶监视器阵列。\n\n"
+            "## 地点 · 走廊\n\n"
+            "- **外观特征：** 水泥墙面、冷白应急灯。\n"
+        )
+        storyboard_bold = (
+            "# EP001 分镜\n\n"
+            "- **未拍场次：** EP001-SC003（理由：顺延至下集）\n\n"
+            "## SHOT-EP001-001 · 电闸熄灭\n\n"
+            "- **来源：** EP001-SC001「许棠：是谁关了电闸？」\n"
+            "- **时长：** 4s\n"
+            "- **景别：** 近景\n"
+            "- **运镜：** 固定\n"
+            "- **出场设定：** 《视觉设定.md》·人物「许棠」（控制：外貌）；《视觉设定.md》·地点「监控室」（控制：空间布局）\n"
+            "- **输入参考图：** REF-XUTANG（顺序：1）· 输入/参考图/xutang.png《许棠定妆》（用途：外貌；控制：脸型、服装；不得控制：动作、构图）\n"
+            "- **画面与动作：** 许棠抬头追问。\n\n"
+            "### 首帧提示词\n"
+            "> 9:16 close-up of Xutang before dark monitors, no text.\n\n"
+            "## SHOT-EP001-002 · 走廊读数\n\n"
+            "- **来源：** EP001-SC002「[VO] Dr. Lin：记录第二次读数。」\n"
+            "- **时长：** 3s\n"
+            "- **景别：** 中景\n"
+            "- **运镜：** 缓慢前推\n"
+            "- **出场设定：** 《视觉设定.md》·地点「走廊」（控制：空间布局）\n"
+            "* *输入参考图:* 无（文生首帧）。\n"
+            "- **画面与动作：** 空镜走廊前推。\n\n"
+            "### 首帧提示词\n"
+            "> 9:16 medium shot down a concrete corridor, no people, no text.\n"
+        )
+        video_bold = (
+            "# EP001 视频提示词\n\n"
+            "## MOTION-EP001-001 · 电闸熄灭\n\n"
+            "- **分镜：** SHOT-EP001-001\n"
+            "- ***时长：*** 4s\n"
+            "- **生成方式：** 图生视频\n"
+            "- **输入参考图： ** REF-XUTANG（顺序：1）· 输入/参考图/xutang.png《许棠定妆》（用途：外貌；控制：脸型、服装；不得控制：动作、构图）\n"
+            "- **参考音频：** REF-VOICE-XT（顺序：1）· 输入/声音/xutang.wav《许棠音色》（用途：音色；角色：许棠；控制：音色、音区；不得控制：情绪、混响）\n"
+            "- **起始帧：** 许棠扶住操作台。\n"
+            "- **动作过程：** 抬头追问\n"
+            "- **终点：** 目光停在门口。\n\n"
+            "### 可复制提示词\n"
+            "> Xutang looks up sharply and asks in Chinese, “是谁关了电闸？”. Static camera, no text.\n\n"
+            "## MOTION-EP001-002 · 走廊读数\n\n"
+            "- **分镜：** SHOT-EP001-002\n"
+            "- **时长：** 3s\n"
+            "- **生成方式：** 文生视频\n"
+            "* *输入参考图:* 无（文生视频）。\n"
+            "- **开场画面：** Empty concrete corridor lit by cold emergency light.\n"
+            "- **起始帧：** 走廊空无一人。\n"
+            "- **动作过程：** 缓慢前推\n"
+            "- **终点：** 靠近防火门。\n\n"
+            "### 可复制提示词\n"
+            "> Slow push-in down empty corridor while voice-over says in Chinese, “记录第二次读数。”. No text.\n"
+        )
+        cuts_bold = (
+            "# EP001 剪辑单\n\n"
+            "- **成片目标时长：** 7.00 秒\n"
+            "- **交付响度：** -14 LUFS\n"
+            "- **画幅与帧率：** 1080×1920 30fps\n"
+            "- ***未采用镜头：*** MOTION-EP001-002（测试备选）\n\n"
+            "## CUT-EP001-001 · 电闸熄灭\n\n"
+            "- **来源：** MOTION-EP001-001 · 剧集/EP001/制作成果/shot-001.mp4\n"
+            "- **入点：** 0.00\n"
+            "- **出点：** 4.00\n"
+            "- ***时长：*** 4.00\n"
+            "- **字幕：** 是谁关了电闸？\n"
+            "- **画面文字：** 0.50-2.50 字卡 00:00 断电\n"
+        )
+
+        (self.episode / "视觉设定.md").write_text(settings_bold, encoding="utf-8")
+        (self.episode / "分镜.md").write_text(storyboard_bold, encoding="utf-8")
+        (self.episode / "视频提示词.md").write_text(video_bold, encoding="utf-8")
+        (self.episode / "剪辑单.md").write_text(cuts_bold, encoding="utf-8")
+
+        # 1. creator_markdown_check
+        self.assertEqual(creator_check.validate_episode(self.episode, self.project), [])
+
+        # 2. creator_views
+        view_settings = creator_views.parse_settings(settings_bold)
+        self.assertEqual(view_settings["form"], "写实竖屏短剧，9:16")
+        self.assertEqual(view_settings["items"][0]["designators"], ["Xutang"])
+        view_vids = creator_views.parse_video_prompts(video_bold)
+        self.assertEqual(view_vids[0]["shot"], "SHOT-EP001-001")
+        self.assertEqual(view_vids[0]["mode"], "图生视频")
+        self.assertEqual(view_vids[0]["chain"], "抬头追问")
+        self.assertEqual(view_vids[0]["sec"], 4.0)
+        view_cuts = creator_views.parse_cut_list(cuts_bold)
+        self.assertEqual(view_cuts["target"], 7.0)
+        self.assertEqual(view_cuts["unused"], ["MOTION-EP001-002（测试备选）"])
+        self.assertEqual(len(view_cuts["cuts"]), 1)
+        self.assertEqual(view_cuts["cuts"][0]["subs"][0]["text"], "是谁关了电闸？")
+
+        # 3. production_tool (must NOT drop REF-XUTANG or REF-VOICE-XT!)
+        prompt_text, bindings = production_tool._extract_markdown_source_defaults(
+            self.project,
+            source="剧集/EP001/视频提示词.md",
+            source_entry="MOTION-EP001-001",
+        )
+        self.assertIn("是谁关了电闸", prompt_text)
+        self.assertEqual(len(bindings), 2)
+        self.assertEqual(
+            {b["path"] for b in bindings},
+            {"输入/参考图/xutang.png", "输入/声音/xutang.wav"},
+        )
+
+        # 4. edit_tool
+        delivery, cuts, unused = edit_tool.parse_cut_list(self.episode / "剪辑单.md")
+        self.assertAlmostEqual(delivery.target_seconds or 0.0, 7.0)
+        self.assertEqual(unused, view_cuts["unused"])
+        self.assertEqual(len(cuts), 1)
+        self.assertEqual(cuts[0].cut_id, "CUT-EP001-001")
+        self.assertEqual(cuts[0].subtitles[0][2], "是谁关了电闸？")
+        self.assertEqual(cuts[0].screen_texts[0].style, "字卡")
+
+    def test_vendored_shared_helpers_stay_in_sync(self) -> None:
+        """Build-time vendored helpers in skills/*/scripts match src/_shared/ verbatim."""
+        sync_shared = _load_script("parity_sync_shared", "tools/sync_shared.py")
+        self.assertEqual(sync_shared.check_sync(SUITE), [])
+
+        canonical = _load_script("parity_shared_cn_num", "src/_shared/cn_num.py")
+        novel_index = _load_script(
+            "parity_novel_index",
+            "skills/short-drama-novel-analyze/scripts/novel_index.py",
+        )
+        episode_intake = _load_script(
+            "parity_episode_intake",
+            "skills/short-drama-develop/scripts/episode_intake.py",
+        )
+        cases = (
+            ("一", 1),
+            ("十五", 15),
+            ("两百零三", 203),
+            ("两零八", 208),
+            ("一千零十五", 1015),
+            ("二十零三", None),
+            ("一百零二十", None),
+            ("一两三", None),
+        )
+        for token, expected in cases:
+            self.assertEqual(canonical.chinese_to_int(token), expected)
+            self.assertEqual(novel_index.chinese_to_int(token), expected)
+            self.assertEqual(episode_intake.chinese_to_int(token), expected)
+
 
 class CrossSkillRuleTierParityTests(unittest.TestCase):
     TIERS = {
@@ -946,6 +1109,84 @@ class CrossSkillRuleTierParityTests(unittest.TestCase):
 
         self.assertEqual(undefined_mentions, [])
         self.assertEqual(foreign_mentions, [])
+        self.assertEqual(tier_mismatches, [])
+
+    def test_review_references_cover_all_upstream_blocking_rules_with_matching_tiers(
+        self,
+    ) -> None:
+        """short-drama-review/references/ covers 100% of upstream blocking rules with matching tiers."""
+        registry = self._stage_contract_registry()
+        upstream = {
+            rule_id: tier
+            for rule_id, (tier, owners) in registry.items()
+            if any(Path(owner).parts[1] != "short-drama-review" for owner in owners)
+        }
+        self.assertEqual(len(upstream), 100)
+
+        rule_token_re = re.compile(r"(?<![A-Z0-9-])([A-Z]{3}-\d{2})(?![A-Z0-9-])")
+        tier_re = re.compile(
+            r"`?(structural_invariant|reviewed_invariant|craft_default|taste_option)`?"
+        )
+        grouped_re = re.compile(
+            r"((?:`?[A-Z]{3}-\d{2}`?(?:\s*[、,/]\s*|\s+))*`?[A-Z]{3}-\d{2}`?)"
+            r"\s*(?:·|[:：]|，均为|均为)\s*"
+            r"`?(structural_invariant|reviewed_invariant|craft_default|taste_option)`?"
+        )
+
+        covered_tiers: dict[str, set[str]] = {}
+        tier_mismatches: list[str] = []
+
+        review_refs = sorted(
+            path
+            for path in (SUITE / "skills/short-drama-review/references").glob("*.md")
+            if path.name != "stage-contract.md"
+        )
+        self.assertTrue(review_refs)
+
+        for path in review_refs:
+            rel = str(path.relative_to(SUITE))
+            current_group_tier: str | None = None
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("- "):
+                    heading = re.match(r"^- \*\*([^*]+)\*\*", line)
+                    tiers = tier_re.findall(heading.group(1)) if heading else []
+                    unique_tiers = set(tiers)
+                    if len(unique_tiers) == 1 and next(iter(unique_tiers)) in {
+                        "structural_invariant",
+                        "reviewed_invariant",
+                    }:
+                        current_group_tier = next(iter(unique_tiers))
+                    else:
+                        current_group_tier = None
+                elif not line.startswith("  "):
+                    current_group_tier = None
+
+                for rules_blob, tier in grouped_re.findall(line):
+                    for rule_id in rule_token_re.findall(rules_blob):
+                        if rule_id in upstream:
+                            covered_tiers.setdefault(rule_id, set()).add(tier)
+                            if tier != upstream[rule_id]:
+                                tier_mismatches.append(
+                                    f"{rel}: {rule_id} declares {tier}, expected {upstream[rule_id]}"
+                                )
+
+                if current_group_tier and line.startswith("  - "):
+                    for rule_id in rule_token_re.findall(line):
+                        if rule_id in upstream:
+                            covered_tiers.setdefault(rule_id, set()).add(
+                                current_group_tier
+                            )
+                            if current_group_tier != upstream[rule_id]:
+                                tier_mismatches.append(
+                                    f"{rel}: {rule_id} under {current_group_tier}, expected {upstream[rule_id]}"
+                                )
+
+        missing = sorted(set(upstream) - set(covered_tiers))
+        self.assertEqual(
+            missing,
+            [],
+            f"Upstream blocking rules missing from short-drama-review/references/: {missing}",
+        )
         self.assertEqual(tier_mismatches, [])
 
 

@@ -30,21 +30,6 @@ if sys.version_info < MINIMUM_PYTHON:
     )
 
 SCHEMA_VERSION = "1.0.0"
-CHINESE_DIGITS = {
-    "零": 0,
-    "〇": 0,
-    "一": 1,
-    "二": 2,
-    "两": 2,
-    "三": 3,
-    "四": 4,
-    "五": 5,
-    "六": 6,
-    "七": 7,
-    "八": 8,
-    "九": 9,
-}
-CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
 CHINESE_NUMBER = "零〇一二三四五六七八九十百千两"
 _HEADING_SEP = r"(?:——|[·：:–—-])"
 _HEADING_TAIL = rf"(?:[ \t　]*{_HEADING_SEP}(?:[ \t　]*\S.*)?|[ \t　]+\S.*)?"
@@ -80,12 +65,33 @@ def _strict_int(value: Any) -> int | None:
     return value if _is_strict_int(value) and isinstance(value, int) else None
 
 
+# BEGIN SHARED: cn_num
+CHINESE_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
+
+
 def chinese_to_int(text: str) -> int | None:
+    """Convert 一 / 十五 / 两百零三 / 两零八 / 一千零十五 to an int, or None if malformed."""
     if not text:
         return None
     if text.isascii() and text.isdigit():
         return int(text)
     if all(character in CHINESE_DIGITS for character in text):
+        if "两" in text[1:]:
+            return None
         value = 0
         for character in text:
             value = value * 10 + CHINESE_DIGITS[character]
@@ -116,7 +122,10 @@ def chinese_to_int(text: str) -> int | None:
 
         weight = CHINESE_UNITS[character]
         if pending_digit is None:
-            if character == "十" and index == 0:
+            if character == "十" and (
+                (index == 0 and not saw_zero)
+                or (saw_zero and previous_weight is not None and previous_weight >= 1000)
+            ):
                 digit = 1
             else:
                 return None
@@ -139,6 +148,7 @@ def chinese_to_int(text: str) -> int | None:
     if (previous_weight > 10) != saw_zero:
         return None
     return total + pending_digit
+# END SHARED: cn_num
 
 
 def _line_table(data: bytes) -> tuple[list[bytes], list[int]]:
@@ -874,6 +884,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             write_index(args.out, document)
             result: Any = {"output": str(args.out), "episode_count": document["episode_count"]}
+            if document["unmapped_spans"]:
+                result["warnings"] = [
+                    f"{len(document['unmapped_spans'])} unmapped span(s) outside episode boundaries; "
+                    "inspect unmapped_spans in the index"
+                ]
             if document["problems"]:
                 result["problems"] = document["problems"]
                 print(json.dumps(result, sort_keys=True))

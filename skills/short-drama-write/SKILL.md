@@ -34,7 +34,7 @@ license: MIT
 - 关键剧情转折靠看得见、听得着的动作与物证状态演出来，不拿大段无法拍摄的心理说明替代行动；实拍与漫剧均可适度用 `[VO]` 表现言行反差或跨时空浓缩。挑大梁的对手要有盘算与招数，走过场的龙套干净利索不硬加支线。
 - 全集第一拍单拎出来就要抓人，冲突动作、反常景象，或规则怪谈、系统弹窗、报警录音等强视听冲击的文字/声音钩子均成立（见[开场直接接住上集局面](references/script-craft.md#71-开场直接接住上集局面)）。
 - 两难抉择、争议物证查验、限定次数/轮次、精确倒计时仅在大纲将其作为核心戏眼时启用（见下节参考指南），寻常决定、普通道具和笼统的“赶时间”不硬拔高成精密机关。
-- 前文核心硬代价、关键道具归属、知情范围与连戏状态到集尾前后对得上；制作标记使用固定方括号语法由脚本校验（`SCR-05`），而 `[连续性]` 只交接前文已演出、后续分镜易漏的状态变化、不单靠备注断言镜头外“从未发生某事”（`SCR-25`）。`end_on_peak` 为 `true` 时直接卡在高潮点收尾（见[项目节奏设定](references/script-craft.md#64-项目节奏设定)）。
+- 前文核心硬代价、关键道具归属、知情范围与连戏状态到集尾前后对得上；制作标记使用固定方括号语法供脚本校验，而 `[连续性]` 只交接前文已演出、后续分镜易漏的状态变化、不单靠备注断言镜头外“从未发生某事”（完整规则见 [阶段职责与规则](references/stage-contract.md)）。`end_on_peak` 为 `true` 时直接卡在高潮点收尾（见[项目节奏设定](references/script-craft.md#64-项目节奏设定)）。
 - 按目标时长压稿时，先砍过场水分、重复查验与嘴碎解释；爽剧对抗高潮推荐保留爆发台词、一锤定音的决绝话与收场动作这组配合，不拿固定字数、镜头数或节拍数硬套填空模板。
 
 ## 分场景参考指南
@@ -44,7 +44,10 @@ license: MIT
 - 本环节职责边界与规则分级：[阶段职责与规则](references/stage-contract.md)
 - 场景标题、对白与制作标记语法，或把现成剧本[整理成标准格式](references/screenplay-format.md#7-现成剧本整理成标准格式)：[剧本格式规范](references/screenplay-format.md)
 - 三角符号等剧组来稿排版转换：[片场制作稿格式](references/production-format-dialect.md)
-- [两难抉择](references/script-craft.md#33-写两难抉择时两条路都得有得有失)、[限定次数或轮次](references/script-craft.md#63-限定次数与轮次按演完结果算数)、[精确倒计时](references/script-craft.md#62-倒计时先算动作不要只写数字)、[争议物证查验](references/script-craft.md#52-证据先改变判断再改变关系)、[实用声音叙事与留白](references/script-craft.md#65-实用声音叙事与留白)或[低成本视听替代与备选拍法](references/script-craft.md#82-低成本视听替代与备选拍法)：[剧作方法](references/script-craft.md)
+- 核心戏剧设计方法（[剧作方法](references/script-craft.md)）：
+  - [两难抉择](references/script-craft.md#33-写两难抉择时两条路都得有得有失)与[争议物证查验](references/script-craft.md#52-证据先改变判断再改变关系)
+  - [精确倒计时](references/script-craft.md#62-倒计时先算动作不要只写数字)与[限定次数或轮次](references/script-craft.md#63-限定次数与轮次按演完结果算数)
+  - [实用声音叙事与留白](references/script-craft.md#65-实用声音叙事与留白)与[低成本视听替代与备选拍法](references/script-craft.md#82-低成本视听替代与备选拍法)
 - 借对白带出往事、拉开人物口吻与潜台词，或写[外语台词](references/dialogue-craft.md#62-外语台词英语先亮结论日韩语切忌套用英语语序)：[对白写法](references/dialogue-craft.md)
 - 使用 `[VO]`、把小说心理描写外化成动作或拍实人物痛点：[能演的不说](references/script-craft.md#44-能演的不说vo内心独白与痛点)
 - `short-drama.json` 中 `creator_authority.rhythm_profile` 状态为 `accepted`：[项目节奏设定](references/script-craft.md#64-项目节奏设定)
@@ -56,8 +59,10 @@ license: MIT
 用户问起时长、压稿核对篇幅，或需查看 `[VO]` 占比与漫剧 `speech_share` 时，直接对单集剧本运行内存解析估时（无需提前生成索引文件或备份旧稿）：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/duration_estimate.py --script 剧集/<EP>/剧本.md
+<PYTHON> "<SKILL_DIR>/scripts/duration_estimate.py" --script 剧集/<EP>/剧本.md
 ```
+
+> **无终端 / 无 Python 兜底**：若当前对话环境不支持运行本地脚本，可直接在对话中按台词字数/词数与动作段落数结合项目语速（如中文快节奏参考约 4 字/秒、英文约 3 词/秒）给出透明的估算范围，并标明为口头估算。
 
 有 `short-drama.json` 时可追加 `--project short-drama.json` 读取项目语速与节奏设定；本集单独设了目标时长时可追加 `--target-seconds <秒数>`；若罕见单次角色名触发 `incomplete`，可追加 `--extra-speaker <角色名>`（可重复传入，在自动识别与篇首/场首 `人物：` 声明之上补充；`--speaker <角色名>` 则覆盖说话人白名单）。
 

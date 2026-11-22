@@ -16,6 +16,18 @@ const DIGITS = "0123456789天:/, ";
 
 const EMOJI_GLYPH_RE = /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u;
 
+/** True when `ch` is a printable ASCII character covered by bundled Latin/mono faces. */
+export const isAsciiPrintable = (/** @type {string} */ ch) => {
+  const cp = ch.codePointAt(0);
+  return cp !== undefined && cp >= 0x20 && cp <= 0x7e;
+};
+
+/**
+ * True only for characters inside the bundled Noto Sans SC CJK/ASCII/punctuation
+ * unicode ranges. Other scripts (Cyrillic, Arabic, Hangul, Thai, etc.), Emoji,
+ * and control characters return false so the browser falls back cleanly to system
+ * faces instead of aborting the render.
+ */
 export const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
   const cp = ch.codePointAt(0);
   if (cp === undefined || cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return false;
@@ -23,7 +35,15 @@ export const isCheckableBmpGlyph = (/** @type {string} */ ch) => {
   if (cp >= 0xd800 && cp <= 0xdfff) return false;
   if (cp === 0x200d || cp === 0x20e3 || (cp >= 0xfe00 && cp <= 0xfe0f)) return false;
   if (EMOJI_GLYPH_RE.test(ch)) return false;
-  return true;
+  if (cp >= 0x0020 && cp <= 0x007e) return true;
+  if (cp >= 0x00a0 && cp <= 0x00ff) return true;
+  if (cp >= 0x2000 && cp <= 0x206f && !(cp >= 0x200b && cp <= 0x200f)) return true;
+  if (cp >= 0x3000 && cp <= 0x303f) return true;
+  if (cp >= 0x3400 && cp <= 0x4dbf) return true;
+  if (cp >= 0x4e00 && cp <= 0x9fff) return true;
+  if (cp >= 0xf900 && cp <= 0xfaff) return true;
+  if (cp >= 0xff00 && cp <= 0xffef) return true;
+  return false;
 };
 
 /**
@@ -227,4 +247,42 @@ export const formatCountdown = (/** @type {number} */ seconds) => {
   if (days > 0) return `${days}天 ${two(hours)}:${two(minutes)}:${two(rest)}`;
   if (hours > 0) return `${two(hours)}:${two(minutes)}:${two(rest)}`;
   return `${two(minutes)}:${two(rest)}`;
+};
+
+// ---------------------------------------------------------------- layout & cards
+
+/** Subtitle bottom offset in `u` (percent of frame height): 9% on landscape, 24% on portrait. */
+export const subtitleBottomU = (/** @type {number} */ width, /** @type {number} */ height) =>
+  width > height ? 9 : 24;
+
+/** Adaptive overlay width cap: preserves portrait ratios while keeping landscape panels compact. */
+export const panelWidth = (
+  /** @type {number} */ width,
+  /** @type {number} */ height,
+  /** @type {number} */ widthRatio,
+  /** @type {number} */ heightCap,
+) => Math.min(width * widthRatio, height * heightCap);
+
+const CJK_CHAR_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
+const LATIN_CHAR_RE = /[A-Za-z]/;
+
+/**
+ * Split a Card row into `{ name, unit, value }`.
+ *
+ * - `"主号 2"` → `{ name: "主号", unit: "", value: "2" }`
+ * - `"主号 粉丝 2"` → `{ name: "主号", unit: "粉丝", value: "2" }`
+ * - `"Total Revenue $500"` → `{ name: "Total Revenue", unit: "", value: "$500" }`
+ *   (multi-word English/Latin labels stay intact instead of shrinking middle words into a unit)
+ *
+ * @param {string} row
+ */
+export const splitCardRow = (row) => {
+  const words = row.split(/[\s　]+/).filter(Boolean);
+  if (words.length < 2) return { name: row, unit: "", value: "" };
+  if (words.length === 2) return { name: words[0], unit: "", value: words[1] };
+  const leading = words.slice(0, -1).join(" ");
+  if (LATIN_CHAR_RE.test(leading) && !CJK_CHAR_RE.test(leading)) {
+    return { name: leading, unit: "", value: words[words.length - 1] };
+  }
+  return { name: words[0], unit: words.slice(1, -1).join(" "), value: words[words.length - 1] };
 };

@@ -2,10 +2,10 @@ import React from "react";
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { Cue } from "./schema";
 import { assertFamilyResolves } from "./font";
-import { lineEms } from "./rules.mjs";
+import { lineEms, subtitleBottomU } from "./rules.mjs";
 import { SANS, SUBTITLE } from "./screen/tokens";
 
-/** Splits a line into plain and highlighted runs, earliest keyword first. */
+/** Splits a line into plain and highlighted runs, earliest (then longest) keyword first. */
 const runs = (text: string, keys: string[]): { text: string; key: boolean }[] => {
   const out: { text: string; key: boolean }[] = [];
   let rest = text;
@@ -13,7 +13,7 @@ const runs = (text: string, keys: string[]): { text: string; key: boolean }[] =>
     const hit = keys
       .map((key) => ({ key, at: rest.indexOf(key) }))
       .filter((found) => found.at >= 0)
-      .sort((a, b) => a.at - b.at)[0];
+      .sort((a, b) => a.at - b.at || b.key.length - a.key.length)[0];
     if (!hit) {
       out.push({ text: rest, key: false });
       break;
@@ -53,7 +53,13 @@ export const Subtitles: React.FC<{ cues: Cue[] }> = ({ cues }) => {
   const age = ageFrames / fps;
   const pop = spring({ frame: ageFrames, fps, config: { damping: 12, stiffness: 260, mass: 0.5 } });
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: u * 24 }}>
+    <AbsoluteFill
+      style={{
+        justifyContent: "flex-end",
+        alignItems: "center",
+        paddingBottom: u * subtitleBottomU(width, height),
+      }}
+    >
       <div
         style={{
           fontFamily: SANS,

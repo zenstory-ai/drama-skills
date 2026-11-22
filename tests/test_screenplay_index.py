@@ -1784,6 +1784,7 @@ class R4ParserAndDurationHardeningTests(unittest.TestCase):
         }
         parsed_blocks, review = duration_estimate.parse_script_blocks(raw)
         self.assertEqual(review["review_status"], "clean")
+        self.assertTrue(all("block_id" not in b and "byte_start" not in b for b in parsed_blocks))
         report = duration_estimate.estimate(raw, parsed_blocks, word_project, review)
         self.assertNotIn("untimed_speech", report)
         self.assertEqual(report["counts"]["voiced_characters"], 0)
