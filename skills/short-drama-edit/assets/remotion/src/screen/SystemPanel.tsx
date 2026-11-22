@@ -1,5 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { panelWidth } from "../rules.mjs";
 import { Frame, Header, Reward, Typed } from "./chrome";
 import { COLOURS, StyleProps, TOP_U, entrance, exit, glitch, unit } from "./tokens";
 
@@ -21,7 +22,7 @@ export const SystemPanel: React.FC<StyleProps> = ({ text }) => {
   return (
     <AbsoluteFill style={{ alignItems: "center", paddingTop: u * TOP_U.system, opacity: leaving * jitter.opacity }}>
       <div style={{ transform: `translate(${jitter.dx}px, ${(1 - leaving) * -u * 2}px) scale(${0.9 + 0.1 * shown})` }}>
-        <Frame colour={COLOURS.system} width={width * 0.82}>
+        <Frame colour={COLOURS.system} width={panelWidth(width, height, 0.82, 0.72)}>
           <Header text="【系统提示】" colour={COLOURS.system} />
           <Typed
             text={status.text}

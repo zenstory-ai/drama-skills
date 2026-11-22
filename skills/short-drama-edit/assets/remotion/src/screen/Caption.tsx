@@ -1,5 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { panelWidth } from "../rules.mjs";
 import { COLOURS, SANS, StyleProps, TOP_U, entrance, exit, unit } from "./tokens";
 
 /** Clean, borderless caption card for locations, timestamps, titles, and narrative notes. */
@@ -18,7 +19,7 @@ export const Caption: React.FC<StyleProps> = ({ text }) => {
     >
       <div
         style={{
-          maxWidth: width * 0.84,
+          maxWidth: panelWidth(width, height, 0.84, 1.1),
           background: COLOURS.captionSurface,
           borderRadius: u * 0.9,
           boxShadow: `0 ${u * 0.6}px ${u * 2.4}px rgba(0,0,0,0.38)`,

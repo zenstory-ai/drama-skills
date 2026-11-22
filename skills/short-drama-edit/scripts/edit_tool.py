@@ -23,6 +23,7 @@ import math
 import operator
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -87,10 +88,27 @@ MOTION_HEADING = re.compile(r"^##\s+(MOTION-[^\s·]+)")
 GROUP_HEADING = re.compile(r"^##\s+(GROUP-[^\s·]+)")
 MOTION_REFERENCE = re.compile(r"MOTION-[A-Za-z0-9-]+")
 FIELD = re.compile(r"^[ \t　]*[-*+][ \t　]+([^：:\n]+?)[ \t]*[：:][ \t]*(.*)$")
+_EMPHASIZED_COLON_FIELD = re.compile(
+    r"^[ \t　]*[-*+][ \t　]+"
+    r"(?:"
+    r"\*\*([^：:\n*]+?)[ \t]*[：:][ \t]*\*\*"
+    r"|__([^：:\n_]+?)[ \t]*[：:][ \t]*__"
+    r"|(?<!\*)\*([^：:\n*]+?)[ \t]*[：:][ \t]*\*(?!\*)"
+    r"|(?<!_)_([^：:\n_]+?)[ \t]*[：:][ \t]*_(?!_)"
+    r")"
+    r"[ \t]*(.*)$"
+)
 UNUSED_LINE = re.compile(
     r"^[ \t　]*[-*+][ \t　]+"
-    r"(?:\*\*未采用镜头\*\*|__未采用镜头__|(?<!\*)\*未采用镜头\*(?!\*)|(?<!_)_未采用镜头_(?!_)|未采用镜头)"
-    r"[ \t]*[：:][ \t]*(.*)$"
+    r"(?:"
+    r"\*\*未采用镜头[ \t]*[：:][ \t]*\*\*"
+    r"|__未采用镜头[ \t]*[：:][ \t]*__"
+    r"|(?<!\*)\*未采用镜头[ \t]*[：:][ \t]*\*(?!\*)"
+    r"|(?<!_)_未采用镜头[ \t]*[：:][ \t]*_(?!_)"
+    r"|(?:\*\*未采用镜头\*\*|__未采用镜头__|(?<!\*)\*未采用镜头\*(?!\*)|(?<!_)_未采用镜头_(?!_)|未采用镜头)"
+    r"[ \t]*[：:]"
+    r")"
+    r"[ \t]*(.*)$"
 )
 _FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)\r?$", re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^\r\n]*?)(?<!`)\1(?!`)")
@@ -174,20 +192,21 @@ SUBTITLE_END_MARKS = "".join(
 )
 # One line on screen: a longer line is split at its pauses into cues shown one
 # after another, each given a share of the window by its character count.
+# CJK lines cap at 12 visible characters; space-delimited Latin/English lines
+# wrap on word boundaries at 40 characters so words are never chopped mid-word.
 SUBTITLE_MAX_VISIBLE = 12
+SUBTITLE_MAX_LATIN = 40
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
+_LATIN_WORD_RE = re.compile(r"[A-Za-z]")
 # 「字幕：… （重点：词｜词）」 marks words to highlight; they must occur in the line.
 SUBTITLE_KEYWORDS = re.compile(r"[（(]重点[：:]\s*(.+?)\s*[）)]\s*$")
 # Colour by who is speaking, read from 剧本.md rather than written again here:
-# `[VO] 系统：` is the system voice, any other `[VO]` an inner or narrating voice.
+# `[VO] 系统：` / `[VO] System:` is the system voice, any other `[VO]` an inner or narrating voice.
 _NOT_CLOCK_PREFIX = r"(?![0-9]{1,2}[：:][0-9]{2}(?:\D|$))"
 _SPEAKER_TOKEN = r"[^\s：:（）()\[\]#，。！？；,!?;—]+"
 _SPEAKER_LABEL = (
     rf"(?=.{{1,40}}(?:[ \t]*[（(]|[ \t]*[：:]))"
     rf"{_SPEAKER_TOKEN}(?: {_SPEAKER_TOKEN}){{0,3}}"
-)
-SPOKEN_LINE = re.compile(
-    rf"^\s*(?:\[(VO|OS)\]\s*)?{_NOT_CLOCK_PREFIX}({_SPEAKER_LABEL})"
-    r"(?:[ \t]*(?:（[^（）\r\n]*）|\([^()\r\n]*\)))?\s*[：:]\s*(.+?)\s*$"
 )
 SPOKEN_BLOCK_HEAD = re.compile(
     rf"^\s*(?:\[(VO|OS)\]\s*)?{_NOT_CLOCK_PREFIX}({_SPEAKER_LABEL})"
@@ -195,6 +214,7 @@ SPOKEN_BLOCK_HEAD = re.compile(
 )
 NON_SPOKEN_TAG_LINE = re.compile(r"^\s*\[(?!(?:VO|OS)\])[^\]\r\n]+\]")
 SYSTEM_SPEAKER = "系统"
+_SYSTEM_SPEAKER_EN = re.compile(r"\bsystem\b", re.I)
 # The same values as the Remotion layer's `src/screen/tokens.ts`.
 SUBTITLE_COLOURS = {"line": "#FFFFFF", "vo": "#9FE8FF", "system": "#3FE0FF"}
 SUBTITLE_KEYWORD_COLOUR = "#FFD400"
@@ -463,6 +483,19 @@ def _strip_field_emphasis(key: str) -> str:
             return cleaned
 
 
+def _match_field(raw: str) -> Optional[tuple[str, str]]:
+    """Match a bullet field line, accepting emphasis around either `key` or `key：`."""
+
+    emph = _EMPHASIZED_COLON_FIELD.match(raw)
+    if emph:
+        key = next(group for group in emph.groups()[:4] if group is not None)
+        return key.strip(), emph.group(5).strip()
+    plain = FIELD.match(raw)
+    if plain:
+        return _strip_field_emphasis(plain.group(1)), plain.group(2).strip()
+    return None
+
+
 def _normalize_markdown_text(text: str) -> str:
     if text.startswith("\ufeff"):
         text = text[1:]
@@ -607,10 +640,10 @@ def _parse_delivery(lines: Sequence[str]) -> Delivery:
     shot_match = True
     true_peak = DEFAULT_TRUE_PEAK_DBTP
     for raw in lines:
-        match = FIELD.match(raw)
-        if not match:
+        matched = _match_field(raw)
+        if matched is None:
             continue
-        name, value = _strip_field_emphasis(match.group(1)), match.group(2).strip()
+        name, value = matched
         if name == "成片目标时长":
             found = re.search(r"[0-9]+(?:\.[0-9]+)?", value)
             if found:
@@ -729,17 +762,17 @@ def parse_cut_list(path: Path) -> tuple[Delivery, list[Cut], list[str]]:
             if unused_match:
                 unused.extend(_split_unused_items(unused_match.group(1)))
             else:
-                preamble_field = FIELD.match(raw)
-                if preamble_field and _strip_field_emphasis(preamble_field.group(1)) == "未采用镜头":
-                    unused.extend(_split_unused_items(preamble_field.group(2)))
+                preamble_field = _match_field(raw)
+                if preamble_field is not None and preamble_field[0] == "未采用镜头":
+                    unused.extend(_split_unused_items(preamble_field[1]))
             preamble.append(raw)
             continue
-        field = FIELD.match(raw)
-        if field:
-            name = _strip_field_emphasis(field.group(1))
+        field = _match_field(raw)
+        if field is not None:
+            name, value = field
             if name in current["fields"]:
                 raise EditError(_repeated_field(name, current["cut_id"], number))
-            current["fields"][name] = (field.group(2).strip(), number)
+            current["fields"][name] = (value, number)
     close(current)
     return _parse_delivery(preamble), cuts, unused
 
@@ -1165,7 +1198,17 @@ def _parse_subtitles(
 
 
 def _which(name: str) -> Optional[str]:
-    return shutil.which(name)
+    found = shutil.which(name)
+    if found is None and name in {"ffmpeg", "ffprobe"} and os.environ.get("PATH", ""):
+        for folder in (
+            Path.home() / ".local" / "bin",
+            Path("/opt/homebrew/bin"),
+            Path("/usr/local/bin"),
+        ):
+            candidate = shutil.which(name, path=str(folder))
+            if candidate is not None:
+                return candidate
+    return found
 
 
 def _require(name: str) -> str:
@@ -1490,10 +1533,6 @@ def _source_checks(
     return findings, notices
 
 
-def _source_findings(episode: Path, cuts: Sequence[Cut], unused: Sequence[str]) -> list[str]:
-    return _source_checks(episode, cuts, unused, partial=False)[0]
-
-
 def probe_audible(media: Path) -> Audible:
     """A sound file's length and where its sound starts and stops, decoded small and mono."""
 
@@ -1612,12 +1651,6 @@ def _voice_checks(
         if latest is None or end > latest[1]:
             latest = span
     return findings, notices
-
-
-def _voice_findings(
-    cuts: Sequence[Cut], sounds: dict[str, Audible], lengths: Sequence[float]
-) -> list[str]:
-    return _voice_checks(cuts, sounds, lengths)[0]
 
 
 def _subtitle_findings(cuts: Sequence[Cut], lengths: Sequence[float]) -> list[str]:
@@ -1924,7 +1957,54 @@ def _inspect_cuts(
     findings.extend(_overlap_findings(cuts, episode, project_root))
     notices.extend(_stale_window_findings(episode, project_root, cuts))
     notices.extend(move_notices(cuts, _scene_keys(episode, cuts), lengths))
+    notices.extend(_soft_timing_notices(cuts, delivery, partial=partial))
     return findings, notices
+
+
+def _soft_timing_notices(
+    cuts: Sequence[Cut],
+    delivery: Optional[Delivery],
+    *,
+    partial: bool = False,
+) -> list[str]:
+    """Soft-gate heuristics for target-duration drift and cramped subtitle windows."""
+
+    notices: list[str] = []
+    total_declared = sum(cut.end - cut.start for cut in cuts)
+    if (
+        not partial
+        and delivery is not None
+        and delivery.target_seconds is not None
+        and delivery.target_seconds > 0
+        and abs(total_declared - delivery.target_seconds)
+        > max(5.0, delivery.target_seconds * 0.15)
+    ):
+        notices.append(
+            f"{CUT_LIST_NAME}: 各段时长之和 {total_declared:.2f} 秒与目标时长 "
+            f"{delivery.target_seconds:.2f} 秒相差 {total_declared - delivery.target_seconds:+.2f} 秒；"
+            "如为参考区间可忽略，硬性时长交付请复核节奏与取舍"
+        )
+    for cut in cuts:
+        for window_start, window_end, text, _ in cut.subtitles:
+            if window_start is None or window_end is None:
+                continue
+            window_dur = window_end - window_start
+            if window_dur <= 0:
+                continue
+            shown = _display_line(text)
+            if not shown:
+                continue
+            min_readable = (
+                len(shown) * 0.025
+                if _is_latin_subtitle(shown)
+                else _visible(shown) * 0.08
+            )
+            if min_readable > 0 and window_dur < min_readable - TOLERANCE:
+                notices.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的字幕时间窗偏短"
+                    f"（{window_dur:.2f} 秒显示「{shown}」），请复核观众是否来得及读完"
+                )
+    return notices
 
 
 def check_cuts(
@@ -2171,17 +2251,25 @@ def render(
     screen_text_mode: str = "auto",
     remotion_workspace: Path = DEFAULT_REMOTION_WORKSPACE,
     remotion_concurrency: int = DEFAULT_REMOTION_CONCURRENCY,
+    overlay_renderer: Optional[str] = None,
 ) -> dict[str, Any]:
     ffmpeg = _require("ffmpeg")
     _require("ffprobe")
+    external_cmd = overlay_renderer.strip() if overlay_renderer is not None else None
+    if overlay_renderer is not None and not external_cmd:
+        raise EditError("--overlay-renderer 不能为空")
     screen_text_route, auto_fallback = _resolve_screen_text_route(
         cuts,
         screen_text_mode=screen_text_mode,
         renderer=renderer,
         remotion_workspace=remotion_workspace,
+        overlay_renderer=external_cmd,
     )
     needs_remotion_subtitles = (
-        burn_subtitles and renderer == "remotion" and any(cut.subtitles for cut in cuts)
+        external_cmd is None
+        and burn_subtitles
+        and renderer == "remotion"
+        and any(cut.subtitles for cut in cuts)
     )
     if (
         remotion_workspace != DEFAULT_REMOTION_WORKSPACE
@@ -2411,16 +2499,25 @@ def render(
                 "（复杂面板需安装 Remotion，跳过叠层可传 --screen-text-mode off）"
             )
         # Complex screen-text styles (panels, countdowns, badges) go through
-        # Remotion; plain 字卡 can also render via ffmpeg ASS without Node.js.
-        remotion_cues = cues if renderer == "remotion" else []
-        remotion_layers = active_layers if screen_text_route == "remotion" else []
-        if remotion_cues or remotion_layers:
-            overlay_path = _render_remotion_overlay(
-                output_root, remotion_cues, remotion_layers, canvas, sum(spans), remotion_workspace,
-                concurrency=remotion_concurrency,
-                needed_for="画面文字" if remotion_layers else "字幕",
-                project_root=project_root,
-            )
+        # Remotion or an external `--overlay-renderer`; plain 字卡 can also
+        # render via ffmpeg ASS without Node.js.
+        overlay_cues = cues if renderer == "remotion" else []
+        overlay_layers = active_layers if screen_text_route in {"remotion", "external"} else []
+        used_external_overlay = False
+        if overlay_cues or overlay_layers:
+            if external_cmd is not None:
+                overlay_path = _render_external_overlay(
+                    external_cmd, output_root, overlay_cues, overlay_layers, canvas, sum(spans)
+                )
+                used_external_overlay = True
+            else:
+                overlay_path = _render_remotion_overlay(
+                    output_root, overlay_cues, overlay_layers, canvas, sum(spans),
+                    remotion_workspace,
+                    concurrency=remotion_concurrency,
+                    needed_for="画面文字" if overlay_layers else "字幕",
+                    project_root=project_root,
+                )
         if active_layers and screen_text_route == "ffmpeg":
             screen_text_ass = _build_screen_text_ass(
                 active_layers, canvas.get("width") or 1080, canvas.get("height") or 1920
@@ -2452,10 +2549,7 @@ def render(
         final = output_root / "成片.mp4"
         command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(joined)]
         if overlay_path is not None:
-            # VP8 carries its alpha as WebM block additions, so the decoder has
-            # to be named: the default one drops it and the overlay arrives as
-            # an opaque black rectangle.
-            command += ["-c:v", "libvpx", "-i", str(overlay_path)]
+            command += _overlay_input_args(overlay_path, external=used_external_overlay)
             # ffmpeg-route subtitles and grain follow the composite, so the
             # subtitle sits above the screen text and one grain covers both.
             chain = ",".join(["[0:v][1:v]overlay=0:0:format=auto", *filters])
@@ -2486,6 +2580,11 @@ def render(
         command.append(str(final))
         _run(command)
 
+    subtitle_renderer_label: Optional[str] = None
+    if subtitle_path:
+        subtitle_renderer_label = (
+            "external" if used_external_overlay and renderer == "remotion" else renderer
+        )
     report: dict[str, Any] = {
         "成片": str(final),
         "分段": [str(segment) for segment in segments],
@@ -2493,7 +2592,7 @@ def render(
         "压制字幕": str(styled_path) if styled_path else None,
         "压制画面文字": str(screen_text_ass_path) if screen_text_ass_path else None,
         "叠层": str(overlay_path) if overlay_path else None,
-        "字幕渲染": renderer if subtitle_path else None,
+        "字幕渲染": subtitle_renderer_label,
         "画面文字": len(active_layers),
         "画面文字渲染": screen_text_route,
         "音效": sum(len(cut.sound_effects) for cut in cuts),
@@ -2709,9 +2808,9 @@ def _heading_fields(path: Path, heading: re.Pattern[str], field: str) -> dict[st
         if raw.startswith("## "):
             current = None
             continue
-        line = FIELD.match(raw)
-        if current and line and _strip_field_emphasis(line.group(1)) == field:
-            found.setdefault(current, line.group(2).strip())
+        line = _match_field(raw)
+        if current and line is not None and line[0] == field:
+            found.setdefault(current, line[1])
     return found
 
 
@@ -3155,13 +3254,14 @@ def _resolve_screen_text_route(
     screen_text_mode: str,
     renderer: str,
     remotion_workspace: Path,
+    overlay_renderer: Optional[str] = None,
 ) -> tuple[Optional[str], bool]:
     """Choose how screen text is rendered: (route, fell_back_from_auto).
 
     Plain ``字卡`` can fall back to ffmpeg ASS when Remotion/Node is absent or
     when ``--screen-text-mode ffmpeg`` is passed. Complex styles (``卡片``,
-    ``系统面板``, ``任务面板``, ``角标``) still require Remotion unless skipped
-    explicitly via ``--screen-text-mode off``.
+    ``系统面板``, ``任务面板``, ``角标``) still require Remotion (or an explicit
+    ``--overlay-renderer``) unless skipped via ``--screen-text-mode off``.
     """
 
     if screen_text_mode not in SCREEN_TEXT_MODES:
@@ -3178,14 +3278,12 @@ def _resolve_screen_text_route(
         return None, False
     if screen_text_mode == "off":
         return "off", False
-    if screen_text_mode == "remotion":
-        return "remotion", False
-    unsupported = sorted(
-        label
-        for label, key in SCREEN_TEXT_STYLES.items()
-        if key in styles - FFMPEG_SCREEN_TEXT_STYLES
-    )
     if screen_text_mode == "ffmpeg":
+        unsupported = sorted(
+            label
+            for label, key in SCREEN_TEXT_STYLES.items()
+            if key in styles - FFMPEG_SCREEN_TEXT_STYLES
+        )
         if unsupported:
             raise EditError(
                 "--screen-text-mode ffmpeg 仅支持无框「字卡」；"
@@ -3194,6 +3292,15 @@ def _resolve_screen_text_route(
                 "或传 --screen-text-mode off 跳过画面文字叠层。"
             )
         return "ffmpeg", False
+    if overlay_renderer:
+        return "external", False
+    if screen_text_mode == "remotion":
+        return "remotion", False
+    unsupported = sorted(
+        label
+        for label, key in SCREEN_TEXT_STYLES.items()
+        if key in styles - FFMPEG_SCREEN_TEXT_STYLES
+    )
     if (
         not unsupported
         and renderer != "remotion"
@@ -3202,6 +3309,83 @@ def _resolve_screen_text_route(
     ):
         return "ffmpeg", True
     return "remotion", False
+
+
+def _probe_video_codec(media: Path) -> Optional[str]:
+    probe = _which("ffprobe")
+    if probe is None or not media.is_file():
+        return None
+    result = subprocess.run(
+        [
+            probe, "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(media),
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        return None
+    codec = result.stdout.strip().lower()
+    return codec or None
+
+
+def _overlay_input_args(overlay_path: Path, *, external: bool) -> list[str]:
+    """Input arguments for compositing a transparent overlay video with alpha intact."""
+
+    if external:
+        codec = _probe_video_codec(overlay_path)
+        if codec == "vp8":
+            return ["-c:v", "libvpx", "-i", str(overlay_path)]
+        if codec == "vp9":
+            return ["-c:v", "libvpx-vp9", "-i", str(overlay_path)]
+        return ["-i", str(overlay_path)]
+    # VP8 carries its alpha as WebM block additions, so the decoder has
+    # to be named: the default one drops it and the overlay arrives as
+    # an opaque black rectangle.
+    return ["-c:v", "libvpx", "-i", str(overlay_path)]
+
+
+def _render_external_overlay(
+    command_template: str,
+    output_root: Path,
+    cues: Sequence[DisplayCue],
+    layers: Sequence[dict[str, Any]],
+    canvas: dict[str, Any],
+    duration: float,
+) -> Path:
+    """Write overlay props JSON and invoke an external transparent overlay renderer."""
+
+    try:
+        argv = shlex.split(command_template, posix=(os.name != "nt"))
+    except ValueError as error:
+        raise EditError(f"--overlay-renderer 命令语法无效: {error}") from error
+    if not argv:
+        raise EditError("--overlay-renderer 不能为空")
+    props = output_root / "叠层.props.json"
+    payload = _overlay_props(cues, layers, canvas, duration)
+    payload["layers"] = payload["screenTexts"]
+    props.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    overlay = output_root / "叠层.webm"
+    has_placeholder = any("{props}" in token or "{output}" in token for token in argv)
+    if has_placeholder:
+        cmd = [
+            token.replace("{props}", str(props)).replace("{output}", str(overlay))
+            for token in argv
+        ]
+    else:
+        cmd = [*argv, "--props", str(props), "--output", str(overlay)]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise EditError(f"无法启动外部叠层渲染命令 {cmd[0]!r}: {error}") from error
+    if result.returncode != 0 or not overlay.is_file() or overlay.stat().st_size == 0:
+        detail = (result.stderr or result.stdout or "").strip()[-2000:]
+        reason = (
+            f"（退出码 {result.returncode}）"
+            if result.returncode != 0
+            else "（未生成有效叠层文件）"
+        )
+        raise EditError(f"外部叠层渲染失败{reason}" + (f"：\n{detail}" if detail else ""))
+    return overlay
 
 
 def _render_remotion_overlay(
@@ -3241,7 +3425,8 @@ def _render_remotion_overlay(
     if missing:
         raise EditError(
             f"Remotion 叠层的依赖没装全（缺 {'、'.join(missing)}），{needed_for}需要它们。先运行一次：\n"
-            f"  cd {workspace} && npm install\n"
+            f'  cd "{workspace}"\n'
+            "  npm install\n"
             f"{alternative}\n"
             "注意 Remotion 有自己的许可证：个人与小团队免费，超出规模需要商业授权；"
             "本工具不会替你安装它。"
@@ -3268,11 +3453,6 @@ def _render_remotion_overlay(
             "Remotion 渲染失败：\n" + (result.stderr or result.stdout or "").strip()[-2000:]
         )
     return overlay
-
-
-def _frame_geometry(media: Path) -> str:
-    stream = probe_stream(media)
-    return f"{stream['width']}x{stream['height']}"
 
 
 def _subtitle_cues(
@@ -3375,27 +3555,95 @@ def _visible(text: str) -> int:
     return len(re.sub(r"[ 　]", "", text))
 
 
+def _is_latin_subtitle(text: str) -> bool:
+    return bool(_LATIN_WORD_RE.search(text)) and not _CJK_RE.search(text)
+
+
+def _split_latin_display(text: str, limit: int, held: set[int]) -> list[str]:
+    """Wrap space-delimited Latin/English text on word boundaries without chopping words."""
+
+    stripped = text.strip(" 　")
+    if len(stripped) <= limit:
+        return [stripped]
+    units: list[tuple[int, int]] = []
+    for found in re.finditer(r"[^ 　]+", text):
+        start, end = found.span()
+        if units and any(at in held for at in range(units[-1][1], start + 1)):
+            units[-1] = (units[-1][0], end)
+        else:
+            units.append((start, end))
+    count = len(units)
+    if count <= 1:
+        return [stripped]
+
+    min_lines = 1
+    line_start = units[0][0]
+    for index in range(1, count):
+        if units[index][1] - line_start > limit:
+            min_lines += 1
+            line_start = units[index][0]
+    target = len(stripped) / min_lines
+
+    inf = (count + 1, float("inf"))
+    dp: list[tuple[int, float]] = [inf] * (count + 1)
+    nxt: list[int] = [count] * count
+    dp[count] = (0, 0.0)
+    for i in range(count - 1, -1, -1):
+        best_cost = inf
+        best_j = i + 1
+        for j in range(i + 1, count + 1):
+            span_len = units[j - 1][1] - units[i][0]
+            if j > i + 1 and span_len > limit:
+                break
+            rest_lines, rest_bad = dp[j]
+            penalty = (span_len - target) ** 2
+            if j < count:
+                tail = text[units[j - 1][0] : units[j - 1][1]]
+                if tail[-1] in "?!":
+                    penalty -= 25.0
+                elif tail[-1] in ",;:":
+                    penalty -= 9.0
+            candidate = (rest_lines + 1, rest_bad + penalty)
+            if candidate < best_cost:
+                best_cost = candidate
+                best_j = j
+        dp[i] = best_cost
+        nxt[i] = best_j
+
+    pieces: list[str] = []
+    index = 0
+    while index < count:
+        stop = nxt[index]
+        pieces.append(text[units[index][0] : units[stop - 1][1]].strip(" 　"))
+        index = stop
+    return pieces
+
+
 def _split_display(
-    text: str, limit: int = SUBTITLE_MAX_VISIBLE, keep: Sequence[str] = ()
+    text: str, limit: Optional[int] = None, keep: Sequence[str] = ()
 ) -> list[str]:
     """Break a displayed line into one-line pieces of at most `limit` characters.
 
-    Pieces break at the line's own pauses (the full-width spaces, and after ？！)
-    and are packed back together while they fit. A single phrase longer than
-    the limit is cut into near-equal parts, which is the only place a break
-    falls where the screenplay has no pause. No break falls inside a word in
-    `keep`: a highlight is looked up in the piece it lands in, and half a word
-    matches nothing.
+    CJK text defaults to 12 visible characters and breaks at pauses (full-width
+    spaces and ？！) before falling back to near-equal cuts. Space-delimited
+    Latin/English text defaults to 40 characters and wraps strictly on ASCII
+    word boundaries so words are never chopped mid-word. No break falls inside
+    a word in `keep`.
     """
 
-    if _visible(text) <= limit:
-        return [text]
     held = {
         at
         for word in keep if word
         for found in re.finditer(re.escape(word), text)
         for at in range(found.start() + 1, found.end())
     }
+    if _is_latin_subtitle(text):
+        latin_limit = SUBTITLE_MAX_LATIN if limit is None else limit
+        return _split_latin_display(text, latin_limit, held)
+
+    cjk_limit = SUBTITLE_MAX_VISIBLE if limit is None else limit
+    if _visible(text) <= cjk_limit:
+        return [text]
     phrases: list[tuple[int, int]] = []
     for found in re.finditer(r"[^　？！?!]+[？！?!]*|[？！?!]+", text):
         start, end = found.span()
@@ -3406,11 +3654,11 @@ def _split_display(
 
     def even_parts(start: int, end: int) -> list[tuple[int, int]]:
         count = _visible(text[start:end])
-        if count <= limit:
+        if count <= cjk_limit:
             return [(start, end)]
         free = [at for at in range(start + 1, end) if at not in held]
         first: Optional[list[tuple[int, int]]] = None
-        for parts in range(-(-count // limit), count + 1):
+        for parts in range(-(-count // cjk_limit), count + 1):
             size = -(-count // parts)
             cuts = [start]
             for index in range(1, parts):
@@ -3420,7 +3668,7 @@ def _split_display(
                     break
                 cuts.append(min(later, key=lambda at: (abs(at - ideal), at)))
             spans = list(zip(cuts, cuts[1:] + [end]))
-            if all(_visible(text[a:b]) <= limit for a, b in spans):
+            if all(_visible(text[a:b]) <= cjk_limit for a, b in spans):
                 return spans
             first = first or spans
         return first or [(start, end)]
@@ -3428,11 +3676,15 @@ def _split_display(
     packed: list[tuple[int, int]] = []
     for start, end in (span for phrase in phrases for span in even_parts(*phrase)):
         # Joining by slicing the line keeps whatever stood between the pieces.
-        if packed and _visible(text[packed[-1][0]:end]) <= limit:
+        if packed and _visible(text[packed[-1][0]:end]) <= cjk_limit:
             packed[-1] = (packed[-1][0], end)
         else:
             packed.append((start, end))
     return [text[start:end].strip(" 　") for start, end in packed]
+
+
+def _is_system_speaker(speaker: str) -> bool:
+    return SYSTEM_SPEAKER in speaker or _SYSTEM_SPEAKER_EN.search(speaker) is not None
 
 
 def _screenplay_text(episode: Path) -> str:
@@ -3471,7 +3723,7 @@ def _line_kind(text: str, screenplay: str) -> str:
         if needle not in _normalize("\n".join(parts)):
             continue
         if tag == "VO":
-            return "system" if SYSTEM_SPEAKER in speaker else "vo"
+            return "system" if _is_system_speaker(speaker) else "vo"
         return "line"
     return "line"
 
@@ -3685,7 +3937,7 @@ def _ass_line(cue: DisplayCue) -> str:
         if not hits:
             marked += _ass_text(rest)
             break
-        at, word = min(hits)
+        at, word = min(hits, key=lambda item: (item[0], -len(item[1])))
         marked += _ass_text(rest[:at])
         marked += "{\\c" + _ass_colour(SUBTITLE_KEYWORD_COLOUR) + "}" + _ass_text(word)
         marked += "{\\c" + base + "}"
@@ -3705,10 +3957,11 @@ def _build_ass(cues: Sequence[DisplayCue], width: int, height: int) -> str:
     """
 
     # The same measures as the Remotion layer: type 4.3% of frame height, a
-    # 0.42% dark rim, and the baseline 24% up, clear of the platform's own UI.
+    # 0.42% dark rim, and baseline 24% up for portrait (9:16, clear of platform
+    # UI) or 9% up for landscape (16:9).
     font_size = max(18, round(height * 0.043))
     outline = max(2, round(height * 0.0042))
-    margin_v = max(24, round(height * 0.24))
+    margin_v = max(24, round(height * (0.09 if width > height else 0.24)))
     margin_h = max(24, round(width * 0.06))
     header = (
         "[Script Info]\n"
@@ -3791,13 +4044,15 @@ def _build_screen_text_ass(
 def _ass_text(text: str) -> str:
     """Escape a line so ASS renders its characters instead of reading them.
 
-    `{`…`}` is an override block in ASS and `\\` starts an escape, so a quoted
-    line that happens to contain either would lose characters on screen with no
-    error anywhere — and EDT-05 exists precisely to keep the burned text equal
-    to the screenplay's, character for character.
+    `{`…`}` is an override block in ASS and `\\N` / `\\n` / `\\h` are control
+    sequences (libass does not treat `\\\\` as an escaped backslash), so a
+    quoted line containing them would lose characters or break lines on screen.
+    Inserting a word joiner (`\\u2060`) between `\\` and `N`/`n`/`h` neutralizes
+    the control sequence while keeping the visible text identical.
     """
 
-    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+    escaped = re.sub(r"\\(?=[Nnh])", lambda _: "\\\u2060", text)
+    return escaped.replace("{", "\\{").replace("}", "\\}")
 
 
 def _ass_time(seconds: float) -> str:
@@ -3936,6 +4191,34 @@ def verify(
             _level_report(sound, CUT_LEVEL_RATE, cuts, spans, scenes, CUT_LEVEL_CHANNELS)
         )
     measurements["边界帧"] = "未测（抽剪辑点前后各一帧目视核对黑场/白场/半渲染帧）"
+    verify_notices: list[str] = []
+    measured_i = measurements.get("实测响度 LUFS")
+    measured_tp = measurements.get("实测真峰 dBTP")
+    if (
+        delivery.loudness_lufs is not None
+        and isinstance(measured_i, (int, float))
+        and abs(measured_i - delivery.loudness_lufs) > 1.0
+    ):
+        verify_notices.append(
+            f"实测响度 {measured_i:.1f} LUFS 与交付目标 {delivery.loudness_lufs:g} LUFS "
+            f"相差 {measured_i - delivery.loudness_lufs:+.1f} LU（参考容差 ±1.0 LU），"
+            "请复核是否需外部精修或由创作者确认接受"
+        )
+    if (
+        delivery.loudness_lufs is not None
+        and isinstance(measured_tp, (int, float))
+        and measured_tp > delivery.true_peak_dbtp + 0.1
+    ):
+        verify_notices.append(
+            f"实测真峰 {measured_tp:.1f} dBTP 高于交付上限 {delivery.true_peak_dbtp:g} dBTP，"
+            "请复核是否需外部限幅或由创作者确认接受"
+        )
+    for key in ("请逐帧查看", "请回听"):
+        items = measurements.get(key)
+        if isinstance(items, list):
+            verify_notices.extend(str(item) for item in items)
+    if verify_notices:
+        measurements["提醒"] = verify_notices
     return measurements
 
 
@@ -4278,6 +4561,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "每个都持有一整帧，调高很容易把内存吃满"
         ),
     )
+    parser.add_argument(
+        "--overlay-renderer", default=None,
+        help=(
+            "可选外部透明叠层渲染命令：写入 叠层.props.json（含 width/height/fps/cues/layers）"
+            "并调用外部命令输出透明叠层视频，留空则沿用内置 Remotion / ffmpeg 路线"
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     episode = Path(arguments.episode).resolve()
@@ -4328,6 +4618,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 screen_text_mode=arguments.screen_text_mode,
                 remotion_workspace=arguments.remotion_workspace,
                 remotion_concurrency=arguments.remotion_concurrency,
+                overlay_renderer=arguments.overlay_renderer,
             )
             combined_notices = [*notices, *result.get("提醒", ())]
             if combined_notices:

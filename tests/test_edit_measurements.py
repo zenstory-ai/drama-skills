@@ -1639,6 +1639,67 @@ class Round3ParserAndProbeTests(unittest.TestCase):
                 edit.parse_cut_list(path)
             self.assertIn("出点", str(raised.exception))
 
+    def test_which_falls_back_to_common_bin_dirs_for_ffmpeg_and_ffprobe(self):
+        def fake_which(name, path=None):
+            if path == "/opt/homebrew/bin" and name in {"ffmpeg", "ffprobe"}:
+                return f"/opt/homebrew/bin/{name}"
+            return None
+
+        with patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}), \
+                patch.object(edit.shutil, "which", side_effect=fake_which):
+            self.assertEqual(edit._which("ffmpeg"), "/opt/homebrew/bin/ffmpeg")
+            self.assertEqual(edit._which("ffprobe"), "/opt/homebrew/bin/ffprobe")
+            self.assertIsNone(edit._which("npx"))
+
+        # Respects intentionally cleared PATH="".
+        with patch.dict(os.environ, {"PATH": ""}), \
+                patch.object(edit.shutil, "which", side_effect=fake_which):
+            self.assertIsNone(edit._which("ffmpeg"))
+
+    def test_soft_gate_notices_in_check_and_verify_do_not_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = StillProject(Path(directory))
+            # Target duration 60s vs 2s total + cramped 0.25s window for 10 CJK chars -> soft notices only.
+            project.write(
+                still_block(
+                    1,
+                    "SHOT-1 · media/1.png",
+                    ["- 字幕 1：0.10-0.35 这是一句非常长但时间很短的话"],
+                    end=2.0,
+                ),
+                head="- 成片目标时长：60.00 秒\n" + SPEC_LINE + EXCUSE_TWO,
+            )
+            delivery, cuts, unused = project.parse()
+            findings, notices = edit._inspect_cuts(
+                project.episode, cuts, project.root, probe=False, unused=unused, delivery=delivery
+            )
+            self.assertEqual(findings, [])
+            self.assertTrue(any("目标时长" in item for item in notices), notices)
+            self.assertTrue(any("字幕时间窗偏短" in item for item in notices), notices)
+
+            # verify aggregates loudness/true-peak deviation into soft `提醒` without raising.
+            final = project.episode / edit.OUTPUT_DIRECTORY / "成片.mp4"
+            final.parent.mkdir(parents=True, exist_ok=True)
+            final.write_bytes(b"mp4")
+            loud_delivery = edit.Delivery(60.0, -16.0, False, (180, 320), 24.0, None, True, -1.5)
+            loudnorm_out = json.dumps({"input_i": "-12.0", "input_tp": "-0.4"})
+            with patch.object(edit, "_require", return_value="ffmpeg"), \
+                    patch.object(
+                        edit, "probe_stream",
+                        return_value={"width": 180, "height": 320, "fps": 24.0, "duration": 2.0},
+                    ), \
+                    patch.object(edit, "probe_audio", return_value=None), \
+                    patch.object(edit, "_segment_colours", return_value=[]), \
+                    patch.object(edit, "_grey_frames", return_value=None), \
+                    patch.object(
+                        edit.subprocess, "run",
+                        return_value=subprocess.CompletedProcess(["ffmpeg"], 0, "", loudnorm_out),
+                    ):
+                measured = edit.verify(project.episode, cuts, loud_delivery, project.root)
+            self.assertIn("提醒", measured)
+            self.assertTrue(any("实测响度" in item for item in measured["提醒"]), measured["提醒"])
+            self.assertTrue(any("实测真峰" in item for item in measured["提醒"]), measured["提醒"])
+
 
 if __name__ == "__main__":
     unittest.main()

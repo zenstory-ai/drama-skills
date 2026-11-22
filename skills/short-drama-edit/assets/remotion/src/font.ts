@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { cancelRender, continueRender, delayRender } from "remotion";
-import { FONT_WAIT_MS, familyIsMissing, fontLoadProblem, settleWithin } from "./rules.mjs";
+import {
+  FONT_WAIT_MS,
+  familyIsMissing,
+  fontLoadProblem,
+  isCheckableBmpGlyph,
+  settleWithin,
+} from "./rules.mjs";
 
 type Plan = { font: string; text: string }[];
 
@@ -37,8 +43,11 @@ export const useFaces = (plan: Plan): boolean => {
 const checked = new Set<string>();
 
 export const assertFamilyResolves = (fontFamily: string, sample: string): void => {
-  // Runs on every frame, so measure once per family.
+  // Runs on every frame, so measure once per family. Only assert over glyphs
+  // inside the declared CJK/ASCII range so other scripts fall back cleanly.
   if (!sample || checked.has(fontFamily)) return;
+  const checkable = Array.from(sample).filter(isCheckableBmpGlyph).join("");
+  if (!checkable) return;
   const context = document.createElement("canvas").getContext("2d");
   if (!context) return;
 
@@ -46,7 +55,7 @@ export const assertFamilyResolves = (fontFamily: string, sample: string): void =
     context.font = `700 64px ${stack}`;
     return context.measureText(text).width;
   };
-  if (familyIsMissing(measure, fontFamily, sample)) {
+  if (familyIsMissing(measure, fontFamily, checkable)) {
     throw new Error(
       `字体 ${fontFamily} 在渲染环境里一个都没有，画面会落到浏览器的默认回退字体。` +
         "在 Remotion 工作区运行 npm install 装上字体包。",

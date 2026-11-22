@@ -1,28 +1,18 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { assertFamilyResolves, useFaces } from "../font";
-import { FACES, isCheckableBmpGlyph } from "../rules.mjs";
+import { FACES, isAsciiPrintable, panelWidth, splitCardRow } from "../rules.mjs";
 import { COLOURS, MONO, SANS, StyleProps, TOP_U, entrance, exit, unit } from "./tokens";
-
-/**
- * "主号 2" → name 主号, value 2; "主号 粉丝 2" adds 粉丝 as a small unit before
- * the value. A row with one word is all name.
- */
-const splitRow = (row: string): { name: string; unit: string; value: string } => {
-  const words = row.split(/[\s　]+/).filter(Boolean);
-  if (words.length < 2) return { name: row, unit: "", value: "" };
-  return { name: words[0], unit: words.slice(1, -1).join(" "), value: words[words.length - 1] };
-};
 
 /** A clean app dashboard card: white, rounded, a coloured dot per row, big red numbers. */
 export const Card: React.FC<StyleProps> = ({ text }) => {
   const frame = useCurrentFrame();
   const { fps, height, width } = useVideoConfig();
-  const rows = useMemo(() => text.items.map((item) => splitRow(item.text)), [text.items]);
+  const rows = useMemo(() => text.items.map((item) => splitCardRow(item.text)), [text.items]);
   const monoPlan = useMemo(() => {
     const raw = ["0", ...rows.map((row) => row.value)].join("");
-    const uniqueBmp = [...new Set(Array.from(raw).filter(isCheckableBmpGlyph))].join("");
-    return [{ font: FACES.mono, text: uniqueBmp }];
+    const uniqueAscii = [...new Set(Array.from(raw).filter(isAsciiPrintable))].join("");
+    return [{ font: FACES.mono, text: uniqueAscii }];
   }, [rows]);
   const ready = useFaces(monoPlan);
   const monoSample = rows.map((row) => row.value).join("");
@@ -35,7 +25,7 @@ export const Card: React.FC<StyleProps> = ({ text }) => {
     <AbsoluteFill style={{ alignItems: "center", paddingTop: u * TOP_U.card, opacity: exit(frame, fps, text, 0.15) }}>
       <div
         style={{
-          width: width * 0.8,
+          width: panelWidth(width, height, 0.8, 0.72),
           background: COLOURS.cardSurface,
           borderRadius: u * 1.6,
           boxShadow: `0 ${u}px ${u * 4}px rgba(0,0,0,0.5)`,
