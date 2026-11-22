@@ -32,13 +32,10 @@
 
 ## 格式自检与分批执行
 
-单章写完后核对格式再保存（情节点四段齐全、类型在七项内、`## 载体记录` 至少含 1 条数据行）：
+单章写完后核对格式再保存（情节点四段齐全、类型在七项内、`## 载体记录` 至少含 1 条数据行；以下命令跨 macOS / Linux / Windows 通用）：
 
 ```bash
-F=项目开发/source-analysis/chapters/ch-${N}-extract.md
-P=$(grep -cE '^P[0-9]+ ' "$F")
-grep -cE '^P[0-9]+ [^|]+\|[^|]*[^|[:space:]][^|]*\|[^|]*涉及' "$F"   # == $P
-grep -cE '^P[0-9]+ .*\|.*\|.*\|[^|]*功能：' "$F"                     # == $P
+<PYTHON> -c "import pathlib, re, sys; lines = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines(); p = [l for l in lines if re.match(r'^P\d+ ', l)]; ok_ref = sum(bool(re.match(r'^P\d+ [^|]+\|[^|]*\S[^|]*\|[^|]*涉及', l)) for l in p); ok_fn = sum(bool(re.match(r'^P\d+ .*\|.*\|.*\|[^|]*功能：', l)) for l in p); print(f'total={len(p)} ref={ok_ref} fn={ok_fn}'); sys.exit(0 if p and len(p) == ok_ref == ok_fn else 1)" 项目开发/source-analysis/chapters/ch-<N>-extract.md
 ```
 
 - **并行与分批**：支持并行子任务时每批同时拆 5–8 章（子任务提示词开头注明材料系合法持有的虚构作品、仅做结构拆解、通俗冲突照常提取）；创作者指定分批范围（如前 100 章或第一季）时，完整拆完该目标区间并在 `_progress.md` 记明起止章号即可进入汇总。

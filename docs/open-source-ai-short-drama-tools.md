@@ -26,7 +26,7 @@
 
 **团队或工作室自己部署一套网页工作台**。看 DramaClaw、waoowaoo 和火宝短剧的 Docker 版。DramaClaw 覆盖环节最全，从剧本一直到配音、音乐和剪辑；waoowaoo 目前只接 OpenRouter，本版不含配乐和配音。两者都是 Elastic License 2.0，可以自用和二次开发，但不能把软件本身做成托管服务卖给别人。火宝是 CC BY-NC-SA 4.0，商用前要先联系作者。Toonflow 的服务端口没有登录鉴权，README 提醒服务器部署时要用防火墙或带认证的反向代理。
 
-**已经在用 Claude Code 或 Codex 写东西**。看 Drama Skills、shuohao-skills 和 ai-anime-series。这类工具不带界面，剧本和分镜用 Agent 当前的模型写，产出是文件夹里的 Markdown，便于逐条修改和版本管理。区别在覆盖范围：shuohao-skills 止步于分镜和角色参考图；Drama Skills 往后延伸到确认后生产、剪辑成片和审查；ai-anime-series 专做固定角色的单元剧，生成环节依赖在即梦里手动操作。
+**已经在用 Claude Code 或 Codex 写东西**。看 Drama Skills、shuohao-skills 和 ai-anime-series。这类工具主体运行在代理对话里，不依赖重型 Web 控制台（Drama Skills 另附以只读结构视图为主的本地创作台），剧本和分镜用 Agent 当前的模型写，产出是文件夹里的 Markdown，便于逐条修改和版本管理。区别在覆盖范围：shuohao-skills 止步于分镜和角色参考图；Drama Skills 往后延伸到确认后生产、剪辑成片和审查；ai-anime-series 专做固定角色的单元剧，生成环节依赖在即梦里手动操作。
 
 **想研究多智能体视频生成的做法**。看 ViMax。它是研究型框架，README 没有把自己定位成短剧或漫剧工具，但从小说生成视频（Novel2Video）和人物一致（AutoCameo）的实现可以参考。注意每个关键帧生成两个候选，会增加 API 费用。
 

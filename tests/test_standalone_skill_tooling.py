@@ -317,7 +317,7 @@ class StandaloneSkillToolingTests(unittest.TestCase):
 
     def test_skill_docs_only_reference_registered_cli_subcommands(self) -> None:
         command_re = re.compile(
-            r"<PYTHON>\s+<SKILL_DIR>/(scripts/[A-Za-z0-9_/-]+\.py)\s+([a-z][a-z0-9-]*)\b"
+            r'<PYTHON>\s+"?<SKILL_DIR>/(scripts/[A-Za-z0-9_/-]+\.py)"?\s+([a-z][a-z0-9-]*)\b'
         )
         probe_code = (
             "import argparse, contextlib, io, json, runpy, sys\n"

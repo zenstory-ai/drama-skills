@@ -66,11 +66,11 @@ Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-Then, in an agent, in an empty project folder:
+Then, in an agent, in an empty project folder (add your host's skill prefix when invoking—`/` in Claude Code, `$` in Codex, or plain skill names in other Agent Skill runtimes):
 
 ```text
-用 $short-drama 初始化一个都市打脸题材的短剧项目，竖屏 9:16
-用 $short-drama-write 写第 1 集：外卖员在高档餐厅被经理羞辱，亮出集团董事身份
+用 short-drama 初始化一个都市打脸题材的短剧项目，竖屏 9:16
+用 short-drama-write 写第 1 集：外卖员在高档餐厅被经理羞辱，亮出集团董事身份
 ```
 
 A complete public example of one episode, from script to prompts, is in [`examples/creator-first/EP001/`](../examples/creator-first/EP001/).

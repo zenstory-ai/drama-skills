@@ -3,7 +3,7 @@
 ## Status
 
 - **Status:** Active
-- **Primary surface:** `$short-drama dashboard`
+- **Primary surface:** `short-drama dashboard` (invoked with your agent host prefix, e.g. `/short-drama dashboard` in Claude Code or `$short-drama dashboard` in Codex)
 - **Audience:** writers, directors, and independent short-drama creators
 
 ## Product principle
@@ -51,8 +51,10 @@ Hash routes support browser history, deep links to a specific asset/shot/finding
 
 ### Creator-facing progress and next actions
 
-Series status badges translate project state into plain Chinese (`创作中`、`已采用`、`待你确认`、
-`需要更新`、`需要修改`、`可以导出`). Episode progress is inferred directly from the five authoring
+For modern creator-first projects, series status badges derive four plain-Chinese states directly
+from episode progress and review findings (`创作中`、`需要修改`、`待你确认`、`可以导出`); `已采用`
+and `需要更新` remain as legacy lifecycle compatibility fallbacks for older projects with tracked
+artifact/lifecycle records. Episode progress is inferred directly from the five authoring
 documents, post-production outputs, and review findings across **8 progress pips**:
 
 `剧本 · 设定 · 分镜 · 图片词 · 视频词 · 剪辑 · 成片 · 审查`

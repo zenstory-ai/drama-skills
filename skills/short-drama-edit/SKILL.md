@@ -45,9 +45,9 @@ license: MIT
 命令行工具由 [edit_tool.py](scripts/edit_tool.py) 提供：
 
 ```text
-<PYTHON> <SKILL_DIR>/scripts/edit_tool.py check <剧集/EP001> --project-root <project> [--partial]
-<PYTHON> <SKILL_DIR>/scripts/edit_tool.py render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--overlay-renderer <cmd>] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
-<PYTHON> <SKILL_DIR>/scripts/edit_tool.py verify <剧集/EP001> --project-root <project>
+<PYTHON> "<SKILL_DIR>/scripts/edit_tool.py" check <剧集/EP001> --project-root <project> [--partial]
+<PYTHON> "<SKILL_DIR>/scripts/edit_tool.py" render <剧集/EP001> --project-root <project> [--partial] [--no-subtitles] [--subtitles ffmpeg|remotion] [--screen-text-mode auto|remotion|ffmpeg|off] [--overlay-renderer <cmd>] [--remotion-workspace <outside-project-dir>] [--remotion-concurrency N]
+<PYTHON> "<SKILL_DIR>/scripts/edit_tool.py" verify <剧集/EP001> --project-root <project>
 ```
 
 - `check`（硬检查与软门禁分离）：

@@ -26,3 +26,4 @@ Status: implemented
 
 - **收益**：任何一个目录拷走就能读、能跑 selftest；reviewer 打开一个技能就拿到该阶段完整规则表。
 - **代价与已知上限**：CON-* 改一处必须改三处，README 如实写出这一条；跨技能引用只能用技能名，无法深链到对方的具体小节；核心索引从 168 行降到 81 行后，路由表说不清一个主题在负责技能的哪份文件里，要靠各技能 SKILL.md 的按需知识列表。
+- **事实更新（2026-11-21）**：各技能自包含与不跨技能引用的原则不变；随包 `selftest.py` 已移除（独立安装与无关 `cwd` 验证改为由 `tests/test_standalone_skill_tooling.py` 直接运行各主脚本冒烟检查），且跨技能路由写法已从 Codex 专属 `$short-drama-*` 泛化为宿主中立技能名（`short-drama`、`short-drama-review`），详见 [技能可移植性治理、脚本瘦身与规则表减负](2026-11-21-skill-governance-portability-and-script-slimming.md)。

@@ -1,6 +1,6 @@
 # 视频提示词阶段职责与规则
 
-本阶段负责维护 `剧集/<EP>/视频提示词.md` 中的 `MOTION-...`、`GROUP-...` 条目及按需增补的成片配乐章节。镜头起点、终点、时长、台词和首帧均沿用分镜定稿，不反向改写分镜起止状态或视觉设定（整理参考图时可请 `short-drama-storyboard` 技能就地同步「输入参考图」与「出场设定」），不另建隐藏 JSON 或质检台账。
+本阶段负责维护 `剧集/<EP>/视频提示词.md` 中的 `MOTION-...`、`GROUP-...` 条目及按需增补的成片配乐章节（使用标准 `MUSIC-...` 条目，格式见 [视频提示词格式规范](format-spec.md)）。镜头起点、终点、时长、台词和首帧均沿用分镜定稿，不反向改写分镜起止状态或视觉设定（整理参考图时可请 `short-drama-storyboard` 技能就地同步「输入参考图」与「出场设定」），不另建隐藏 JSON 或质检台账。
 
 下表仅注册阻断级不变量（`structural_invariant` 与 `reviewed_invariant`）；动作结构写法、模型默认档、同框表演幅度、音画同出时间线、打戏分段与生成防崩技巧等创作经验（`craft_default` / `taste_option`）见 [视频提示词写作指南](video-prompt-guide.md)、[目标模型与交付配置指南](model-and-delivery-profiles.md)、[表演弧线与动作计时](performance-action-timing.md) 与 [运镜、现场声与跨镜连戏](camera-audio-continuity.md)。
 

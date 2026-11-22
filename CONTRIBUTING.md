@@ -5,13 +5,18 @@
 
 ## 修改原则
 
-1. **知识与做法优先**：新增能力先考虑写成参考资料或 `SKILL.md` 工作流步骤；
-   只有智能体不应徒手完成的确定性工作（稳定索引、跨文件结构对账）才写脚本。
-   不要把编辑/创作判断写成规则代码。
+1. **知识与做法优先（硬门禁 vs 软门禁）**：新增能力先考虑写成参考资料或 `SKILL.md` 工作流步骤；
+   脚本遵循**软门禁原则**——只有 100% 确定性的机械与安全检查（ID 存在性与唯一性、本地文件路径与
+   符号链接安全、时长算术加总、下游必需字段、付费/外发确认令牌）才设为硬阻断 `ERROR`
+   （对应 `structural_invariant`）；其余启发式检查、跨语种提示词名称提醒与语义/连戏核查一律做成
+   **软门禁**（脚本输出 `WARNING` 提醒复核而不粗暴报错，或交由 `short-drama-review` 按
+   `reviewed_invariant` 结合上下文审定），不要把编辑/创作判断写成规则代码。
 2. **规则分级**：所有规范都要归入 `structural_invariant` / `reviewed_invariant` /
    `craft_default` / `taste_option` 四级；不得把统一的字数、比例、数量配方设为
-   质量门槛。各阶段规则在对应技能的 `references/stage-contract.md` 注册稳定 ID，
-   跨阶段问题路由记入 `skills/short-drama/references/knowhow-index.md`。
+   质量门槛。各技能的 `references/stage-contract.md` 只为阻断级不变量（`structural_invariant`
+   与 `reviewed_invariant`）注册稳定规则 ID；`craft_default` 与 `taste_option` 以自然语言
+   手艺建议写在对应工艺参考文档中，不编入编号规则表。跨阶段问题路由记入
+   `skills/short-drama/references/knowhow-index.md`。
 3. **所有权与审查分离**：每个产物只有一个负责技能；修订动作不能冒充审查结论。
    优先由未参与当前版本创作的审稿人复核；条件不允许时可以诚实标注自检，不等待或伪造隔离证明。
 4. **来源边界**：仓库不得包含非公开项目内容、内部标识、私有网址、供应商任务
@@ -65,7 +70,10 @@ ln -s "$PWD/maintainers/skills/short-drama-knowhow" \
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -v
 ruff check --no-cache .
+python3 tools/sync_shared.py --check
 ```
+
+`ruff` 规则与 `target-version = "py39"` 配置在根目录 `pyproject.toml` 中；修改 Python 脚本时，CI 还会按 `.github/workflows/ci.yml` 对 `skills/*/scripts/*.py` 及仓内工具脚本执行覆盖 Python 3.9 下限与 3.10+ 的严格 `mypy` 类型检查（本地装有 `mypy` 时建议同步核对）。
 
 ### Python 版本下限
 
@@ -85,7 +93,7 @@ uv venv --python 3.9 /tmp/floor && \
 - **统一 `<SKILL_DIR>` 路径占位符**：技能文档引用本技能内脚本时统一写作 `<SKILL_DIR>/scripts/<script>.py`（`<SKILL_DIR>` 指当前 `SKILL.md` 所在目录），不再混用 `{技能目录}` / `<本技能目录>`，也不得硬编码本机绝对路径（外部适配器脚本等用 `<ADAPTER_SCRIPT>` 等占位符）或指令 Agent 直接执行其他技能目录下的脚本。
 - **跨平台 Python 3.9+ 调用**：技能文档中的脚本命令统一使用跨平台 Python 3.9+ 约定（`<PYTHON>` 或明确注明 macOS/Linux 用 `python3`、Windows 用 `py -3` 或 `python`），并与下述 `MINIMUM_PYTHON` 下限保持一致。
 
-每个 `skills/*` 目录独立维护，可以单独安装。改一个技能时，改动应当只落在它自己的目录里。
+每个 `skills/*` 目录独立维护，可以单独安装。改一个技能时，改动应当只落在它自己的目录里，不引入运行时跨目录 `import`。少量跨技能共享的纯逻辑（如 `src/_shared/cn_num.py`）通过构建期同步维护：修改 `src/_shared/` 权威源码后运行 `python3 tools/sync_shared.py --write` 将标记区回填至目标脚本，并用 `python3 tools/sync_shared.py --check`（测试与 CI 同样强制核对）确保无漂移。
 
 ## 发布前必跑
 

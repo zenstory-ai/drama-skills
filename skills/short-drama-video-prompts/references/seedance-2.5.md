@@ -23,7 +23,7 @@
 
 ## `任务类型` 与视频编辑 / 续写
 
-提示词写法须与接口参数 `omni_reference_task_type` 一致（不一致会被接口拦截）。《视频提示词.md》参考槽位仅登记图片与角色音色参考；依赖参考视频（`@视频1`）的 `edit` / `extend` 走外部平台手动提交（`relay_external`）。目标模型为 `seedance-2.5` 时，可在 `MOTION-...` 的 `生成方式` 下一行注明 `- 任务类型：reference | edit | extend | auto` 供人工与外部提交核对（`auto` 由服务端按输入自动判别，非 2.5 模型不写；内置 `production_tool.py` 投产时在任务参数 `parameters` 中显式传入 `omni_reference_task_type`）：
+提示词写法须与接口参数 `omni_reference_task_type` 一致（不一致会被接口拦截）。《视频提示词.md》参考槽位仅登记图片与角色音色参考；依赖参考视频（`@视频1`）的 `edit` / `extend` 走外部平台手动提交（`relay_external`）。目标模型为 `seedance-2.5` 时，可在 `MOTION-...` 的 `生成方式` 下一行注明 `- 任务类型：reference | edit | extend | auto` 供人工与外部提交核对（`auto` 由服务端按输入自动判别，非 2.5 模型不写；交 `short-drama-produce` 投产时在任务参数 `parameters` 中显式传入 `omni_reference_task_type`）：
 
 - `reference`：参考传入的图片与音色音频生成新镜头，点明各素材控制项。
 - `edit`（外部手动提交 `relay_external`）：指定 `@视频1` 写清“保留 A、B，只把 C 改成……”（接口传 `ratio: adaptive`、`duration: -1`，成片时长跟随原片；改长台词前先核对原片留白够不够）。

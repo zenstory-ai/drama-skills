@@ -104,7 +104,7 @@ python3 -m unittest tests.test_workflow_evaluation
 核对章节索引能否从原著重算出同一张表、剧本索引重建后块号是否一字不动、剧本估时是否稳定、21 个产物是否都还 `accepted`。
 **这一层判定「没有退步」，不看戏写得怎么样**。
 
-这份回归未覆盖四个阶段：`$short-drama-breakdown` 仅在有对标剧集时按需选用；`$short-drama-produce` 涉及外部服务、凭据与明确确认；`$short-drama-edit` 依赖实际生成的媒体素材；`$short-drama-review` 按需单独发起审查，均不在此夹具中执行。
+这份回归未覆盖四个阶段：`short-drama-breakdown` 仅在有对标剧集时按需选用；`short-drama-produce` 涉及外部服务、凭据与明确确认；`short-drama-edit` 依赖实际生成的媒体素材；`short-drama-review` 按需单独发起审查，均不在此夹具中执行。
 
 **主工作流实跑**（人或 Agent，发布候选上做一次）：闸门跑的是录下来的结果，
 这一步跑的是流程本身。开一个新项目，只给它那份原著，按各技能 SKILL.md 走到

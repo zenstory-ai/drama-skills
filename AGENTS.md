@@ -9,9 +9,13 @@
 
 - `skills/*`：面向创作者的技能，每个目录是独立安装单元（`SKILL.md`、`references/`、
   `scripts/` 等）。`skills/short-drama` 负责项目初始化、跨阶段路由和 Dashboard。
+- `src/_shared/` 与 `tools/sync_shared.py`：跨技能共享纯逻辑的权威源码及构建期同步工具，
+  按标记区回填进独立技能脚本，保持运行时零跨目录依赖。
 - `maintainers/skills/short-drama-knowhow`：维护者专用技能，故意不放在 `skills/`，不要移动。
-- `tests/`：unittest 测试；`evaluations/`：主工作流评估与人工实跑做法；`examples/`：合成示例。
-- `.release/policy.json`：发布策略；`.clawhub/`：ClawHub 分发清单，说明见 `.clawhub/README.md`。
+- `tests/`：unittest 测试（含 `tests/remotion-typecheck/` 独立 Remotion TypeScript 类型检查）；
+  `evaluations/`：主工作流评估与人工实跑做法；`examples/`：合成示例。
+- `pyproject.toml`：`ruff` 规则与 `py39` 目标版本配置；`.release/policy.json`：发布策略；
+  `.clawhub/`：ClawHub 分发清单，说明见 `.clawhub/README.md`。
 
 ## 改动前
 
@@ -50,11 +54,17 @@
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -v
 ruff check --no-cache .
+python3 tools/sync_shared.py --check
 ```
 
-- 改了 `skills/*/scripts/` 时，按 CONTRIBUTING.md「Python 版本下限」在 3.9 解释器上再跑一次。
-- CI（`.github/workflows/ci.yml`）另跑 3.9/3.10/3.14 测试矩阵、固定版本的 ruff 与 mypy、
-  Dashboard 真实浏览器回归（`tests.test_dashboard_browser`，需 Playwright）和 Windows 回归。
+- 改了 `skills/*/scripts/` 时，按 CONTRIBUTING.md「Python 版本下限」在 3.9 解释器上再跑一次；
+  改了 `src/_shared/` 需先跑 `python3 tools/sync_shared.py --write` 再校验。
+- CI（`.github/workflows/ci.yml`）按改动路径门控并统一汇总至 `ci-gate`：纯文档 PR 走快速
+  `docs-checks` 契约检查；代码 PR 与 `main` 推送另跑 Python 3.9/3.14 测试矩阵（含
+  `FFMPEG_REQUIRED=1` fail-closed 媒体测试）、按 `pyproject.toml` 配置的固定版本 `ruff` 与
+  覆盖 Python 3.9 下限及 3.10+ 的严格 `mypy`、Remotion TypeScript 类型检查
+  （`tests/remotion-typecheck/`）、Dashboard 真实浏览器回归（`tests.test_dashboard_browser`，
+  需 Playwright）和 Windows 回归。
 - 发布候选另跑 `python3 -m unittest tests.test_workflow_evaluation`，并按
   [evaluations/README.md](evaluations/README.md) 在固定提交上人工实跑一次。
 - 受保护发布检查（仓库外私有词表、fail-closed）见 CONTRIBUTING.md；普通开发不能声称已做过。

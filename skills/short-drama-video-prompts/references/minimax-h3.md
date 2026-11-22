@@ -26,7 +26,7 @@ H3 的分段标签与画面描写使用英文；中文对白保留原文并写�
 
 - **首帧锁图 vs 跨镜音色直出的条件权衡**：H3 一旦挂载 `reference_audio`（或搭配多张设定图），就会切入 `full-reference` 模式并**失去 `first_frame` / `first_last_frame` 的首帧硬锁能力**（即使把首帧作为 `<Picture 1>` 传入并标 `fully_preserved`，开场构图仍可能产生轻微漂移）。动笔时按本镜核心诉求二选一：
   - **需要严格锁住分镜首帧构图、站位衔接或复杂三维/漫剧画风起手时**：优先选用 `first_frame` 或 `first_last_frame` 三段模式，不挂 `reference_audio`；跨镜角色音色一致性交给后期配音、TTS 干音贴片或音色转换统一解决。
-  - **无需像素级锁死首帧、追求跨镜原声音画同出一致时**：选用 `full-reference` 六段模式挂载 `reference_audio`——仓库内《视频提示词.md》的 `- 参考音频：`（`VID-27`）只绑定《视觉设定.md》中该人物固定的 `- 声音参考：` 借用音色（接口 `usage_type: reference`、`retention_analysis` 标 `reference`，配合正文 `<d>` 台词引文发声；`fully_copy` / `partially_copy` 仅适用于外部平台手动上传单句干音 `relay_external`）。将角色/场景设定图或首帧图作为 `<Picture N>`（`reference_image`）一并传入时，**把首帧图作为 `<Picture N>` 传入须在 `MOTION-...` 的 `输入参考图` 中将该槽位 `用途` 由 `起始帧` 改标为 `构图`**（避免 `production_tool.py` 映射为 `first_frame` 触发与 `full-reference` 的接口互斥报错），且未同挂对应设定条目 `主体` / `造型状态` 参考图时须在正文按 `CON-07` 原字保留生效的 `LOCK-...` 锁定词。
+  - **无需像素级锁死首帧、追求跨镜原声音画同出一致时**：选用 `full-reference` 六段模式挂载 `reference_audio`——仓库内《视频提示词.md》的 `- 参考音频：`（`VID-27`）只绑定《视觉设定.md》中该人物固定的 `- 声音参考：` 借用音色（接口 `usage_type: reference`、`retention_analysis` 标 `reference`，配合正文 `<d>` 台词引文发声；`fully_copy` / `partially_copy` 仅适用于外部平台手动上传单句干音 `relay_external`）。将角色/场景设定图或首帧图作为 `<Picture N>`（`reference_image`）一并传入时，**把首帧图作为 `<Picture N>` 传入须在 `MOTION-...` 的 `输入参考图` 中将该槽位 `用途` 由 `起始帧` 改标为 `构图`**（避免 `short-drama-produce` 投产时映射为 `first_frame` 触发与 `full-reference` 的接口互斥报错），且未同挂对应设定条目 `主体` / `造型状态` 参考图时须在正文按 `CON-07` 原字保留生效的 `LOCK-...` 锁定词。
 - 本套件不采用仅传尾帧倒推开场的 L2VA 模式；`生成方式` 字段仍只填 `文生视频` 或 `图生视频`。
 
 ## Base / 首帧 / 首尾帧（三段结构）
@@ -72,7 +72,7 @@ non_diegetic_music: N/A
 
 ### 多镜合生关键帧排布
 
-采用 `full-reference` 多镜合生（4–15 秒内，每切均备有首帧实图排在 `<Picture N>` 最前）时，`GROUP-...` 的 `输入参考图` 须将各切首帧图的 `用途` 由 `起始帧` 改标为 `构图`，以满足单条目最多一张 `起始帧` 的参考槽位校验及 H3 参考槽位语义（单条 `MOTION-...` 改标 `构图` 同时避免 `production_tool.py` 将其映射为 `first_frame` 触发互斥报错；未同挂对应条目 `主体` / `造型状态` 图时，两者均须按 `CON-07` 在正文保留生效的 `LOCK-...` 锁定词），并在 `subject_definitions` 首句写明切点帧对应关系、在 `detailed_description` 同步标 `[Shot 2] At 00:03.000, ...`：
+采用 `full-reference` 多镜合生（4–15 秒内，每切均备有首帧实图排在 `<Picture N>` 最前）时，`GROUP-...` 的 `输入参考图` 须将各切首帧图的 `用途` 由 `起始帧` 改标为 `构图`，以满足单条目最多一张 `起始帧` 的参考槽位校验及 H3 参考槽位语义（单条 `MOTION-...` 改标 `构图` 同时避免 `short-drama-produce` 投产时将其映射为 `first_frame` 触发互斥报错；未同挂对应条目 `主体` / `造型状态` 图时，两者均须按 `CON-07` 在正文保留生效的 `LOCK-...` 锁定词），并在 `subject_definitions` 首句写明切点帧对应关系、在 `detailed_description` 同步标 `[Shot 2] At 00:03.000, ...`：
 
 ```text
 <Picture 1> aligns with the 0.00-second mark as the opening frame of [Shot 1]; <Picture 2> aligns with the 3.00-second mark as the frame of [Shot 2].
