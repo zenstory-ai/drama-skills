@@ -4,17 +4,18 @@
 
 > 跨平台说明：将下文示例中的 `<SKILL_DIR>` 替换为本技能实际安装目录；Windows 下可将 `"python3"` 替换为 `"py", "-3"` 或 `"python"`。
 
-## GPT Image 2
+## OpenAI 图片（GPT Image）
 
 ```json
-{"command": ["python3", "<SKILL_DIR>/scripts/provider_adapters.py", "gpt-image-2"], "timeout_seconds": 600}
+{"command": ["python3", "<SKILL_DIR>/scripts/provider_adapters.py", "openai-image"], "timeout_seconds": 600}
 ```
 
-- **环境变量**：`OPENAI_API_KEY`（必填）；`OPENAI_BASE_URL`（可选 HTTPS 地址覆盖，默认 `https://api.openai.com/v1`）；`OPENAI_IMAGE_MODEL`（可选模型覆盖，默认 `gpt-image-2`）。
-- **任务与路由**：`modality` 为 `image`，单次支持产出 1–16 张同格式图片（`.png`、`.jpg`/`.jpeg` 或 `.webp`），自动按 `n = len(outputs)` 请求并逐张解码 `b64_json` 写入临时中转目录。无参考图时调用 `POST /images/generations`；带 1–16 张参考图时调用 `POST /images/edits`（`image[]` 表单上传）。模型解析优先级为 `parameters.model` > `OPENAI_IMAGE_MODEL` > 默认 `gpt-image-2`。
-- **支持参数**：`model`（可选覆盖默认模型）、`width` + `height`（自动拼成 `size`）或直接传 `size`，另支持 `quality`、`background`（不支持透明背景）与 `moderation`。
+- **必填环境变量**：`OPENAI_API_KEY`；模型 ID 须由 `parameters.model` 或 `OPENAI_IMAGE_MODEL` 显式配置（如 `gpt-image-2.6`，代码不硬编码任何模型版本；旧子命令 `"gpt-image-2"` 仅作向后兼容别名保留）。
+- **可选环境变量**：`OPENAI_BASE_URL`（HTTPS 地址覆盖，默认 `https://api.openai.com/v1`）。
+- **任务与路由**：`modality` 为 `image`，单次支持产出 1–16 张同格式图片（`.png`、`.jpg`/`.jpeg` 或 `.webp`），自动按 `n = len(outputs)` 请求并逐张解码 `b64_json` 写入临时中转目录。无参考图时调用 `POST /images/generations`；带 1–16 张参考图时调用 `POST /images/edits`（`image[]` 表单上传）。模型解析优先级为 `parameters.model` > `OPENAI_IMAGE_MODEL`（均缺失时在请求前安全失败）。
+- **支持参数**：`model`（必填，或在环境变量 `OPENAI_IMAGE_MODEL` 中配置）、`width` + `height`（自动拼成 `size`）或直接传 `size`，另支持 `quality`、`background`（`auto` / `opaque` / `transparent`，按实际所选模型能力透传）与 `moderation`。
 
-官方文档：[GPT Image 2 模型说明](https://developers.openai.com/api/docs/models/gpt-image-2)、[图片生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)。
+官方文档：[图片生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)。
 
 ## Seedance
 
@@ -46,8 +47,8 @@
 {"command": ["python3", "<SKILL_DIR>/scripts/provider_adapters.py", "minimax-music"], "timeout_seconds": 600}
 ```
 
-- **环境变量**：`MINIMAX_API_KEY`（必填）；`MINIMAX_BASE_URL`（可选 HTTPS 地址覆盖，默认海外站 `https://api.minimax.io/v1`；国内站账号请将域名改为 `api.minimaxi.com` 并保留 `/v1` 路径）；`MINIMAX_MUSIC_MODEL`（可选模型覆盖，默认 `music-3.0`）。
-- **任务与调用**：`modality` 为 `music`，单次产出 1 个与 `format` 一致的 `.mp3` 或 `.wav`。`prompt` 填曲风、配器与情绪描述；支持 `model`（覆盖优先级：`parameters.model` > `MINIMAX_MUSIC_MODEL` > 默认 `music-3.0`）、`lyrics`、`is_instrumental`、`sample_rate`、`bitrate` 与 `format`（不启用 `lyrics_optimizer` 自动改词：人声歌曲传定稿 `lyrics`，纯配乐不传歌词）。以 `output_format: "hex"` 调用 `POST /music_generation` 并解码 `data.audio`。
+- **环境变量**：`MINIMAX_API_KEY`（必填）；模型 ID 须由 `parameters.model` 或 `MINIMAX_MUSIC_MODEL` 显式配置（代码不硬编码模型版本）；`MINIMAX_BASE_URL`（可选 HTTPS 地址覆盖，默认海外站 `https://api.minimax.io/v1`；国内站账号请将域名改为 `api.minimaxi.com` 并保留 `/v1` 路径）。
+- **任务与调用**：`modality` 为 `music`，单次产出 1 个与 `format` 一致的 `.mp3` 或 `.wav`。`prompt` 填曲风、配器与情绪描述；支持 `model`（必填，解析优先级：`parameters.model` > `MINIMAX_MUSIC_MODEL`，均缺失时在请求前安全失败）、`lyrics`、`is_instrumental`、`sample_rate`、`bitrate` 与 `format`（不启用 `lyrics_optimizer` 自动改词：人声歌曲传定稿 `lyrics`，纯配乐不传歌词）。以 `output_format: "hex"` 调用 `POST /music_generation` 并解码 `data.audio`。
 
 官方文档：[MiniMax 音乐生成 API](https://platform.minimax.io/docs/api-reference/music-generation)。
 

@@ -1,6 +1,6 @@
 # An open-source AI short-drama pipeline: script, visual settings, storyboard, prompts, then production
 
-Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, GPT Image 2, MiniMax H3 video, MiniMax speech and MiniMax Music.
+Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, OpenAI GPT Image, MiniMax H3 video, MiniMax speech and MiniMax Music.
 
 中文全流程：[漫剧创作全流程指引](comic-drama-workflow.md)
 

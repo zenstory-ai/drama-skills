@@ -249,7 +249,7 @@ flowchart LR
 | `short-drama-image-prompts` | Lookdev style frames, character/location/prop reference prompts, and targeted image edits |
 | `short-drama-storyboard` | Scene staging and multi-angle comparisons, script-to-shot breakdown, start/end frames, and first/end-frame prompts |
 | `short-drama-video-prompts` | Single-shot motion, multi-character staging and eyeline shifts, camera moves, sound, `GROUP-*` multi-shot groups, pickup notes, and cross-shot music cues |
-| `short-drama-produce` | Preview single or batched image/video (including `GROUP-*` groups)/voice/music jobs, run provider APIs after explicit confirmation with resume support, and archive outputs; built-in profiles for Seedance, GPT Image 2, and MiniMax H3 / Speech / Music |
+| `short-drama-produce` | Preview single or batched image/video (including `GROUP-*` groups)/voice/music jobs, run provider APIs after explicit confirmation with resume support, and archive outputs; built-in profiles for Seedance, OpenAI GPT Image, and MiniMax H3 / Speech / Music |
 | `short-drama-edit` | Select usable ranges from single shots or `GROUP-*` clips, record in/out rationale, verify dialogue, burn subtitles, normalize loudness, and render finished episodes |
 | `short-drama-breakdown` | Measure benchmark dramas (episode/shot length, dialogue density, hooks/cliffhangers) against your project; reverse-engineer reference episodes into scripts, settings, and prompts |
 | `short-drama-review` | Structural and dramatic quality review; project-wide calibration and revision advice from real generated outputs |

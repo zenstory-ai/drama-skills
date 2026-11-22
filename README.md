@@ -242,7 +242,7 @@ flowchart LR
 | `short-drama-image-prompts` | 视觉定调风格帧、角色/场景/道具参考图提示词与局部改图说明 |
 | `short-drama-storyboard` | 场次站位调度与多机位比选、剧本逐句落镜、起止画面与首尾帧提示词 |
 | `short-drama-video-prompts` | 单镜动作推进、多人调度与视线转移、运镜、声音、`GROUP-*` 多镜合生、补拍说明及跨镜配乐表 |
-| `short-drama-produce` | 单条或整批预览图片/视频（含 `GROUP-*` 合生分组）/配音/配乐任务，明确确认后批量调用接口生成并支持断点续跑；内置支持 Seedance、GPT Image 2、MiniMax H3 / Speech / Music |
+| `short-drama-produce` | 单条或整批预览图片/视频（含 `GROUP-*` 合生分组）/配音/配乐任务，明确确认后批量调用接口生成并支持断点续跑；内置支持 Seedance、OpenAI GPT Image、MiniMax H3 / Speech / Music |
 | `short-drama-edit` | 挑选单镜或 `GROUP-*` 合生素材可用区间、写明入出点取舍、核对台词、烧录字幕并统一响度，生成剪辑单与成片 |
 | `short-drama-breakdown` | 按集长、镜长、对白密度、开场与集尾拆解对标剧并比对本项目差距；支持将参考剧集反推为剧本、设定与提示词 |
 | `short-drama-review` | 结构与剧情审查；结合实拍出片效果排查设定与提示词偏差并给出修订建议 |

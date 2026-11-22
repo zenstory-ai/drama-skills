@@ -31,8 +31,8 @@
 - 阶段规则表减负、软门禁重定级与参考文档瘦身（10 份 `stage-contract.md`、`short-drama-review`、`short-drama-develop`、`short-drama-image-prompts`）：
   - `stage-contract.md` 规则表仅保留阻断级不变量（`structural_invariant` 与 `reviewed_invariant`），唯一规则 ID 从 205 条精简至 105 条；全部 `craft_default` 与 `taste_option` 下沉回各阶段参考文档的自然语言指导；校正多组混合语义规则边界，将 `AST-13`/`IMG-13`/`SHT-16`/`SHT-26`/`VID-04`/`VID-25`/`CON-07` 重定级为 `reviewed_invariant` 并收窄 `VID-03`/`VID-27` 为纯确定性脚本校验，同步更新全部审查 rubric。
   - 合并 `short-drama-develop` 四份高重叠参考文档为 `story-and-character-craft.md` 与 `episode-architecture.md`（精简 53.4%），并将 `episode-map.jsonl` 模板从 45 嵌套键瘦身为 12 扁平核心键；将 `short-drama-image-prompts` 内联格式语法迁入 `references/format-spec.md`。
-- 确定性脚本瘦身、适配器能力解耦与版本号转正（`short-drama`、`short-drama-write`、`short-drama-breakdown`、`short-drama-produce`、`short-drama-novel-analyze`、`short-drama-develop`）：
-  - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器并移除启发式动词黑名单与旧字节偏移行表脚手架；`production_tool.py` 优先按适配器显式 `reference_roles` / `audio_capable` 声明判定能力，不再绑定文件名；`novel_index.py` 与项目模板 `schema_version` 由 `1.0.0-draft` 转正为 `1.0.0`。
+- 确定性脚本瘦身、适配器能力解耦与去模型硬编码（`short-drama`、`short-drama-write`、`short-drama-breakdown`、`short-drama-produce`、`short-drama-novel-analyze`、`short-drama-develop`）：
+  - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器并移除启发式动词黑名单与旧字节偏移行表脚手架；`production_tool.py` 优先按适配器显式 `reference_roles` / `audio_capable` 声明判定能力，不再绑定文件名；`provider_adapters.py` 彻底移除 `gpt-image-2` 与 `music-3.0` 硬编码默认模型名（改为必填 `parameters.model` 或 `OPENAI_IMAGE_MODEL` / `MINIMAX_MUSIC_MODEL`，缺失时请求前安全 fail-closed），新增通用主命令 `openai-image`（保留 `gpt-image-2` 向后兼容别名）并透传 `background="transparent"`；`novel_index.py` 与项目模板 `schema_version` 由 `1.0.0-draft` 转正为 `1.0.0`。
 - 持续集成与脚本质量门禁加固（仓库测试与工具链）：
   - CI 在 Python 3.9 与 3.14 上启用 `ffmpeg`/`libass` fail-closed 实跑全部媒体回归测试，新增纯文档 PR 快速路径、Playwright Chromium 缓存、统一 `ci-gate` 汇总检查、独立 Remotion TypeScript 严格类型检查与 `SKILL.md` CLI 子命令自动对账；扩展 Windows 回归至全量平台敏感测试模块；引入 `pyproject.toml` 收紧 `ruff` 规则并改为自动发现严格 `mypy` 校验（含 `src/_shared/` 与 `tools/`）。
 
@@ -44,7 +44,7 @@
 
 - 跨解析器冒号入粗体字段解析一致（`short-drama-produce`、`short-drama-edit`）：修复 `- **输入参考图：** ...`、`- **参考音频：** ...`、`- **字幕：** ...` 等将冒号包入强调标记的写法被静默丢弃的问题，与 `creator_markdown_check.py`、`creator_views.py` 保持一致。
 - 英文断词、16:9 横屏排版与多语种剪辑渲染（`short-drama-edit`）：修复英文字幕按 12 字符硬切单词、横屏 16:9 字幕边距与 Remotion 面板宽度溢出、非 CJK/ASCII 语系字体探针报错、多词英文卡片标签被拆分、`libass` `\N`/`\n`/`\h` 转义、关键词最长匹配优先级与 `ffmpeg`/`ffprobe` PATH 回退问题。
-- 生产适配器与工具链细节缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」及模型名写死问题；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验问题。
+- 生产适配器与工具链细节缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」、旧版模型名硬编码及 `background="transparent"` 硬阻断问题；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验问题。
 - 本地创作台竞态与扫描截断（`short-drama`）：修复 `dashboard_server.py` 扫描 `.git`/`node_modules`/`.venv`/`__pycache__`/`.short-drama` 触发节点截断的问题；修复 `app.js` 快速切换项目/单集/刷新时的异步竞态、creator-first 项目状态徽章显示、仅含剪辑单剧集时长列及时间轴零宽保护；替换 `README.md`/`README_EN.md`/`docs/real-outputs*.md` 中已失效的校验示例。
 
 ### Removed

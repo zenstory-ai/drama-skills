@@ -2063,6 +2063,7 @@ def _safe_error_detail(value: object) -> str | None:
 BUILTIN_PROVIDER_SUBCOMMANDS = frozenset(
     {
         "seedance",
+        "openai-image",
         "gpt-image-2",
         "minimax-music",
         "minimax-h3",
