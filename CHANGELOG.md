@@ -13,49 +13,67 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-22
+
+本版围绕四条主线升级全套技能：确立**软门禁原则**并对阶段规则表做分层瘦身（阶段规则表仅保留阻断级不变量，唯一规则 ID 由 205 条精简至 105 条）；完成全部公开与维护者技能的**跨宿主可移植性治理与随包脚本精简**；升级**生产、剪辑、成片配乐（`MUSIC-*`）与本地创作台**链路（补齐无 Node/Remotion 降级出片、外置叠加渲染协议与配乐全链路支持）；并加固 **CI 真实媒体、Windows、Remotion TypeScript 与严格静态类型检查**门禁。
+
+*升级*：既有项目与自动化脚本升级到 `v0.13.0` 前，请按以下清单完成迁移：
+
+1. **显式指定生图与配乐模型**：`provider_adapters.py` 已移除 `gpt-image-2` 与 `music-3.0` 硬编码默认模型；调用 `openai-image`（含兼容别名 `gpt-image-2`）或 `minimax-music` 时，须在 `parameters.model` 或环境变量 `OPENAI_IMAGE_MODEL` / `MINIMAX_MUSIC_MODEL` 中显式指定模型名（缺失会在请求前安全拦截，不消耗确认回执）。
+2. **改用 `export` + `verify` 替代旧台账与 `package` 命令**：`project_tool.py` 已移除旧 v0.5 台账子命令（`publish` / `accept` / `review` / `set-authority`）与 `package --strict-ledger`；`package` 现已弃用（计划 `v2.0` 移除），请改用 `project_tool.py export <项目目录> --out <输出目录> --manifest`（`--manifest` 默认开启）搭配 `project_tool.py verify <输出目录>`。
+3. **更新拉片、估时与适配器脚本调用**：`breakdown_tool.py` 已移除 `plan` 子命令与跨集重放启发式统计字段（`reprise` / `reprise_pairs`）；`short-drama-write` 已移走 `screenplay_index.py`（迁至 `tests/legacy/`）并移除 `duration_estimate.py --index`，请改为直接传剧本路径（`duration_estimate.py <剧本.md>` 或 `--script <剧本.md>`）做内存解析；`provider_adapters.py --selftest` 亦已移除。
+4. **更新旧自检脚本与故事开发参考路径**：技能目录内 7 份自带 `selftest.py` 与 `fixture_adapter.py` 已移除或迁至 `tests/`；`short-drama-develop` 原四份核心参考（`story-craft.md`、`serial-character-and-memory.md`、`episode-design.md`、`reveal-reversal-payoff.md`）已合并为 `story-and-character-craft.md` 与 `episode-architecture.md`，`episode-map.jsonl` 精简为 12 个扁平核心键。
+
 ### Added
 
-- 剪辑工具无 Node/Remotion 降级路径与外置叠加渲染协议（`short-drama-edit`）：`edit_tool.py render` 新增 `--screen-text-mode auto|remotion|ffmpeg|off`（默认 `auto`），在未安装 Node/Remotion 且全片仅含普通 `字卡` 时自动回退到 `ffmpeg` ASS 烧录并给出提醒，支持 `ffmpeg` 强制纯字卡直出与 `off` 跳过画面文字叠层继续烧录字幕成片；同时新增可选 `--overlay-renderer <cmd>`，允许将 `叠层.props.json` 交由外部渲染器生成透明叠层视频。
-- 英文原著与分集标题识别（`short-drama-novel-analyze`、`short-drama-develop`）：`novel_index.py` 支持英文 `Chapter`、英文数词及罗马数字章节标题；`episode_intake.py` 支持 `Episode N` 等英文分集标题。
-- 软门禁提醒体系、单集起稿脚手架与配乐条目一级支持（`short-drama`、`short-drama-produce`、`short-drama-edit`、`short-drama-develop`、`short-drama-breakdown`）：
-  - `creator_markdown_check.py` 区分硬错误（`ERROR:`，非零退出）与软提醒（`WARNING:`，退出 `0`），将跨语种缺省 `提示词名称` 调整为软提醒；`production_tool.py`、`edit_tool.py`、`breakdown_tool.py`、`episode_intake.py` 同步新增面向覆盖输出、未钉死外部适配器、字幕拥挤/响度偏差、重复集号与未映射区间的非阻断提醒。
-  - `project_tool.py` 新增 `scaffold-episode` 单集骨架初始化与缺口巡检命令，为 `configure` 补齐 `--json-file` / `@<path>` 跨平台 JSON 传参，并为 `export` 默认生成清单（`--manifest` / `--no-manifest`）且支持 `verify <dir>` 直接校验导出目录。
-  - 规范 `## MUSIC-... · <名称>` 配乐条目格式，打通 `creator_markdown_check.py`、`creator_views.py` 与 `production_tool.py`（支持 `source_entry: "MUSIC-..."` 条目级提取与哈希，避免视频镜头改动令配乐任务失效）。
-  - `short-drama-novel-analyze`、`short-drama-image-prompts`、`short-drama-storyboard`、`short-drama-breakdown` 新增轻量单场/单片段快速路径，并在 `novel-analyze`、`develop`、`write` 补齐无 shell 回退指引。
-- 构建期共享辅助同步与规则全量覆盖门禁（仓库工具链与测试）：新增 `src/_shared/cn_num.py` 与 `tools/sync_shared.py`（`--write` / `--check`），在保持各技能零跨目录运行时依赖的前提下统一维护 `chinese_to_int`；在 `tests/test_cross_parser_parity.py` 永久校验 `short-drama-review/references/` 对全部 100 条上游阻断级规则的 100% 覆盖与分级一致。
+- 剪辑无 Node/Remotion 降级路径与外置叠加渲染协议（`short-drama-edit`）：`edit_tool.py render` 新增 `--screen-text-mode auto|remotion|ffmpeg|off`（默认 `auto`），在未安装 Node/Remotion 且全片仅含普通 `字卡` 时自动回退到 `ffmpeg` ASS 烧录并给出提醒，支持 `ffmpeg` 强制纯字卡直出与 `off` 跳过画面文字叠层继续烧录字幕成片；同时新增 `--overlay-renderer <cmd>`，允许将 `叠层.props.json` 交由外部渲染器生成透明叠层视频。
+- 配乐条目（`MUSIC-*`）全链路一级支持（`short-drama`、`short-drama-produce`）：规范 `## MUSIC-... · <名称>` 配乐条目格式，打通 `creator_markdown_check.py`、`creator_views.py`、`production_tool.py` 与本地创作台——支持 `source_entry: "MUSIC-..."` 条目级提取与哈希（避免视频镜头改动令配乐任务失效），并在创作台「提示词 / 视频」页签独立分组展示配乐卡片，支持逐条复制与 `⌘K` 搜索高亮定位。
+- 软门禁非阻断提醒与单集起稿脚手架（`short-drama`、`short-drama-produce`、`short-drama-edit`、`short-drama-develop`、`short-drama-breakdown`）：
+  - `creator_markdown_check.py` 区分硬阻断（`ERROR:`，非零退出）与软提醒（`WARNING:`，退出 `0`），将跨语种缺省 `提示词名称` 转为软提醒；`production_tool.py`、`edit_tool.py`、`breakdown_tool.py` 与 `episode_intake.py` 同步新增面向覆盖输出、未钉死外部适配器、字幕拥挤/响度偏差、重复集号与未映射区间的非阻断提醒。
+  - `project_tool.py` 新增 `scaffold-episode` 单集骨架初始化与缺口巡检命令，为 `configure` 补齐 `--json-file` / `@<path>` 跨平台 JSON 传参，为 `export` 默认生成清单（`--manifest` / `--no-manifest`）并支持 `verify <dir>` 直接校验导出目录。
+- 英文原著/分集标题识别、独立格式规范与轻量快速路径：
+  - `novel_index.py` 支持英文 `Chapter`、英文数词及罗马数字章节标题；`episode_intake.py` 支持 `Episode N` 等英文分集标题。
+  - 为 `short-drama-storyboard`、`short-drama-video-prompts`、`short-drama-edit` 与 `short-drama-image-prompts` 拆分独立 `references/format-spec.md` 格式规范。
+  - `short-drama-novel-analyze`、`short-drama-image-prompts`、`short-drama-storyboard`、`short-drama-breakdown` 新增单场/单片段轻量快速路径，并在 `short-drama-novel-analyze`、`short-drama-develop`、`short-drama-write` 补齐无 shell 环境回退指引。
+- 构建期共享辅助同步与规则全量覆盖门禁（仓库工具链与测试）：新增 `src/_shared/cn_num.py` 与 `tools/sync_shared.py`（`--write` / `--check`），在保持各技能运行时零跨目录依赖的前提下统一维护 `chinese_to_int`；在 `tests/test_cross_parser_parity.py` 永久校验 `short-drama-review/references/` 对全部 100 条上游阻断级规则的 100% 覆盖与分级一致。
 
 ### Changed
 
-- 全套技能跨宿主可移植性与文档去漂移（全部 12 个公开技能与维护者技能）：
-  - 清理技能 `SKILL.md`（含 YAML `description`）与 `references/*.md` 中的宿主专属 `$short-drama-*` 语法，统一改用宿主中立技能名、`<SKILL_DIR>/scripts/...` 路径占位符与跨平台 Python 3.9+ 说明；重写 13 份互斥且精炼的技能触发描述并同步全部 12 份 `agents/openai.yaml`；修复 `creator-documents.md` 旧字段与连戏锁挂点、`CON-*` 跨文档漂移及悬空规则引用；修正 `.clawhub/publish.json` 循环依赖、纯文档技能冗余 Python 依赖并补齐 `short-drama-edit` 可选 Remotion 依赖；在 `README.md` 与 `README_EN.md` 如实说明语言无关创作指导层与标准中文自动化脚本层边界。
-- 阶段规则表减负、软门禁重定级与参考文档瘦身（10 份 `stage-contract.md`、`short-drama-review`、`short-drama-develop`、`short-drama-image-prompts`）：
-  - `stage-contract.md` 规则表仅保留阻断级不变量（`structural_invariant` 与 `reviewed_invariant`），唯一规则 ID 从 205 条精简至 105 条；全部 `craft_default` 与 `taste_option` 下沉回各阶段参考文档的自然语言指导；校正多组混合语义规则边界，将 `AST-13`/`IMG-13`/`SHT-16`/`SHT-26`/`VID-04`/`VID-25`/`CON-07` 重定级为 `reviewed_invariant` 并收窄 `VID-03`/`VID-27` 为纯确定性脚本校验，同步更新全部审查 rubric。
-  - 合并 `short-drama-develop` 四份高重叠参考文档为 `story-and-character-craft.md` 与 `episode-architecture.md`（精简 53.4%），并将 `episode-map.jsonl` 模板从 45 嵌套键瘦身为 12 扁平核心键；将 `short-drama-image-prompts` 内联格式语法迁入 `references/format-spec.md`。
-- 确定性脚本瘦身、适配器能力解耦与去模型硬编码（`short-drama`、`short-drama-write`、`short-drama-breakdown`、`short-drama-produce`、`short-drama-novel-analyze`、`short-drama-develop`）：
-  - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器并移除启发式动词黑名单与旧字节偏移行表脚手架；`production_tool.py` 优先按适配器显式 `reference_roles` / `audio_capable` 声明判定能力，不再绑定文件名；`provider_adapters.py` 彻底移除 `gpt-image-2` 与 `music-3.0` 硬编码默认模型名（改为必填 `parameters.model` 或 `OPENAI_IMAGE_MODEL` / `MINIMAX_MUSIC_MODEL`，缺失时请求前安全 fail-closed），新增通用主命令 `openai-image`（保留 `gpt-image-2` 向后兼容别名）并透传 `background="transparent"`；`novel_index.py` 与项目模板 `schema_version` 由 `1.0.0-draft` 转正为 `1.0.0`。
-- 持续集成与脚本质量门禁加固（仓库测试与工具链）：
-  - CI 在 Python 3.9 与 3.14 上启用 `ffmpeg`/`libass` fail-closed 实跑全部媒体回归测试，新增纯文档 PR 快速路径、Playwright Chromium 缓存、统一 `ci-gate` 汇总检查、独立 Remotion TypeScript 严格类型检查与 `SKILL.md` CLI 子命令自动对账；扩展 Windows 回归至全量平台敏感测试模块；引入 `pyproject.toml` 收紧 `ruff` 规则并改为自动发现严格 `mypy` 校验（含 `src/_shared/` 与 `tools/`）。
-- 全仓库文档时效性对齐（根目录 `AGENTS.md`/`CONTRIBUTING.md`/`DESIGN.md`/`README*.md`、`docs/*`、`evaluations/README.md`、4 篇活跃决策笔记与 11 个技能文档）：
-  - 清理已删除脚本、过时规则 ID 与旧 `episode-map.jsonl` 字段引用，对齐软门禁分级与 CI 测试矩阵，统一宿主中性技能名与带引号脚本路径写法，并为 4 篇决策笔记补齐后续演进事实互链。
+- 软门禁原则、阶段规则分层瘦身与参考文档合并（10 份 `stage-contract.md`、`short-drama-review`、`short-drama-develop`）：
+  - 确立脚本软门禁原则：仅 100% 确定性的机械与安全约束归为脚本硬阻断（`structural_invariant`），其余依赖语义与上下文判断的底线归为 `reviewed_invariant`（由审稿把关或脚本输出软 `WARNING` 提醒）。
+  - 10 份 `stage-contract.md` 规则表仅保留阻断级不变量，唯一规则 ID 从 205 条精简至 105 条（21 条 `structural_invariant` + 84 条 `reviewed_invariant`）；全部 `craft_default` 与 `taste_option` 下沉回各阶段工艺参考的自然语言指导。
+  - 拆分新增 `SCR-25`、`VID-29`，将 `AST-10`、`VID-24` 及 7 条语义混合规则（`AST-13`、`IMG-13`、`SHT-16`、`SHT-26`、`VID-04`、`VID-25`、`CON-07`）重定级为 `reviewed_invariant`，并将 `VID-03`、`VID-27` 收窄为纯确定性脚本校验；同步更新全部审查 rubric。
+  - 合并 `short-drama-develop` 原四份高重叠参考文档为 `story-and-character-craft.md` 与 `episode-architecture.md`（精简 53.4%），并将 `episode-map.jsonl` 模板从 45 个嵌套键精简为 12 个扁平核心键。
+- 全套技能跨宿主可移植性与全仓文档去漂移（全部 12 个公开技能、维护者技能与仓库文档）：
+  - 清理所有 `SKILL.md`（含 YAML `description`）与 `references/*.md` 中的宿主专属 `$short-drama-*` 语法，统一采用宿主中立技能名、带引号 `"<SKILL_DIR>/scripts/..."` 路径占位符与跨平台 Python 3.9+ 说明；重写 13 份互斥且精炼的技能触发描述并同步全部 12 份 `agents/openai.yaml`。
+  - 清理根目录文档（`AGENTS.md`/`CONTRIBUTING.md`/`DESIGN.md`/`README*.md`）、`docs/*`、`evaluations/README.md`、决策笔记与各技能参考中的过时脚本/规则引用、旧字段漂移与生硬直译；在 `README.md` 与 `README_EN.md` 如实说明语言无关创作指导层与标准中文自动化脚本层边界；修正 `.clawhub/publish.json` 循环依赖、纯文档技能冗余 Python 依赖并补齐 `short-drama-edit` 可选 Remotion 依赖。
+- 确定性脚本瘦身、适配器能力解耦与去模型硬编码（`short-drama`、`short-drama-write`、`short-drama-produce`、`short-drama-novel-analyze`）：
+  - `creator_markdown_check.py` 剥离否定词、对白引文归属与正文语义锁词等 NLP 启发式正则，专注确定性结构、ID 引用、路径与算术校验；`duration_estimate.py` 内联内存剧本解析器并移除启发式动词黑名单与旧字节偏移行表脚手架。
+  - `production_tool.py` 优先按适配器显式 `reference_roles` / `audio_capable` 声明判定能力，不再绑定文件名；`provider_adapters.py` 彻底移除 `gpt-image-2` 与 `music-3.0` 硬编码默认模型名（改为必填 `parameters.model` 或 `OPENAI_IMAGE_MODEL` / `MINIMAX_MUSIC_MODEL`，缺失时请求前安全拦截），新增通用主命令 `openai-image`（保留 `gpt-image-2` 向后兼容别名）并透传 `background="transparent"`。
+  - `novel_index.py` 与项目模板 `schema_version` 由 `1.0.0-draft` 转正为 `1.0.0`。
+- CI 真实媒体、Windows 与静态类型检查加固（仓库测试与工作流）：
+  - CI 在 Python 3.9 与 3.14 上启用 `ffmpeg`/`libass` fail-closed 实跑全部媒体回归测试，新增纯文档 PR 快速路径、Playwright Chromium 缓存、统一 `ci-gate` 汇总检查、独立 Remotion TypeScript 严格类型检查与 `SKILL.md` CLI 子命令自动对账；扩展 Windows 回归至全量平台敏感测试模块；引入 `pyproject.toml` 收紧 `ruff` 规则并对全仓 Python 脚本与工具启用严格 `mypy` 校验。
 
 ### Deprecated
 
-- `project_tool.py package`：保留完整功能与向后兼容，但优先推荐使用 `project_tool.py export`（默认生成清单）搭配 `project_tool.py verify <dir>` 直接交付与校验。
+- `project_tool.py package`：保留完整功能与向后兼容，计划于 `v2.0` 移除；请优先改用 `project_tool.py export`（默认生成清单）搭配 `project_tool.py verify <dir>` 完成交付与校验。
+
+### Removed
+
+- 随包测试脚本与旧版索引脚本（7 个带脚本技能）：从 `skills/*/scripts/` 移除全部 7 份随包 `selftest.py`，将 `fixture_adapter.py` 迁入 `tests/fixtures/`、将 `screenplay_index.py` 迁入 `tests/legacy/`，改为在测试套件中对隔离拷贝的业务脚本直接做冒烟校验。
+- 退役 CLI 子命令、参数与启发式字段：
+  - `project_tool.py`：移除零引用的 v0.5 台账子命令（`publish` / `accept` / `review` / `set-authority`）与 `package --strict-ledger`。
+  - `breakdown_tool.py`：移除基于剧本估时与文本相似度的 `plan` 子命令与跨集重放启发式统计字段（`reprise` / `reprise_pairs`），保留全部 `ffmpeg` 确定性媒体测量能力。
+  - `duration_estimate.py`：移除 `--index` 参数（直接传剧本路径即内存解析）。
+  - `provider_adapters.py`：移除 `--selftest` 参数。
 
 ### Fixed
 
 - 跨解析器冒号入粗体字段解析一致（`short-drama-produce`、`short-drama-edit`）：修复 `- **输入参考图：** ...`、`- **参考音频：** ...`、`- **字幕：** ...` 等将冒号包入强调标记的写法被静默丢弃的问题，与 `creator_markdown_check.py`、`creator_views.py` 保持一致。
 - 英文断词、16:9 横屏排版与多语种剪辑渲染（`short-drama-edit`）：修复英文字幕按 12 字符硬切单词、横屏 16:9 字幕边距与 Remotion 面板宽度溢出、非 CJK/ASCII 语系字体探针报错、多词英文卡片标签被拆分、`libass` `\N`/`\n`/`\h` 转义、关键词最长匹配优先级与 `ffmpeg`/`ffprobe` PATH 回退问题。
-- 生产适配器与工具链细节缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」、旧版模型名硬编码及 `background="transparent"` 硬阻断问题；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验问题。
-- 本地创作台竞态与扫描截断（`short-drama`）：修复 `dashboard_server.py` 扫描 `.git`/`node_modules`/`.venv`/`__pycache__`/`.short-drama` 触发节点截断的问题；修复 `app.js` 快速切换项目/单集/刷新时的异步竞态、creator-first 项目状态徽章显示、仅含剪辑单剧集时长列及时间轴零宽保护；替换 `README.md`/`README_EN.md`/`docs/real-outputs*.md` 中已失效的校验示例。
-- 本地创作台配乐提示词展示与字段映射（`short-drama`）：修复 `creator_views.py` 未映射 `MUSIC-*` 条目中的 `- 情绪与乐器：` 及扩展元数据字段、且创作台「提示词 / 视频」视图未渲染 `MUSIC-*` 成片配乐卡片导致 `⌘K` 搜索跳转落空的问题，现于视频提示词页签独立分组展示配乐卡片并支持逐条复制与搜索高亮定位。
-- 带引号技能命令校验覆盖（`tests/test_standalone_skill_tooling.py`）：修复 `SKILL.md` CLI 子命令对账正则，使其正确覆盖带双引号的 `"<SKILL_DIR>/scripts/..."` 技能脚本命令。
-
-### Removed
-
-- 随包测试脚本与退役旧命令（7 个带脚本技能）：
-  - 从 `skills/*/scripts/` 移除全部 7 个随包 `selftest.py`，将 `fixture_adapter.py` 迁入 `tests/fixtures/`、将 `screenplay_index.py` 迁入 `tests/legacy/` 并改为在测试中对隔离拷贝的业务脚本直接做冒烟校验。
-  - 从 `project_tool.py` 移除零引用的 v0.5 台账子命令（`publish`/`accept`/`review`/`set-authority`/`--strict-ledger`）；从 `breakdown_tool.py` 移除基于剧本估时与文本相似度的 `plan`/`reprise` 启发式子命令，保留全部 `ffmpeg` 确定性媒体测量能力。
+- 生产适配器、拉片与跨文档校验缺陷（`short-drama-produce`、`short-drama-breakdown`、`short-drama`）：修复非中文 `prompt_language` 硬编码中文「音色参考」、旧版模型名硬编码及 `background="transparent"` 硬阻断；修复 `breakdown_tool.py` 漏认 `Season2_Episode03`、BOM/CRLF 解析失败与重复集号覆盖丢弃；修复 `creator_markdown_check.py` 拒收 `- 参考：无（纯文生图）` 与全角/多空格 `### 尾帧提示词` 绕过校验。
+- 本地创作台竞态、扫描截断与配乐卡片展示（`short-drama`）：修复 `dashboard_server.py` 扫描 `.git`/`node_modules`/`.venv`/`__pycache__`/`.short-drama` 触发节点截断；修复 `app.js` 快速切换项目/单集/刷新时的异步竞态、creator-first 项目状态徽章显示、仅含剪辑单剧集时长列及时间轴零宽保护；修复 `creator_views.py` 未映射 `MUSIC-*` 中的 `- 情绪与乐器：` 及扩展元数据字段、且「提示词 / 视频」视图未渲染 `MUSIC-*` 卡片导致 `⌘K` 搜索跳转落空的问题；替换 `README.md`/`README_EN.md`/`docs/real-outputs*.md` 中已失效的校验示例。
+- 带引号技能命令校验覆盖（`tests/test_standalone_skill_tooling.py`）：修复 `SKILL.md` CLI 子命令对账正则，使其正确覆盖带双引号的 `"<SKILL_DIR>/scripts/..."` 脚本命令。
 
 ## [0.12.1] - 2026-11-16
 
@@ -2095,7 +2113,8 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/zenstory-ai/drama-skills/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.11.1...v0.11.2
