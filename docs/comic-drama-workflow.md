@@ -36,7 +36,7 @@
 
 每次只按当前要做的环节创建对应文档，不会预先建一堆空文件。拆分场次、设定条目和镜头时，Agent 会自动分批写完一整集，中途不需要你反复回复“继续”，也不会往项目目录里塞多余的 JSON 索引、覆盖表、审核表或交接摘要。
 
-> 下文示例统一使用宿主中立的技能名（如 `short-drama-write`）；实际调用时按所用 Agent 宿主加上对应前缀即可（Claude Code 写作 `/short-drama-write`，Codex 写作 `$short-drama-write`，其他支持 Agent Skill 规范的环境直接用技能名或自然语言触发）。
+> 下文示例统一使用宿主中立的技能名（如 `short-drama-write`）；实际调用时按所用 Agent 宿主加上对应前缀即可（Claude Code 与 Antigravity 写作 `/short-drama-write`，Codex 写作 `$short-drama-write`，其他支持 Agent Skill 规范的环境直接用技能名或自然语言触发）。
 
 ## 0. 原著分析、对标拆解与故事开发（可选）
 

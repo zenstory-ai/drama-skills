@@ -1,6 +1,6 @@
 # An open-source AI short-drama pipeline: script, visual settings, storyboard, prompts, then production
 
-Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code and Codex that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, OpenAI GPT Image, MiniMax H3 video, MiniMax speech and MiniMax Music.
+Drama Skills (`zenstory-ai/drama-skills`) is an MIT-licensed set of 12 agent skills for Claude Code, Codex, and Antigravity that takes a short drama or motion comic (漫剧) from idea or novel to per-episode script, visual design sheet, storyboard with first-frame prompts, and copy-ready image and video prompts. The core episode stages write Markdown into `剧集/<EP>/`; media generation runs only after the creator explicitly confirms a previewed batch. Optional provider interfaces cover Seedance, OpenAI GPT Image, MiniMax H3 video, MiniMax speech and MiniMax Music.
 
 中文全流程：[漫剧创作全流程指引](comic-drama-workflow.md)
 
@@ -66,7 +66,7 @@ Details in [跨镜一致性](character-consistency-across-shots.md) (Chinese).
 npx skills add zenstory-ai/drama-skills -y -g
 ```
 
-Then, in an agent, in an empty project folder (add your host's skill prefix when invoking—`/` in Claude Code, `$` in Codex, or plain skill names in other Agent Skill runtimes):
+Then, in an agent, in an empty project folder (add your host's skill prefix when invoking—`/` in Claude Code / Antigravity, `$` in Codex, or plain skill names in other Agent Skill runtimes):
 
 ```text
 用 short-drama 初始化一个都市打脸题材的短剧项目，竖屏 9:16

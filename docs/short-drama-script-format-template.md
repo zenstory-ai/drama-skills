@@ -103,7 +103,7 @@
 
 ## 用本仓库的 skill 怎么做
 
-对应的 skill 是 [short-drama-write](../skills/short-drama-write/SKILL.md)，它按本仓库的 Markdown 格式编写或整理 `剧集/EP001/剧本.md`，也能直接读取上面提到的三角符号片场制作稿格式。在 Claude Code 里输入 `/short-drama-write`，在 Codex 里输入 `$short-drama-write`，整理旧稿时可以这样说：
+对应的 skill 是 [short-drama-write](../skills/short-drama-write/SKILL.md)，它按本仓库的 Markdown 格式编写或整理 `剧集/EP001/剧本.md`，也能直接读取上面提到的三角符号片场制作稿格式。在 Claude Code 或 Antigravity 里输入 `/short-drama-write`，在 Codex 里输入 `$short-drama-write`，整理旧稿时可以这样说：
 
 > 按本项目的 Markdown 剧本格式整理我给的原稿，只整理集名与场头标题、可见动作、角色对白和必要的制作标签。严格按原稿和角色名单来，别自己加人物、加戏、改台词原意或乱补道具交接；OS/VO 含义或说话人拿不准的地方列出来问我，整理完顺手列一下改动点方便我核对。
 

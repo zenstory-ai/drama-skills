@@ -81,7 +81,7 @@
 
 ## 用 Drama Skills 怎么做
 
-装好本仓库的 skill 后（对应 [short-drama-storyboard](../skills/short-drama-storyboard/SKILL.md)）：在 Claude Code 里说：“用 /short-drama-storyboard 给 EP001 拆分镜，每镜写首帧提示词”（Codex 里写作 `$short-drama-storyboard`）。它会读取当前的 `剧集/EP001/剧本.md` 和 `视觉设定.md`，输出 `剧集/EP001/分镜.md`；这一步只出文字稿，不会自动生图或生视频，后续写视频提示词、调用接口出片或全集审查按需另外点名即可。
+装好本仓库的 skill 后（对应 [short-drama-storyboard](../skills/short-drama-storyboard/SKILL.md)）：在 Claude Code 或 Antigravity 里说：“用 /short-drama-storyboard 给 EP001 拆分镜，每镜写首帧提示词”（Codex 里写作 `$short-drama-storyboard`）。它会读取当前的 `剧集/EP001/剧本.md` 和 `视觉设定.md`，输出 `剧集/EP001/分镜.md`；这一步只出文字稿，不会自动生图或生视频，后续写视频提示词、调用接口出片或全集审查按需另外点名即可。
 
 ## 常见问题
 

@@ -97,7 +97,7 @@ Seedance 2.0 版只改两处：去掉方括号里的时间段，改成 `镜头1�
 
 ## 用 Drama Skills 怎么做
 
-装好本仓库的 skill 后（对应 [short-drama-video-prompts](../skills/short-drama-video-prompts/SKILL.md)）：在 Claude Code 里说：“用 /short-drama-video-prompts 把 EP001 的分镜一镜一条写成视频提示词”（Codex 里写作 `$short-drama-video-prompts`）；还没有分镜就先用 `short-drama-storyboard`。项目配置里还没定目标模型时，直接说“按 Seedance 2.5 写”，它会先通过 `short-drama` 记进项目配置再出稿；参考图还没备齐时，会先查项目里已有的实图，你也可以自己准备参考图，用 `PLAN-...` 挂图计划照常往下写提示词。只有明确不用参考图时才走文生视频；还缺关键参考图时会列出缺口清单等你拍板。
+装好本仓库的 skill 后（对应 [short-drama-video-prompts](../skills/short-drama-video-prompts/SKILL.md)）：在 Claude Code 或 Antigravity 里说：“用 /short-drama-video-prompts 把 EP001 的分镜一镜一条写成视频提示词”（Codex 里写作 `$short-drama-video-prompts`）；还没有分镜就先用 `short-drama-storyboard`。项目配置里还没定目标模型时，直接说“按 Seedance 2.5 写”，它会先通过 `short-drama` 记进项目配置再出稿；参考图还没备齐时，会先查项目里已有的实图，你也可以自己准备参考图，用 `PLAN-...` 挂图计划照常往下写提示词。只有明确不用参考图时才走文生视频；还缺关键参考图时会列出缺口清单等你拍板。
 
 ## 常见问题
 

@@ -171,6 +171,102 @@ class InstallationResolutionTests(unittest.TestCase):
                 self.assertRegex(frontmatter, r"(?m)^license: MIT$")
                 self.assertNotRegex(frontmatter, r"(?m)^allowed-tools:")
 
+    def test_antigravity_skills_json_discovers_exact_public_skills(self) -> None:
+        config_path = SUITE / ".agents/skills.json"
+        self.assertTrue(config_path.is_file(), ".agents/skills.json is missing")
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        entries = config.get("entries")
+        self.assertIsInstance(entries, list)
+        self.assertTrue(entries, ".agents/skills.json must declare at least one entry")
+
+        discovered = set()
+        for entry in entries:
+            self.assertIsInstance(entry, dict)
+            raw_path = entry.get("path")
+            self.assertIsInstance(raw_path, str)
+            self.assertFalse(
+                raw_path.startswith(("/", "~/")) or Path(raw_path).is_absolute(),
+                f"workspace skills.json must use workspace-relative path: {raw_path}",
+            )
+            target_dir = (SUITE / raw_path).resolve()
+            self.assertTrue(
+                target_dir.is_relative_to(SUITE.resolve()),
+                f"skills.json entry escapes repo root: {raw_path}",
+            )
+            self.assertTrue(target_dir.is_dir(), f"skills.json entry missing: {raw_path}")
+
+            include_only = entry.get("include_only") or []
+            exclude = entry.get("exclude") or []
+            for child in sorted(target_dir.iterdir()):
+                if not child.is_dir() or not (child / "SKILL.md").is_file():
+                    continue
+                if include_only and not any(re.fullmatch(pat, child.name) for pat in include_only):
+                    continue
+                if any(re.fullmatch(pat, child.name) for pat in exclude):
+                    continue
+                discovered.add(child.name)
+
+        self.assertEqual(discovered, EXPECTED_SKILLS)
+        self.assertNotIn("short-drama-knowhow", discovered)
+
+    def test_core_cli_initializes_from_antigravity_skill_layouts(self) -> None:
+        for label, rel_target in (
+            ("global", "home/.gemini/config/skills/short-drama"),
+            ("workspace", "workspace/.agents/skills/short-drama"),
+        ):
+            with self.subTest(layout=label):
+                with tempfile.TemporaryDirectory() as directory:
+                    temp = Path(directory)
+                    installed = temp / rel_target
+                    installed.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        installed.symlink_to(CORE, target_is_directory=True)
+                    except (OSError, NotImplementedError):
+                        shutil.copytree(CORE, installed)
+
+                    tool = installed / "scripts/project_tool.py"
+                    arbitrary_cwd = temp / "unrelated cwd 空格"
+                    arbitrary_cwd.mkdir()
+                    project = temp / "antigravity 项目"
+                    env = os.environ.copy()
+                    env["HOME"] = str(temp / "home")
+                    env["CODEX_HOME"] = str(temp / "empty CODEX_HOME")
+                    env["PYTHONIOENCODING"] = "cp1252"
+
+                    initialized = subprocess.run(
+                        [
+                            sys.executable,
+                            str(tool),
+                            "init",
+                            str(project),
+                            "--title",
+                            "天台回响",
+                        ],
+                        cwd=arbitrary_cwd,
+                        env=env,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(initialized.returncode, 0, initialized.stderr)
+                    self.assertEqual(
+                        json.loads(initialized.stdout)["project"]["title"], "天台回响"
+                    )
+
+                    status = subprocess.run(
+                        [sys.executable, str(tool), "status", str(project)],
+                        cwd=arbitrary_cwd,
+                        env=env,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(status.returncode, 0, status.stderr)
+                    self.assertEqual(
+                        json.loads(status.stdout)["project_root"],
+                        str(project.resolve()),
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

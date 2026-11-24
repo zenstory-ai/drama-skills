@@ -52,6 +52,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -v
 # 按所用宿主设置技能目录，例如：
 #   Claude Code: "$HOME/.claude/skills"
 #   Codex:       "${CODEX_HOME:-$HOME/.codex}/skills"
+#   Antigravity: "$HOME/.gemini/config/skills"
 #   其他支持 Agent Skill 规范的宿主：对应全局或项目级 skills 目录
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.claude/skills}"
 mkdir -p "$SKILLS_DIR"
@@ -89,7 +90,7 @@ uv venv --python 3.9 /tmp/floor && \
 
 ### 技能文档中的跨宿主与脚本调用约定
 
-- **宿主中立技能名**：所有 `SKILL.md`（含 YAML `description`）与 `references/*.md` 统一使用宿主中立的技能名（如 `` `short-drama-write` ``），不硬编码 `$`（Codex）或 `/`（Claude Code）等单一平台前缀；各宿主调用前缀统一在 `README.md` / `README_EN.md` 说明。
+- **宿主中立技能名**：所有 `SKILL.md`（含 YAML `description`）与 `references/*.md` 统一使用宿主中立的技能名（如 `` `short-drama-write` ``），不硬编码 `$`（Codex）或 `/`（Claude Code、Antigravity）等单一平台前缀；各宿主调用前缀统一在 `README.md` / `README_EN.md` 说明。
 - **统一 `<SKILL_DIR>` 路径占位符**：技能文档引用本技能内脚本时统一写作 `<SKILL_DIR>/scripts/<script>.py`（`<SKILL_DIR>` 指当前 `SKILL.md` 所在目录），不再混用 `{技能目录}` / `<本技能目录>`，也不得硬编码本机绝对路径（外部适配器脚本等用 `<ADAPTER_SCRIPT>` 等占位符）或指令 Agent 直接执行其他技能目录下的脚本。
 - **跨平台 Python 3.9+ 调用**：技能文档中的脚本命令统一使用跨平台 Python 3.9+ 约定（`<PYTHON>` 或明确注明 macOS/Linux 用 `python3`、Windows 用 `py -3` 或 `python`），并与下述 `MINIMUM_PYTHON` 下限保持一致。
 
