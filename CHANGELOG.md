@@ -13,6 +13,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 宿主适配（Google Antigravity）：新增 `.agents/skills.json` 供 Antigravity（CLI `agy`、IDE、App）在仓库工作区内自动发现全部 12 个公共技能，在中英文 README、贡献指南、设计文档与创作指南中补齐 Antigravity 全局（`~/.gemini/config/skills/`）与项目级（`.agents/skills/`）安装方式及 `/short-drama*` 调用写法，并补充安装布局与配置发现回归测试。
+
 ## [0.13.0] - 2026-11-22
 
 本版围绕四条主线升级全套技能：确立**软门禁原则**并对阶段规则表做分层瘦身（阶段规则表仅保留阻断级不变量，唯一规则 ID 由 205 条精简至 105 条）；完成全部公开与维护者技能的**跨宿主可移植性治理与随包脚本精简**；升级**生产、剪辑、成片配乐（`MUSIC-*`）与本地创作台**链路（补齐无 Node/Remotion 降级出片、外置叠加渲染协议与配乐全链路支持）；并加固 **CI 真实媒体、Windows、Remotion TypeScript 与严格静态类型检查**门禁。

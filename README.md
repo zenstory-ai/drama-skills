@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 ## 这是什么
 
-Drama Skills 覆盖 AI 短剧与漫剧从点子或原著到成片的全流程：**原著分析 → 分集剧本 → 视觉设定 → 图片提示词与分镜 → 视频提示词 → 确认后生产 → 剪辑成片 → 审查**。它以 12 个技能的形式装进你常用的编程 Agent（Claude Code、Codex 及其他支持 Agent Skill 规范的环境），直接使用当前 Agent 的模型写作。
+Drama Skills 覆盖 AI 短剧与漫剧从点子或原著到成片的全流程：**原著分析 → 分集剧本 → 视觉设定 → 图片提示词与分镜 → 视频提示词 → 确认后生产 → 剪辑成片 → 审查**。它以 12 个技能的形式装进你常用的编程 Agent（Claude Code、Codex、Antigravity 及其他支持 Agent Skill 规范的环境），直接使用当前 Agent 的模型写作。
 
 这套技能脱胎于我们漫剧工作室的日常产线：2025 年以来累计做过上千个 AI 短剧和漫剧项目，近 8 万行代码的一体化图形工具跟不上模型迭代后，我们把工程做法和提示词经验提炼成这套技能，改用 Agent CLI 加纯文本文件管项目，内部工具只留排队生成。
 
@@ -54,7 +54,7 @@ Drama Skills 覆盖 AI 短剧与漫剧从点子或原著到成片的全流程：
 
 ## 安装
 
-前提：已在用 Claude Code、Codex 或其他支持 Agent Skill 规范的编程 Agent，终端可执行 `npx`（Node.js）。
+前提：已在用 Claude Code、Codex、Antigravity 或其他支持 Agent Skill 规范的编程 Agent，终端可执行 `npx`（Node.js）。
 
 ```bash
 npx skills add zenstory-ai/drama-skills -y -g
@@ -85,13 +85,19 @@ mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 for skill in skills/*; do
   ln -s "$PWD/$skill" "${CODEX_HOME:-$HOME/.codex}/skills/$(basename "$skill")"
 done
+
+# Antigravity（CLI / IDE / App，全局安装）
+mkdir -p "$HOME/.gemini/config/skills"
+for skill in skills/*; do
+  ln -s "$PWD/$skill" "$HOME/.gemini/config/skills/$(basename "$skill")"
+done
 ```
 
-每个技能目录都可独立安装；只用某一项能力时软链对应目录即可。`short-drama` 负责项目初始化、阶段调度与本地创作台。
+每个技能目录都可独立安装；只用某一项能力时软链对应目录即可。`short-drama` 负责项目初始化、阶段调度与本地创作台。如果只想在单个项目里启用，Antigravity 也支持把所需技能链接到项目根目录的 `.agents/skills/`（在 Antigravity 里直接打开本仓库副本时，`.agents/skills.json` 会自动加载全部 12 个技能）；在 Antigravity CLI（`agy`）中新增链接后运行 `/skills reload` 即可生效。
 
 </details>
 
-也可在 [ClawHub](https://clawhub.ai/) 中查找安装（清单见 [`.clawhub/publish.json`](.clawhub/publish.json)）。技能本身统一使用宿主中立的技能名（如 `short-drama`、`short-drama-write`），调用前缀随运行环境而变：Claude Code 用 `/short-drama`，Codex 用 `$short-drama`，其他支持 Agent Skill 规范的环境直接用技能名或自然语言描述任务；下文示例统一以 `$` 为例，按所用宿主替换或省略前缀即可。
+也可在 [ClawHub](https://clawhub.ai/) 中查找安装（清单见 [`.clawhub/publish.json`](.clawhub/publish.json)）。技能本身统一使用宿主中立的技能名（如 `short-drama`、`short-drama-write`），调用前缀随运行环境而变：Claude Code 与 Antigravity 用 `/short-drama`，Codex 用 `$short-drama`，其他支持 Agent Skill 规范的环境直接用技能名或自然语言描述任务；下文示例统一以 `$` 为例，按所用宿主替换或省略前缀即可。
 
 > 版本变更见 [CHANGELOG.md](CHANGELOG.md) 与 [Releases](https://github.com/zenstory-ai/drama-skills/releases)；旧项目升级见[「升级到新版本后要做什么」](#升级到新版本后要做什么)。
 
@@ -249,7 +255,7 @@ flowchart LR
 
 ## 本地短剧创作台
 
-在 Agent 里一句话启动（Codex 写作 `$short-drama dashboard`）：
+在 Agent 里一句话启动（Claude Code 与 Antigravity 如下，Codex 写作 `$short-drama dashboard`）：
 
 ```
 /short-drama dashboard

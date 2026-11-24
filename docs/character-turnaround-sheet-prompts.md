@@ -138,7 +138,7 @@
 
 ## 用 Drama Skills 怎么做
 
-装好本仓库的 skill 后（对应 [short-drama-image-prompts](../skills/short-drama-image-prompts/SKILL.md)）：在 Claude Code 里说：“用 /short-drama-image-prompts 为 EP001 已确定的人物写三视图提示词”（Codex 里写作 `$short-drama-image-prompts`）。它会把带 `IMG-...` 编号的可复制提示词存进 `剧集/<EP>/图片提示词.md`，本身不直接出图；需要调用接口生成图片时转用 `short-drama-produce`，看过任务预览并明确确认后才会执行。
+装好本仓库的 skill 后（对应 [short-drama-image-prompts](../skills/short-drama-image-prompts/SKILL.md)）：在 Claude Code 或 Antigravity 里说：“用 /short-drama-image-prompts 为 EP001 已确定的人物写三视图提示词”（Codex 里写作 `$short-drama-image-prompts`）。它会把带 `IMG-...` 编号的可复制提示词存进 `剧集/<EP>/图片提示词.md`，本身不直接出图；需要调用接口生成图片时转用 `short-drama-produce`，看过任务预览并明确确认后才会执行。
 
 ## 常见问题
 

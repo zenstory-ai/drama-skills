@@ -1,4 +1,4 @@
-<!-- Last synced with README.md: 2026-11-21 -->
+<!-- Last synced with README.md: 2026-11-24 -->
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/zenstory-ai/zenstory/main/apps/web/public/brand/zenstory-ai-mark.svg" alt="" width="76" height="76">
@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/f67e2e04-52e7-42a9-a4a0-e2864ff0f51e
 
 ## What it is
 
-Drama Skills covers the AI short-drama and motion-comic pipeline from idea or source novel to finished cut: **source analysis → episode script → visual design → image prompts and storyboard → video prompts → confirmed production → editing → review**. It installs as 12 skills into the coding agent you already use (Claude Code, Codex, or any runtime supporting the Agent Skill spec) and writes with that agent's model.
+Drama Skills covers the AI short-drama and motion-comic pipeline from idea or source novel to finished cut: **source analysis → episode script → visual design → image prompts and storyboard → video prompts → confirmed production → editing → review**. It installs as 12 skills into the coding agent you already use (Claude Code, Codex, Antigravity, or any runtime supporting the Agent Skill spec) and writes with that agent's model.
 
 These skills grew out of our motion-comic studio's production line: after more than a thousand AI short-drama and motion-comic projects since 2025, a nearly 80,000-line all-in-one GUI could no longer keep up with model iteration, so we distilled our workflows and prompt craft into plain-file agent skills and kept only the generation queue in-house.
 
@@ -56,7 +56,7 @@ These skills grew out of our motion-comic studio's production line: after more t
 
 ## Install
 
-Prerequisite: Claude Code, Codex, or another coding agent supporting the Agent Skill spec, with `npx` (Node.js) available in your terminal.
+Prerequisite: Claude Code, Codex, Antigravity, or another coding agent supporting the Agent Skill spec, with `npx` (Node.js) available in your terminal.
 
 ```bash
 npx skills add zenstory-ai/drama-skills -y -g
@@ -87,13 +87,19 @@ mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 for skill in skills/*; do
   ln -s "$PWD/$skill" "${CODEX_HOME:-$HOME/.codex}/skills/$(basename "$skill")"
 done
+
+# Antigravity (CLI / IDE / App, global)
+mkdir -p "$HOME/.gemini/config/skills"
+for skill in skills/*; do
+  ln -s "$PWD/$skill" "$HOME/.gemini/config/skills/$(basename "$skill")"
+done
 ```
 
-Each skill directory is standalone; link only the directories you need. `short-drama` provides project setup, stage routing, and the local creator workspace.
+Each skill directory is standalone; link only the directories you need. `short-drama` provides project setup, stage routing, and the local creator workspace. To scope skills to a single project in Antigravity, link them into `<project>/.agents/skills/` instead (opening a clone of this repository in Antigravity loads all 12 skills automatically via `.agents/skills.json`); in Antigravity CLI (`agy`), run `/skills reload` after adding symlinks.
 
 </details>
 
-Skills are also listed on [ClawHub](https://clawhub.ai/) (manifest: [`.clawhub/publish.json`](.clawhub/publish.json)). The skills themselves use host-neutral skill names (such as `short-drama` and `short-drama-write`), while invocation prefixes differ by runtime: Claude Code uses `/short-drama`, Codex uses `$short-drama`, and other Agent Skill runtimes accept the plain skill name or natural language; examples below use `$`, so adapt or omit the prefix for your runtime.
+Skills are also listed on [ClawHub](https://clawhub.ai/) (manifest: [`.clawhub/publish.json`](.clawhub/publish.json)). The skills themselves use host-neutral skill names (such as `short-drama` and `short-drama-write`), while invocation prefixes differ by runtime: Claude Code and Antigravity use `/short-drama`, Codex uses `$short-drama`, and other Agent Skill runtimes accept the plain skill name or natural language; examples below use `$`, so adapt or omit the prefix for your runtime.
 
 > Release notes are in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/zenstory-ai/drama-skills/releases); for existing projects, see [What do I do after upgrading?](#what-do-i-do-after-upgrading).
 
@@ -256,7 +262,7 @@ flowchart LR
 
 ## Local creator workspace
 
-Launch with one line inside your agent (Codex writes `$short-drama dashboard`):
+Launch with one line inside your agent (Claude Code and Antigravity as shown; Codex writes `$short-drama dashboard`):
 
 ```
 /short-drama dashboard

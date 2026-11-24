@@ -3,7 +3,7 @@
 ## Status
 
 - **Status:** Active
-- **Primary surface:** `short-drama dashboard` (invoked with your agent host prefix, e.g. `/short-drama dashboard` in Claude Code or `$short-drama dashboard` in Codex)
+- **Primary surface:** `short-drama dashboard` (invoked with your agent host prefix, e.g. `/short-drama dashboard` in Claude Code / Antigravity or `$short-drama dashboard` in Codex)
 - **Audience:** writers, directors, and independent short-drama creators
 
 ## Product principle
