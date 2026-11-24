@@ -178,11 +178,13 @@ SOUND_OPTION = re.compile(r"^(起点|增益)[：:]\s*([+-]?[0-9]+(?:\.[0-9]+)?)\
 AUDIBLE_RANGE_DB = 40.0
 AUDIBLE_WINDOW = 0.02
 AUDIBLE_RATE = 8000
-SUBTITLE_WINDOW = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s*$")
+SUBTITLE_WINDOW = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*[-–~]\s*([0-9]+(?:\.[0-9]+)?)\s*$")
 # One shot can carry several lines: an exchange of three is one shot, not three.
 # Numbered fields keep them ordered and let each one state its own window.
 SUBTITLE_FIELD = re.compile(r"^字幕(?:\s*(\d+))?$")
-SUBTITLE_CUE = re.compile(r"^\s*([0-9.]+)\s*[-–~]\s*([0-9.]+)\s+(.+?)\s*$")
+SUBTITLE_CUE = re.compile(
+    r"^\s*([0-9]+(?:\.[0-9]+)?)\s*[-–~]\s*([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s*$"
+)
 # Burned subtitles follow GY/T 288 and short-drama practice: no closing
 # punctuation, a pause inside a line shows as a full-width space, and ？ ！ stay
 # because they change how the line reads. Only the burned text changes: the cut
@@ -1151,6 +1153,7 @@ def _parse_subtitles(
     is_numbered, entries = _field_entries(
         fields, SUBTITLE_FIELD, "字幕", cut_id=cut_id, line=line
     )
+    window_raw = fields.get("字幕时间")
 
     def keywords(value: str, where: int) -> tuple[str, tuple[str, ...]]:
         marked = SUBTITLE_KEYWORDS.search(value)
@@ -1170,6 +1173,11 @@ def _parse_subtitles(
         return text, words
 
     if is_numbered:
+        if window_raw is not None:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 已使用编号「字幕 N」自带时间，"
+                "不能再同时写「字幕时间」"
+            )
         cues: list[Subtitle] = []
         for index, value, where in entries:
             found = SUBTITLE_CUE.match(value)
@@ -1188,9 +1196,23 @@ def _parse_subtitles(
         return tuple(cues)
 
     if not entries or entries[0][1].strip() == "无":
+        if window_raw is not None and window_raw[0].strip() not in {"", "无"}:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{window_raw[1]}: {cut_id} 写了「字幕时间」，"
+                "但缺少有效的「字幕」台词"
+            )
         return ()
-    text, words = keywords(entries[0][1], entries[0][2])
-    window_raw = fields.get("字幕时间")
+    raw_value, where = entries[0][1], entries[0][2]
+    inline_cue = SUBTITLE_CUE.match(raw_value)
+    if inline_cue is not None:
+        if window_raw is not None:
+            raise EditError(
+                f"{CUT_LIST_NAME}:{where}: {cut_id} 同时在「字幕」行内和「字幕时间」写了起止时间；"
+                "单句定时请只保留一种写法"
+            )
+        text, words = keywords(inline_cue.group(3), where)
+        return ((float(inline_cue.group(1)), float(inline_cue.group(2)), text, words),)
+    text, words = keywords(raw_value, where)
     if window_raw is None:
         return ((None, None, text, words),)
     found = SUBTITLE_WINDOW.match(window_raw[0])
@@ -1710,6 +1732,7 @@ def _inspect_cuts(
     delivery: Optional[Delivery] = None,
     listen: Optional[bool] = None,
     partial: bool = False,
+    plan_only: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Run all mechanical checks and return (blocking_findings, non_blocking_notices)."""
 
@@ -1776,11 +1799,22 @@ def _inspect_cuts(
                 f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 是静帧，入点必须是 0.00，"
                 "出点等于时长"
             )
-        media = _resolve_media(episode, project_root, cut.media)
+        media, media_status = _inspect_media_path(episode, project_root, cut.media)
         if media is None:
-            findings.append(
-                f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}"
-            )
+            if plan_only and media_status == "missing":
+                notices.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材尚未生成"
+                    f"（--plan-only 纸面预检）: {cut.media}"
+                )
+            elif plan_only:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材路径不安全或不在项目目录内: "
+                    f"{cut.media}"
+                )
+            else:
+                findings.append(
+                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的素材不存在或不在项目目录内: {cut.media}"
+                )
         elif probe and cut.still:
             try:
                 probe_stream(media)
@@ -1856,12 +1890,23 @@ def _inspect_cuts(
                     f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效时间超出本段区间"
                     f": {effect.start:g}-{effect.end:g}"
                 )
-            effect_media = _resolve_media(episode, project_root, effect.path)
+            effect_media, effect_status = _inspect_media_path(episode, project_root, effect.path)
             if effect_media is None:
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在或不在项目目录内: "
-                    f"{effect.path}"
-                )
+                if plan_only and effect_status == "missing":
+                    notices.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件尚未生成"
+                        f"（--plan-only 纸面预检）: {effect.path}"
+                    )
+                elif plan_only:
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件路径不安全或不在项目目录内: "
+                        f"{effect.path}"
+                    )
+                else:
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效文件不存在或不在项目目录内: "
+                        f"{effect.path}"
+                    )
             elif probe:
                 if probe_audio(effect_media) is None:
                     findings.append(
@@ -1881,12 +1926,24 @@ def _inspect_cuts(
                             f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的音效读不出: {error}"
                         )
         for voice in cut.voices:
-            if _resolve_media(episode, project_root, voice.path) is None:
+            voice_media, voice_status = _inspect_media_path(episode, project_root, voice.path)
+            if voice_media is None:
                 voiced = False
-                findings.append(
-                    f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在或不在项目目录内: "
-                    f"{voice.path}"
-                )
+                if plan_only and voice_status == "missing":
+                    notices.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件尚未生成"
+                        f"（--plan-only 纸面预检）: {voice.path}"
+                    )
+                elif plan_only:
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件路径不安全或不在项目目录内: "
+                        f"{voice.path}"
+                    )
+                else:
+                    findings.append(
+                        f"{CUT_LIST_NAME}:{cut.line_number}: {cut.cut_id} 的配音文件不存在或不在项目目录内: "
+                        f"{voice.path}"
+                    )
 
     # The film's rate: the spec's, else the one the probe loop read off the video.
     fps = delivery.fps if delivery is not None and delivery.fps else (media_format or (0, 0, 0.0))[2]
@@ -1922,9 +1979,18 @@ def _inspect_cuts(
                     f"{where} 的环境声起点 {cut.bed.start:g} 要在 {earliest:g}（上一段开头）到本段结尾之间"
                 )
             if cut.bed.path is not None:
-                bed_media = _resolve_media(episode, project_root, cut.bed.path)
+                bed_media, bed_status = _inspect_media_path(episode, project_root, cut.bed.path)
                 if bed_media is None:
-                    findings.append(f"{where} 的环境声文件不存在或不在项目目录内: {cut.bed.path}")
+                    if plan_only and bed_status == "missing":
+                        notices.append(
+                            f"{where} 的环境声文件尚未生成（--plan-only 纸面预检）: {cut.bed.path}"
+                        )
+                    elif plan_only:
+                        findings.append(
+                            f"{where} 的环境声文件路径不安全或不在项目目录内: {cut.bed.path}"
+                        )
+                    else:
+                        findings.append(f"{where} 的环境声文件不存在或不在项目目录内: {cut.bed.path}")
                 elif probe:
                     if probe_audio(bed_media) is None:
                         findings.append(f"{where} 的环境声文件没有音轨: {cut.bed.path}")
@@ -2021,6 +2087,7 @@ def check_cuts(
     delivery: Optional[Delivery] = None,
     listen: Optional[bool] = None,
     partial: bool = False,
+    plan_only: bool = False,
 ) -> list[str]:
     """Every mechanical cross-check the cut list can be held to. Returns findings."""
 
@@ -2033,6 +2100,7 @@ def check_cuts(
         delivery=delivery,
         listen=listen,
         partial=partial,
+        plan_only=plan_only,
     )[0]
 
 
@@ -2046,6 +2114,7 @@ def collect_notices(
     delivery: Optional[Delivery] = None,
     listen: Optional[bool] = None,
     partial: bool = False,
+    plan_only: bool = False,
 ) -> list[str]:
     """Collect non-blocking notices (short stills, short/tagged voice overlap, stale mtime, etc.)."""
 
@@ -2058,6 +2127,7 @@ def collect_notices(
         delivery=delivery,
         listen=listen,
         partial=partial,
+        plan_only=plan_only,
     )[1]
 
 
@@ -2229,6 +2299,60 @@ def _normalize(text: str) -> str:
     return re.sub(r"[\s,，。！？、；：/／…—·\-“”‘’\"'()（）]", "", text)
 
 
+def _has_symlink_component(base_resolved: Path, relative: str) -> bool:
+    """Return True if any existing path segment under `base_resolved` is a symlink."""
+
+    current = base_resolved
+    for part in Path(relative).parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            current = current.parent
+            continue
+        current = current / part
+        if current.is_symlink():
+            return True
+        if not current.exists():
+            break
+    return False
+
+
+def _inspect_media_path(
+    episode: Path, project_root: Path, relative: str
+) -> tuple[Optional[Path], str]:
+    """Classify a media path against episode and project roots as 'ok', 'missing', or 'unsafe'."""
+
+    cleaned = relative.strip()
+    if (
+        not cleaned
+        or Path(cleaned).is_absolute()
+        or cleaned.startswith(("/", "\\"))
+        or re.match(r"^[A-Za-z]:", cleaned) is not None
+    ):
+        return None, "unsafe"
+    root = project_root.resolve()
+    bases: list[Path] = []
+    for base in (episode, project_root):
+        resolved_base = base.resolve()
+        if resolved_base not in bases and (
+            resolved_base == root or root in resolved_base.parents
+        ):
+            bases.append(resolved_base)
+    valid_missing = False
+    for base_resolved in bases:
+        if _has_symlink_component(base_resolved, cleaned):
+            return None, "unsafe"
+        candidate = (base_resolved / cleaned).resolve()
+        if not (candidate == root or root in candidate.parents):
+            continue
+        if candidate.is_file():
+            return candidate, "ok"
+        if candidate.exists():
+            return None, "unsafe"
+        valid_missing = True
+    return (None, "missing") if valid_missing else (None, "unsafe")
+
+
 def _resolve_media(episode: Path, project_root: Path, relative: str) -> Optional[Path]:
     """The file a cut list names, against the episode then the project; None if absent.
 
@@ -2236,12 +2360,8 @@ def _resolve_media(episode: Path, project_root: Path, relative: str) -> Optional
     treated as absent: the cut list describes this project's material only.
     """
 
-    root = project_root.resolve()
-    for base in (episode, project_root):
-        candidate = (base / relative).resolve()
-        if candidate.is_file() and (candidate == root or root in candidate.parents):
-            return candidate
-    return None
+    path, _ = _inspect_media_path(episode, project_root, relative)
+    return path
 
 
 def render(
@@ -4556,6 +4676,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--partial", action="store_true",
         help="局部试剪：未采用的上游镜头移入提醒，不阻断检查或渲染",
     )
+    parser.add_argument(
+        "--plan-only", action="store_true",
+        help=(
+            "投产前纸面预检（仅用于 check）：仍严格校验算术、上游 ID、剧本逐字字幕、"
+            "画面文字、未采用镜头与路径安全，仅将尚未生成的本地素材降为提醒"
+        ),
+    )
     parser.add_argument("--no-subtitles", action="store_true", help="render 时不烧字幕")
     parser.add_argument(
         "--subtitles", choices=SUBTITLE_RENDERERS, default="ffmpeg",
@@ -4592,6 +4719,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     episode = Path(arguments.episode).resolve()
     project_root = Path(arguments.project_root).resolve()
     try:
+        if arguments.plan_only and arguments.command != "check":
+            raise EditError(
+                "--plan-only 仅用于 check 命令的投产前纸面预检，不能用于 render 或 verify"
+            )
         delivery, cuts, unused = parse_cut_list(episode / CUT_LIST_NAME)
         if arguments.command == "check":
             findings, notices = _inspect_cuts(
@@ -4599,6 +4730,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 probe=_which("ffprobe") is not None, unused=unused, delivery=delivery,
                 listen=_which("ffmpeg") is not None,
                 partial=arguments.partial,
+                plan_only=arguments.plan_only,
             )
             payload: dict[str, Any] = {
                 "段数": len(cuts),
@@ -4607,9 +4739,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "未采用镜头": unused,
                 "findings": findings,
             }
+            if arguments.plan_only:
+                payload["模式"] = "plan-only"
             if notices:
                 payload["提醒"] = notices
             unmeasured = []
+            if arguments.plan_only and any("尚未生成（--plan-only 纸面预检）" in item for item in notices):
+                unmeasured.append("尚未生成素材的画幅、帧率、实际时长与配音有声区间（--plan-only 纸面预检）")
             if _which("ffprobe") is None:
                 unmeasured.append("区间是否超过素材实际时长（PATH 上没有 ffprobe）")
             if _which("ffmpeg") is None and any(cut.voices for cut in cuts):
