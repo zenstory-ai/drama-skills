@@ -1190,6 +1190,69 @@ class CheckEpisodeMapTests(unittest.TestCase):
             self.assertIn("EP003: empty source chapter span", no_index_warnings)
             self.assertIn("EP005: unlinked source chapter span", no_index_warnings)
 
+    def test_chinese_chapter_ranges_utf8_bom_and_list_placeholders(self) -> None:
+        # 1. Chinese chapter ranges with 章 on both ends expand intermediate chapters.
+        for expr in ("第1章-第5章", "第1章至第5章", "第1-5章", "第1章~第5章"):
+            with self.subTest(expr=expr):
+                self.assertEqual(
+                    episode_intake._extract_chapter_refs(expr),
+                    (False, [1, 2, 3, 4, 5]),
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # 2. UTF-8 with BOM in both _index.json and episode-map.jsonl succeeds cleanly
+            #    and validates intermediate chapters (2, 3, 4) from "第1章-第5章".
+            novel_index_path = root / "_index.json"
+            novel_index_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0.0",
+                        "chapters": [
+                            {"sequence": 1, "source_number": 1},
+                            {"sequence": 5, "source_number": 5},
+                        ],
+                    }
+                ),
+                encoding="utf-8-sig",
+            )
+            map_path = root / "episode-map-bom.jsonl"
+            rows = [
+                self._record("EP001", chapter_range="第1章-第5章"),
+                self._record("EP002", chapter_range="第1章至第5章"),
+            ]
+            map_path.write_text(
+                "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+                encoding="utf-8-sig",
+            )
+            cli = run_cli("check-map", map_path, "--novel-index", novel_index_path)
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            payload = json.loads(cli.stdout)
+            self.assertTrue(payload["valid"])
+            warnings_text = "\n".join(payload["warnings"])
+            self.assertIn("EP001: source chapter(s) not found in novel index: 2, 3, 4", warnings_text)
+            self.assertIn("EP002: source chapter(s) not found in novel index: 2, 3, 4", warnings_text)
+
+            # 3. "__FILL__" placeholder inside list fields must fail hard.
+            fill_list_map = root / "fill-list.jsonl"
+            self._write_jsonl(
+                fill_list_map,
+                [
+                    self._record(
+                        "EP001",
+                        locations=["大厅", "__FILL__"],
+                        characters=["__FILL__"],
+                        setup_payoff=["__FILL__"],
+                    )
+                ],
+            )
+            fill_res = episode_intake.check_episode_map(fill_list_map)
+            self.assertFalse(fill_res["valid"])
+            joined = "\n".join(fill_res["problems"])
+            self.assertIn("EP001: locations contains unfilled placeholder '__FILL__'", joined)
+            self.assertIn("EP001: characters contains unfilled placeholder '__FILL__'", joined)
+            self.assertIn("EP001: setup_payoff contains unfilled placeholder '__FILL__'", joined)
+
 
 if __name__ == "__main__":
     unittest.main()

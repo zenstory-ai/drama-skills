@@ -139,6 +139,38 @@ class UnnumberedTimedSubtitleTests(unittest.TestCase):
                 [],
             )
 
+    def test_unnumbered_dialogue_starting_with_integer_range_is_not_misparsed_as_timing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cut_list = (
+                "# EP001 剪辑单\n\n"
+                "- 画幅与帧率：1080×1920 · 24fps\n\n"
+                "## CUT-EP001-001 · 整数区间整段台词\n\n"
+                "- 来源：MOTION-EP001-001 · 制作成果/video/001.mp4\n"
+                "- 入点：0.00\n- 出点：3.00\n- 时长：3.00\n"
+                "- 字幕：3-5 天内交货\n\n"
+                "## CUT-EP001-002 · 整数区间搭配独立时间\n\n"
+                "- 来源：MOTION-EP001-002 · 制作成果/video/002.mp4\n"
+                "- 入点：0.00\n- 出点：3.00\n- 时长：3.00\n"
+                "- 字幕：10-15 minutes left\n"
+                "- 字幕时间：0.20-1.80\n"
+            )
+            episode = _write_paper_episode(root, cut_list, create_media=True)
+            (episode / "剧本.md").write_text(
+                "# EP001 · 交期\n\n"
+                "## EP001-SC001 内 · 接待台 · 夜\n\n"
+                "林安：3-5 天内交货\n\n"
+                "周明：10-15 minutes left\n",
+                encoding="utf-8",
+            )
+            delivery, cuts, unused = edit.parse_cut_list(episode / "剪辑单.md")
+            self.assertEqual(cuts[0].subtitles, ((None, None, "3-5 天内交货", ()),))
+            self.assertEqual(cuts[1].subtitles, ((0.2, 1.8, "10-15 minutes left", ()),))
+            self.assertEqual(
+                edit.check_cuts(episode, cuts, root, probe=False, unused=unused, delivery=delivery),
+                [],
+            )
+
     def test_contradictory_or_malformed_subtitle_timing_is_rejected(self):
         parse_error_cases = {
             "inline timed plus subtitle window": [
@@ -422,6 +454,69 @@ class PlanOnlyPreCheckTests(unittest.TestCase):
                 self.assertTrue(
                     any("001.mp4" in item and "不在项目目录内" in item for item in emit.call_args.args[0]["findings"])
                 )
+
+    def test_symlink_bypass_via_nonexistent_parent_and_sibling_path_safety(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("platform does not support symlinks")
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            outside = workspace / "outside"
+            outside.mkdir()
+            (outside / "secret.mp4").write_bytes(b"")
+            root = workspace / "project"
+            base = self._paper_cut_list()
+            episode = _write_paper_episode(root, base, create_media=False)
+            (root / "short-drama.json").write_text("{}", encoding="utf-8")
+
+            media_root = episode / "制作成果"
+            video_dir = media_root / "video"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                (video_dir / "link_inside.mp4").symlink_to(root / "short-drama.json")
+                (video_dir / "dangling_out.mp4").symlink_to(outside / "dangling.mp4")
+                (media_root / "link_out").symlink_to(outside, target_is_directory=True)
+                # Unrelated symlink outside project_root matching sibling episode name.
+                (workspace / "EP002").symlink_to(outside, target_is_directory=True)
+            except OSError:
+                self.skipTest("symlinks cannot be created in this environment")
+
+            # 1-3: `nonexistent/../<symlink>` must NEVER bypass symlink scanning.
+            bypass_paths = (
+                "nonexistent/../制作成果/video/link_inside.mp4",
+                "nonexistent/../制作成果/video/dangling_out.mp4",
+                "nonexistent/../制作成果/link_out/future.mp4",
+            )
+            for rel in bypass_paths:
+                with self.subTest(bypass=rel):
+                    self.assertEqual(
+                        edit._inspect_media_path(episode, root, rel),
+                        (None, "unsafe"),
+                    )
+                    mutated = base.replace("制作成果/video/001.mp4", rel)
+                    (episode / "剪辑单.md").write_text(mutated, encoding="utf-8")
+                    with patch.object(edit, "_emit") as emit:
+                        rc = edit.main([
+                            "check", "--plan-only", str(episode), "--project-root", str(root)
+                        ])
+                    self.assertEqual(rc, 1, emit.call_args.args[0])
+                    self.assertTrue(
+                        any("不在项目目录内" in item for item in emit.call_args.args[0]["findings"]),
+                        emit.call_args.args[0]["findings"],
+                    )
+
+            # 4: Legitimate sibling path `../EP002/video.mp4` stays valid under episode
+            # even when `project_root.parent / "EP002"` is an unrelated symlink.
+            self.assertEqual(
+                edit._inspect_media_path(episode, root, "../EP002/video.mp4"),
+                (None, "missing"),
+            )
+            sibling_file = root / "剧集" / "EP002" / "video.mp4"
+            sibling_file.parent.mkdir(parents=True, exist_ok=True)
+            sibling_file.write_bytes(b"")
+            self.assertEqual(
+                edit._inspect_media_path(episode, root, "../EP002/video.mp4"),
+                (sibling_file.resolve(), "ok"),
+            )
 
     def test_plan_only_still_probes_existing_media_while_warning_on_missing_media(self):
         with tempfile.TemporaryDirectory() as directory:

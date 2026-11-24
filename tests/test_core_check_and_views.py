@@ -284,6 +284,53 @@ class SpeechRateSoftGateTests(unittest.TestCase):
             self.assertEqual(result.errors, [])
             self.assertEqual(result.warnings, [])
 
+    def test_chinese_dao_speech_cues_detected_without_written_false_positives(self) -> None:
+        spoken_cues = (
+            "近景固定，林岚冷笑道：“你把前三个季度的出入库清单全部藏起来，"
+            "现在还敢当着大伙的面说账目没问题，真当大家都不识数吗？”",
+            "近景固定，林岚笑道：“你把前三个季度的出入库清单全部藏起来，"
+            "现在还敢当着大伙的面说账目没问题，真当大家都不识数吗？”",
+            "近景固定，林岚沉声道：“你把前三个季度的出入库清单全部藏起来，"
+            "现在还敢当着大伙的面说账目没问题，真当大家都不识数吗？”",
+            "近景固定，林岚补充道：“你把前三个季度的出入库清单全部藏起来，"
+            "现在还敢当着大伙的面说账目没问题，真当大家都不识数吗？”",
+        )
+        manifest = {
+            "format": {
+                "prompt_language": "zh-CN",
+                "pacing": {"spoken_characters_per_second": 4.0},
+            }
+        }
+        for prompt in spoken_cues:
+            with self.subTest(prompt=prompt[:14]), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                episode = _write_project(
+                    root,
+                    _minimal_episode_texts(motion_duration="5s", motion_prompt=prompt),
+                    manifest,
+                )
+                result = check.validate_episode_with_warnings(episode, root)
+                self.assertEqual(result.errors, [])
+                self.assertTrue(
+                    any("MOTION-EP001-001" in warning for warning in result.warnings),
+                    result.warnings,
+                )
+
+        # Written/sign "写道：" must NOT be counted as spoken dialogue.
+        written_prompt = (
+            "近景特写，黑板上清晰写道：“本店所有原料均于每日清晨五点前冷链送达并由值班店长逐项核验签字留档，逾期一律拒收。”"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            episode = _write_project(
+                root,
+                _minimal_episode_texts(motion_duration="3s", motion_prompt=written_prompt),
+                manifest,
+            )
+            result = check.validate_episode_with_warnings(episode, root)
+            self.assertEqual(result.errors, [])
+            self.assertEqual(result.warnings, [])
+
 
 class CompoundShotScaleTests(unittest.TestCase):
     """F-09: compound and transition shot-scale matching in creator_views.py."""

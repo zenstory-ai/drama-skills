@@ -83,7 +83,7 @@ EPISODE_MAP_LIST_KEYS = ("setup_payoff", "locations", "characters")
 EPISODE_MAP_PLACEHOLDERS = frozenset({"__FILL__"})
 SOURCE_SPAN_KEYS = ("source_chapters", "chapter_range", "source_chapter_span", "source_span")
 _CHAPTER_RANGE_TOKEN_RE = re.compile(
-    r"(?:^|[\s,，、;；])(?:ch-?|第)?(\d+)\s*(?:\.\.|[-–—~至到])\s*(?:ch-?|第)?(\d+)章?(?=$|[\s,，、;；])",
+    r"(?:^|[\s,，、;；])(?:ch-?|第)?(\d+)章?\s*(?:\.\.|[-–—~至到])\s*(?:ch-?|第)?(\d+)章?(?=$|[\s,，、;；])",
     re.IGNORECASE,
 )
 _MAX_CHAPTER_RANGE_EXPANSION = 1000
@@ -714,11 +714,15 @@ def _read_jsonl(path: Path, *, absent_ok: bool = False) -> list[dict[str, Any]]:
         return []
     records: list[dict[str, Any]] = []
     for line_number, raw in enumerate(path.read_bytes().splitlines(), 1):
-        if not raw.strip():
+        try:
+            text = raw.decode("utf-8-sig" if line_number == 1 else "utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{path}: invalid JSONL line {line_number}: {error}") from error
+        if not text.strip():
             continue
         try:
-            record = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            record = json.loads(text)
+        except json.JSONDecodeError as error:
             raise ValueError(f"{path}: invalid JSONL line {line_number}: {error}") from error
         if not isinstance(record, dict):
             raise ValueError(f"{path}: JSONL line {line_number} is not an object")
@@ -916,7 +920,7 @@ def _extract_chapter_refs(value: Any) -> tuple[bool, list[int]]:
 
 
 def _load_novel_chapter_ids(novel_index_path: Path) -> set[int]:
-    document = json.loads(novel_index_path.read_text(encoding="utf-8"))
+    document = json.loads(novel_index_path.read_text(encoding="utf-8-sig"))
     if not isinstance(document, dict) or not isinstance(document.get("chapters"), list):
         raise ValueError("novel index must be a JSON object containing a chapters list")
     chapter_ids: set[int] = set()
@@ -1017,7 +1021,14 @@ def check_episode_map(
             value = record[key]
             if not isinstance(value, list):
                 problems.append(f"{label}: {key} must be a list")
-            elif key in {"locations", "characters"} and not value:
+                continue
+            for item in value:
+                if isinstance(item, str) and item.strip() in EPISODE_MAP_PLACEHOLDERS:
+                    problems.append(
+                        f"{label}: {key} contains unfilled placeholder {item.strip()!r}"
+                    )
+                    break
+            if key in {"locations", "characters"} and not value:
                 warnings.append(f"{label}: {key} is empty")
 
         present_span_keys = [key for key in SOURCE_SPAN_KEYS if key in record]

@@ -1204,7 +1204,13 @@ def _parse_subtitles(
         return ()
     raw_value, where = entries[0][1], entries[0][2]
     inline_cue = SUBTITLE_CUE.match(raw_value)
-    if inline_cue is not None:
+    # On an unnumbered `字幕：` line, a plain integer range like `3-5 天内交货`
+    # or `10-15 minutes left` is dialogue, not inline timing. Require at least
+    # one decimal timestamp (e.g. `0.20-1.40` or `0-1.5`) for inline unnumbered
+    # cues; numbered `字幕 N` always parses via SUBTITLE_CUE above.
+    if inline_cue is not None and (
+        "." in inline_cue.group(1) or "." in inline_cue.group(2)
+    ):
         if window_raw is not None:
             raise EditError(
                 f"{CUT_LIST_NAME}:{where}: {cut_id} 同时在「字幕」行内和「字幕时间」写了起止时间；"
@@ -2299,11 +2305,34 @@ def _normalize(text: str) -> str:
     return re.sub(r"[\s,，。！？、；：/／…—·\-“”‘’\"'()（）]", "", text)
 
 
-def _has_symlink_component(base_resolved: Path, relative: str) -> bool:
-    """Return True if any existing path segment under `base_resolved` is a symlink."""
+def _is_within_root(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _lexical_within_root(base_resolved: Path, relative: str, root: Path) -> bool:
+    """Return True if walking `relative` from `base_resolved` stays lexically inside `root`."""
 
     current = base_resolved
     for part in Path(relative).parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if current == root:
+                return False
+            current = current.parent
+            if not _is_within_root(current, root):
+                return False
+            continue
+        current = current / part
+    return _is_within_root(current, root)
+
+
+def _has_symlink_component(base_resolved: Path, relative: str) -> bool:
+    """Return True if any traversed path segment under `base_resolved` is a symlink."""
+
+    current = base_resolved
+    parts = Path(relative).parts
+    for index, part in enumerate(parts):
         if part in ("", "."):
             continue
         if part == "..":
@@ -2312,7 +2341,7 @@ def _has_symlink_component(base_resolved: Path, relative: str) -> bool:
         current = current / part
         if current.is_symlink():
             return True
-        if not current.exists():
+        if not current.exists() and ".." not in parts[index + 1 :]:
             break
     return False
 
@@ -2325,6 +2354,7 @@ def _inspect_media_path(
     cleaned = relative.strip()
     if (
         not cleaned
+        or "\x00" in cleaned
         or Path(cleaned).is_absolute()
         or cleaned.startswith(("/", "\\"))
         or re.match(r"^[A-Za-z]:", cleaned) is not None
@@ -2334,16 +2364,16 @@ def _inspect_media_path(
     bases: list[Path] = []
     for base in (episode, project_root):
         resolved_base = base.resolve()
-        if resolved_base not in bases and (
-            resolved_base == root or root in resolved_base.parents
-        ):
+        if resolved_base not in bases and _is_within_root(resolved_base, root):
             bases.append(resolved_base)
     valid_missing = False
     for base_resolved in bases:
+        if not _lexical_within_root(base_resolved, cleaned, root):
+            continue
         if _has_symlink_component(base_resolved, cleaned):
             return None, "unsafe"
         candidate = (base_resolved / cleaned).resolve()
-        if not (candidate == root or root in candidate.parents):
+        if not _is_within_root(candidate, root):
             continue
         if candidate.is_file():
             return candidate, "ok"

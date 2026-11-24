@@ -1510,12 +1510,13 @@ _D_LANG_PREFIX_RE = re.compile(r"^\s*\[[^\]\r\n]{1,32}\]\s*")
 _D_CONTROL_TAG_RE = re.compile(r"<(?:scenetrans|cutoff)\s*/?>", re.IGNORECASE)
 _BRACE_SPEECH_RE = re.compile(r"\{([^{}\r\n]+)\}")
 _BRACE_UNQUOTED_SPEECH_RE = re.compile(
-    r"(?:说道|说|讲|喊|叫|问|答|回|念|读)[：:]\s*(\S[\s\S]*)$"
+    r"(?:说道|说|讲|喊|叫|问|答|回|念|读|(?<![写报知])道)[：:]\s*(\S[\s\S]*)$"
 )
 _CLAUSE_SPLIT_RE = re.compile(r"[。！？；.!?\n]")
 _SPEECH_CUE_RE = re.compile(
     r"(?:说道|说着|说|讲道|讲|喊道|喊出|大喊|高喊|喊|叫道|叫|问道|追问|反问|喝问|问"
     r"|答道|抢答|回答|答|回道|喝道|骂道|怒骂|叹道|念道|念出|念|读出|低语|耳语|开口"
+    r"|冷笑道|笑道|沉声道|低声道|厉声道|轻声道|怒道|(?<![写报知通轨跑走街楼渠频])道(?=[ \t\u3000]*[：:])"
     r"|吐出|吐字|叮嘱|宣布|打断|补刀|尖叫|旁白|心声|独白|台词|原话|配音|画外音)"
     r"|\b(?:say(?:s|ing)?|said|speak(?:s|ing)?|spoke|call(?:s|ed|ing)?"
     r"|answer(?:s|ed|ing)?|ask(?:s|ed|ing)?|repl(?:y|ies|ied|ying)"
@@ -1526,7 +1527,7 @@ _SPEECH_CUE_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_SPEECH_QUOTE_CUE_RE = re.compile(
-    r"(?:听到|听见|说到(?![ \t\u3000]*[：:])|写着|写下|印着|刻着|标着|显示|字样|牌子|招牌|字幕|花字|画面文字"
+    r"(?:听到|听见|说到(?![ \t\u3000]*[：:])|写道|写着|写下|印着|刻着|标着|显示|字样|牌子|招牌|字幕|花字|画面文字"
     r"|\b(?:reads?|reading|written|display(?:s|ed|ing)?|sign|banner|caption|subtitle|overlay)\b)",
     re.IGNORECASE,
 )
