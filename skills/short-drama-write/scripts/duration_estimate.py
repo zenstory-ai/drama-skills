@@ -773,12 +773,21 @@ def estimate(
         result["incomplete"] = entry
 
     untimed = dict(counts.get("untimed_tag_lines") or {})
-    if rates["on_screen_text_characters_per_second"] is not None:
+    if rates["declared"] and rates["on_screen_text_characters_per_second"] is not None:
         untimed.pop(ON_SCREEN_TEXT_TAG, None)
+        if untimed:
+            counts["untimed_tag_lines"] = dict(untimed)
+        else:
+            counts.pop("untimed_tag_lines", None)
     if untimed:
+        untimed_note = (
+            "these production tags take screen time that is not in the seconds; declare format.pacing.on_screen_text_characters_per_second to time on-screen text by its readable characters"
+            if ON_SCREEN_TEXT_TAG in untimed
+            else "these production tags take screen time that is not in the seconds"
+        )
         result["untimed"] = {
             "tag_lines": untimed,
-            "note": "these production tags take screen time that is not in the seconds; declare format.pacing.on_screen_text_characters_per_second to time on-screen text by its readable characters",
+            "note": untimed_note,
         }
 
     if not rates["declared"]:
@@ -798,9 +807,14 @@ def estimate(
             speech += counts[unit] / rates[rate_name]
     seconds += speech
     if unpriced:
+        speech_note = (
+            "the project declares no rate for this speech, so seconds, speech_seconds and speech_share cover only the priced speech (speech_partial); declare format.pacing.spoken_words_per_second for words and spoken_characters_per_second for characters"
+            if speech > 0
+            else "the project declares no rate for this speech, so the seconds leave it out; declare format.pacing.spoken_words_per_second for words and spoken_characters_per_second for characters"
+        )
         result["untimed_speech"] = {
             "counts": unpriced,
-            "note": "the project declares no rate for this speech, so the seconds leave it out; declare format.pacing.spoken_words_per_second for words and spoken_characters_per_second for characters",
+            "note": speech_note,
         }
     reading = rates["on_screen_text_characters_per_second"]
     reading_seconds = counts["on_screen_text_characters"] / reading if (reading is not None and counts.get("on_screen_text_characters")) else None
@@ -814,9 +828,11 @@ def estimate(
     if reading_seconds is not None:
         result["on_screen_text_seconds"] = round(reading_seconds, 1)
     result["seconds"] = round(seconds, 1)
-    if seconds > 0 and not unpriced and math.isfinite(share_ratio := speech / seconds):
+    if seconds > 0 and (not unpriced or speech > 0) and math.isfinite(share_ratio := speech / seconds):
         result["speech_seconds"] = round(speech, 1)
         result["speech_share"] = round(share_ratio, 2)
+        if unpriced:
+            result["speech_partial"] = True
     target_val = result["target_seconds"]
     if target_val:
         delta, delta_ratio = seconds - target_val, (seconds - target_val) / target_val
