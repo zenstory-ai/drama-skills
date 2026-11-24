@@ -1056,5 +1056,203 @@ class HardenedValidationTests(unittest.TestCase):
                     episode_intake._line_number(offsets, bad_offset)  # type: ignore[arg-type]
 
 
+class CheckEpisodeMapTests(unittest.TestCase):
+    @staticmethod
+    def _record(episode_id: str, **overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "episode_id": episode_id,
+            "title": f"{episode_id} 标题",
+            "goal": "保住摊位并取回底账",
+            "hook": "开场亮出泛黄送货底联",
+            "conflict": "对手联合物业施压封门",
+            "turn": "老周当场认账反逼对方交出备份",
+            "climax": "当众核对印章拆穿假表",
+            "ending_hook": "冷柜夹缝里多出第二份底账",
+            "handoff_state": "门锁钥匙归对手保管，明早八点复核",
+            "setup_payoff": ["SETUP-01 埋下冷柜底账"],
+            "locations": ["共享厨房大厅"],
+            "characters": ["叶澄", "齐曼"],
+        }
+        base.update(overrides)
+        return base
+
+    def _write_jsonl(self, path: Path, rows: list[dict[str, object]]) -> None:
+        path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+    def test_valid_12_key_episode_map_passes_cleanly_via_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            map_path = root / "episode-map.jsonl"
+            self._write_jsonl(
+                map_path,
+                [
+                    self._record("EP001", target_duration_seconds=90),
+                    self._record("EP002", setup_payoff=[]),
+                ],
+            )
+            cli = run_cli("check-map", map_path)
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            payload = json.loads(cli.stdout)
+            self.assertTrue(payload["valid"])
+            self.assertEqual(payload["episode_ids"], ["EP001", "EP002"])
+            self.assertEqual(payload["problems"], [])
+            self.assertEqual(payload["warnings"], [])
+
+    def test_rejects_invalid_jsonl_duplicates_order_missing_keys_and_template_placeholders(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            # Template with __FILL__ must fail hard.
+            template_path = SUITE / "skills/short-drama-develop/assets/episode-map.jsonl"
+            template_res = episode_intake.check_episode_map(template_path)
+            self.assertFalse(template_res["valid"])
+            self.assertTrue(
+                any("__FILL__" in problem for problem in template_res["problems"]),
+                template_res["problems"],
+            )
+
+            # Broken JSON syntax fails hard.
+            broken = root / "broken.jsonl"
+            broken.write_text("{not json\n", encoding="utf-8")
+            broken_cli = run_cli("check-map", broken)
+            self.assertEqual(broken_cli.returncode, 1)
+            self.assertFalse(json.loads(broken_cli.stderr)["valid"])
+
+            # Duplicate ID, out-of-order ID, missing core key, wrong list type.
+            bad_map = root / "bad-map.jsonl"
+            missing_goal = self._record("EP002")
+            missing_goal.pop("goal")
+            self._write_jsonl(
+                bad_map,
+                [
+                    self._record("EP002", locations="not-a-list"),
+                    self._record("EP001"),
+                    missing_goal,
+                ],
+            )
+            result = episode_intake.check_episode_map(bad_map)
+            self.assertFalse(result["valid"])
+            joined = "\n".join(result["problems"])
+            self.assertIn("duplicate episode_id: EP002", joined)
+            self.assertIn("out of order", joined)
+            self.assertIn("missing required keys: goal", joined)
+            self.assertIn("locations must be a list", joined)
+
+    def test_soft_warnings_for_gaps_empty_and_unlinked_source_chapter_spans(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            novel_index_path = root / "_index.json"
+            novel_index_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0.0",
+                        "chapters": [
+                            {"sequence": 1, "source_number": 1},
+                            {"sequence": 2, "source_number": 2},
+                            {"sequence": 3, "source_number": 3},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            map_path = root / "episode-map.jsonl"
+            self._write_jsonl(
+                map_path,
+                [
+                    self._record("EP001", source_chapters=[1, 2]),
+                    self._record("EP003", source_chapters=[]),
+                    self._record("EP004", chapter_range="ch-3..ch-9"),
+                    self._record("EP005"),
+                ],
+            )
+
+            # Soft gate: valid structure exits 0 while emitting deterministic warnings.
+            cli = run_cli("check-map", map_path, "--novel-index", novel_index_path)
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            payload = json.loads(cli.stdout)
+            self.assertTrue(payload["valid"])
+            self.assertEqual(payload["problems"], [])
+            warnings_text = "\n".join(payload["warnings"])
+            self.assertIn("jumps from EP001 to EP003", warnings_text)
+            self.assertIn("EP003: empty source chapter span (source_chapters)", warnings_text)
+            self.assertIn("EP004: source chapter(s) not found in novel index: 4, 5, 6, 7, 8, 9", warnings_text)
+            self.assertIn("EP005: unlinked source chapter span", warnings_text)
+
+            # Even without --novel-index, partial linkage across episodes flags EP003 and EP005.
+            no_index = episode_intake.check_episode_map(map_path)
+            self.assertTrue(no_index["valid"])
+            no_index_warnings = "\n".join(no_index["warnings"])
+            self.assertIn("EP003: empty source chapter span", no_index_warnings)
+            self.assertIn("EP005: unlinked source chapter span", no_index_warnings)
+
+    def test_chinese_chapter_ranges_utf8_bom_and_list_placeholders(self) -> None:
+        # 1. Chinese chapter ranges with 章 on both ends expand intermediate chapters.
+        for expr in ("第1章-第5章", "第1章至第5章", "第1-5章", "第1章~第5章"):
+            with self.subTest(expr=expr):
+                self.assertEqual(
+                    episode_intake._extract_chapter_refs(expr),
+                    (False, [1, 2, 3, 4, 5]),
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # 2. UTF-8 with BOM in both _index.json and episode-map.jsonl succeeds cleanly
+            #    and validates intermediate chapters (2, 3, 4) from "第1章-第5章".
+            novel_index_path = root / "_index.json"
+            novel_index_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0.0",
+                        "chapters": [
+                            {"sequence": 1, "source_number": 1},
+                            {"sequence": 5, "source_number": 5},
+                        ],
+                    }
+                ),
+                encoding="utf-8-sig",
+            )
+            map_path = root / "episode-map-bom.jsonl"
+            rows = [
+                self._record("EP001", chapter_range="第1章-第5章"),
+                self._record("EP002", chapter_range="第1章至第5章"),
+            ]
+            map_path.write_text(
+                "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+                encoding="utf-8-sig",
+            )
+            cli = run_cli("check-map", map_path, "--novel-index", novel_index_path)
+            self.assertEqual(cli.returncode, 0, cli.stderr)
+            payload = json.loads(cli.stdout)
+            self.assertTrue(payload["valid"])
+            warnings_text = "\n".join(payload["warnings"])
+            self.assertIn("EP001: source chapter(s) not found in novel index: 2, 3, 4", warnings_text)
+            self.assertIn("EP002: source chapter(s) not found in novel index: 2, 3, 4", warnings_text)
+
+            # 3. "__FILL__" placeholder inside list fields must fail hard.
+            fill_list_map = root / "fill-list.jsonl"
+            self._write_jsonl(
+                fill_list_map,
+                [
+                    self._record(
+                        "EP001",
+                        locations=["大厅", "__FILL__"],
+                        characters=["__FILL__"],
+                        setup_payoff=["__FILL__"],
+                    )
+                ],
+            )
+            fill_res = episode_intake.check_episode_map(fill_list_map)
+            self.assertFalse(fill_res["valid"])
+            joined = "\n".join(fill_res["problems"])
+            self.assertIn("EP001: locations contains unfilled placeholder '__FILL__'", joined)
+            self.assertIn("EP001: characters contains unfilled placeholder '__FILL__'", joined)
+            self.assertIn("EP001: setup_payoff contains unfilled placeholder '__FILL__'", joined)
+
+
 if __name__ == "__main__":
     unittest.main()

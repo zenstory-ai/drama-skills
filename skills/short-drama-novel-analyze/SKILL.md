@@ -56,8 +56,8 @@ license: MIT
 
 校验通过后将 `_work/_index.next.json` 写入正式 `_index.json`。脚本支持可选 Markdown 标题前缀（`#`–`######`）、阿拉伯与中文数字章号，按 `章 / 回 / 集 / 话 / 話 / 幕 / 节` 由粗到细自动选定主编号单位（其余记入 `ignored_heading_units`，也可传 `--unit` 指定），剔除开头目录块并分卷核对。
 
-- **软门禁提醒（退出码 `0`）**：网文源书常见的作者跳章号、重章号或简短卷首语仅归入输出 JSON 的 `warnings` 提醒，脚本正常放行，供 Agent 复核。
-- **确定性硬拦截（非零退出码）**：仅在以下情况拦截——完全识别不到章节（无章标题散稿可与创作者约定切分后手写 `sequence` / `line_start` / `line_end` 再过 `verify`）、第一章前遗漏大段楔子正文（可在索引开头补一条 `source_number: null` 覆盖第 1 行起的正文），或索引自身断号、行区间断裂。原文一旦修改须重建索引。
+- **软门禁提醒（退出码 `0`）**：网文源书常见的作者跳章号、重章号或简短卷首语仅归入输出 JSON 的 `warnings` 提醒，脚本正常放行，供 Agent 复核。若网文导出稿在第一章前带有书名元数据、内容简介或较长卷首说明导致前置非正文超限，保持 `输入/` 只读，直接加 `--ignore-preamble` 运行 `index` 跳过前置说明块（跳过行号范围会记入 `warnings`）。
+- **确定性硬拦截（非零退出码）**：仅在以下情况拦截——完全识别不到章节（无章标题散稿可与创作者约定切分后手写 `sequence` / `line_start` / `line_end` 再过 `verify`）、第一章前遗漏大段属于剧情正文的楔子且未传 `--ignore-preamble`（真正的楔子正文须在索引开头补一条 `source_number: null` 覆盖第 1 行起的正文，而非跳过），或索引自身断号、行区间断裂。原文一旦修改须重建索引。
 
 ### S1 改编价值快评
 
@@ -75,7 +75,7 @@ license: MIT
 
 ### S3 剧情单元与爽点梳理
 
-基于 S2 提取结果（细节不清时按行号回查原文），按 [改编价值与分集候选](references/adaptation-value.md#故事框架与剧情单元) 写出 `story-units.md` 与 `rhythm-and-emotion.md`（含 [爽点表](references/adaptation-value.md#爽点表) 相对先后排序），并在文件开头注明本批覆盖的起止章号范围。
+基于 S2 提取结果（细节不清时按行号回查原文），按 [改编价值与分集候选](references/adaptation-value.md#故事框架与剧情单元) 写出 `story-units.md` 与 `rhythm-and-emotion.md`（含 [爽点表](references/adaptation-value.md#爽点表) 相对先后排序及简明 [原著语感与高光包袱锚点](references/adaptation-value.md#原著语感与高光包袱锚点)，防下游开发与写稿把原著洗成中性梗概体），并在文件开头注明本批覆盖的起止章号范围。
 
 ### S4 人物与世界观设定
 

@@ -237,6 +237,73 @@ class TextBeforeFirstChapterTests(unittest.TestCase):
         self.assertEqual(index["problems"], [])
         self.assertTrue(verified["verified"], verified)
 
+    def test_ignore_preamble_skips_long_metadata_header_with_warning_and_verifies(
+        self,
+    ) -> None:
+        metadata_header = (
+            "# 导出原著示例\n\n"
+            "## 元数据\n"
+            "- 书名：长风渡口\n"
+            "- 作者：合成作者\n\n"
+            "## 原著简介\n"
+            + ("这是一段超过五百字的平台简介与标签导读内容，用来交代时代背景与主要看点。" * 20)
+            + "\n---\n\n"
+        )
+        source_text = metadata_header + chapters(["一", "二", "三"]) + "\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "book.md"
+            index_path = root / "_index.json"
+            source.write_text(source_text, encoding="utf-8")
+
+            # Without --ignore-preamble, default safety still blocks unindexed text > 500 chars.
+            default_exit = novel_index.main(["index", str(source), "--out", str(index_path)])
+            self.assertEqual(default_exit, 1)
+
+            # With --ignore-preamble, index succeeds with exit 0 and records a soft warning.
+            ignored_exit = novel_index.main(
+                ["index", str(source), "--ignore-preamble", "--out", str(index_path)]
+            )
+            self.assertEqual(ignored_exit, 0)
+            document = json.loads(index_path.read_text(encoding="utf-8"))
+            self.assertTrue(document["preamble_ignored"])
+            self.assertEqual(document["problems"], [])
+            self.assertEqual(document["chapter_count"], 3)
+            self.assertGreater(document["text_before_first_chapter"], 500)
+            self.assertTrue(
+                any("preamble" in warning for warning in document["warnings"]),
+                document["warnings"],
+            )
+
+            # verify respects preamble_ignored persisted in the index and exits 0.
+            self.assertEqual(
+                novel_index.main(["verify", str(index_path), str(source)]), 0
+            )
+            verified = novel_index.verify_index(index_path, source)
+            self.assertTrue(verified["verified"], verified)
+            self.assertTrue(
+                any("preamble" in warning for warning in verified["warnings"]),
+                verified["warnings"],
+            )
+
+            # Editing the source still invalidates verify even when preamble_ignored is true.
+            source.write_text(source_text + "新增一行。\n", encoding="utf-8")
+            self.assertEqual(
+                novel_index.main(["verify", str(index_path), str(source)]), 1
+            )
+
+    def test_ignore_preamble_does_not_mask_missing_chapters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "no-chapters.txt"
+            source.write_text(prose(40) + "\n", encoding="utf-8")
+            index = novel_index.build_index(source, ignore_preamble=True)
+            self.assertEqual(index["chapter_count"], 0)
+            self.assertTrue(index["problems"])
+            self.assertEqual(
+                novel_index.main(["index", str(source), "--ignore-preamble"]), 1
+            )
+
 
 class ChapterUnitTests(unittest.TestCase):
     """Subsections must not be promoted to chapters."""

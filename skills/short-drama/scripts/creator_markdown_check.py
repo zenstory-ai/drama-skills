@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
+import unicodedata
 from pathlib import Path, PurePosixPath
 from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple, Optional
@@ -1497,6 +1499,248 @@ def _declared_seconds(value: str) -> Optional[float]:
     return float(match.group(1)) if match else None
 
 
+MIN_SPEECH_RATE = 1e-3
+SPEECH_RATE_WARN_RATIO = 1.35
+_WORD_SCRIPTS = ("LATIN", "CYRILLIC", "GREEK")
+_WORD_JOINERS = frozenset("'’-")
+_CJK_PUNCT_RE = re.compile(r"[，。！？、；：「」『』《》【】￥…]")
+_ASCII_NUMERIC_TOKEN_CUE_RE = re.compile(r"[$€£¢%/!?.]")
+_D_TAG_RE = re.compile(r"<d>([\s\S]*?)</d>", re.IGNORECASE)
+_D_LANG_PREFIX_RE = re.compile(r"^\s*\[[^\]\r\n]{1,32}\]\s*")
+_D_CONTROL_TAG_RE = re.compile(r"<(?:scenetrans|cutoff)\s*/?>", re.IGNORECASE)
+_BRACE_SPEECH_RE = re.compile(r"\{([^{}\r\n]+)\}")
+_BRACE_UNQUOTED_SPEECH_RE = re.compile(
+    r"(?:说道|说|讲|喊|叫|问|答|回|念|读|(?<![写报知])道)[：:]\s*(\S[\s\S]*)$"
+)
+_CLAUSE_SPLIT_RE = re.compile(r"[。！？；.!?\n]")
+_SPEECH_CUE_RE = re.compile(
+    r"(?:说道|说着|说|讲道|讲|喊道|喊出|大喊|高喊|喊|叫道|叫|问道|追问|反问|喝问|问"
+    r"|答道|抢答|回答|答|回道|喝道|骂道|怒骂|叹道|念道|念出|念|读出|低语|耳语|开口"
+    r"|冷笑道|笑道|沉声道|低声道|厉声道|轻声道|怒道|(?<![写报知通轨跑走街楼渠频])道(?=[ \t\u3000]*[：:])"
+    r"|吐出|吐字|叮嘱|宣布|打断|补刀|尖叫|旁白|心声|独白|台词|原话|配音|画外音)"
+    r"|\b(?:say(?:s|ing)?|said|speak(?:s|ing)?|spoke|call(?:s|ed|ing)?"
+    r"|answer(?:s|ed|ing)?|ask(?:s|ed|ing)?|repl(?:y|ies|ied|ying)"
+    r"|shout(?:s|ed|ing)?|whisper(?:s|ed|ing)?|mutter(?:s|ed|ing)?"
+    r"|yell(?:s|ed|ing)?|cr(?:y|ies|ied|ying)|exclaim(?:s|ed|ing)?"
+    r"|snap(?:s|ped|ping)?|growl(?:s|ed|ing)?|hiss(?:es|ed|ing)?"
+    r"|bark(?:s|ed|ing)?|murmur(?:s|ed|ing)?|voice[\s-]?over|narration|dialogue)\b",
+    re.IGNORECASE,
+)
+_NON_SPEECH_QUOTE_CUE_RE = re.compile(
+    r"(?:听到|听见|说到(?![ \t\u3000]*[：:])|写道|写着|写下|印着|刻着|标着|显示|字样|牌子|招牌|字幕|花字|画面文字"
+    r"|\b(?:reads?|reading|written|display(?:s|ed|ing)?|sign|banner|caption|subtitle|overlay)\b)",
+    re.IGNORECASE,
+)
+_QUOTE_MENTION_SUFFIX_RE = re.compile(r"^[ \t\u3000]*(?:二字|两字|三字|这(?:几|两|个)?字)")
+
+
+def _positive_rate(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < MIN_SPEECH_RATE:
+        return None
+    return numeric
+
+
+def _declared_speech_rates(
+    project_root: Optional[Path],
+) -> tuple[Optional[float], Optional[float]]:
+    """Return declared (spoken_characters_per_second, spoken_words_per_second)."""
+    project = _load_manifest_dict(project_root)
+    if project is None:
+        return None, None
+    formats = project.get("format")
+    pacing = formats.get("pacing") if isinstance(formats, dict) else None
+    if not isinstance(pacing, dict):
+        return None, None
+    return (
+        _positive_rate(pacing.get("spoken_characters_per_second")),
+        _positive_rate(pacing.get("spoken_words_per_second")),
+    )
+
+
+def _is_word_letter(character: str) -> bool:
+    return character.isalpha() and any(
+        script in unicodedata.name(character, "") for script in _WORD_SCRIPTS
+    )
+
+
+def _voiced_units(line: str) -> tuple[int, int]:
+    """Count actually voiced (characters, words) matching duration_estimate.py."""
+    text = "".join(
+        ch
+        for ch in unicodedata.normalize(
+            "NFC", re.sub(r"（[^）]*）|\([^)]*\)", "", line)
+        )
+        if unicodedata.category(ch) != "Cf"
+    )
+    characters = 0
+    words = 0
+    digit_runs: list[int] = []
+    position = 0
+    length = len(text)
+    while position < length:
+        character = text[position]
+        if _is_word_letter(character) or character.isdigit():
+            end = position
+            has_letter = False
+            digits = 0
+            while end < length:
+                current = text[end]
+                if _is_word_letter(current):
+                    has_letter = True
+                elif unicodedata.category(current).startswith("M"):
+                    pass
+                elif current.isdigit():
+                    digits += 1
+                elif (
+                    not has_letter
+                    and digits > 0
+                    and current in ".,"
+                    and end + 1 < length
+                    and text[end + 1].isdigit()
+                ):
+                    pass
+                elif not (
+                    current in _WORD_JOINERS
+                    and end + 1 < length
+                    and (_is_word_letter(text[end + 1]) or text[end + 1].isdigit())
+                ):
+                    break
+                end += 1
+            if has_letter:
+                words += 1
+            else:
+                digit_runs.append(digits)
+            position = end
+            continue
+        if not character.isspace() and unicodedata.category(character)[0] not in "PMSC":
+            characters += 1
+        position += 1
+    if (words and not characters) or (
+        not words
+        and not characters
+        and digit_runs
+        and _CJK_PUNCT_RE.search(text) is None
+        and _ASCII_NUMERIC_TOKEN_CUE_RE.search(text) is not None
+    ):
+        words += len(digit_runs)
+    else:
+        characters += sum(digit_runs)
+    return characters, words
+
+
+def _extract_spoken_lines(prompt: str) -> list[str]:
+    """Extract deterministic spoken dialogue spans from a copyable video prompt."""
+    spoken: list[str] = []
+    masked = prompt
+
+    def _mask_d_tag(match: re.Match[str]) -> str:
+        inner = _D_CONTROL_TAG_RE.sub("", _D_LANG_PREFIX_RE.sub("", match.group(1))).strip()
+        if inner:
+            spoken.append(inner)
+        return " " * (match.end() - match.start())
+
+    masked = _D_TAG_RE.sub(_mask_d_tag, masked)
+
+    def _mask_brace_speech(match: re.Match[str]) -> str:
+        inner = match.group(1)
+        quotes = [q[1:-1].strip() for q in QUOTE_RE.findall(inner) if q[1:-1].strip()]
+        if quotes:
+            spoken.extend(quotes)
+            return " " * (match.end() - match.start())
+        unquoted = _BRACE_UNQUOTED_SPEECH_RE.search(inner)
+        if unquoted is not None and unquoted.group(1).strip():
+            spoken.append(unquoted.group(1).strip())
+            return " " * (match.end() - match.start())
+        return match.group(0)
+
+    masked = _BRACE_SPEECH_RE.sub(_mask_brace_speech, masked)
+
+    last_quote_end = 0
+    for match in QUOTE_RE.finditer(masked):
+        body = match.group(0)[1:-1].strip()
+        prefix_window = masked[last_quote_end : match.start()]
+        last_quote_end = match.end()
+        if not body:
+            continue
+        if _QUOTE_MENTION_SUFFIX_RE.match(masked[match.end() :]):
+            continue
+        clause_breaks = list(_CLAUSE_SPLIT_RE.finditer(prefix_window))
+        clause = prefix_window[clause_breaks[-1].end() :] if clause_breaks else prefix_window
+        speech_matches = list(_SPEECH_CUE_RE.finditer(clause))
+        if not speech_matches:
+            continue
+        last_speech_end = speech_matches[-1].end()
+        non_speech_matches = list(_NON_SPEECH_QUOTE_CUE_RE.finditer(clause))
+        if non_speech_matches and non_speech_matches[-1].end() >= last_speech_end:
+            continue
+        spoken.append(body)
+
+    return spoken
+
+
+def _check_motion_speech_rates(
+    project_root: Optional[Path],
+    *,
+    motions: Mapping[str, str],
+    motion_fields_by_id: Mapping[str, Mapping[str, str]],
+    motion_prompts_by_id: Mapping[str, Optional[str]],
+    shot_durations: Mapping[str, Optional[float]],
+    warnings: list[str],
+) -> None:
+    """Emit soft warnings when a MOTION's spoken lines clearly overload its duration.
+
+    Strictly arithmetic against the project's own declared format.pacing rates;
+    never invents a default speaking rate and never blocks with a hard error.
+    """
+    char_rate, word_rate = _declared_speech_rates(project_root)
+    if char_rate is None and word_rate is None:
+        return
+    for motion_id in motions:
+        prompt = motion_prompts_by_id.get(motion_id)
+        if not prompt:
+            continue
+        fields = motion_fields_by_id.get(motion_id, {})
+        duration = _declared_seconds(_plain(fields.get("时长", "")))
+        if duration is None:
+            shot_id = _plain(fields.get("分镜", ""))
+            duration = shot_durations.get(shot_id)
+        if duration is None or duration <= 0:
+            continue
+        utterances = _extract_spoken_lines(prompt)
+        if not utterances:
+            continue
+        voiced_chars = 0
+        voiced_words = 0
+        for line in utterances:
+            chars_count, words_count = _voiced_units(line)
+            voiced_chars += chars_count
+            voiced_words += words_count
+        implied_seconds = 0.0
+        unit_parts: list[str] = []
+        rate_parts: list[str] = []
+        if voiced_chars > 0 and char_rate is not None:
+            implied_seconds += voiced_chars / char_rate
+            unit_parts.append(f"{voiced_chars} 字")
+            rate_parts.append(f"{char_rate:g} 字/秒")
+        if voiced_words > 0 and word_rate is not None:
+            implied_seconds += voiced_words / word_rate
+            unit_parts.append(f"{voiced_words} 词")
+            rate_parts.append(f"{word_rate:g} 词/秒")
+        if implied_seconds <= 0 or not math.isfinite(implied_seconds):
+            continue
+        ratio = implied_seconds / duration
+        if ratio > SPEECH_RATE_WARN_RATIO:
+            warnings.append(
+                f"{motion_id}: 本镜实读对白（{' + '.join(unit_parts)}）"
+                f"按项目声明语速（{'、'.join(rate_parts)}）约需 {implied_seconds:.1f} 秒，"
+                f"明显超出镜长 {duration:g} 秒（约 {ratio:.2f} 倍）；"
+                "请复核是否需要加长镜长、拆镜或精简台词（VID-05）"
+            )
+
+
 def _check_continuity_locks(
     locks: list[ContinuityLock],
     *,
@@ -1962,6 +2206,7 @@ def validate_documents_with_warnings(
     motion_by_shot: dict[str, tuple[str, str, Optional[str]]] = {}
     motion_duration: dict[str, str] = {}
     motion_fields_by_id: dict[str, dict[str, str]] = {}
+    motion_prompts_by_id: dict[str, Optional[str]] = {}
     motion_prompts_list: list[Optional[str]] = []
     for motion_id, body in motions.items():
         fields = _fields(body, owner=motion_id, errors=errors)
@@ -1969,6 +2214,7 @@ def validate_documents_with_warnings(
         shot_id = _plain(fields.get("分镜", ""))
         motion_duration[shot_id] = _plain(fields.get("时长", ""))
         copyable_prompt = _copyable_prompt(body)
+        motion_prompts_by_id[motion_id] = copyable_prompt
         motion_prompts_list.append(copyable_prompt)
         if not shot_id:
             errors.append(f"{motion_id}: 缺少分镜字段")
@@ -2035,6 +2281,7 @@ def validate_documents_with_warnings(
                 errors.append(f"{motion_id}: 文生视频缺少开场画面")
 
     collected_keyframes: list[Optional[str]] = []
+    shot_durations: dict[str, Optional[float]] = {}
     for shot_id, shot_body in shots.items():
         fields = _fields(shot_body, owner=shot_id, errors=errors)
         source_value = fields.get("来源", "")
@@ -2042,6 +2289,7 @@ def validate_documents_with_warnings(
         claimed_scenes.update(shot_scenes)
         shot_scene_map[shot_id] = shot_scenes
         shot_seconds = _declared_seconds(_plain(fields.get("时长", "")))
+        shot_durations[shot_id] = shot_seconds
         motion_seconds = _declared_seconds(motion_duration.get(shot_id, ""))
         if (
             shot_seconds is not None
@@ -2156,6 +2404,15 @@ def validate_documents_with_warnings(
         video_prompts=video_family_prompts,
         fallback_texts=(visual if has_visual else "", screenplay if has_screenplay else ""),
     )
+    if has_video:
+        _check_motion_speech_rates(
+            project_root,
+            motions=motions,
+            motion_fields_by_id=motion_fields_by_id,
+            motion_prompts_by_id=motion_prompts_by_id,
+            shot_durations=shot_durations,
+            warnings=warnings,
+        )
     _check_continuity_locks(
         locks,
         shots=shots if has_storyboard else None,

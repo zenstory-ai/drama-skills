@@ -12,10 +12,11 @@ license: MIT
 
 > 下文命令中 `<SKILL_DIR>` 指本 `SKILL.md` 所在目录，`<PYTHON>` 指 Python 3.9+ 解释器（Unix/macOS 用 `python3`，Windows 用 `py -3` 或 `python`）。
 
-为多集完整剧本建立精确分集字节索引：
+为多集完整剧本建立精确分集字节索引，或校验已编写的 `episode-map.jsonl` 结构与原著章节映射：
 
 ```bash
 <PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" index <多集完整剧本> --out <episode-intake-index.json>
+<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" check-map <episode-map.jsonl> [--novel-index <_index.json>]
 ```
 
 > **无终端 / 无 Python 兜底**：若当前对话环境不支持执行本地脚本，故事开发、简报编写、单集/多集分集大纲规划均可直接在对话中完成；多集来稿由用户按集或分批粘贴正文即可逐批梳理分集大纲，无需强求脚本切片。
@@ -55,7 +56,7 @@ license: MIT
 
 ### 4. 自检并交接
 
-提交前核对：集号与伏笔埋收编号前后一致、未定项已标明；每次冲突升级带来实质处境变化；改编项目保住原著核心人物立场与主线脉络，重要新增项已单列说明。需要独立审稿结论时调用 `short-drama-review` 技能；需要起草全剧视听总纲或拆解对标材料时读 [director-brief-craft.md](references/director-brief-craft.md)。
+提交前核对：集号与伏笔埋收编号前后一致、未定项已标明；每次冲突升级带来实质处境变化；改编项目保住原著核心人物立场与主线脉络，重要新增项已单列说明。已编写 `episode-map.jsonl` 时，可运行 `<PYTHON> "<SKILL_DIR>/scripts/episode_intake.py" check-map <episode-map.jsonl> [--novel-index <_index.json>]` 做确定性语法、集号唯一递增、12 个核心键及可选原著章节区间核对（结构错误阻断，空字段或区间越界仅软提醒）。需要独立审稿结论时调用 `short-drama-review` 技能；需要起草全剧视听总纲或拆解对标材料时读 [director-brief-craft.md](references/director-brief-craft.md)。
 
 ## 产物与边界
 

@@ -55,6 +55,38 @@ EPISODE_ID_RE = re.compile(r"^EP([0-9]{3}|[1-9][0-9]{3,})$")
 MAX_HEADING_LENGTH = 80
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
 _FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$")
+EPISODE_MAP_CORE_KEYS = (
+    "episode_id",
+    "title",
+    "goal",
+    "hook",
+    "conflict",
+    "turn",
+    "climax",
+    "ending_hook",
+    "handoff_state",
+    "setup_payoff",
+    "locations",
+    "characters",
+)
+EPISODE_MAP_TEXT_KEYS = (
+    "title",
+    "goal",
+    "hook",
+    "conflict",
+    "turn",
+    "climax",
+    "ending_hook",
+    "handoff_state",
+)
+EPISODE_MAP_LIST_KEYS = ("setup_payoff", "locations", "characters")
+EPISODE_MAP_PLACEHOLDERS = frozenset({"__FILL__"})
+SOURCE_SPAN_KEYS = ("source_chapters", "chapter_range", "source_chapter_span", "source_span")
+_CHAPTER_RANGE_TOKEN_RE = re.compile(
+    r"(?:^|[\s,，、;；])(?:ch-?|第)?(\d+)章?\s*(?:\.\.|[-–—~至到])\s*(?:ch-?|第)?(\d+)章?(?=$|[\s,，、;；])",
+    re.IGNORECASE,
+)
+_MAX_CHAPTER_RANGE_EXPANSION = 1000
 
 
 def _is_strict_int(value: Any) -> bool:
@@ -682,11 +714,15 @@ def _read_jsonl(path: Path, *, absent_ok: bool = False) -> list[dict[str, Any]]:
         return []
     records: list[dict[str, Any]] = []
     for line_number, raw in enumerate(path.read_bytes().splitlines(), 1):
-        if not raw.strip():
+        try:
+            text = raw.decode("utf-8-sig" if line_number == 1 else "utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{path}: invalid JSONL line {line_number}: {error}") from error
+        if not text.strip():
             continue
         try:
-            record = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            record = json.loads(text)
+        except json.JSONDecodeError as error:
             raise ValueError(f"{path}: invalid JSONL line {line_number}: {error}") from error
         if not isinstance(record, dict):
             raise ValueError(f"{path}: JSONL line {line_number} is not an object")
@@ -828,6 +864,220 @@ def merge_batch(
     }
 
 
+def _extract_chapter_refs(value: Any) -> tuple[bool, list[int]]:
+    """Return ``(is_empty, chapter_numbers)`` for an optional source chapter span value."""
+    if value is None:
+        return True, []
+    if _is_strict_int(value):
+        assert isinstance(value, int)
+        return False, [value]
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return True, []
+        refs: list[int] = []
+        covered_spans: list[tuple[int, int]] = []
+        for match in _CHAPTER_RANGE_TOKEN_RE.finditer(stripped):
+            start_num, end_num = int(match.group(1)), int(match.group(2))
+            covered_spans.append(match.span())
+            if start_num <= end_num and end_num - start_num <= _MAX_CHAPTER_RANGE_EXPANSION:
+                refs.extend(range(start_num, end_num + 1))
+            else:
+                refs.extend([start_num, end_num])
+        for match in re.finditer(r"\d+", stripped):
+            pos = match.start()
+            if any(span_start <= pos < span_end for span_start, span_end in covered_spans):
+                continue
+            refs.append(int(match.group(0)))
+        return False, refs
+    if isinstance(value, list):
+        if not value:
+            return True, []
+        refs = []
+        any_non_empty = False
+        for item in value:
+            item_empty, item_refs = _extract_chapter_refs(item)
+            if not item_empty:
+                any_non_empty = True
+                refs.extend(item_refs)
+        return (not any_non_empty), refs
+    if isinstance(value, dict):
+        if not value:
+            return True, []
+        start_val = _strict_int(value.get("start"))
+        end_val = _strict_int(value.get("end"))
+        if start_val is None or end_val is None:
+            start_val = _strict_int(value.get("chapter_start"))
+            end_val = _strict_int(value.get("chapter_end"))
+        if start_val is not None and end_val is not None:
+            if start_val <= end_val and end_val - start_val <= _MAX_CHAPTER_RANGE_EXPANSION:
+                return False, list(range(start_val, end_val + 1))
+            return False, [start_val, end_val]
+        if "chapters" in value:
+            return _extract_chapter_refs(value["chapters"])
+        return False, []
+    return False, []
+
+
+def _load_novel_chapter_ids(novel_index_path: Path) -> set[int]:
+    document = json.loads(novel_index_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(document, dict) or not isinstance(document.get("chapters"), list):
+        raise ValueError("novel index must be a JSON object containing a chapters list")
+    chapter_ids: set[int] = set()
+    for chapter in document["chapters"]:
+        if not isinstance(chapter, dict):
+            continue
+        seq = _strict_int(chapter.get("sequence"))
+        if seq is not None:
+            chapter_ids.add(seq)
+        src_num = _strict_int(chapter.get("source_number"))
+        if src_num is not None:
+            chapter_ids.add(src_num)
+    return chapter_ids
+
+
+def check_episode_map(
+    map_path: str | Path,
+    *,
+    novel_index_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Deterministically validate ``episode-map.jsonl`` syntax, IDs, core schema, and spans."""
+    try:
+        records = _read_jsonl(Path(map_path))
+    except (OSError, UnicodeError, ValueError) as error:
+        return {
+            "valid": False,
+            "episode_count": 0,
+            "episode_ids": [],
+            "problems": [str(error)],
+            "warnings": [],
+        }
+
+    known_chapters: set[int] | None = None
+    if novel_index_path is not None:
+        try:
+            known_chapters = _load_novel_chapter_ids(Path(novel_index_path))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            return {
+                "valid": False,
+                "episode_count": len(records),
+                "episode_ids": [],
+                "problems": [str(error)],
+                "warnings": [],
+            }
+
+    if not records:
+        return {
+            "valid": False,
+            "episode_count": 0,
+            "episode_ids": [],
+            "problems": ["episode-map is empty"],
+            "warnings": [],
+        }
+
+    problems: list[str] = []
+    warnings: list[str] = []
+    seen_ids: set[str] = set()
+    episode_ids: list[str] = []
+    episode_numbers: list[tuple[int, str]] = []
+    span_keys_seen: list[str] = []
+    missing_span_rows: list[str] = []
+
+    for position, record in enumerate(records, 1):
+        raw_id = record.get("episode_id")
+        match = EPISODE_ID_RE.fullmatch(raw_id) if isinstance(raw_id, str) else None
+        if match is None or int(match.group(1)) <= 0:
+            label = f"record {position}"
+            problems.append(f"{label}: invalid episode_id {raw_id!r}")
+        else:
+            assert isinstance(raw_id, str)
+            label = raw_id
+            number = int(match.group(1))
+            if raw_id in seen_ids:
+                problems.append(f"duplicate episode_id: {raw_id}")
+            else:
+                seen_ids.add(raw_id)
+            episode_ids.append(raw_id)
+            episode_numbers.append((number, raw_id))
+
+        missing = [key for key in EPISODE_MAP_CORE_KEYS if key not in record]
+        if missing:
+            problems.append(f"{label}: missing required keys: {', '.join(missing)}")
+
+        for key in EPISODE_MAP_TEXT_KEYS:
+            if key not in record:
+                continue
+            value = record[key]
+            if not isinstance(value, str):
+                problems.append(f"{label}: {key} must be a string")
+            elif value.strip() in EPISODE_MAP_PLACEHOLDERS:
+                problems.append(f"{label}: {key} contains unfilled placeholder {value.strip()!r}")
+            elif not value.strip():
+                warnings.append(f"{label}: {key} is empty")
+
+        for key in EPISODE_MAP_LIST_KEYS:
+            if key not in record:
+                continue
+            value = record[key]
+            if not isinstance(value, list):
+                problems.append(f"{label}: {key} must be a list")
+                continue
+            for item in value:
+                if isinstance(item, str) and item.strip() in EPISODE_MAP_PLACEHOLDERS:
+                    problems.append(
+                        f"{label}: {key} contains unfilled placeholder {item.strip()!r}"
+                    )
+                    break
+            if key in {"locations", "characters"} and not value:
+                warnings.append(f"{label}: {key} is empty")
+
+        present_span_keys = [key for key in SOURCE_SPAN_KEYS if key in record]
+        if present_span_keys:
+            for span_key in present_span_keys:
+                if span_key not in span_keys_seen:
+                    span_keys_seen.append(span_key)
+                is_empty, chapter_refs = _extract_chapter_refs(record[span_key])
+                if is_empty:
+                    warnings.append(f"{label}: empty source chapter span ({span_key})")
+                elif known_chapters is not None and chapter_refs:
+                    unknown = sorted({num for num in chapter_refs if num not in known_chapters})
+                    if unknown:
+                        warnings.append(
+                            f"{label}: source chapter(s) not found in novel index: "
+                            + ", ".join(map(str, unknown))
+                        )
+        else:
+            missing_span_rows.append(label)
+
+    for (prev_num, prev_id), (curr_num, curr_id) in zip(episode_numbers, episode_numbers[1:]):
+        if curr_num < prev_num:
+            problems.append(f"episode_id out of order: {curr_id} follows {prev_id}")
+        elif curr_num > prev_num + 1:
+            warnings.append(f"episode numbering jumps from {prev_id} to {curr_id}")
+
+    if novel_index_path is not None:
+        for label in missing_span_rows:
+            warnings.append(
+                f"{label}: unlinked source chapter span (no source_chapters / chapter_range field)"
+            )
+    elif span_keys_seen and missing_span_rows:
+        declared = ", ".join(span_keys_seen)
+        for label in missing_span_rows:
+            warnings.append(
+                f"{label}: unlinked source chapter span (other episodes declare {declared})"
+            )
+
+    problems = list(dict.fromkeys(problems))
+    warnings = list(dict.fromkeys(warnings))
+    return {
+        "valid": not problems,
+        "episode_count": len(records),
+        "episode_ids": episode_ids,
+        "problems": problems,
+        "warnings": warnings,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Byte-accurate multi-episode screenplay intake guard")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -862,6 +1112,9 @@ def _parser() -> argparse.ArgumentParser:
     merge.add_argument("--out", type=Path, required=True)
     merge.add_argument("--checkpoint", type=Path)
     merge.add_argument("--batch-size", type=int, required=True)
+    check_map = commands.add_parser("check-map", help="validate episode-map.jsonl syntax, IDs, and core keys")
+    check_map.add_argument("episode_map", type=Path)
+    check_map.add_argument("--novel-index", type=Path, default=None)
     return parser
 
 
@@ -903,6 +1156,11 @@ def main(argv: list[str] | None = None) -> int:
             result = {"output": str(args.out), "episode_id": args.episode_id, "byte_length": len(content)}
         elif args.command in {"progress", "status"}:
             result = progress(args.index, args.source, args.episode_map, args.checkpoint, batch_size=args.batch_size)
+        elif args.command == "check-map":
+            result = check_episode_map(args.episode_map, novel_index_path=args.novel_index)
+            if not result["valid"]:
+                print(json.dumps(result, sort_keys=True), file=sys.stderr)
+                return 1
         else:
             result = merge_batch(
                 args.index,

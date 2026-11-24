@@ -16,6 +16,17 @@
 ### Added
 
 - 宿主适配（Google Antigravity）：新增 `.agents/skills.json` 供 Antigravity（CLI `agy`、IDE、App）在仓库工作区内自动发现全部 12 个公共技能，在中英文 README、贡献指南、设计文档与创作指南中补齐 Antigravity 全局（`~/.gemini/config/skills/`）与项目级（`.agents/skills/`）安装方式及 `/short-drama*` 调用写法，并补充安装布局与配置发现回归测试。
+- 原著语感锚点、轻喜直球对白与改编包袱核查工艺（`short-drama-novel-analyze`、`short-drama-develop`、`short-drama-write`、`short-drama-review`）：新增 `craft_default` 工艺指导——原著拆解在单章提取与 `rhythm-and-emotion.md` 中沉淀「原著语感与高光包袱锚点」（严守不整段照抄原文）；改编策略补充回查原著语感节奏与「保包袱完整优先于保事件数量」；对白与剧本工艺新增网文轻喜与直球爽剧短回合交锋写法，明确动作段短促分拍且不把未说出口的内心独白混进普通动作行；审稿清单新增改编语感与包袱完整性 `craft_default` 抽查项（不改阻断级规则表）。
+- 剪辑纸面预检、分集大纲校验与原著忽略前置说明（`short-drama-edit`、`short-drama-develop`、`short-drama-novel-analyze`）：
+  - `edit_tool.py check` 新增 `--plan-only` 纸面预检模式：在音视频素材生成前先审《剪辑单.md》，全部确定性文档与路径安全错误（含越界与符号链接）仍硬阻断，仅将尚未生成的本地缺失素材降级为软 `提醒` 并在 `未测` 中如实标注；标准 `check` 与 `render` 不受影响。
+  - `episode_intake.py` 新增 `check-map <episode-map.jsonl> [--novel-index <_index.json>]` 子命令：确定性校验 JSONL 语法、规范唯一且递增的 `episode_id`、12 个核心键及未填占位符，并对跳集、空值及可选原著章节区间映射输出软提醒。
+  - `novel_index.py` 的 `index` 与 `verify` 新增 `--ignore-preamble`：在不修改只读原著的前提下跳过超过 500 字的网文前置元数据/说明块（并在 `_index.json` 持久化 `preamble_ignored: true` 供后续 `verify` 放行，默认仍硬拦截以防误漏楔子正文）。
+- 单镜对白语速软告警与配置说明对齐（`short-drama`、`short-drama-develop`）：`creator_markdown_check.py` 在 `short-drama.json` 显式声明 `format.pacing` 发声语速时，按单镜可复制视频提示词折算发声时长，超出镜长 1.35 倍时输出 `WARNING` 软提醒（`VID-05`，不升级为硬阻断）；`short-drama/SKILL.md` 与 `creative-brief.md` 同步补齐中文提示词与混合语速配置示例及各视频模型原生时长区间说明。
+
+### Fixed
+
+- 外文借词估时丢字段与画面文字未计价标签口径不一致（`short-drama-write`）：修复 `duration_estimate.py` 在中文剧本夹带少量外文借词且仅声明 `spoken_characters_per_second` 时整项丢弃 `speech_seconds` / `speech_share` 的问题（现照常输出已计价发声时长并标记 `speech_partial: true`，同时保留 `untimed_speech` 提醒）；修复已声明 `on_screen_text_characters_per_second` 时 `counts.untimed_tag_lines` 仍残留 `画面文字`、与 `untimed.tag_lines` 口径不一致的问题。
+- 无编号单句定时字幕解析与复合过渡景别统计（`short-drama-edit`、`short-drama`）：修复 `edit_tool.py` 原仅支持 `- 字幕时间：` 而无法解析单句行内定时 `- 字幕：<起>-<止> <台词>`（含冒号入加粗写法）的问题，收紧时间窗正则并拦截冲突混用；修复 `creator_views.py` 漏计中文复合过渡景别（如 `中景缓推至近景`、`中景推至特写`、`全景推进至手部细节`）及英文近景/特写表达导致近景占比统计偏低的问题。
 
 ## [0.13.0] - 2026-11-22
 

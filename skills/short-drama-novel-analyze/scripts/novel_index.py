@@ -467,7 +467,8 @@ def text_before_first_chapter_problem(count: int, first_line: int) -> str | None
         return None
     return (
         f"{count} characters before line {first_line} belong to no chapter; "
-        "if this is a prologue, cover it with a leading row starting at line 1"
+        "if this is a prologue, cover it with a leading row starting at line 1, "
+        "or pass --ignore-preamble if it is metadata or synopsis"
     )
 
 
@@ -608,7 +609,12 @@ def _decode_utf8(raw: bytes, path: Path) -> str:
         ) from exc
 
 
-def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any]:
+def build_index(
+    source: Path,
+    unit_override: str | None = None,
+    *,
+    ignore_preamble: bool = False,
+) -> dict[str, Any]:
     raw = source.read_bytes()
     text = _decode_utf8(raw, source)
     lines = text.split("\n")
@@ -623,7 +629,13 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
     unclaimed = text_before_first_chapter(lines, first_line)
     unclaimed_problem = text_before_first_chapter_problem(unclaimed, first_line)
     if unclaimed_problem:
-        problems.append(unclaimed_problem)
+        if ignore_preamble:
+            warnings.append(
+                f"ignored {unclaimed} preamble characters before line {first_line} "
+                "(--ignore-preamble)"
+            )
+        else:
+            problems.append(unclaimed_problem)
     if unit is not None:
         coarser = [
             other
@@ -662,6 +674,7 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
         "long_heading_lines_skipped": long_heading_lines,
         "contents_entries_dropped": dropped,
         "text_before_first_chapter": unclaimed,
+        "preamble_ignored": bool(ignore_preamble),
         "volume_numbering_restarts": len(segments) > 1,
         "volume_count": len(segments),
         "chapter_count": len(chapters),
@@ -674,7 +687,12 @@ def build_index(source: Path, unit_override: str | None = None) -> dict[str, Any
 REQUIRED_CHAPTER_FIELDS = ("sequence", "line_start", "line_end")
 
 
-def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
+def verify_index(
+    index_path: Path,
+    source: Path,
+    *,
+    ignore_preamble: bool = False,
+) -> dict[str, Any]:
     """Re-check an index against its source without trusting either.
 
     The workflow tells creators to write spans by hand when a source carries no
@@ -685,6 +703,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
     index = json.loads(_decode_utf8(index_path.read_bytes(), index_path))
     raw = source.read_bytes()
     problems: list[str] = []
+    preamble_warnings: list[str] = []
     if not isinstance(index, dict):
         return {"verified": False, "problems": ["index must be a JSON object"], "warnings": []}
     source_record = index.get("source")
@@ -696,6 +715,10 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             ],
             "warnings": [],
         }
+    raw_preamble_ignored = index.get("preamble_ignored")
+    if raw_preamble_ignored is not None and not isinstance(raw_preamble_ignored, bool):
+        problems.append("index preamble_ignored field must be a boolean")
+    effective_ignore_preamble = ignore_preamble or (raw_preamble_ignored is True)
     text = _decode_utf8(raw, source)
     lines = text.split("\n")
     line_offsets = _line_offsets(lines)
@@ -768,11 +791,16 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
             )
             continue
         if previous_end is None:
-            unclaimed_problem = text_before_first_chapter_problem(
-                text_before_first_chapter(lines, start_line), start_line
-            )
+            unclaimed = text_before_first_chapter(lines, start_line)
+            unclaimed_problem = text_before_first_chapter_problem(unclaimed, start_line)
             if unclaimed_problem:
-                problems.append(unclaimed_problem)
+                if effective_ignore_preamble:
+                    preamble_warnings.append(
+                        f"ignored {unclaimed} preamble characters before line {start_line} "
+                        "(preamble_ignored)"
+                    )
+                else:
+                    problems.append(unclaimed_problem)
         elif start_line != previous_end + 1:
             problems.append(
                 f"chapter {sequence} must start at line {previous_end + 1}; "
@@ -823,7 +851,7 @@ def verify_index(index_path: Path, source: Path) -> dict[str, Any]:
         problems.append(
             f"chapter spans end at line {previous_end}; source ends at line {len(lines)}"
         )
-    warnings = (
+    warnings = preamble_warnings + (
         _collect_chapter_warnings(
             normalized_chapters, segment_by_restart(normalized_chapters)
         )
@@ -968,10 +996,22 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="force the chapter unit instead of detecting it (章 / Chapter / 回 / 集 / 话 / 話 / 幕 / 节)",
     )
+    build.add_argument(
+        "--ignore-preamble",
+        action="store_true",
+        default=False,
+        help="skip non-chapter metadata/synopsis text before the first chapter (emit warning instead of problem)",
+    )
 
     check = sub.add_parser("verify", help="re-check an index against its source")
     check.add_argument("index", type=Path)
     check.add_argument("source", type=Path)
+    check.add_argument(
+        "--ignore-preamble",
+        action="store_true",
+        default=False,
+        help="accept ignored non-chapter preamble text before the first chapter",
+    )
 
     pick = sub.add_parser("sample", help="choose triage chapters spread across the book")
     pick.add_argument("index", type=Path)
@@ -988,7 +1028,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "index":
-            document = build_index(args.source, args.unit)
+            document = build_index(
+                args.source,
+                args.unit,
+                ignore_preamble=args.ignore_preamble,
+            )
             payload = json.dumps(document, ensure_ascii=True, indent=2, sort_keys=True)
             if args.out is not None:
                 _atomic_write_text(args.out, payload + "\n")
@@ -998,6 +1042,7 @@ def main(argv: list[str] | None = None) -> int:
                             "chapter_count": document["chapter_count"],
                             "chapter_unit": document["chapter_unit"],
                             "ignored_heading_units": document["ignored_heading_units"],
+                            "preamble_ignored": document["preamble_ignored"],
                             "problems": document["problems"],
                             "warnings": document["warnings"],
                             "out": str(args.out),
@@ -1011,7 +1056,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if document["problems"] else 0
 
         if args.command == "verify":
-            result = verify_index(args.index, args.source)
+            result = verify_index(
+                args.index,
+                args.source,
+                ignore_preamble=args.ignore_preamble,
+            )
             print(json.dumps(result, ensure_ascii=True, indent=2))
             return 0 if result["verified"] else 1
 

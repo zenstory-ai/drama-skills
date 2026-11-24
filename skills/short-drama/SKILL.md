@@ -36,7 +36,7 @@ license: MIT
 1. **按需切入与连续推进**：优先使用用户指定的目录，只读取当前任务直接用到的输入文件，不预建空白前序文档。用户交代做到哪一步就完整做到哪一步；分批处理只用于控制单次篇幅，跑通一批直接继续。
 2. **合并补问（最多一次）**：立项或配置缺省时先用合理默认值建项推进；仅在缺少关键信息且不同选法会明显改变剧情走向或画面风格时，在单轮内合并提出不超过 1 次精简补问。下一步要调用外部模型生成素材时，必须先展示预览并等创作者明确确认。
 3. **安全写入与软门禁校验**：直接读写 Markdown 时，写入前确认目标文件未被外部编辑器或创作台修改，如有冲突先重读合并再写入；`.short-drama/`、`输入/` 中的内部记录与密钥绝不写入创作正文。正式成稿阶段每完成一份文档可运行 `<PYTHON> "<SKILL_DIR>/scripts/creator_markdown_check.py" <剧集目录> --partial`（五份齐备后跑全量检查）；**探索性草稿、创意构思或单场试写阶段无需强制跑脚本校验**。
-   - **硬门禁 vs 软门禁**：脚本只对 100% 确定性的机械与安全错误（跨文档 ID 悬空、文件路径缺失/软链越界、时长算术不符、槽位语法错误、外发/付费确认令牌）输出硬阻断 `ERROR`（非零退出码）；非 100% 确定性的启发式项（如跨语种 `提示词名称` 缺项提醒）一律作为**软门禁**输出 `WARNING`（退出码保持 `0`）提醒 Agent 重点复核，语义保真与正文连戏锁核查交由 `short-drama-review` 技能结合上下文审定。
+   - **硬门禁 vs 软门禁**：脚本只对 100% 确定性的机械与安全错误（跨文档 ID 悬空、文件路径缺失/软链越界、时长算术不符、槽位语法错误、外发/付费确认令牌）输出硬阻断 `ERROR`（非零退出码）；非 100% 确定性的启发式项与算术风险（如跨语种 `提示词名称` 缺项提醒、按项目已声明语速核算的单镜对白超载提醒）一律作为**软门禁**输出 `WARNING`（退出码保持 `0`）提醒 Agent 重点复核，语义保真与正文连戏锁核查交由 `short-drama-review` 技能结合上下文审定。
 4. **参考图挂接分流**：项目内已有匹配图片时挂 `REF-...`；尚无现成图片且创作者未要求暂停等图时，默认按 `PLAN-...` 写出外部挂图计划，或按创作者意图直接写 `- 输入参考图：无` 走文生视频；仅在创作者明确要求等图进项目时写 `无（待补参考图：……）` 并暂停。
 
 ## 项目初始化、全局配置与分集骨架
@@ -50,13 +50,13 @@ license: MIT
 后续在对话中确定或修改画幅、集数、单集时长、语言、语速、视觉方向、目标视频模型配置（`production_profile`）或节奏目标（`rhythm_profile`）时，直接用 `configure` 增量写入 `short-drama.json` 并标记为已确认（无需手写中间台账文件）。为兼容 Windows PowerShell / CMD 与 Unix 终端，推荐将复杂 JSON 写入临时文件后通过 `--json-file <path>`（或在单个参数中传 `@<path>`）导入，也支持单行传入简单参数：
 
 ```bash
-<PYTHON> "<SKILL_DIR>/scripts/project_tool.py" configure <project> --aspect-ratio 16:9 --episode-count 24 --target-seconds 90
+<PYTHON> "<SKILL_DIR>/scripts/project_tool.py" configure <project> --aspect-ratio 16:9 --episode-count 24 --target-seconds 90 --prompt-language zh-CN
 <PYTHON> "<SKILL_DIR>/scripts/project_tool.py" configure <project> --json-file config-patch.json
 ```
 
-`config-patch.json` 可按需包含 `pacing`、`production_profile`、`rhythm_profile` 等配置块（例如 `{"pacing":{"spoken_characters_per_second":4.2,"seconds_per_action_paragraph":2.5},"rhythm_profile":{"form":"国漫二次元","first_hook_seconds":5}}`）；单个 JSON 参数亦支持 `@<文件路径>`（如 `--production-profile-json @profile.json`）。
+`config-patch.json` 可按需包含 `prompt_language`、`pacing`、`production_profile`、`rhythm_profile` 等配置块（中文项目若剧本可能含少量英文借词，建议同时填写 `spoken_characters_per_second` 与 `spoken_words_per_second`，例如 `{"prompt_language":"zh-CN","pacing":{"spoken_characters_per_second":4.2,"spoken_words_per_second":3.0,"seconds_per_action_paragraph":2.5},"rhythm_profile":{"form":"国漫二次元","first_hook_seconds":5}}`）；单个 JSON 参数亦支持 `@<文件路径>`（如 `--production-profile-json @profile.json`）。
 
-- **模型配置（`production_profile`）**：用户在对话中点名具体目标视频模型时，先用 `configure` 写入模型标识、提示词语言、时长范围、是否启用多镜合生（`multi_shot_containers`）及接力路线（`continuation_route`），再开展下游提示词编写。
+- **模型配置（`production_profile`）**：用户在对话中点名具体目标视频模型时，先用 `configure` 写入模型标识、提示词语言、时长范围（按对应模型卡原生区间填写，如 Seedance 2.5 为 `4–30` 秒、Seedance 2.0 / MiniMax H3 为 `4–15` 秒）、是否启用多镜合生（`multi_shot_containers`）及接力路线（`continuation_route`），再开展下游提示词编写；项目模板默认 `prompt_language: "en"`，若全链路提示词均用中文写作，记得同步传入 `--prompt-language zh-CN` 与 `video_prompt_language: "zh-CN"` 对齐，避免图片/首帧与视频提示词意外分属不同语种。
 - **节奏目标（`rhythm_profile`）**：支持实拍、二维动态漫、风格化三维、水墨笔触、Q 版表达、国漫二次元等全部制作形态名称，按需填写已敲定的部分指标即可，不必凑齐全部字段。可用 `status` 查看当前生效配置。
 - **确定性分集骨架与缺口清单（`scaffold-episode`）**：从已有单集草稿升级为正式项目结构，或快速检查某集缺少哪些标准文档与结构编号时运行：
 
