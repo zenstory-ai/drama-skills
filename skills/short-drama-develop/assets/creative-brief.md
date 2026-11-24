@@ -23,7 +23,7 @@
 - **动作量分配**：【哪些重头戏需要完整连贯大动作，哪些靠定格姿态、局部微动、镜头推拉视差或剪辑就能出效果，据此控制场面规模】
 - **待测难点**：【哪些画面表现还没摸准底、需要先跑小样验证；无则填“暂无”】
 - **语速与动作估时起点（`pacing`）**：【确认后写入 `short-drama.json` 的 `format.pacing`，如 `spoken_characters_per_second`（或外语 `spoken_words_per_second`）、`seconds_per_action_paragraph`，按需加 `on_screen_text_characters_per_second`；未定填“待确认”】
-- **节奏目标（初稿）**：【按制作形态起步，调整项附简短理由；确认后写入项目配置】
+- **节奏目标（初稿示例，按需改写）**：【下方 JSON 仅为可手改的起步示例，并非强制默认值；若选定视频模型存在单条最短原生时长限制（如最低 4 秒），请按所选模型原生剪辑区间调高 `target_avg_shot_seconds`，或在此注明改走多镜合生方案；调整项附简短理由，确认后写入项目配置】
 
 ```json
 {"status": "proposed", "form": "ai_live_action", "first_hook_seconds": 5, "beat_interval_seconds_max": 30, "opposed_reversals_per_episode_min": 1, "end_on_peak": true, "reprise_previous_last_beat": true, "vo_share_max": 0.3, "target_avg_shot_seconds": 2.5, "close_shot_share_min": 0.45, "first_major_payoff_by_episode": 1}
