@@ -60,21 +60,101 @@ FILM = "制作成果/成片/成片.mp4"
 
 # ------------------------------------------------------------------ shot size
 
-# The rhythm profile's close_shot_share_min counts exactly these (develop's
-# episode-design reference): 近景、特写、大特写与细节镜头. 中近景 is not one.
+# The rhythm profile's close_shot_share_min counts 近景、特写、大特写与细节镜头
+# (develop's episode-architecture reference). Standalone 中近景 is its own rung,
+# while compound/transition framings (e.g. 中景缓推至近景, 双人中近景缓推至近景,
+# medium shot push to close-up) count as close when any rung in the shot reaches
+# CLOSE_SCALES.
 CLOSE_SCALES = frozenset({"近景", "特写", "大特写", "细节"})
-_SCALE_RE = re.compile("大特写|中近景|远景|全景|中景|近景|特写|细节")
+_ZH_SCALE_RE = re.compile(
+    r"大特写|近特写|细节特写|细节镜头|中近景|中全景|远景|全景|中景|近景|特写|细节"
+)
+_EN_SCALE_RE = re.compile(
+    r"\b(?:"
+    r"extreme\s+close[- ]?ups?|ecu"
+    r"|medium\s+close[- ]?ups?|mcu"
+    r"|close[- ]?ups?|close\s+shots?"
+    r"|detail\s+shots?|insert\s+shots?"
+    r"|extreme\s+wide(?:\s+shots?)?|long\s+shots?|wide\s+shots?|full\s+shots?"
+    r"|medium\s+(?:wide|full)(?:\s+shots?)?|medium\s+shots?|mid\s+shots?"
+    r")\b",
+    re.IGNORECASE,
+)
+_TRANSITION_BEFORE_DETAIL_RE = re.compile(
+    r"(?:推至|推进至|推到|推进到|收至|收紧至|切至|落至|落定至|拉至|移至|摇至|转至|至|到|→|->)\s*[^，。；,;]{0,12}$"
+)
+
+
+def _canonical_scale(token: str) -> str:
+    if token in {"大特写", "中近景", "远景", "全景", "中景", "近景", "特写", "细节"}:
+        return token
+    if token in {"近特写", "细节特写"}:
+        return "特写"
+    if token == "细节镜头":
+        return "细节"
+    if token == "中全景":
+        return "全景"
+    lowered = re.sub(r"[\s-]+", " ", token.strip().casefold())
+    if lowered in {"extreme close up", "extreme close ups", "extreme closeup", "extreme closeups", "ecu"}:
+        return "大特写"
+    if lowered in {"medium close up", "medium close ups", "medium closeup", "medium closeups", "mcu"}:
+        return "中近景"
+    if lowered in {"close up", "close ups", "closeup", "closeups"}:
+        return "特写"
+    if lowered in {"close shot", "close shots"}:
+        return "近景"
+    if lowered in {"detail shot", "detail shots", "insert shot", "insert shots"}:
+        return "细节"
+    if lowered.startswith(("medium wide", "medium full", "wide", "full")):
+        return "全景"
+    if lowered.startswith(("extreme wide", "long")):
+        return "远景"
+    if lowered.startswith(("medium", "mid")):
+        return "中景"
+    return ""
+
+
+def shot_scales(framing: str) -> list[str]:
+    """Every canonical shot-size rung named in a 景别/机位 value, in order.
+
+    Longer words are tried first at each position, so 中近景 and 大特写 are read
+    whole instead of as the 近景 or 特写 inside them, and compound transitions
+    such as 中景缓推至近景 or medium shot push to close-up expose every rung
+    they pass through.
+    """
+
+    text = framing or ""
+    raw_matches: list[tuple[int, int, str]] = []
+    for pattern in (_ZH_SCALE_RE, _EN_SCALE_RE):
+        for match in pattern.finditer(text):
+            raw_matches.append((match.start(), match.end(), match.group(0)))
+    raw_matches.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+
+    scales: list[str] = []
+    cursor = 0
+    for start, end, token in raw_matches:
+        if start < cursor:
+            continue
+        cursor = end
+        if token == "细节" and scales and not _TRANSITION_BEFORE_DETAIL_RE.search(text[:start]):
+            continue
+        canonical = _canonical_scale(token)
+        if canonical:
+            scales.append(canonical)
+    return scales
 
 
 def shot_scale(framing: str) -> str:
-    """The first shot-size word in a 景别/机位 value, or "" when none is named.
+    """The first canonical shot-size rung in a 景别/机位 value, or "" when none is named."""
 
-    Longer words are tried first at each position, so 中近景 and 大特写 are read
-    whole instead of as the 近景 or 特写 inside them.
-    """
+    scales = shot_scales(framing)
+    return scales[0] if scales else ""
 
-    match = _SCALE_RE.search(framing or "")
-    return match.group(0) if match else ""
+
+def is_close_framing(framing: str) -> bool:
+    """Whether a 景别/机位 value starts in or transitions into a CLOSE_SCALES rung."""
+
+    return any(scale in CLOSE_SCALES for scale in shot_scales(framing))
 
 
 # ------------------------------------------------------------------ screenplay
@@ -391,7 +471,8 @@ def parse_storyboard(text: str) -> dict[str, Any]:
         title = SHOT_TITLE_RE.search(section)
         framing = fields.get("景别/机位", "")
         move = fields.get("运镜", "")
-        scale = shot_scale(framing)
+        scales = shot_scales(framing)
+        scale = scales[0] if scales else ""
         reference = fields.get("输入参考图", "")
         slots = _slots(reference)
         scene = check.SCENE_ID_RE.search(fields.get("来源", ""))
@@ -407,7 +488,7 @@ def parse_storyboard(text: str) -> dict[str, Any]:
             "purpose": fields.get("目的", ""),
             "framing": framing,
             "scale": scale,
-            "close": scale in CLOSE_SCALES,
+            "close": any(item in CLOSE_SCALES for item in scales),
             "move": move,
             "moveKind": re.split(r"[；;，,]", move)[0].strip(),
             "start": fields.get("起点", ""),
