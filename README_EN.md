@@ -18,6 +18,8 @@
   <a href="#see-what-it-produces"><b>See what it produces</b></a>
   &nbsp;·&nbsp;
   <a href="README.md"><b>中文</b></a>
+  &nbsp;·&nbsp;
+  <a href="README_JA.md"><b>日本語</b></a>
 </p>
 
 <p align="center">

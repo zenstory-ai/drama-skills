@@ -16,6 +16,8 @@
   <a href="#看看它的输出"><b>看看它的输出</b></a>
   &nbsp;·&nbsp;
   <a href="README_EN.md"><b>English</b></a>
+  &nbsp;·&nbsp;
+  <a href="README_JA.md"><b>日本語</b></a>
 </p>
 
 <p align="center">
