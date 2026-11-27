@@ -45,7 +45,7 @@ class Browser:
     @classmethod
     def start(cls, workspace: Path) -> None:
         cls.server = create_server(workspace, port=0)
-        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         cls.thread.start()
         host, port = cls.server.server_address[:2]
         cls.origin = f"http://{host}:{port}"

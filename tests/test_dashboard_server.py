@@ -16,6 +16,8 @@ from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from tests.media_require import has_node
+
 SUITE = Path(__file__).resolve().parents[1]
 SKILL = SUITE / "skills/short-drama"
 SCRIPT = SKILL / "scripts/dashboard_server.py"
@@ -1013,6 +1015,7 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(store.media_info(project_id, "剧集/EP001/制作成果/tts/LINE001.wav")["kind"], "audio")
 
 
+@unittest.skipUnless(dashboard_server.SECURE_DIR_FD, "already using _PathDirectory backend")
 class PathPinnedProjectStoreTests(ProjectStoreTests):
     """Run every store test again through the backend Windows must use.
 
@@ -1231,7 +1234,7 @@ class DashboardSessionTests(unittest.TestCase):
             os.chmod(workspace, 0o555)
             try:
                 server = create_server(workspace, port=0)
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 try:
                     connection = http.client.HTTPConnection(
@@ -1370,7 +1373,7 @@ class DashboardEntrypointTests(unittest.TestCase):
         project_tool = dashboard_server.load_project_tool(SKILL)
         self.assertTrue(callable(project_tool.project_status))
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_supports_simple_and_legacy_creator_statuses(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
@@ -1433,7 +1436,7 @@ process.stdout.write(JSON.stringify(result));
         self.assertEqual(result["recovery"], ["需要更新", "warning"])
         self.assertFalse(result["typedDuringSave"])
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_hides_machine_files_and_groups_creator_content(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
@@ -1484,7 +1487,7 @@ process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(pat
             ],
         )
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_structured_projection_removes_machine_fields(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
@@ -1590,7 +1593,7 @@ process.stdout.write(JSON.stringify(projected));
                 second.server_close()
 
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_preserves_creator_content_the_projection_used_to_delete(self) -> None:
         # A look's validity range reads like a path but is a creator id. Deleting
         # it left the row as "—", so the creator saw no validity range at all.
@@ -1613,7 +1616,7 @@ process.stdout.write(JSON.stringify([
             ["EP003/SC004/BLK-EP003-SC004-A01", False, True],
         )
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_editable_suffixes_match_the_server(self) -> None:
         # The client must not shadow the server with a narrower allowlist: that
         # silently removed subtitle editing, a shipped feature.
@@ -1629,7 +1632,7 @@ process.stdout.write(JSON.stringify(
         completed = run_node(script)
         self.assertEqual(json.loads(completed.stdout), [True] * len(editable))
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_keeps_unexpected_creator_files_reachable(self) -> None:
         # The workspace is the only UI, so a file it refuses to list is a file the
         # creator cannot open at all. Machine and lifecycle roots stay hidden.
@@ -1651,7 +1654,7 @@ process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(pat
             ["other", "other", None, None, None],
         )
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_preview_survives_one_malformed_record(self) -> None:
         # An interrupted agent run leaves a truncated line. The records around it
         # must still render, or the file becomes unreadable and unrepairable.
@@ -1664,7 +1667,7 @@ process.stdout.write(JSON.stringify(rows.map((row) => (row.error ? "error" : "re
         completed = run_node(script)
         self.assertEqual(json.loads(completed.stdout), ["record", "error", "record"])
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_markdown_preserves_structure_and_treats_html_as_text(
         self,
     ) -> None:
@@ -1702,7 +1705,7 @@ process.stdout.write(JSON.stringify([
         self.assertTrue(fence_kept)
         self.assertTrue(html_kept_as_text)
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_renders_one_copyable_prompt_as_one_block(self) -> None:
         # A MiniMax H3 reference body is six `>` lines that go into one request.
         # Rendering each as its own bordered box made one prompt look like six,
@@ -1757,7 +1760,7 @@ process.stdout.write(JSON.stringify([
         # A blank line still separates two quotes, as Markdown says it does.
         self.assertEqual(split_by_blank_line, 2)
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_labels_keep_ids_as_written(self) -> None:
         # IDs are how the documents cite each other; `shot ep001 001.png` cannot
         # be searched for in 分镜.md.
@@ -1778,7 +1781,7 @@ process.stdout.write(JSON.stringify({json.dumps(paths)}.map(logic.fileLabel)));
             ["SHOT-EP001-001.png", "EP001-审查", "Scene_Notes", "分镜", "核心设定"],
         )
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_copy_buttons_carry_the_prompt_as_written(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         example = SUITE / "examples/creator-first/EP001/视频提示词.md"
@@ -1852,7 +1855,7 @@ process.stdout.write(JSON.stringify({{
             result["extra"], ["\n".join(h3), "Frozen frame, `raw` **as typed**"]
         )
 
-    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    @unittest.skipUnless(has_node(), "Node.js is unavailable")
     def test_frontend_translates_server_protocol_messages(self) -> None:
         # The server's English protocol strings were reaching the creator UI raw.
         app = dashboard_server.STATIC_ROOT / "app.js"
@@ -1883,7 +1886,7 @@ class DashboardHTTPTests(unittest.TestCase):
         make_project(self.project, "HTTP 项目")
         (self.project / "notes.md").write_text("hello", encoding="utf-8")
         self.server = create_server(self.workspace, port=0)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.host, self.port = self.server.server_address[:2]
 
@@ -2164,6 +2167,7 @@ class DashboardHTTPTests(unittest.TestCase):
         self.assertEqual(status, 403)
 
 
+@unittest.skipUnless(dashboard_server.SECURE_DIR_FD, "already using _PathDirectory backend")
 class PathPinnedDashboardHTTPTests(DashboardHTTPTests):
     """Serve the same HTTP surface through the backend Windows must use.
 
@@ -3138,7 +3142,7 @@ class DashboardViewEndpointTests(unittest.TestCase):
         self.project = self.workspace / "creator"
         make_creator_project(self.project)
         self.server = create_server(self.workspace, port=0)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.host, self.port = self.server.server_address[:2]
 
@@ -3280,6 +3284,7 @@ class DashboardViewEndpointTests(unittest.TestCase):
             self.assertEqual(series["cast"][0]["desc"], "清瘦长脸，黑色风衣。")
 
 
+@unittest.skipUnless(dashboard_server.SECURE_DIR_FD, "already using _PathDirectory backend")
 class PathPinnedDashboardViewEndpointTests(DashboardViewEndpointTests):
     """The same read-only views through the backend Windows must use."""
 

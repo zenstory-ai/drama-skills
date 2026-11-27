@@ -346,8 +346,8 @@ class StandaloneSkillToolingTests(unittest.TestCase):
         )
         registered_cache: dict[Path, set[str]] = {}
         checked_pairs = 0
-        for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
-            skill_dir = skill_md.parent
+        for skill_md in sorted(SKILLS.rglob("*.md")):
+            skill_dir = SKILLS / skill_md.relative_to(SKILLS).parts[0]
             body = skill_md.read_text(encoding="utf-8")
             documented = sorted(set(command_re.findall(body)))
             for rel_script, subcommand in documented:

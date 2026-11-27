@@ -53,3 +53,12 @@ def has_ffmpeg(
             )
         return False
     return True
+
+
+def has_node() -> bool:
+    """Return True when node is available; fail closed if NODE_REQUIRED=1."""
+    if shutil.which("node"):
+        return True
+    if os.environ.get("NODE_REQUIRED") == "1":
+        raise RuntimeError("NODE_REQUIRED=1 but node is not available on PATH")
+    return False

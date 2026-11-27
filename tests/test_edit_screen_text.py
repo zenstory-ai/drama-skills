@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.media_require import has_ffmpeg
+from tests.media_require import has_ffmpeg, has_node
 
 
 SKILL = Path(__file__).resolve().parents[1] / "skills/short-drama-edit"
@@ -530,7 +530,7 @@ class SoundEffectTests(unittest.TestCase):
         self.assertLess(abs(original - kept), 1.0)
 
 
-@unittest.skipUnless(shutil.which("node"), "needs node")
+@unittest.skipUnless(has_node(), "needs node")
 class OverlayRulesTests(unittest.TestCase):
     """The composition's font and countdown decisions, run by Node on the shipped module."""
 
@@ -1479,7 +1479,7 @@ class ScreenTextFallbackAndAssTests(unittest.TestCase):
                             post_sym_dir, [], received["layers"], {"width": 1920, "height": 1080, "fps": 24}, 3.0,
                         )
 
-    @unittest.skipUnless(shutil.which("node"), "needs node")
+    @unittest.skipUnless(has_node(), "needs node")
     def test_remotion_rules_landscape_geometry_multilingual_fallback_and_english_card_rows(self):
         program = (
             f"import * as rules from {json.dumps(RULES.as_uri())};\n"

@@ -27,9 +27,11 @@ jobs:
       remotion: ${{ steps.detect.outputs.remotion }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'pull_request'
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: detect
         name: Classify changed paths
         env:
@@ -74,8 +76,13 @@ jobs:
             windows=true
             remotion=true
           else
-            if printf '%s\n' "$files" | grep -Eq '(\.(py|js|mjs|ts|tsx|css|html)$|^(src|tools)/|^(skills|tests|evaluations|examples)/.*\.(json|jsonl)$)'; then
+            # Non-remotion code, executable fixtures (examples/creator-first, examples/golden-project), and JSON/JSONL contracts.
+            if printf '%s\n' "$files" | grep -Eq '(\.(py|js|mjs|css|html)$|^(src|tools)/|^examples/(creator-first|golden-project)/|^(skills|tests|evaluations|examples)/.*\.(json|jsonl)$)' && \
+               printf '%s\n' "$files" | grep -Evq '^(tests/remotion-typecheck/|skills/short-drama-edit/assets/remotion/.*\.(ts|tsx|json)$)'; then
               code=true
+            fi
+            if printf '%s\n' "$files" | grep -Eq '(^\.gitattributes$|\.(py|js|css|html)$|^(src|tools)/|^examples/(creator-first|golden-project)/|^(skills|tests|evaluations|examples)/.*\.(json|jsonl)$)' && \
+               printf '%s\n' "$files" | grep -Evq '^(tests/test_dashboard_browser\.py$|tests/remotion-typecheck/|skills/short-drama-edit/assets/remotion/)'; then
               windows=true
             fi
             if printf '%s\n' "$files" | grep -Eq '^(skills/short-drama/assets/dashboard/|skills/short-drama/scripts/(dashboard_server|creator_views|project_tool)\.py|tests/test_dashboard_(browser|server)\.py|examples/)'; then
@@ -110,8 +117,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Run docs and contract regressions
@@ -146,13 +155,15 @@ jobs:
       matrix:
         python-version: ["3.9", "3.14"]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install ffmpeg with libass
         run: |
           sudo apt-get update
@@ -162,6 +173,7 @@ jobs:
       - name: unit tests
         env:
           FFMPEG_REQUIRED: "1"
+          NODE_REQUIRED: "1"
         run: python -B -m unittest discover -s tests -v
 
   dashboard-browser:
@@ -174,8 +186,10 @@ jobs:
     env:
       DASHBOARD_BROWSER_REQUIRED: "1"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - name: Cache Playwright Chromium
@@ -204,20 +218,25 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          python-version: "3.x"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          node-version: "20"
+          python-version: "3.14"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
       # Exercises real Windows file semantics -- reparse points, msvcrt locking,
       # CRLF handling, and production_tool/dashboard_server nt branches.
+      # Pin 3.14 + PYTHONUTF8=1 (matching the UTF-8 mode previously provided implicitly by 3.x -> 3.15).
       - name: Run Windows portability regressions
+        env:
+          NODE_REQUIRED: "1"
+          PYTHONUTF8: "1"
         run: >-
           python -B -m unittest
           tests.test_installation_resolution
-          tests.test_shipping_boundaries
           tests.test_standalone_skill_tooling
           tests.test_episode_intake
           tests.test_golden_project
@@ -240,8 +259,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check ruff==0.15.11 mypy==2.3.0
@@ -261,7 +282,7 @@ jobs:
             --disallow-any-generics \
             --warn-unused-ignores \
             "${skill_scripts[@]}"
-          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py src/_shared/*.py tools/*.py)
+          support_scripts=(evaluations/content_quality_gate.py src/_shared/*.py tools/*.py)
           mypy --python-version 3.10 \
             --ignore-missing-imports \
             "${support_scripts[@]}"
@@ -274,7 +295,7 @@ jobs:
           shopt -s nullglob
           skill_scripts=(skills/*/scripts/*.py)
           test "${#skill_scripts[@]}" -gt 0
-          support_scripts=(tests/legacy/*/scripts/*.py evaluations/content_quality_gate.py src/_shared/*.py tools/*.py)
+          shared_scripts=(src/_shared/*.py)
           python -m venv /tmp/mypy39
           /tmp/mypy39/bin/pip install --disable-pip-version-check mypy==1.19.1
           /tmp/mypy39/bin/mypy --python-version 3.9 \
@@ -286,10 +307,10 @@ jobs:
             "${skill_scripts[@]}"
           /tmp/mypy39/bin/mypy --python-version 3.9 \
             --ignore-missing-imports \
-            "${support_scripts[@]}"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+            "${shared_scripts[@]}"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "20"
+          node-version: "22"
       - name: dashboard and remotion scripts parse
         run: |
           node --check skills/short-drama/assets/dashboard/app.js
@@ -302,10 +323,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          node-version: "20"
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: tests/remotion-typecheck/package-lock.json
       - name: Install minimal TypeScript toolchain
