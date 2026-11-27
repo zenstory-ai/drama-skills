@@ -229,9 +229,11 @@ jobs:
           node-version: "22"
       # Exercises real Windows file semantics -- reparse points, msvcrt locking,
       # CRLF handling, and production_tool/dashboard_server nt branches.
+      # Pin 3.14 + PYTHONUTF8=1 (matching the UTF-8 mode previously provided implicitly by 3.x -> 3.15).
       - name: Run Windows portability regressions
         env:
           NODE_REQUIRED: "1"
+          PYTHONUTF8: "1"
         run: >-
           python -B -m unittest
           tests.test_installation_resolution
